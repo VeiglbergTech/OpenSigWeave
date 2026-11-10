@@ -120,6 +120,14 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("oauth.oidc.authorize_redirect", self.source)
         self.assertIn("oauth.oidc.authorize_access_token", self.source)
 
+    def test_signature_management_api_routes_require_admin(self):
+        self.assertIn('@app.get("/api/admin/signatures")', self.source)
+        self.assertIn('@app.post("/api/admin/signatures", status_code=201)', self.source)
+        self.assertIn('@app.get("/api/admin/signatures/{signature_id}/versions")', self.source)
+        self.assertIn('@app.post("/api/admin/signatures/{signature_id}/versions", status_code=201)', self.source)
+        self.assertIn('@app.post("/api/admin/signatures/{signature_id}/variants", status_code=201)', self.source)
+        self.assertGreaterEqual(self.source.count('raise HTTPException(status_code=403, detail="Admins only")'), 5)
+
     def test_hybrid_storage_uses_immutable_files_and_metadata(self):
         storage = (ROOT / "signature_storage.py").read_text(encoding="utf-8")
         models = (ROOT / "models.py").read_text(encoding="utf-8")
