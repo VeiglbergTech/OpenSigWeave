@@ -1,0 +1,88 @@
+import unittest
+import uuid
+from unittest.mock import patch
+
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+
+from core.selection_repository import select_and_record_variant
+from database import Base
+from models import SelectionStateDB, SignatureDB, SignatureVariantDB
+
+
+class SelectionRepositoryTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.session = self.Session()
+        signature = SignatureDB(
+            id=uuid.uuid4().hex,
+            name="Default pool",
+            scope="DOMAIN",
+            mode="AUTO",
+            is_active=True,
+        )
+        self.one = SignatureVariantDB(
+            id=uuid.uuid4().hex,
+            signature_id=signature.id,
+            pool_name="AUTO",
+            weight=1,
+            is_enabled=True,
+        )
+        self.two = SignatureVariantDB(
+            id=uuid.uuid4().hex,
+            signature_id=signature.id,
+            pool_name="AUTO",
+            weight=1,
+            is_enabled=True,
+        )
+        self.session.add_all([signature, self.one, self.two])
+        self.session.commit()
+
+    def tearDown(self):
+        self.session.close()
+        self.engine.dispose()
+
+    def test_sender_does_not_repeat_previous_variant(self):
+        expected_first, expected_second = sorted([self.one, self.two], key=lambda item: item.id)
+        with patch("core.variant_selector.secrets.randbelow", return_value=0):
+            first = select_and_record_variant(
+                self.session, "Alice@Example.org", "auto"
+            )
+            self.assertEqual(first.id, expected_first.id)
+            self.session.commit()
+
+            second = select_and_record_variant(
+                self.session, "alice@example.org", "AUTO"
+            )
+            self.assertEqual(second.id, expected_second.id)
+            self.session.commit()
+
+        state = self.session.execute(
+            select(SelectionStateDB).where(
+                SelectionStateDB.sender_email == "alice@example.org",
+                SelectionStateDB.pool_name == "AUTO",
+            )
+        ).scalar_one()
+        self.assertEqual(state.last_variant_id, expected_second.id)
+
+    def test_selection_state_is_scoped_per_sender(self):
+        expected_first = min([self.one, self.two], key=lambda item: item.id)
+        with patch("core.variant_selector.secrets.randbelow", return_value=0):
+            selected = select_and_record_variant(
+                self.session, "bob@example.org", "AUTO"
+            )
+        self.assertEqual(selected.id, expected_first.id)
+        self.session.commit()
+        states = self.session.execute(select(SelectionStateDB)).scalars().all()
+        self.assertEqual(len(states), 1)
+        self.assertEqual(states[0].sender_email, "bob@example.org")
+
+    def test_empty_candidate_pool_returns_none(self):
+        self.assertIsNone(select_and_record_variant(self.session, "alice@example.org", "INTERNAL"))
+        self.assertEqual(self.session.execute(select(SelectionStateDB)).scalars().all(), [])
+
+
+if __name__ == "__main__":
+    unittest.main()

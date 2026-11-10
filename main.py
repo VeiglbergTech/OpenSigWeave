@@ -1,47 +1,43 @@
 import os
+import uuid
 import json
-import httpx
-import re
+import hmac
+import secrets
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import create_engine, Column, Integer, String, Boolean, ForeignKey, Text
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import List, Optional
 
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
+from jinja2 import TemplateError
 
 load_dotenv()
 
-# 2. Database Setup
-SQLALCHEMY_DATABASE_URL = "sqlite:///./opensigweave.db"
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+# Database infrastructure is isolated from the application models and routes.
+from database import get_db
+from models import DomainDB, UserOverrideDB, SignatureVersionDB
 
-class DomainDB(Base):
-    __tablename__ = "domains"
-    id = Column(Integer, primary_key=True, index=True)
-    domain_name = Column(String, unique=True, index=True)
-    is_active = Column(Boolean, default=True)
-    allow_overrides = Column(Boolean, default=True)
-    inject_on_replies = Column(Boolean, default=False)
-    trim_whitespace = Column(Boolean, default=True)
-    strip_device_signatures = Column(Boolean, default=False)
-    template_html = Column(Text, default="<p>Best Regards,</p><p><br></p><p><strong>{{ first_name }} {{ last_name }}</strong></p><p>{{ title }} | {{ domain_name }}</p>")
+from signature_renderer import render_signature_template
+from identity.providers.authentik import AuthentikAttributeProvider
+from identity.providers.base import AttributeProvider
+from core.selection_repository import select_and_record_variant
+from signature_storage import SignatureFileStore, SignatureStorageError
+attribute_provider: AttributeProvider = AuthentikAttributeProvider(
+    base_url=os.environ.get("AUTHENTIK_URL", ""),
+    api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
+)
 
-class UserOverrideDB(Base):
-    __tablename__ = "user_overrides"
-    id = Column(Integer, primary_key=True, index=True)
-    user_email = Column(String, unique=True, index=True)
-    html_content = Column(Text, default="")
-    is_disabled = Column(Boolean, default=False)
+signature_file_store = SignatureFileStore(
+    os.environ.get("SIGNATURE_STORAGE_PATH", "./signatures")
+)
 
-Base.metadata.create_all(bind=engine)
 
 # Pydantic Models
 class DomainCreate(BaseModel):
@@ -66,25 +62,54 @@ class AdminOverrideSave(BaseModel):
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
-app.add_middleware(SessionMiddleware, secret_key=os.environ.get("SECRET_KEY", "fallback-secret"))
+session_secret = os.environ.get("SECRET_KEY", "")
+if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secure_random_string_here", "fallback-secret", "replace_with_random_secret_at_least_32_characters"}:
+    raise RuntimeError("SECRET_KEY must be configured with at least 32 non-placeholder characters")
+ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
+if len(ENGINE_API_KEY) < 32 or ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_")):
+    raise RuntimeError("ENGINE_API_KEY must be configured with a generated value of at least 32 characters")
+class CSRFProtectionMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user"):
+            expected = request.session.get("csrf_token")
+            supplied = request.headers.get("X-CSRF-Token", "")
+            if not expected or not supplied or not hmac.compare_digest(expected, supplied):
+                return JSONResponse({"detail": "CSRF validation failed"}, status_code=403)
+        return await call_next(request)
+
+
+# SessionMiddleware must wrap CSRFProtectionMiddleware so the session is available
+# while validating the anti-CSRF token.
+app.add_middleware(CSRFProtectionMiddleware)
+app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax", https_only=True)
 
 oauth = OAuth()
+oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
+    f"{os.environ.get('AUTHENTIK_URL', '').rstrip('/')}/application/o/"
+    f"{os.environ.get('AUTHENTIK_SLUG', '')}/.well-known/openid-configuration"
+)
+oidc_client_id = os.environ.get("OIDC_CLIENT_ID") or os.environ.get("CLIENT_ID")
+oidc_client_secret = os.environ.get("OIDC_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
+if (
+    not isinstance(oidc_discovery_url, str)
+    or not oidc_discovery_url.startswith("https://")
+    or not oidc_client_id
+    or not oidc_client_secret
+    or str(oidc_client_id).lower().startswith(("your_", "replace_"))
+    or str(oidc_client_secret).lower().startswith(("your_", "replace_"))
+):
+    raise RuntimeError("Configure an HTTPS OIDC discovery URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET")
 oauth.register(
-    name='authentik',
-    server_metadata_url=f"{os.environ.get('AUTHENTIK_URL')}/application/o/{os.environ.get('AUTHENTIK_SLUG')}/.well-known/openid-configuration",
-    client_id=os.environ.get('CLIENT_ID'),
-    client_secret=os.environ.get('CLIENT_SECRET'),
-    client_kwargs={'scope': 'openid email profile attributes'}
+    name="oidc",
+    server_metadata_url=oidc_discovery_url,
+    client_id=oidc_client_id,
+    client_secret=oidc_client_secret,
+    client_kwargs={"scope": os.environ.get("OIDC_SCOPES", "openid email profile groups")}
 )
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/branding", StaticFiles(directory="branding"), name="branding")
 app.mount("/static", StaticFiles(directory="static"), name="static")
-
-def get_db():
-    db = SessionLocal()
-    try: yield db
-    finally: db.close()
 
 def is_admin_user(request: Request):
     user = request.session.get('user')
@@ -95,25 +120,26 @@ def is_admin_user(request: Request):
 @app.get("/login")
 async def login(request: Request):
     redirect_uri = request.url_for('auth').replace(scheme='https')
-    return await oauth.authentik.authorize_redirect(request, str(redirect_uri))
+    return await oauth.oidc.authorize_redirect(request, str(redirect_uri))
 
 @app.get("/auth")
 async def auth(request: Request):
     try:
-        token = await oauth.authentik.authorize_access_token(request)
+        token = await oauth.oidc.authorize_access_token(request)
         user = token.get('userinfo')
         if user: request.session['user'] = user
     except Exception as e:
         print(f"Login failed: {e}")
     return RedirectResponse(url='/')
 
-@app.get("/logout")
+@app.post("/logout")
 async def logout(request: Request):
-    request.session.pop('user', None)
-    authentik_url = os.environ.get('AUTHENTIK_URL')
-    slug = os.environ.get('AUTHENTIK_SLUG')
+    request.session.clear()
+    authentik_url = os.environ.get('AUTHENTIK_URL', '').rstrip('/')
+    slug = os.environ.get('AUTHENTIK_SLUG', '')
     return_url = str(request.url_for('read_root')).replace('http://', 'https://')
-    return RedirectResponse(url=f"{authentik_url}/application/o/{slug}/end-session/?post_logout_redirect_uri={return_url}")
+    logout_url = f"{authentik_url}/application/o/{slug}/end-session/?post_logout_redirect_uri={return_url}"
+    return {"logout_url": logout_url}
 
 @app.get("/")
 def read_root(request: Request, db: Session = Depends(get_db)):
@@ -169,24 +195,40 @@ def read_root(request: Request, db: Session = Depends(get_db)):
             can_edit = True
             lock_reason = ""
     
-    raw_template = domain_obj.template_html if domain_obj else "<p class='text-red-500'>No active domain template found for your email domain.</p>"
+    raw_template = (domain_obj.template_html if domain_obj else None) or "<p>No active domain template found for your email domain.</p>"
     
-    parsed_template = raw_template.replace("{{ first_name }}", first_name).replace("{{ last_name }}", last_name).replace("{{ title }}", title).replace("{{ phone }}", phone).replace("{{ email }}", email).replace("{{ domain_name }}", domain_part)
+    try:
+        parsed_template = render_signature_template(raw_template, {
+            "first_name": first_name,
+            "last_name": last_name,
+            "title": title,
+            "phone": phone,
+            "email": email,
+            "domain_name": domain_part,
+        })
+    except TemplateError:
+        parsed_template = "<p>Signature template is invalid. Please contact an administrator.</p>"
+
+    csrf_token = request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
 
     return templates.TemplateResponse("index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin, "authentik_settings_url": f"{os.environ.get('AUTHENTIK_URL', '')}/if/user/#/settings",
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
-        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason
+        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token
     })
 
 # --- API Endpoints ---
 @app.get("/domains/")
-def read_domains(db: Session = Depends(get_db)):
+def read_domains(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
     return db.query(DomainDB).all()
 
 @app.post("/domains/")
-def create_domain(domain: DomainCreate, db: Session = Depends(get_db)):
+def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
     db_domain = DomainDB(domain_name=domain.domain_name, is_active=domain.is_active)
     db.add(db_domain)
     db.commit()
@@ -194,7 +236,9 @@ def create_domain(domain: DomainCreate, db: Session = Depends(get_db)):
     return db_domain
 
 @app.put("/domains/{domain_id}")
-def update_domain(domain_id: int, domain_update: DomainUpdate, db: Session = Depends(get_db)):
+def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
     db_domain = db.query(DomainDB).filter(DomainDB.id == domain_id).first()
     if not db_domain: raise HTTPException(status_code=404)
     db_domain.is_active = domain_update.is_active
@@ -207,7 +251,9 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, db: Session = Dep
     return {"status": "success"}
 
 @app.delete("/domains/{domain_id}")
-def delete_domain(domain_id: int, db: Session = Depends(get_db)):
+def delete_domain(domain_id: int, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
     db_domain = db.query(DomainDB).filter(DomainDB.id == domain_id).first()
     if db_domain:
         db.delete(db_domain)
@@ -276,12 +322,14 @@ def delete_admin_override(override_id: int, request: Request, db: Session = Depe
 # ==========================================
 @app.get("/api/signature/{email}")
 async def get_rspamd_signature(
-    email: str, 
-    x_engine_key: Optional[str] = Header(None), 
+    email: str,
+    response: Response,
+    x_engine_key: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ):
+    response.headers["Cache-Control"] = "no-store, private"
     # --- SECURITY LOCK ---
-    expected_key = os.environ.get('ENGINE_API_KEY')
+    expected_key = ENGINE_API_KEY
     if not expected_key or x_engine_key != expected_key:
         raise HTTPException(status_code=401, detail="Unauthorized Engine Request")
         
@@ -298,10 +346,36 @@ async def get_rspamd_signature(
     if override and override.is_disabled:
         return {"html": "", "inject_on_replies": False, "trim_whitespace": True, "strip_device_signatures": False}
     
+    selected_from_variant = False
     if override:
         raw_template = override.html_content
     else:
-        raw_template = domain_obj.template_html
+        selected_variant = select_and_record_variant(
+            db,
+            sender_email=email,
+            pool_name="AUTO",
+            domain_id=domain_obj.id,
+        )
+        if selected_variant:
+            latest_version = (
+                db.query(SignatureVersionDB)
+                .filter(SignatureVersionDB.signature_id == selected_variant.signature_id)
+                .order_by(SignatureVersionDB.version_number.desc())
+                .first()
+            )
+            if latest_version:
+                try:
+                    raw_template = signature_file_store.read(
+                        uuid.UUID(hex=latest_version.id),
+                        latest_version.sha256,
+                    )
+                    selected_from_variant = True
+                except (SignatureStorageError, ValueError, TypeError):
+                    raise HTTPException(status_code=503, detail="Signature asset unavailable")
+            else:
+                raw_template = domain_obj.template_html
+        else:
+            raw_template = domain_obj.template_html
         
     if not raw_template:
         return {
@@ -311,59 +385,30 @@ async def get_rspamd_signature(
             "strip_device_signatures": domain_obj.strip_device_signatures
         }
         
-    # 3. Fetch live data from Authentik API
-    authentik_url = os.environ.get('AUTHENTIK_URL', '').rstrip('/')
-    api_token = os.environ.get('AUTHENTIK_API_TOKEN')
+    # 3. Resolve normalized identity attributes through the provider abstraction.
+    identity_attributes = await attribute_provider.get_attributes(email)
+    first_name = identity_attributes.first_name or email.split('@')[0].capitalize()
+    last_name = identity_attributes.last_name
+    title = identity_attributes.title
+    phone = identity_attributes.phone
+
+    # 4. Compile the HTML in a sandbox and escape every identity attribute.
+    try:
+        parsed = render_signature_template(raw_template, {
+            "first_name": first_name,
+            "last_name": last_name,
+            "title": title,
+            "phone": phone,
+            "email": email,
+            "domain_name": domain_part,
+        })
+    except TemplateError:
+        raise HTTPException(status_code=422, detail="Invalid signature template")
     
-    first_name, last_name, title, phone = "", "", "", ""
-    
-    if authentik_url and api_token:
-        headers = {
-            "Authorization": f"Bearer {api_token}",
-            "Accept": "application/json"
-        }
-        search_url = f"{authentik_url}/api/v3/core/users/?search={email}"
-        
-        try:
-            async with httpx.AsyncClient(verify=False) as client:
-                response = await client.get(search_url, headers=headers, timeout=5.0)
-                if response.status_code == 200:
-                    data = response.json()
-                    results = data.get('results', [])
-                    
-                    if results:
-                        user_data = results[0]
-                        name = user_data.get('name', '')
-                        name_parts = name.split(' ')
-                        first_name = name_parts[0] if name_parts else ''
-                        last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
-                        
-                        attributes = user_data.get('attributes', {})
-                        
-                        title_val = attributes.get('title', [''])
-                        phone_val = attributes.get('phone', [''])
-                        
-                        title = title_val[0] if isinstance(title_val, list) and title_val else str(title_val)
-                        phone = phone_val[0] if isinstance(phone_val, list) and phone_val else str(phone_val)
-                        
-                        if title == "None": title = ""
-                        if phone == "None": phone = ""
-                else:
-                    print(f"Authentik API Error: {response.status_code} - {response.text}")
-        except Exception as e:
-            print(f"Server-to-Server Authentik Request failed: {e}")
-            
-    if not first_name:
-        first_name = email.split('@')[0].capitalize()
-            
-    # 4. Compile the HTML using Regex
-    parsed = re.sub(r'\{\{\s*first_name\s*\}\}', first_name, raw_template)
-    parsed = re.sub(r'\{\{\s*last_name\s*\}\}', last_name, parsed)
-    parsed = re.sub(r'\{\{\s*title\s*\}\}', title, parsed)
-    parsed = re.sub(r'\{\{\s*phone\s*\}\}', phone, parsed)
-    parsed = re.sub(r'\{\{\s*email\s*\}\}', email, parsed)
-    parsed = re.sub(r'\{\{\s*domain_name\s*\}\}', domain_part, parsed)
-    
+    # Commit the selected variant only after the asset has been read and rendered.
+    if selected_from_variant:
+        db.commit()
+
     # 5. Deliver to Rspamd
     return {
         "html": parsed,

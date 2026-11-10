@@ -1,6 +1,7 @@
 venv/
 *.db
 *.sqlite
+signatures/
 .env
 __pycache__/
 branding/logo.png

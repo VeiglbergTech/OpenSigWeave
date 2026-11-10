@@ -1,12 +1,12 @@
 # OpenSigWeave
 
-OpenSigWeave is a centralized, self-hosted email signature manager designed to bridge the gap between **Authentik** (Identity Management) and **Rspamd / Mailcow** (Mail Filtering). 
+OpenSigWeave is a centralized, self-hosted email signature manager designed to integrate an OIDC identity provider with **Rspamd / Mailcow** (Mail Filtering). 
 
-Instead of forcing users to configure signatures in their individual mail clients (Outlook, Apple Mail, mobile devices, etc.), OpenSigWeave injects rich HTML signatures at the gateway level. It dynamically pulls live user attributes (Phone, Title, Name) from Authentik and appends them to outgoing emails seamlessly.
+Instead of forcing users to configure signatures in their individual mail clients (Outlook, Apple Mail, mobile devices, etc.), OpenSigWeave injects rich HTML signatures at the gateway level. It dynamically pulls live user attributes (Phone, Title, Name) from Authentik and appends them to outgoing emails seamlessly. Signature variables are rendered in a sandboxed template environment with automatic HTML escaping.
 
 ## ✨ Key Features
 * **Gateway-Level Injection:** Signatures are applied by the mail server, meaning they work identically across all devices and email clients.
-* **Authentik SSO Integration:** Login is gated strictly via Authentik OIDC. Live attributes (name, phone number, email, title and domain) are polled instantly during mail transit.
+* **OIDC SSO:** Login uses the provider's OIDC discovery document. The current live employee-attribute lookup and logout integration still use Authentik and are being separated in the ongoing refactor. The application should be reached through an HTTPS reverse proxy; its session cookie is Secure.
 * **Rich Visual Editor:** A custom UI built with Tailwind CSS, Alpine.js, and Quill.js allows users and admins to design signatures visually or via raw HTML.
 * **Advanced HTML Import:** Sanitize and import complex layouts from external generators with an intelligent visual editor lock that protects table-based signatures from accidental formatting loss.
 * **Domain-Level Master Templates:** Enforce a corporate signature standard across an entire domain.
@@ -17,7 +17,7 @@ Instead of forcing users to configure signatures in their individual mail client
 * **Mobile Signature Assassin:** Automatically detects and strips default mobile sign-offs (e.g., "Sent from my iPhone" or "Get Outlook for iOS") before applying the professional corporate signature.
 * **The "Kill Switch":** Easily disable signatures entirely for specific service accounts (e.g., `noreply@` or `billing@`).
 * **Branding:** Easy white label branding options for logo, title and title color via simple, persistent files.
-* **Deliverability Safe:** By design, **OpenSigWeave** is entirely SPF, DMARC and DKIM safe, so it will never affect your email deliverability.
+* **Rspamd Integration:** Signature mutation is performed by a Rspamd adapter. The deployed Rspamd processing order must be verified to ensure injection happens before DKIM signing; no blanket deliverability guarantee is made.
 
 ---
 ## 📸 UI Images
@@ -55,7 +55,7 @@ Instead of forcing users to configure signatures in their individual mail client
 ---
 
 ## 📧 Supported Mail Clients (Reply Injection)
-New, outbound emails are universally supported across all clients. 
+The current integration targets outbound messages. Actual behavior depends on the MIME structure and the configured Rspamd processing pipeline; validate each supported client with integration tests. 
 
 However, because there is no universal web standard for how email clients format reply chains, OpenSigWeave's **Experimental Reply Injection** uses specific Regex patterns to find the exact HTML line where the "quoted history" begins. 
 
@@ -73,7 +73,7 @@ The Lua engine also theoretically supports injecting signatures into replies sen
 ---
 
 ## 💡 Usage Tips
-* **External Builders:** For the best results with multi-column layouts, it's recommended to design your signature in an online generator and use the Sanitize & Import feature.
+* **External Builders:** For the best results with multi-column layouts, it's recommended to design your signature in an online generator and use the HTML import feature. Review imported markup before saving.
 * **Variable Injection:** When using external builders, simply type {{ first_name }}, {{ title }}, etc., directly into their form fields. When you import the HTML into OpenSigWeave, these will become dynamic placeholders.
 * **Table Support:** If you paste a table into the "Advanced HTML" editor, the Visual Editor will lock to protect your layout. To return to the Visual Editor, you must clear the signature or remove the `<table>` tags.
 
@@ -81,10 +81,11 @@ The Lua engine also theoretically supports injecting signatures into replies sen
 
 ## 🚀 1. Deploying the Web App
 
-OpenSigWeave is a FastAPI application that utilizes an SQLite database. 
+OpenSigWeave is a FastAPI application with PostgreSQL as the recommended new-install database. SQLite remains supported for legacy installations; Alembic manages schema migrations. 
 
 ### Prerequisites
 * Python 3.10+
+* Docker Engine and Docker Compose plugin (for the bundled PostgreSQL service)
 * An active Authentik deployment
 * An active Rspamd/Mailcow deployment
 * A Reverse Proxy (Nginx, Traefik, Caddy, etc.) for SSL termination
@@ -92,8 +93,10 @@ OpenSigWeave is a FastAPI application that utilizes an SQLite database.
 ### Installation
 1. Clone the repository to your application server.
    ```bash
-   git clone https://Github.com/TylerHats/OpenSigWeave.git
-   cd opensigweave
+   sudo mkdir -p /opt/opensigweave
+   sudo chown "$USER":"$USER" /opt/opensigweave
+   git clone https://github.com/TylerHats/OpenSigWeave.git /opt/opensigweave
+   cd /opt/opensigweave
    ```
 2. Create and activate a Python virtual environment.
    ```bash
@@ -104,30 +107,47 @@ OpenSigWeave is a FastAPI application that utilizes an SQLite database.
    ```bash
    pip install -r requirements.txt
    ```
-4. Prepare your environment variables.
+4. Prepare your environment variables. Generate separate random values for `SECRET_KEY`, `POSTGRES_PASSWORD` and `ENGINE_API_KEY`; all must be kept private and must never be committed.
    ```bash
    cp .env.example .env
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
    nano .env
    ```
-5. Prepare your branding (Optional).
+   Set `SECRET_KEY` and `ENGINE_API_KEY` to separate generated values. Generate `POSTGRES_PASSWORD` as well, then put the same URL-safe value in both `POSTGRES_PASSWORD` and the password portion of `DATABASE_URL`. The application refuses to start with placeholder secrets or mismatched PostgreSQL credentials. Serve the web application over HTTPS: session cookies are configured as Secure.
+5. Start the bundled PostgreSQL service:
+   ```bash
+   docker compose up -d --wait postgres
+   ```
+   PostgreSQL is bound to localhost only. If you use an external database or legacy SQLite, adjust `DATABASE_URL` accordingly. Signature HTML versions are stored below `SIGNATURE_STORAGE_PATH`; back up this directory together with the PostgreSQL volume so file hashes and metadata remain consistent.
+
+6. Apply the database schema using Alembic. Run this after configuring `DATABASE_URL` and before starting the web application:
+   ```bash
+   alembic upgrade head
+   ```
+   The initial migration detects existing `domains` and `user_overrides` tables so existing SQLite data is not recreated or dropped.
+
+7. Prepare your branding (Optional).
    ```bash
    cp branding/logo.example.png branding/logo.png
    cp branding/settings.example.json branding/settings.json
    ```
-6. Start the application to verify it works. (See Step 7 for running as a permanent service).
+8. Start the application to verify it works. (See the systemd section below for running as a permanent service).
    ```bash
-   uvicorn main:app --host 0.0.0.0 --port 8085
+   uvicorn main:app --host 127.0.0.1 --port 8085
    ```
 
 ### Running as a Systemd Service (Recommended)
-To keep OpenSigWeave running permanently and ensure it starts automatically on server reboots, create a systemd service.
+To keep OpenSigWeave running permanently and ensure it starts automatically on server reboots, create a dedicated unprivileged service account and a systemd service. Do not run the web application as root.
 
-1. Create a new service file:
+1. Create a dedicated service account and ensure the application directory is owned by it (adjust the path to your checkout):
    ```bash
+   sudo useradd --system --home /opt/opensigweave --shell /usr/sbin/nologin opensigweave
+   sudo chown -R opensigweave:opensigweave /opt/opensigweave
+   sudo chmod 600 /opt/opensigweave/.env
    sudo nano /etc/systemd/system/opensigweave.service
    ```
 
-2. Paste the following configuration. *(Note: Adjust the `WorkingDirectory` and `Environment` paths if you cloned the repository to a location other than `/etc/OpenSigWeave`).*
+2. Paste the following configuration. Adjust paths if your checkout is not located at `/opt/opensigweave`.
 
    ```ini
    [Unit]
@@ -135,12 +155,13 @@ To keep OpenSigWeave running permanently and ensure it starts automatically on s
    After=network.target
 
    [Service]
-   User=root
-   Group=root
-   WorkingDirectory=/etc/OpenSigWeave
-   Environment="PATH=/etc/OpenSigWeave/venv/bin"
-   # The proxy-headers flag ensures IPs are read correctly behind a reverse proxy
-   ExecStart=/etc/OpenSigWeave/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8085 --proxy-headers --forwarded-allow-ips="*"
+   User=opensigweave
+   Group=opensigweave
+   WorkingDirectory=/opt/opensigweave
+   Environment="PATH=/opt/opensigweave/venv/bin"
+   EnvironmentFile=/opt/opensigweave/.env
+   UMask=0077
+   ExecStart=/opt/opensigweave/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8085 --proxy-headers --forwarded-allow-ips=127.0.0.1
    Restart=always
    RestartSec=3
 
@@ -181,7 +202,7 @@ server {
 
 ### Authentik Setup
 You will need two configurations in Authentik:
-1. **OIDC Provider:** Create a standard OIDC Application/Provider for user logins. Ensure the scopes include `openid`, `email`, and `profile`.
+1. **OIDC Provider:** Create a standard OIDC Application/Provider for user logins. Ensure the scopes include `openid`, `email`, `profile`, and the claims required by your group/attribute mappings.
 2. **Service Account API Token:** Create an App Token (Intent: **API Token**) bound to an administrative account. This is required for the Rspamd engine to query user attributes securely in the background.
 
 **Note on SSO Compatibility:** OpenSigWeave was built and tested specifically for **Authentik** and **Mailcow**. While the OIDC web login is standard and adaptable, the backend signature engine strictly relies on Authentik's REST API (`/api/v3/core/users/`) to poll live user attributes during mail transit. Adapting this for Authelia, Keycloak, or Entra ID will require modifying the API request logic inside the `get_rspamd_signature` route in `main.py`.
@@ -199,14 +220,14 @@ The web app is only half the puzzle. To actually inject signatures, you must dep
    ```
 
 2. **Configure the Lua Script:**
-   Open the Lua script and update the configuration block at the top with your OpenSigWeave API URL and the `ENGINE_API_KEY` you set in your `.env` file.
+   The Lua source contains no credentials. Add the configuration section from `rspamd/opensigweave.conf.example` to `/opt/mailcow-dockerized/data/conf/rspamd/rspamd.conf.local`. Set `api_url` to your HTTPS OpenSigWeave endpoint and set `engine_api_key` to exactly the same random value as the backend's `ENGINE_API_KEY` in `.env`. Keep this configuration file restricted because it contains a service credential.
 
 3. **Enable the Plugin:**
-   Tell Rspamd to load the new plugin by pointing to the Lua file in your local configuration.
-   Open `/opt/mailcow-dockerized/data/conf/rspamd/rspamd.conf.local` (create it if it doesn't exist) and add:
+   Tell Rspamd to load the Lua file by adding this line to the same `rspamd.conf.local` file:
    ```hcl
    lua = "/etc/rspamd/lua/opensigweave.lua";
    ```
+   The Lua module reads its settings through Rspamd's `rspamd_config:get_all_opt("opensigweave")` API. It refuses to start without a valid HTTPS URL and a sufficiently long key.
 
 4. **Restart Rspamd:**
    Apply the changes by restarting the Mailcow Rspamd container.
@@ -219,6 +240,7 @@ The web app is only half the puzzle. To actually inject signatures, you must dep
 ## 🔒 Security Notes
 * OpenSigWeave's API endpoint (`/api/signature/{email}`) exposes employee metadata (Phone, Title, etc.) to successfully compile signatures. 
 * This endpoint is strictly protected by the `X-Engine-Key` header. Ensure your `ENGINE_API_KEY` is a long, cryptographically secure string, and never expose it to frontend clients.
+* The engine key previously present in the Lua source must be treated as compromised if it was ever deployed. Rotate it in the backend environment and the protected Rspamd configuration. Removing a credential from the current source file does not remove it from earlier Git commits.
 
 ---
 

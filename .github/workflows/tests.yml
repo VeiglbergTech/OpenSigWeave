@@ -1,0 +1,56 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: opensigweave-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: opensigweave
+          POSTGRES_USER: opensigweave
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opensigweave -d opensigweave"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Check Rspamd Lua syntax
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+          luac5.1 -p rspamd/opensigweave.lua
+      - name: Test PostgreSQL schema migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
+          POSTGRES_PASSWORD: ci-password
+        run: alembic upgrade head
+      - name: Test SQLite schema migrations
+        env:
+          DATABASE_URL: sqlite:///./ci_test.db
+        run: alembic upgrade head
+      - name: Run regression tests
+        run: python -m unittest discover -s tests -v

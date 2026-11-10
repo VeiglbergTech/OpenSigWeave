@@ -37,7 +37,20 @@
         </template>
     </div>
 
-    <script>const userData = { first_name: "{{ first_name }}", last_name: "{{ last_name }}", email: "{{ user.email }}", title: "{{ title }}", phone: "{{ phone }}" };</script>
+    <script>
+        const userData = {{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson }};
+        const opensigweaveCsrfToken = {{ csrf_token|tojson }};
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = (resource, options = {}) => {
+            const method = (options.method || "GET").toUpperCase();
+            if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+                const headers = new Headers(options.headers || {});
+                headers.set("X-CSRF-Token", opensigweaveCsrfToken);
+                options = { ...options, headers };
+            }
+            return originalFetch(resource, options);
+        };
+    </script>
 
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
@@ -50,7 +63,7 @@
                 {% if is_admin %}<button @click="tab = 'admin'" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <div class="h-6 w-px bg-gray-600"></div>
-            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><a href="/logout" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</a></div>
+            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" onclick="fetch('/logout', { method: 'POST' }).then(response => response.json()).then(data => window.location.assign(data.logout_url)).catch(() => window.location.assign('/login'))" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</button></div>
         </div>
     </nav>
 
@@ -116,7 +129,7 @@
                 
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Default Domain Template (Read-Only)</h2>
-                    <div class="bg-white border border-gray-700 rounded p-4 min-h-[100px] text-sm text-black">{{ domain_template | safe }}</div>
+                    <iframe title="Default domain signature preview" sandbox="" srcdoc="{{ domain_template | e }}" class="w-full min-h-[120px] bg-white border border-gray-700 rounded"></iframe>
                 </div>
             </div>
         </div>
@@ -322,7 +335,7 @@
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl border border-gray-700 sm:my-8 sm:align-middle sm:max-w-3xl w-full transform transition-all flex flex-col">
                 <div class="px-6 py-5 border-b border-gray-700 bg-gray-900">
                     <h3 class="text-xl font-bold text-white mb-2">Import HTML Signature</h3>
-                    <p class="text-sm text-gray-400">Online generators wrap code in full-page tags (<code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>) that will break email layouts. Paste your raw generator code here. The browser will safely extract the core table structure and strip out the dangerous tags.</p>
+                    <p class="text-sm text-gray-400">Online generators wrap code in full-page tags (<code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>) that will break email layouts. Paste your raw generator code here. The browser extracts the body content; review the imported markup before saving.</p>
                 </div>
                 <div class="p-6 bg-gray-800">
                     <textarea x-ref="sanitizerInput" x-model="rawInput" placeholder="Paste your <!DOCTYPE HTML>... code here" class="w-full h-64 bg-gray-950 border border-gray-600 rounded-lg p-3 text-green-400 font-mono text-sm focus:outline-none focus:border-blue-500"></textarea>
@@ -330,7 +343,7 @@
                 <div class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
                     <button @click="$dispatch('sanitize-html', { html: rawInput, target: targetEditor }); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        Sanitize & Import
+                        Import HTML
                     </button>
                     <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium transition">Cancel</button>
                 </div>
@@ -378,7 +391,7 @@
                     <h3 class="text-lg font-bold text-gray-900">Live Signature Preview</h3>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
-                <div class="p-8 text-black text-sm" x-html="previewHtml"></div>
+                <iframe title="Signature preview" sandbox="" x-bind:srcdoc="previewHtml" class="w-full min-h-[320px] bg-white border-0"></iframe>
             </div>
         </div>
     </div>
@@ -412,10 +425,10 @@
             domainQuill = new Quill('#domain-quill-editor', { theme: 'snow', modules: { toolbar: tb }});
             
             quill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('raw-html-editor').value = quill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.root.innerHTML = this.value; checkAllLocks(); });
+            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
             
             domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('domain-raw-html-editor').value = domainQuill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.root.innerHTML = this.value; checkAllLocks(); });
+            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
 
             if(!{{ 'true' if can_edit else 'false' }}) { quill.disable(); }
 
@@ -423,7 +436,7 @@
             if(res.ok) {
                 const data = await res.json();
                 document.getElementById('raw-html-editor').value = data.html_content;
-                quill.root.innerHTML = data.html_content;
+                quill.clipboard.dangerouslyPasteHTML(data.html_content);
                 checkAllLocks();
             }
         });
@@ -439,16 +452,16 @@
 
             if (target === 'personal') {
                 document.getElementById('raw-html-editor').value = cleanHtml;
-                quill.root.innerHTML = cleanHtml;
+                quill.clipboard.dangerouslyPasteHTML(cleanHtml);
             } else if (target === 'domain') {
                 document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                domainQuill.root.innerHTML = cleanHtml;
+                domainQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
             } else if (target === 'admin') {
                 document.getElementById('admin-raw-html-editor').value = cleanHtml;
-                if(adminQuill) adminQuill.root.innerHTML = cleanHtml;
+                if(adminQuill) adminQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
             }
             checkAllLocks();
-            notify("Signature successfully imported and sanitized!");
+            notify("HTML imported. Review the source before saving.");
         });
 
         async function saveUserSignature() {
@@ -467,14 +480,14 @@
                     
                     setTimeout(() => { 
                         document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        domainQuill.root.innerHTML = domainData.template_html; 
+                        domainQuill.clipboard.dangerouslyPasteHTML(domainData.template_html); 
                         checkAllLocks();
                     }, 50);
                     
                     if(!adminQuill) {
                         adminQuill = new Quill('#admin-quill-editor', { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], ['link', 'image'], ['clean']] }});
                         adminQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('admin-raw-html-editor').value = adminQuill.root.innerHTML; checkAllLocks(); } });
-                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.root.innerHTML = this.value; checkAllLocks(); });
+                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
                     }
                 },
                 async fetchOverrides() {
@@ -487,13 +500,13 @@
                     
                     if (directHtml !== null) { 
                         document.getElementById('admin-raw-html-editor').value = directHtml;
-                        adminQuill.root.innerHTML = directHtml; 
+                        adminQuill.clipboard.dangerouslyPasteHTML(directHtml); 
                         this.editingUserDisabled = isDisabled;
                     } else {
                         const existingUser = this.userOverrides.find(u => u.user_email === email);
                         const content = existingUser ? existingUser.html_content : '';
                         document.getElementById('admin-raw-html-editor').value = content;
-                        adminQuill.root.innerHTML = content;
+                        adminQuill.clipboard.dangerouslyPasteHTML(content);
                         this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
                     }
                     checkAllLocks();
@@ -527,7 +540,7 @@
                 const res = await fetch('/api/my-signature', { method: 'DELETE' });
                 if(res.ok) {
                     document.getElementById('raw-html-editor').value = '';
-                    quill.root.innerHTML = ''; 
+                    quill.setText(''); 
                     checkAllLocks();
                     notify("Signature cleared and removed from database!");
                 } else { notify("Failed to clear signature.", "error"); }

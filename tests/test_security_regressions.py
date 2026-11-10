@@ -1,0 +1,154 @@
+"""Regression tests for security properties that can be checked without external services.
+
+These tests deliberately inspect the application source. Runtime/API tests will be added
+when the application is split into importable services and dependency overrides.
+"""
+import ast
+import pathlib
+import unittest
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+MAIN = ROOT / "main.py"
+
+
+class SecurityRegressionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.source = MAIN.read_text(encoding="utf-8")
+        cls.tree = ast.parse(cls.source)
+
+    def test_domain_crud_routes_require_admin(self):
+        expected = {
+            "read_domains",
+            "create_domain",
+            "update_domain",
+            "delete_domain",
+        }
+        found = {
+            node.name: node
+            for node in self.tree.body
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        }
+        self.assertTrue(expected.issubset(found))
+        for name in expected:
+            with self.subTest(route=name):
+                function_source = ast.get_source_segment(self.source, found[name])
+                self.assertIn("is_admin_user(request)", function_source)
+                self.assertIn('detail="Admins only"', function_source)
+
+    def test_session_secret_has_no_insecure_fallback(self):
+        self.assertIn('"fallback-secret"', self.source)
+        self.assertIn("at least 32 non-placeholder characters", self.source)
+        self.assertIn("replace_with_random_secret_at_least_32_characters", self.source)
+        self.assertIn('ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_"))', self.source)
+        self.assertIn('startswith(("your_", "replace_"))', self.source)
+
+    def test_authentik_http_client_does_not_disable_tls_validation(self):
+        provider_source = (ROOT / "identity" / "providers" / "authentik.py").read_text(encoding="utf-8")
+        self.assertNotIn("verify=False", provider_source)
+        self.assertIn("verify=True", provider_source)
+
+
+    def test_signature_templates_use_sandboxed_autoescaping(self):
+        renderer = (ROOT / "signature_renderer.py").read_text(encoding="utf-8")
+        self.assertIn("SandboxedEnvironment(autoescape=True)", renderer)
+        self.assertIn('filters.pop("safe", None)', renderer)
+        self.assertIn("from signature_renderer import render_signature_template", self.source)
+        self.assertNotIn("re.sub(", self.source)
+
+    def test_authentik_lookup_uses_encoded_query_parameters(self):
+        provider_source = (ROOT / "identity" / "providers" / "authentik.py").read_text(encoding="utf-8")
+        self.assertIn('params={"search": email}', provider_source)
+        self.assertNotIn("?search={email}", provider_source)
+
+    def test_database_configuration_is_separate_and_url_driven(self):
+        database_source = (ROOT / "database.py").read_text(encoding="utf-8")
+        self.assertIn('os.environ.get("DATABASE_URL"', database_source)
+        self.assertIn("pool_pre_ping=True", database_source)
+        self.assertIn('DATABASE_URL.startswith("sqlite")', database_source)
+        self.assertIn("from database import get_db", self.source)
+        self.assertIn("from models import DomainDB, UserOverrideDB", self.source)
+        self.assertNotIn("Base.metadata.create_all", self.source)
+        self.assertTrue((ROOT / "migrations" / "versions" / "0001_initial_schema.py").exists())
+
+    def test_state_changing_browser_requests_require_csrf_token(self):
+        self.assertIn("class CSRFProtectionMiddleware", self.source)
+        self.assertIn('{"POST", "PUT", "PATCH", "DELETE"}', self.source)
+        self.assertIn("hmac.compare_digest(expected, supplied)", self.source)
+        template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("X-CSRF-Token", template)
+        self.assertIn("csrf_token", self.source)
+        self.assertIn('@app.post("/logout")', self.source)
+        self.assertNotIn('@app.get("/logout")', self.source)
+        self.assertIn("fetch('/logout'", template)
+
+    def test_signature_previews_are_sandboxed_and_js_data_is_serialized(self):
+        template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("|tojson", template)
+        self.assertIn('sandbox=""', template)
+        self.assertNotIn('x-html="previewHtml"', template)
+        self.assertNotIn("{{ domain_template | safe }}", template)
+        self.assertNotIn("root.innerHTML =", template)
+        self.assertIn("clipboard.dangerouslyPasteHTML", template)
+
+    def test_rspamd_credentials_are_external_and_http_is_bounded(self):
+        lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
+        self.assertIn('get_all_opt("opensigweave")', lua)
+        self.assertNotIn('local ENGINE_API_KEY = "', lua)
+        self.assertIn('ENGINE_API_KEY:match("^[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_")', lua)
+        self.assertIn("timeout = REQUEST_TIMEOUT", lua)
+        self.assertIn("max_size = MAX_RESPONSE_SIZE", lua)
+        self.assertIn("no_ssl_verify = false", lua)
+        self.assertIn("url_encode(sender_email)", lua)
+        self.assertTrue((ROOT / "rspamd" / "opensigweave.conf.example").exists())
+
+    def test_identity_attribute_lookup_is_behind_provider_interface(self):
+        self.assertIn("AuthentikAttributeProvider", self.source)
+        self.assertNotIn("httpx.AsyncClient", self.source)
+        provider_source = (ROOT / "identity" / "providers" / "authentik.py").read_text(encoding="utf-8")
+        self.assertIn("class AuthentikAttributeProvider", provider_source)
+        self.assertIn('params={"search": email}', provider_source)
+        protocol_source = (ROOT / "identity" / "providers" / "base.py").read_text(encoding="utf-8")
+        self.assertIn("class AttributeProvider(Protocol)", protocol_source)
+
+    def test_oidc_login_uses_provider_discovery_configuration(self):
+        self.assertIn('name="oidc"', self.source)
+        self.assertIn('os.environ.get("OIDC_DISCOVERY_URL")', self.source)
+        self.assertIn('not oidc_discovery_url.startswith("https://")', self.source)
+        self.assertIn("Configure an HTTPS OIDC discovery URL", self.source)
+        self.assertNotIn("oauth.authentik.", self.source)
+        self.assertIn("oauth.oidc.authorize_redirect", self.source)
+        self.assertIn("oauth.oidc.authorize_access_token", self.source)
+
+    def test_hybrid_storage_uses_immutable_files_and_metadata(self):
+        storage = (ROOT / "signature_storage.py").read_text(encoding="utf-8")
+        models = (ROOT / "models.py").read_text(encoding="utf-8")
+        self.assertIn("os.link(temp_path", storage)
+        self.assertIn("hmac.compare_digest", storage)
+        self.assertIn("hashlib.sha256", storage)
+        self.assertIn("class SignatureVersionDB", models)
+        self.assertIn("class SignatureVariantDB", models)
+        self.assertIn("class SelectionStateDB", models)
+        self.assertTrue((ROOT / "migrations" / "versions" / "0002_signature_assets.py").exists())
+
+    def test_postgresql_is_recommended_and_placeholder_password_is_rejected(self):
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        database_source = (ROOT / "database.py").read_text(encoding="utf-8")
+        self.assertIn('DATABASE_URL="postgresql+psycopg://', env_example)
+        self.assertIn('postgres_password.lower().startswith(("replace_", "changeme"))', database_source)
+        self.assertIn("make_url(DATABASE_URL).password != postgres_password", database_source)
+        self.assertTrue((ROOT / "compose.yaml").exists())
+
+    def test_domain_routes_receive_request_context(self):
+        for name in ("read_domains", "create_domain", "update_domain", "delete_domain"):
+            node = next(
+                item for item in self.tree.body
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef))
+                and item.name == name
+            )
+            args = [arg.arg for arg in node.args.args]
+            self.assertIn("request", args, name)
+
+
+if __name__ == "__main__":
+    unittest.main()

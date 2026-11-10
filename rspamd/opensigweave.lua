@@ -6,8 +6,33 @@ local rspamd_util = require "rspamd_util"
 -- ==========================================
 -- OPENSIGWEAVE CONFIGURATION
 -- ==========================================
-local ENGINE_API_KEY = "5dG46PIS76dsf68fanffggd870aejer7BW5T0NARsdfY8A967YERGxV"
-local API_URL_BASE = "https://signature.hatsthings.com/api/signature/"
+-- Runtime configuration is supplied by the Rspamd configuration section:
+-- opensigweave { api_url = "..."; engine_api_key = "..."; timeout = 5.0; }
+local module_options = rspamd_config:get_all_opt("opensigweave") or {}
+local ENGINE_API_KEY = module_options.engine_api_key
+local API_URL_BASE = module_options.api_url
+local REQUEST_TIMEOUT = tonumber(module_options.timeout) or 5.0
+local MAX_RESPONSE_SIZE = tonumber(module_options.max_response_size) or 65536
+
+-- Keep remote calls bounded even if an invalid value is supplied in configuration.
+REQUEST_TIMEOUT = math.min(math.max(REQUEST_TIMEOUT, 0.5), 15.0)
+MAX_RESPONSE_SIZE = math.min(math.max(math.floor(MAX_RESPONSE_SIZE), 1024), 1048576)
+
+if type(ENGINE_API_KEY) ~= "string" or #ENGINE_API_KEY < 32 or ENGINE_API_KEY:match("^[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_")
+    or type(API_URL_BASE) ~= "string" or not API_URL_BASE:match("^https://") then
+    rspamd_logger.errx(rspamd_config, "OpenSigWeave disabled: configure an HTTPS api_url and a unique engine_api_key (minimum 32 characters)")
+    return
+end
+
+if API_URL_BASE:sub(-1) ~= "/" then
+    API_URL_BASE = API_URL_BASE .. "/"
+end
+
+local function url_encode(value)
+    return (value:gsub("([^%w%-_%.~])", function(char)
+        return string.format("%%%02X", string.byte(char))
+    end))
+end
 
 local html_splitters = {
     '<br[^>]*>[%s\r\n]*<br[^>]*>[%s\r\n]*<br[^>]*>[^<]*On .- wrote:',
@@ -61,7 +86,9 @@ local function inject_signature(task)
         if not res then return end
         
         local data = parser:get_object()
+        if type(data) ~= "table" then return end
         local html_sig = data.html
+        if type(html_sig) ~= "string" then return end
         
         local inject_on_replies = data.inject_on_replies
         local trim_whitespace = data.trim_whitespace
@@ -361,13 +388,20 @@ local function inject_signature(task)
         end
     end
 
-    rspamd_http.request({
-        url = API_URL_BASE .. sender_email,
+    local scheduled = rspamd_http.request({
+        url = API_URL_BASE .. url_encode(sender_email),
         task = task,
         method = 'GET',
         headers = { ['X-Engine-Key'] = ENGINE_API_KEY },
+        timeout = REQUEST_TIMEOUT,
+        max_size = MAX_RESPONSE_SIZE,
+        no_ssl_verify = false,
         callback = http_callback
     })
+
+    if not scheduled then
+        rspamd_logger.errx(task, "OpenSigWeave: unable to schedule signature API request")
+    end
     return true
 end
 
