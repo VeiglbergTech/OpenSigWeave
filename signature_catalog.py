@@ -162,6 +162,10 @@ def add_signature_variant(
         weight=weight,
         is_enabled=True,
     )
-    session.add(variant)
-    session.commit()
-    return variant
+    try:
+        session.add(variant)
+        session.commit()
+        return variant
+    except Exception:
+        session.rollback()
+        raise
