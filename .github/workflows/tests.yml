@@ -1,6 +1,8 @@
 name: Tests
 
 on:
+  push:
+    branches: ["architecture/refactor-foundation"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
