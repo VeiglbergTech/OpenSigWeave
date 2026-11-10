@@ -38,7 +38,7 @@ This file tracks changes made on `architecture/refactor-foundation`. It is not a
 - Rspamd idempotency and MIME correctness work; HTTP timeout/TLS/URL encoding/payload size handling and credential externalization are now in place.
 - Verification of Rspamd/DKIM processing order in an isolated Mailcow test environment.
 - The transactional selection repository exists and is unit-tested on SQLite. It is not yet wired into the Rspamd message API, and concurrent PostgreSQL integration testing remains. The core mode resolver and prioritized rule evaluator are implemented but not yet connected to the message-processing API.
-- SMTP-header and Outlook marker parsing/removal for explicit signature modes remains pending.
+- SMTP-header and Outlook marker parsing/removal for explicit signature modes remains pending. The admin API currently has no corresponding management UI.
 - Runtime API tests and full integration tests remain pending.
 - Further model/service extraction, integration of file storage with the signature management API, transactional selection-state updates, and end-to-end PostgreSQL application testing. PostgreSQL and SQLite migrations now include the signature/version/variant/selection/rule/condition tables.
 
