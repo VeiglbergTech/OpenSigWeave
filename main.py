@@ -8,8 +8,8 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
-from typing import List, Optional
+from pydantic import BaseModel, Field
+from typing import List, Optional, Literal
 
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
@@ -22,12 +22,14 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db
-from models import DomainDB, UserOverrideDB, SignatureVersionDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB
 
 from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import AttributeProvider
 from core.selection_repository import select_and_record_variant
+from core.modes import SignatureMode
+from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature
 from signature_storage import SignatureFileStore, SignatureStorageError
 attribute_provider: AttributeProvider = AuthentikAttributeProvider(
     base_url=os.environ.get("AUTHENTIK_URL", ""),
@@ -59,6 +61,20 @@ class AdminOverrideSave(BaseModel):
     user_email: str
     html_content: str
     is_disabled: bool = False
+
+class SignatureCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    domain_id: Optional[int] = None
+    mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL"] = "AUTO"
+    html_content: str = Field(min_length=1, max_length=65536)
+    weight: int = Field(default=1, ge=1, le=1000)
+
+class SignatureVersionCreateRequest(BaseModel):
+    html_content: str = Field(min_length=1, max_length=65536)
+
+class SignatureVariantCreateRequest(BaseModel):
+    pool_name: Literal["AUTO", "PROFESSIONAL", "INTERNAL"]
+    weight: int = Field(default=1, ge=1, le=1000)
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -316,6 +332,132 @@ def delete_admin_override(override_id: int, request: Request, db: Session = Depe
         db.delete(override)
         db.commit()
     return {"status": "deleted"}
+
+
+@app.get("/api/admin/signatures")
+def list_signatures(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    signatures = db.query(SignatureDB).order_by(SignatureDB.name.asc()).all()
+    return [
+        {
+            "id": item.id,
+            "name": item.name,
+            "domain_id": item.domain_id,
+            "scope": item.scope,
+            "mode": item.mode,
+            "is_active": item.is_active,
+            "versions": db.query(SignatureVersionDB)
+                .filter(SignatureVersionDB.signature_id == item.id)
+                .count(),
+            "variants": db.query(SignatureVariantDB)
+                .filter(SignatureVariantDB.signature_id == item.id)
+                .count(),
+        }
+        for item in signatures
+    ]
+
+
+@app.post("/api/admin/signatures", status_code=201)
+def create_signature_endpoint(
+    payload: SignatureCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    user = request.session.get("user") or {}
+    try:
+        signature, version, variant = create_signature(
+            db,
+            signature_file_store,
+            name=payload.name,
+            domain_id=payload.domain_id,
+            mode=SignatureMode(payload.mode),
+            html_content=payload.html_content,
+            weight=payload.weight,
+            created_by=user.get("email"),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {
+        "id": signature.id,
+        "version_id": version.id,
+        "variant_id": variant.id,
+        "version_number": version.version_number,
+    }
+
+
+@app.get("/api/admin/signatures/{signature_id}/versions")
+def list_signature_versions(signature_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    signature = db.get(SignatureDB, signature_id)
+    if signature is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    versions = (
+        db.query(SignatureVersionDB)
+        .filter(SignatureVersionDB.signature_id == signature_id)
+        .order_by(SignatureVersionDB.version_number.desc())
+        .all()
+    )
+    return [
+        {
+            "id": item.id,
+            "version_number": item.version_number,
+            "sha256": item.sha256,
+            "size_bytes": item.size_bytes,
+            "created_by": item.created_by,
+            "created_at": item.created_at,
+        }
+        for item in versions
+    ]
+
+
+@app.post("/api/admin/signatures/{signature_id}/versions", status_code=201)
+def create_signature_version_endpoint(
+    signature_id: str,
+    payload: SignatureVersionCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    user = request.session.get("user") or {}
+    try:
+        version = add_signature_version(
+            db,
+            signature_file_store,
+            signature_id,
+            payload.html_content,
+            created_by=user.get("email"),
+        )
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    return {"id": version.id, "version_number": version.version_number, "sha256": version.sha256}
+
+
+@app.post("/api/admin/signatures/{signature_id}/variants", status_code=201)
+def create_signature_variant_endpoint(
+    signature_id: str,
+    payload: SignatureVariantCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        variant = add_signature_variant(
+            db,
+            signature_id,
+            pool_name=SignatureMode(payload.pool_name),
+            weight=payload.weight,
+        )
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"id": variant.id, "pool_name": variant.pool_name, "weight": variant.weight}
 
 # ==========================================
 # THE RSPAMD COMPILATION ENGINE
