@@ -47,7 +47,11 @@
                     <div class="space-y-3 text-sm text-gray-300 mb-6">
                         <p><span class="font-medium text-gray-400 w-16 inline-block">Name:</span> {{ user.name }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Email:</span> {{ user.email }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Title:</span> {{ title }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Phone:</span> {{ phone }}</p>
                     </div>
+                    {% if authentik_settings_url %}
                     <a href="{{ authentik_settings_url }}" target="_blank" rel="noopener noreferrer" class="w-full block text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded transition text-sm border border-gray-600">Edit Profile in Authentik ↗</a>
+                    {% else %}
+                    <p class="text-xs text-gray-500">Local administrator account</p>
+                    {% endif %}
                 </div>
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Available Variables</h2>
