@@ -6,7 +6,7 @@ Instead of forcing users to configure signatures in their individual mail client
 
 ## ✨ Key Features
 * **Gateway-Level Injection:** Signatures are applied by the mail server, meaning they work identically across all devices and email clients.
-* **OIDC SSO:** Login uses the provider's OIDC discovery document. The current live employee-attribute lookup and logout integration still use Authentik and are being separated in the ongoing refactor. The application should be reached through an HTTPS reverse proxy; its session cookie is Secure.
+* **OIDC SSO:** Login uses the provider's OIDC discovery document and an explicitly configured HTTPS `OIDC_REDIRECT_URI` that must exactly match the redirect URI registered at the identity provider. The callback URL is never derived from the incoming Host header. The current live employee-attribute lookup and logout integration still use Authentik and are being separated in the ongoing refactor. The application should be reached through an HTTPS reverse proxy; its session cookie is Secure.
 * **Rich Visual Editor:** A custom UI built with Tailwind CSS, Alpine.js, and Quill.js allows users and admins to design signatures visually or via raw HTML.
 * **Advanced HTML Import:** Sanitize and import complex layouts from external generators with an intelligent visual editor lock that protects table-based signatures from accidental formatting loss.
 * **Domain-Level Master Templates:** Enforce a corporate signature standard across an entire domain.
