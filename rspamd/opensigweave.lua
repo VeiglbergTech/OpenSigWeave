@@ -146,17 +146,19 @@ local function find_signature_text_marker(task, is_reply)
             end
         end
     end
-    if #found ~= 1 then
-        if #found > 1 then rspamd_logger.warnx(task, "OpenSigWeave: multiple signature text markers; refusing automatic fallback") end
-        if #found > 0 or marker_prefix_found then return { name = "", code = "" } end
+    if #found == 0 then
+        if marker_prefix_found then return { cleanup = true, valid = false } end
         return nil
     end
     local marker = found[1]
-    if marker.name == "" or #marker.name > 255 or #marker.code ~= 4 or not marker.code:match("^[%w][%w][%w][%w]$") then
-        rspamd_logger.warnx(task, "OpenSigWeave: malformed signature text marker")
-        return { name = "", code = "" }
-    end
     marker.raw = "<---[" .. marker.name .. "]--[" .. marker.code .. "]--->"
+    marker.cleanup = true
+    marker.cleanup_all = #found > 1
+    marker.valid = #found == 1 and marker.name ~= "" and #marker.name <= 255
+        and #marker.code == 4 and marker.code:match("^[%w][%w][%w][%w]$") ~= nil
+    if not marker.valid then
+        rspamd_logger.warnx(task, "OpenSigWeave: malformed or ambiguous signature text marker")
+    end
     return marker
 end
 
@@ -191,11 +193,10 @@ local function inject_signature(task)
         task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
     end
     -- X-OpenSigWeave-Mode has strict precedence over both body marker formats.
-    local signature_marker = nil
-    if mode_header_count == 0 then
-        signature_marker = find_signature_text_marker(task, is_reply)
-    end
-    if mode_header_count == 0 and not signature_marker then
+    -- Always inspect the body so a text marker can be consumed even when an
+    -- X-header has priority. Invalid X-headers simply fall through to the next selector.
+    local signature_marker = find_signature_text_marker(task, is_reply)
+    if not requested_mode and (not signature_marker or not signature_marker.valid) then
         requested_mode = find_outlook_mode_marker(task, is_reply)
     end
 
@@ -221,10 +222,53 @@ local function inject_signature(task)
         if trim_whitespace == nil then trim_whitespace = true end
         if strip_device_signatures == nil then strip_device_signatures = false end
 
-        if not html_sig or html_sig == "" then return end
+        local function remove_text_marker_from_message()
+            if not signature_marker or not signature_marker.cleanup then return end
+            local body_data = task:get_rawbody()
+            local headers_data = task:get_raw_headers()
+            local body = body_data and tostring(body_data) or ""
+            local headers = headers_data and tostring(headers_data) or ""
+            local function remove_literal_once(value, literal)
+                if not literal or literal == "" then return value, false end
+                local first, last = string.find(value, literal, 1, true)
+                if not first then return value, false end
+                return string.sub(value, 1, first - 1) .. string.sub(value, last + 1), true
+            end
+            local changed = false
+            if signature_marker.raw then
+                local remaining = body
+                local removed
+                repeat
+                    remaining, removed = remove_literal_once(remaining, signature_marker.raw)
+                    changed = changed or removed
+                until not removed or not signature_marker.cleanup_all
+                local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
+                repeat
+                    remaining, removed = remove_literal_once(remaining, escaped)
+                    changed = changed or removed
+                until not removed or not signature_marker.cleanup_all
+                body = remaining
+            end
+            if changed then
+                task:set_message(headers:gsub("[\\r\\n]+$", "") .. "\\r\\n\\r\\n" .. body)
+            end
+        end
+
+        local content_type = task:get_header_raw("Content-Type")
+        local multipart_message = content_type and tostring(content_type):lower():find("multipart", 1, true) ~= nil
+        if not html_sig or html_sig == "" then
+            remove_text_marker_from_message()
+            return
+        end
 
         if is_reply and not inject_on_replies then
+            remove_text_marker_from_message()
             rspamd_logger.infox(task, "OpenSigWeave: Reply detected, API flag is FALSE. Skipping.")
+            return
+        end
+        if multipart_message then
+            remove_text_marker_from_message()
+            rspamd_logger.warnx(task, "OpenSigWeave: multipart message left unchanged; safe MIME rewrite is not yet available")
             return
         end
 
@@ -283,7 +327,7 @@ local function inject_signature(task)
 
             -- A validly-shaped text marker is replaced at its exact position.
             -- The API has already verified its four-character SHA-256 check.
-            if signature_marker then
+            if signature_marker and signature_marker.valid and not requested_mode then
                 local marker_pattern = "<%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
                     .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%->"
                 local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
@@ -296,6 +340,19 @@ local function inject_signature(task)
                     rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
                     return replaced, true
                 end
+            elseif signature_marker and signature_marker.raw then
+                local removed = false
+                local first, last = string.find(spliced, signature_marker.raw, 1, true)
+                if first then
+                    spliced = string.sub(spliced, 1, first - 1) .. string.sub(spliced, last + 1)
+                    removed = true
+                end
+                if is_html then
+                    local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
+                    local a, b = string.find(spliced, escaped, 1, true)
+                    if a then spliced = string.sub(spliced, 1, a - 1) .. string.sub(spliced, b + 1); removed = true end
+                end
+                if removed then rspamd_logger.infox(task, "OpenSigWeave: removed unused signature text marker") end
             end
 
             if strip_device_signatures then
@@ -544,7 +601,7 @@ local function inject_signature(task)
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
     if requested_mode then
         request_headers['X-OpenSigWeave-Mode'] = requested_mode
-    elseif signature_marker then
+    elseif signature_marker and signature_marker.valid then
         request_headers['X-OpenSigWeave-Signature'] = signature_marker.name
         request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code
     end
