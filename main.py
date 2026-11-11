@@ -138,10 +138,10 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
 # SessionMiddleware must wrap CSRFProtectionMiddleware so the session is available
 # while validating the anti-CSRF token.
-app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=1024 * 1024)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax", https_only=True, max_age=3600)
-app.add_middleware(RequestBodyLimitMiddleware, max_body_size=1024 * 1024)
+app.add_middleware(SecurityHeadersMiddleware)
 
 oauth = OAuth()
 oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
