@@ -119,6 +119,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
+        response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
@@ -265,7 +267,7 @@ async def auth(request: Request):
             or len(email) > 254
             or email.count("@") != 1
             or any(ch.isspace() for ch in email)
-            or not user.get("email_verified", False)
+            or user.get("email_verified") is not True
         ):
             raise ValueError("OIDC account email is missing, invalid or unverified")
         local_part, email_domain = email.rsplit("@", 1)
