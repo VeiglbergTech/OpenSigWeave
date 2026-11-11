@@ -149,6 +149,7 @@ window.fetch = (resource, options = {}) => {
             return {
                 rules: [], signatures: [], editing: false,
                 form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] },
+                get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode); },
                 async fetchAll() {
                     try {
                         const [rulesResponse, signaturesResponse] = await Promise.all([
