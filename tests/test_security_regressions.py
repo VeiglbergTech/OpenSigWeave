@@ -155,6 +155,14 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("if override and not explicit_mode:", self.source)
         self.assertIn("signature_id=signature_id", self.source)
 
+
+    def test_rspamd_consumes_and_forwards_validated_mode_header(self):
+        lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
+        self.assertIn("task:get_header_count('X-OpenSigWeave-Mode')", lua)
+        self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", lua)
+        self.assertIn("request_headers['X-OpenSigWeave-Mode'] = requested_mode", lua)
+        self.assertIn("candidate == 'INTERNAL' or candidate == 'NONE'", lua)
+
     def test_domain_routes_receive_request_context(self):
         for name in ("read_domains", "create_domain", "update_domain", "delete_domain"):
             node = next(
