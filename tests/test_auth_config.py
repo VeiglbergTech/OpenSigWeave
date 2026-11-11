@@ -5,6 +5,7 @@ import subprocess
 import sys
 import unittest
 from types import SimpleNamespace
+from urllib.parse import urlencode
 from unittest.mock import AsyncMock, patch
 
 os.environ["OIDC_ENABLED"] = "true"
@@ -52,11 +53,12 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         password_hash = hash_local_admin_password("correct horse battery staple")
         request = SimpleNamespace(
             session={"login_csrf": "one-time-token"},
-            form=AsyncMock(return_value={
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            body=AsyncMock(return_value=urlencode({
                 "csrf_token": "one-time-token",
                 "email": "ADMIN@example.org",
                 "password": "correct horse battery staple",
-            }),
+            }).encode("utf-8")),
         )
         with (
             patch.object(main, "OIDC_ENABLED", False),
@@ -74,11 +76,12 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         password_hash = hash_local_admin_password("correct horse battery staple")
         request = SimpleNamespace(
             session={"login_csrf": "one-time-token"},
-            form=AsyncMock(return_value={
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            body=AsyncMock(return_value=urlencode({
                 "csrf_token": "one-time-token",
                 "email": "admin@example.org",
                 "password": "wrong password",
-            }),
+            }).encode("utf-8")),
         )
         with (
             patch.object(main, "OIDC_ENABLED", False),
@@ -93,11 +96,12 @@ class AuthenticationConfigurationTests(unittest.TestCase):
     def test_local_login_rejects_invalid_csrf(self):
         request = SimpleNamespace(
             session={"login_csrf": "expected"},
-            form=AsyncMock(return_value={
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            body=AsyncMock(return_value=urlencode({
                 "csrf_token": "attacker-controlled",
                 "email": "admin@example.org",
                 "password": "irrelevant",
-            }),
+            }).encode("utf-8")),
         )
         with patch.object(main, "OIDC_ENABLED", False):
             with self.assertRaises(main.HTTPException) as raised:
