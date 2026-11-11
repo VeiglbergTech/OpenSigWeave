@@ -11,25 +11,9 @@
     <script src="/static/vendor/quill/1.3.7/quill.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.5/dist/cdn.min.js"></script>
 
-    <style>
-        .ql-toolbar { background-color: #374151; border-color: #4b5563 !important; border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; color: #d1d5db; }
-        .ql-toolbar .ql-stroke { stroke: #d1d5db; }
-        .ql-toolbar .ql-fill { fill: #d1d5db; }
-        .ql-toolbar .ql-picker { color: #d1d5db; }
-        .ql-container { border-color: #4b5563 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; border-bottom-left-radius: 0.5rem !important; border-bottom-right-radius: 0.5rem !important; font-family: inherit; font-size: 1rem; background-color: #ffffff; color: #000000; overflow: hidden !important; }
-        .ql-editor { overflow-y: auto; height: 100%; padding: 1rem 1.5rem 2.5rem 1.5rem !important; }
-        .ql-snow.ql-toolbar button:hover .ql-stroke, .ql-snow .ql-toolbar button:focus .ql-stroke, .ql-snow.ql-toolbar button.ql-active .ql-stroke, .ql-snow .ql-toolbar button.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item.ql-selected .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item.ql-selected .ql-stroke { stroke: #60a5fa; }
-        
-        @keyframes slideUpFade {
-            0% { transform: translateY(100%); opacity: 0; }
-            10% { transform: translateY(0); opacity: 1; }
-            90% { transform: translateY(0); opacity: 1; }
-            100% { transform: translateY(-20%); opacity: 0; }
-        }
-        .animate-toast { animation: slideUpFade 3s forwards ease-in-out; }
-    </style>
+    <link href="/static/css/portal.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
 
     <div x-data="{ toasts: [] }" @notify.window="toasts.push({id: Date.now(), msg: $event.detail.msg, type: $event.detail.type || 'success'}); setTimeout(() => { toasts.shift() }, 2900)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
@@ -37,25 +21,12 @@
         </template>
     </div>
 
-    <script>
-        const userData = {{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson }};
-        const opensigweaveCsrfToken = {{ csrf_token|tojson }};
-        const originalFetch = window.fetch.bind(window);
-        window.fetch = (resource, options = {}) => {
-            const method = (options.method || "GET").toUpperCase();
-            if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
-                const headers = new Headers(options.headers || {});
-                headers.set("X-CSRF-Token", opensigweaveCsrfToken);
-                options = { ...options, headers };
-            }
-            return originalFetch(resource, options);
-        };
-    </script>
+    
 
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
             {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
-            {% if app_name %}<div class="text-xl font-bold tracking-wider" style="color: {{ app_color }};">{{ app_name }}</div>{% endif %}
+            {% if app_name %}<div class="text-xl font-bold tracking-wider" class="app-brand" data-app-color="{{ app_color|e }}">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
@@ -63,13 +34,13 @@
                 {% if is_admin %}<button @click="tab = 'admin'" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <div class="h-6 w-px bg-gray-600"></div>
-            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" onclick="fetch('/logout', { method: 'POST' }).then(response => response.json()).then(data => window.location.assign(data.logout_url)).catch(() => window.location.assign('/login'))" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</button></div>
+            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" id="logout-button" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</button></div>
         </div>
     </nav>
 
     <div class="max-w-7xl mx-auto p-6 mt-4">
 
-        <div x-show="tab === 'personal'" style="display: none;" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div x-show="tab === 'personal'" x-cloak class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="space-y-6">
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Your Profile Data</h2>
@@ -99,7 +70,7 @@
                         <h2 class="text-lg font-semibold text-white">Custom Override Signature</h2>
                         <div class="flex gap-2">
                             <button @click="$dispatch('open-confirm', { action: 'clear-user' })" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
-                            <button onclick="saveUserSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
+                            <button id="save-user-signature" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
                         </div>
                     </div>
                     
@@ -123,7 +94,7 @@
                                 <button @click="$dispatch('open-preview', { html: document.getElementById('raw-html-editor').value })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
                             </div>
                         </div>
-                        <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                        <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
                     </div>
                 </div>
                 
@@ -135,7 +106,7 @@
         </div>
 
         {% if is_admin %}
-        <div x-show="tab === 'admin'" style="display: none;" x-data="domainManager()" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
+        <div x-show="tab === 'admin'" x-cloak x-data="domainManager()" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
@@ -193,7 +164,7 @@
                 </table>
             </div>
 
-            <div x-show="editing" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
@@ -218,7 +189,7 @@
                 <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
             </div>
 
-            <div x-show="variantEditor" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="variantEditor" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature?.name"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="space-y-3">
                     <template x-for="variant in variants" :key="variant.id">
@@ -266,7 +237,7 @@
                 </table>
             </div>
 
-            <div x-show="editing" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature Rule' : 'Create Signature Rule'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
@@ -308,7 +279,7 @@
 
     </div>
 
-    <div x-data="domainSettingsModal()" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-50 overflow-y-auto">
+    <div x-data="domainSettingsModal()" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
@@ -388,13 +359,13 @@
                                             <button @click="$dispatch('open-preview', { html: document.getElementById('domain-raw-html-editor').value, previewDomain: domain.domain_name })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                         </div>
                                     </div>
-                                    <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                    <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div x-show="modalTab === 'users'" style="display: none;" class="space-y-4">
+                    <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
                         <div class="flex justify-between items-center">
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Active User Overrides</h4>
                             <div class="flex gap-2">
@@ -433,7 +404,7 @@
                                         <button @click="$dispatch('open-preview', { html: document.getElementById('admin-raw-html-editor').value, previewEmail: editingUserEmail })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                     </div>
                                 </div>
-                                <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
                             </div>
                         </div>
 
@@ -474,7 +445,7 @@
     <div x-data="{ show: false, rawInput: '', targetEditor: '' }" 
          @open-sanitizer.window="show = true; targetEditor = $event.detail; rawInput = ''; setTimeout(() => $refs.sanitizerInput.focus(), 100);" 
          @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[70] overflow-y-auto">
+         x-show="show" x-cloak class="fixed inset-0 z-[70] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl border border-gray-700 sm:my-8 sm:align-middle sm:max-w-3xl w-full transform transition-all flex flex-col">
@@ -528,7 +499,7 @@
             previewHtml = raw;
          " 
          @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto">
+         x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-gray-300">
@@ -541,266 +512,11 @@
         </div>
     </div>
     
-    <div x-data="{ show: false, domainName: '' }" @open-add-domain.window="show = true; domainName = ''; setTimeout(() => $refs.domainInput.focus(), 100);" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="$dispatch('submit-new-domain', domainName); show = false;" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('submit-new-domain', domainName); show = false;" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="{ show: false, domainName: '' }" @open-add-domain.window="show = true; domainName = ''; setTimeout(() => $refs.domainInput.focus(), 100);" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="$dispatch('submit-new-domain', domainName); show = false;" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('submit-new-domain', domainName); show = false;" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
     
-    <div x-data="{ show: false, domain: null, action: '', title: '', message: '', targetId: null }" @open-confirm.window="show = true; action = $event.detail.action; domain = $event.detail.domain || null; targetId = $event.detail.targetId || null; if (action === 'toggle') { title = (domain.is_active ? 'Disable' : 'Enable') + ' Domain?'; message = 'Are you sure you want to ' + (domain.is_active ? 'disable' : 'enable') + ' ' + domain.domain_name + '?'; } else if (action === 'delete') { title = 'Delete Domain?'; message = 'CRITICAL WARNING: Delete ' + domain.domain_name + ' permanently?'; } else if (action === 'clear-user') { title = 'Clear Custom Signature?'; message = 'Are you sure you want to clear your custom signature? Your emails will revert to the domain\'s default template.'; } else if (action === 'clear-admin') { title = 'Clear User Override?'; message = 'Are you sure you want to permanently delete this user\'s custom signature?'; }" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('confirm-action', {domain: domain, action: action, targetId: targetId}); show = false;" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
-
-    <script>
-        var quill, domainQuill, adminQuill;
-        const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
-
-        // THE SMART LOCK ENGINE
-        function toggleLock(lockId, rawId) {
-            const rawVal = document.getElementById(rawId).value.toLowerCase();
-            const lockEl = document.getElementById(lockId);
-            if (lockEl) {
-                if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
-                else lockEl.classList.add('hidden');
-            }
-        }
-        function checkAllLocks() {
-            toggleLock('user-quill-lock', 'raw-html-editor');
-            toggleLock('domain-quill-lock', 'domain-raw-html-editor');
-            toggleLock('admin-quill-lock', 'admin-raw-html-editor');
-        }
-
-        document.addEventListener('DOMContentLoaded', async function() {
-            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
-            quill = new Quill('#quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            domainQuill = new Quill('#domain-quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            
-            quill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('raw-html-editor').value = quill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-            
-            domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('domain-raw-html-editor').value = domainQuill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-
-            if(!{{ 'true' if can_edit else 'false' }}) { quill.disable(); }
-
-            const res = await fetch('/api/my-signature');
-            if(res.ok) {
-                const data = await res.json();
-                document.getElementById('raw-html-editor').value = data.html_content;
-                quill.clipboard.dangerouslyPasteHTML(data.html_content);
-                checkAllLocks();
-            }
-        });
-
-        window.addEventListener('sanitize-html', (e) => {
-            const { html, target } = e.detail;
-            if (!html) return;
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            let cleanHtml = doc.body.innerHTML.trim();
-            cleanHtml = cleanHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-
-            if (target === 'personal') {
-                document.getElementById('raw-html-editor').value = cleanHtml;
-                quill.clipboard.dangerouslyPasteHTML(cleanHtml);
-            } else if (target === 'domain') {
-                document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                domainQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
-            } else if (target === 'admin') {
-                document.getElementById('admin-raw-html-editor').value = cleanHtml;
-                if(adminQuill) adminQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
-            }
-            checkAllLocks();
-            notify("HTML imported. Review the source before saving.");
-        });
-
-        async function saveUserSignature() {
-            const finalHtml = document.getElementById('raw-html-editor').value;
-            const res = await fetch('/api/my-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: finalHtml }) });
-            if(res.ok) notify("Signature saved successfully!"); else notify("Failed to save.", "error");
-        }
-
-        function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
-        function signatureManager() {
-            return {
-                signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
-                form: { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 },
-                async fetchAll() {
-                    try {
-                        const [signaturesResponse, domainsResponse] = await Promise.all([fetch('/api/admin/signatures'), fetch('/domains/')]);
-                        if (!signaturesResponse.ok || !domainsResponse.ok) throw new Error('Could not load signature catalog');
-                        this.signatures = await signaturesResponse.json();
-                        this.domains = await domainsResponse.json();
-                    } catch (error) { notify(error.message, 'error'); }
-                },
-                newSignature() {
-                    this.form = { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 };
-                    this.editing = true;
-                },
-                editSignature(signature) {
-                    this.form = { id: signature.id, name: signature.name, mode: signature.mode,
-                        domain_id: signature.domain_id == null ? '' : String(signature.domain_id),
-                        is_active: signature.is_active, html_content: '', weight: 1 };
-                    this.editing = true;
-                },
-                async saveSignature() {
-                    if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
-                    const domainId = this.form.domain_id === '' ? null : Number(this.form.domain_id);
-                    if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
-                    let response;
-                    if (!this.form.id) {
-                        response = await fetch('/api/admin/signatures', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: this.form.name, mode: this.form.mode, domain_id: domainId,
-                                is_active: this.form.is_active, html_content: this.form.html_content, weight: this.form.weight }) });
-                    } else {
-                        response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: this.form.name, domain_id: domainId, is_active: this.form.is_active }) });
-                        if (response.ok && this.form.html_content.trim()) {
-                            response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
-                                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
-                        }
-                    }
-                    if (!response.ok) { notify('Could not save signature: ' + (await response.text()), 'error'); return; }
-                    notify('Signature saved.');
-                    this.editing = false;
-                    await this.fetchAll();
-                },
-                async manageVariants(signature) {
-                    this.variantSignature = signature;
-                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signature.id) + '/variants');
-                    if (!response.ok) { notify('Could not load variants.', 'error'); return; }
-                    this.variants = await response.json();
-                    this.variantEditor = true;
-                },
-                async saveVariant(variant) {
-                    const response = await fetch('/api/admin/signature-variants/' + encodeURIComponent(variant.id), {
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ weight: Number(variant.weight), is_enabled: variant.is_enabled })
-                    });
-                    if (!response.ok) { notify('Could not save variant: ' + (await response.text()), 'error'); return; }
-                    notify('Variant updated.');
-                    await this.fetchAll();
-                }
-            };
-        }
-
-        function ruleManager() {
-            return {
-                rules: [], signatures: [], editing: false,
-                form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] },
-                async fetchAll() {
-                    try {
-                        const [rulesResponse, signaturesResponse] = await Promise.all([
-                            fetch('/api/admin/rules'), fetch('/api/admin/signatures')
-                        ]);
-                        if (!rulesResponse.ok || !signaturesResponse.ok) throw new Error('Could not load rule data');
-                        this.rules = await rulesResponse.json();
-                        this.signatures = await signaturesResponse.json();
-                    } catch (error) { notify(error.message, 'error'); }
-                },
-                newRule() {
-                    this.form = { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] };
-                    this.editing = true;
-                },
-                editRule(rule) {
-                    this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '' }));
-                    this.editing = true;
-                },
-                addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
-                async saveRule() {
-                    if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
-                    if (this.form.conditions.some(c => !c.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
-                    const payload = { ...this.form, signature_id: this.form.signature_id || null };
-                    const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
-                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) { notify('Could not save rule: ' + (await response.text()), 'error'); return; }
-                    notify('Signature rule saved.');
-                    this.editing = false;
-                    await this.fetchAll();
-                },
-                async deleteRule(rule) {
-                    if (!window.confirm('Delete rule "' + rule.name + '"?')) return;
-                    const response = await fetch('/api/admin/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
-                    if (!response.ok) { notify('Could not delete rule.', 'error'); return; }
-                    notify('Signature rule deleted.');
-                    await this.fetchAll();
-                }
-            };
-        }
+    <div x-data="{ show: false, domain: null, action: '', title: '', message: '', targetId: null }" @open-confirm.window="show = true; action = $event.detail.action; domain = $event.detail.domain || null; targetId = $event.detail.targetId || null; if (action === 'toggle') { title = (domain.is_active ? 'Disable' : 'Enable') + ' Domain?'; message = 'Are you sure you want to ' + (domain.is_active ? 'disable' : 'enable') + ' ' + domain.domain_name + '?'; } else if (action === 'delete') { title = 'Delete Domain?'; message = 'CRITICAL WARNING: Delete ' + domain.domain_name + ' permanently?'; } else if (action === 'clear-user') { title = 'Clear Custom Signature?'; message = 'Are you sure you want to clear your custom signature? Your emails will revert to the domain\'s default template.'; } else if (action === 'clear-admin') { title = 'Clear User Override?'; message = 'Are you sure you want to permanently delete this user\'s custom signature?'; }" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('confirm-action', {domain: domain, action: action, targetId: targetId}); show = false;" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
 
 
-        function domainSettingsModal() {
-            return {
-                show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
-                open(domainData) {
-                    this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
-                    
-                    setTimeout(() => { 
-                        document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        domainQuill.clipboard.dangerouslyPasteHTML(domainData.template_html); 
-                        checkAllLocks();
-                    }, 50);
-                    
-                    if(!adminQuill) {
-                        adminQuill = new Quill('#admin-quill-editor', { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], ['link', 'image'], ['clean']] }});
-                        adminQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('admin-raw-html-editor').value = adminQuill.root.innerHTML; checkAllLocks(); } });
-                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-                    }
-                },
-                async fetchOverrides() {
-                    const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
-                    if(res.ok) this.userOverrides = await res.json();
-                },
-                loadAdminEditor(email, directHtml = null, isDisabled = false) {
-                    if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }
-                    this.editingUserEmail = email; 
-                    
-                    if (directHtml !== null) { 
-                        document.getElementById('admin-raw-html-editor').value = directHtml;
-                        adminQuill.clipboard.dangerouslyPasteHTML(directHtml); 
-                        this.editingUserDisabled = isDisabled;
-                    } else {
-                        const existingUser = this.userOverrides.find(u => u.user_email === email);
-                        const content = existingUser ? existingUser.html_content : '';
-                        document.getElementById('admin-raw-html-editor').value = content;
-                        adminQuill.clipboard.dangerouslyPasteHTML(content);
-                        this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
-                    }
-                    checkAllLocks();
-                },
-                async saveAdminOverride() {
-                    const finalHtml = document.getElementById('admin-raw-html-editor').value;
-                    const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); }
-                }
-            }
-        }
-
-        window.addEventListener('submit-new-domain', async (e) => {
-            const res = await fetch('/domains/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_name: e.detail, is_active: true }) });
-            if (res.ok) { notify("Domain registered!"); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Failed.", "error");
-        });
-        window.addEventListener('save-domain-settings', async (e) => {
-            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures, template_html: document.getElementById('domain-raw-html-editor').value }) });
-            if (res.ok) { notify("Settings saved!"); window.dispatchEvent(new CustomEvent('domain-updated')); }
-        });
-        
-        window.addEventListener('confirm-action', async (e) => {
-            const { domain, action, targetId } = e.detail;
-            if (action === 'toggle') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !domain.is_active, allow_overrides: domain.allow_overrides, inject_on_replies: domain.inject_on_replies, trim_whitespace: domain.trim_whitespace, strip_device_signatures: domain.strip_device_signatures, template_html: domain.template_html }) });
-                if (res.ok) { notify("Status updated."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'delete') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'DELETE' });
-                if (res.ok) { notify("Domain deleted."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'clear-user') {
-                const res = await fetch('/api/my-signature', { method: 'DELETE' });
-                if(res.ok) {
-                    document.getElementById('raw-html-editor').value = '';
-                    quill.setText(''); 
-                    checkAllLocks();
-                    notify("Signature cleared and removed from database!");
-                } else { notify("Failed to clear signature.", "error"); }
-            } else if (action === 'clear-admin') {
-                const res = await fetch(`/api/admin/overrides/${targetId}`, { method: 'DELETE' });
-                if(res.ok) { notify("User override deleted."); window.dispatchEvent(new CustomEvent('refresh-admin-overrides')); }
-            }
-        });
-    </script>
+    <script src="/static/js/portal.js"></script>
 </body>
 </html>

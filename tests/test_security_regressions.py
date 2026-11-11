@@ -203,6 +203,21 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertLess(early_return, raw_rewriter)
 
 
+    def test_templates_do_not_use_inline_scripts_or_event_handlers(self):
+        for name in ("index.html", "error.html"):
+            template = (ROOT / "templates" / name).read_text(encoding="utf-8")
+            self.assertNotRegex(template, r"<script(?![^>]*\\bsrc=)[^>]*>")
+            self.assertNotRegex(template, r"\\bon[a-z]+\\s*=")
+        index = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("/static/js/portal.js", index)
+        self.assertIn("/static/css/portal.css", index)
+        self.assertIn("data-csrf-token", index)
+        self.assertIn("x-cloak", index)
+        self.assertTrue((ROOT / "static" / "js" / "portal.js").is_file())
+        self.assertTrue((ROOT / "static" / "css" / "portal.css").is_file())
+
+
+
 if __name__ == "__main__":
     unittest.main()
 
