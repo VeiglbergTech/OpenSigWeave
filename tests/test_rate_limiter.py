@@ -17,7 +17,7 @@ from database import engine as application_engine
 from sqlalchemy import create_engine
 
 from models import Base, RateLimitBucketDB
-from rate_limiter import client_identity, consume_rate_limit
+from rate_limiter import _rate_limit_hash_key, client_identity, consume_rate_limit
 
 TEST_HASH_KEY = b"opensigweave-test-rate-limit-key"
 
@@ -34,6 +34,20 @@ class RateLimiterTests(unittest.TestCase):
     def tearDown(self):
         self.engine.dispose()
         self.tempdir.cleanup()
+
+
+    def test_rate_limit_hash_key_uses_configured_session_secret(self):
+        with patch.dict("os.environ", {"SECRET_KEY": "s" * 48}, clear=False):
+            first = _rate_limit_hash_key()
+            second = _rate_limit_hash_key()
+        self.assertEqual(len(first), 32)
+        self.assertEqual(first, second)
+        self.assertNotEqual(first, ("s" * 48).encode("utf-8"))
+
+    def test_rate_limit_hash_key_rejects_placeholder_secret(self):
+        with patch.dict("os.environ", {"SECRET_KEY": "REPLACE_WITH_RANDOM_SECRET"}, clear=False):
+            with self.assertRaises(RuntimeError):
+                _rate_limit_hash_key()
 
     def test_fixed_window_increments_atomically_and_enforces_limit(self):
         self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY), 1)
