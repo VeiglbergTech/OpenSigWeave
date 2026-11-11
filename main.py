@@ -963,12 +963,15 @@ async def get_rspamd_signature(
         matching_signatures = (
             db.query(SignatureDB)
             .filter(
-                func.lower(SignatureDB.name) == marker_name.casefold(),
                 SignatureDB.is_active.is_(True),
                 (SignatureDB.domain_id.is_(None) | (SignatureDB.domain_id == domain_obj.id)),
             )
             .all()
         )
+        matching_signatures = [
+            item for item in matching_signatures
+            if item.name.casefold() == marker_name.casefold()
+        ]
         domain_matches = [item for item in matching_signatures if item.domain_id == domain_obj.id]
         global_matches = [item for item in matching_signatures if item.domain_id is None]
         # Prefer one exact-domain signature; otherwise accept exactly one global
