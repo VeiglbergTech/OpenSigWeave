@@ -102,25 +102,24 @@ jobs:
           postgres_password='ci-password'
           session_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
           engine_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          local_admin_hash="$(python -c 'from auth_config import hash_local_admin_password; print(hash_local_admin_password("ci-local-admin-password"))')"
           cat > .env <<EOF
           POSTGRES_DB=opensigweave
           POSTGRES_USER=opensigweave
           POSTGRES_PASSWORD=$postgres_password
           SECRET_KEY=$session_key
           ENGINE_API_KEY=$engine_key
-          OIDC_DISCOVERY_URL=https://auth.example.test/application/o/opensigweave/.well-known/openid-configuration
-          OIDC_REDIRECT_URI=https://signature.example.test/auth
-          OIDC_CLIENT_ID=ci-client
-          OIDC_CLIENT_SECRET=ci-client-secret
-          OIDC_SCOPES=openid email profile attributes
-          AUTHENTIK_URL=https://auth.example.test
-          AUTHENTIK_SLUG=opensigweave
-          AUTHENTIK_API_TOKEN=ci-authentik-token
-          EOF
+          OIDC_ENABLED=false
+          APP_ALLOWED_HOSTS=signature.example.test
+          LOCAL_ADMIN_EMAIL=admin@example.test
+          LOCAL_ADMIN_PASSWORD_HASH='$local_admin_hash'
+          EOFF
           trap 'docker compose down --volumes' EXIT
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
           docker compose exec -T opensigweave alembic current
+          login_page="$(curl --fail --silent --show-error -H 'Host: signature.example.test' http://127.0.0.1:8085/login)"
+          grep -q "Local administrator sign-in" <<<"$login_page"
           engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
           response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
