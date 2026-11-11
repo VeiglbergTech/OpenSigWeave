@@ -43,3 +43,31 @@
 - Do not trust a browser-side role check. Enforce permissions in FastAPI dependencies for every protected route.
 - Do not log tokens, engine credentials, full message bodies or signature HTML.
 - Keep Rspamd-specific parsing and mutation isolated behind an adapter boundary.
+
+## SMTP sender authorization boundary
+
+Rspamd's `task:get_user()` only establishes that the message was submitted through an authenticated SMTP session. It does **not** prove that the authenticated mailbox is authorized to use the envelope sender returned by `task:get_from(1)`. OpenSigWeave currently uses that envelope sender to select the signature identity.
+
+Therefore, sender ownership must be enforced by Mailcow/Postfix **before** the message reaches the signature hook:
+
+- Keep Mailcow's sender verification enabled. Do not disable sender checks globally and do not grant a mailbox the broad `Allow to send as *` permission merely to make signature selection work.
+- Use Mailcow's mailbox alias and delegated-send-as controls to grant only the addresses that the authenticated mailbox may legitimately use. Mailcow's sender/receiver model documents that mailbox aliases and alias domains can be authorized send-as identities, while catch-all aliases do not automatically grant send-as permission.
+- Preserve Postfix's authenticated-sender/login mismatch rejection. Do not add broad `OK` exceptions to `smtpd_sender_restrictions` without a narrowly scoped, reviewed requirement.
+- Treat the SMTP envelope sender as the signature identity. Do not switch to the untrusted message `From:` header for authorization or identity selection.
+
+### Required Mailcow integration tests
+
+Run these tests in a disposable Mailcow environment before enabling the integration:
+
+| Authenticated SMTP identity | Envelope sender | Expected result |
+|---|---|---|
+| Mailbox address | Same mailbox address | Accepted; matching signature identity |
+| Mailbox address | Explicitly configured alias | Accepted; alias signature policy applied |
+| Mailbox address | Explicitly delegated send-as address | Accepted only when delegation is configured |
+| Mailbox address | Unrelated mailbox address | Rejected by Postfix before signature injection |
+| Mailbox address | Unauthorized address in same domain | Rejected by Postfix before signature injection |
+| Unauthenticated SMTP client | Any local sender | Rejected or relay denied according to the public SMTP policy |
+
+Also verify that the effective Postfix configuration still contains the authenticated sender/login mismatch enforcement after Mailcow updates and custom configuration reloads. Mailcow's current documentation exposes sender verification and per-mailbox send-as permissions through its UI; use those supported controls rather than copying deprecated global Postfix overrides.
+
+**Status:** This is a documented integration prerequisite, not a verified production setting. No Mailcow configuration has been changed and no end-to-end SMTP test has been run.
