@@ -102,6 +102,21 @@ A branch-wide source review identified and addressed the following findings on `
 
 - Rate-limit bucket identifiers are pseudonymized with a keyed HMAC. The HMAC key is derived with domain separation from the mandatory `SECRET_KEY`; a database-only disclosure therefore does not make low-entropy client IP addresses directly enumerable. Regression tests verify that stored bucket keys are not plain SHA-256 hashes.
 
+### Rspamd multipart compatibility review — 2026-11-11
+
+Multipart messages remain fail-closed and unchanged by the Lua integration. A review
+of current Rspamd documentation and Mailcow issue #7398 identified an additional
+deployment preflight: Rspamd 4.2.1 on a VM exposing the legacy `kvm64` CPU model
+without SSSE3 was reported to lose multipart child parts during MIME parsing, while
+the same image parsed them when SSSE3 was exposed. This is an upstream parser/CPU
+compatibility issue, not a reason to reintroduce raw MIME string rewriting.
+
+Before implementing multipart support, verify guest SSSE3 exposure, inspect Rspamd
+startup logs, and confirm parsed leaf parts for nested multipart structures. A
+future implementation must use MIME-aware rewriting, preserve boundaries and
+attachments, and honor the returned content-transfer encoding. No Mailcow or
+hypervisor configuration has been changed.
+
 ### Frontend CSP and verification — 2026-11-11
 
 Alpine's CSP-compatible build is now protected by a verified SHA-384 SRI digest.
