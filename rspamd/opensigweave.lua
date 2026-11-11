@@ -285,6 +285,11 @@ local function inject_signature(task)
                 local marker_pattern = "<%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
                     .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%->"
                 local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
+                if count == 0 and is_html then
+                    local escaped_pattern = "&lt;---%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
+                        .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%-&gt;"
+                    replaced, count = spliced:gsub(escaped_pattern, function() return signature end, 1)
+                end
                 if count > 0 then
                     rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
                     return replaced, true
