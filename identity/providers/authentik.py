@@ -62,11 +62,22 @@ class AuthentikAttributeProvider:
             first_name = name_parts[0] if name_parts else ""
             last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
 
+            raw_groups = user.get("groups", [])
+            groups = frozenset(
+                str(group.get("name") or group.get("pk") or "")
+                if isinstance(group, dict) else str(group)
+                for group in raw_groups
+                if isinstance(group, (str, int, dict))
+            ) if isinstance(raw_groups, list) else frozenset()
+            groups = frozenset(group for group in groups if group)
+
             return IdentityAttributes(
                 first_name=first_name,
                 last_name=last_name,
                 title=_attribute_value(attributes.get("title")),
                 phone=_attribute_value(attributes.get("phone")),
+                groups=groups,
+                attributes=attributes,
             )
         except (httpx.HTTPError, ValueError, TypeError):
             logger.warning("Authentik attribute lookup failed; using empty profile attributes")
