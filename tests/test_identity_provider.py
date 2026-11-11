@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from identity.attributes import IdentityAttributes
 from identity.providers.authentik import AuthentikAttributeProvider
@@ -71,6 +71,30 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(client.request["params"], {"search": "alice+tag@example.org"})
         self.assertEqual(client.request["url"], "https://auth.example.org/api/v3/core/users/")
+
+
+    async def test_lookup_requires_exactly_one_active_email_match(self):
+        provider = AuthentikAttributeProvider(
+            base_url="https://auth.example.org",
+            api_token="test-token",
+        )
+        cases = [
+            ([{"email": "alice2@example.org", "is_active": True, "name": "Wrong User"}], "no exact match"),
+            ([{"email": "alice@example.org", "is_active": False, "name": "Inactive User"}], "inactive account"),
+            ([
+                {"email": "alice@example.org", "is_active": True, "name": "Alice One"},
+                {"email": "ALICE@example.org", "is_active": True, "name": "Alice Two"},
+            ], "ambiguous matches"),
+        ]
+        for results, label in cases:
+            with self.subTest(label=label):
+                client = FakeClient()
+                response = FakeResponse()
+                response.json = lambda results=results: {"results": results}
+                with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
+                    with patch.object(client, "get", new=AsyncMock(return_value=response)):
+                        actual = await provider.get_attributes("alice@example.org")
+                self.assertEqual(actual, IdentityAttributes())
 
     async def test_missing_provider_credentials_return_empty_attributes(self):
         provider = AuthentikAttributeProvider(base_url="", api_token="")
