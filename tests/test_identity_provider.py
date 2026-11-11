@@ -96,6 +96,14 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
                         actual = await provider.get_attributes("alice@example.org")
                 self.assertEqual(actual, IdentityAttributes())
 
+    async def test_http_authentik_url_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "HTTPS URL"):
+            AuthentikAttributeProvider(base_url="http://auth.example.org", api_token="test-token")
+
+    async def test_authentik_url_with_embedded_credentials_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "HTTPS URL"):
+            AuthentikAttributeProvider(base_url="https://user:password@auth.example.org", api_token="test-token")
+
     async def test_missing_provider_credentials_return_empty_attributes(self):
         provider = AuthentikAttributeProvider(base_url="", api_token="")
         self.assertEqual(await provider.get_attributes("alice@example.org"), IdentityAttributes())
