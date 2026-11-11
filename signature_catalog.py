@@ -73,6 +73,7 @@ def create_signature(
     )
 
     stored = None
+    store.ensure_name_available(name.strip())
     try:
         session.add(signature)
         version, stored = _persist_version(
