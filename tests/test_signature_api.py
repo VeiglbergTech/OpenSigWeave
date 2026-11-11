@@ -226,6 +226,17 @@ class SignatureCatalogApiTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 413)
 
+
+    def test_untrusted_host_header_is_rejected(self):
+        client = TestClient(main.app, base_url="https://evil.example")
+        response = client.get("/")
+        self.assertEqual(response.status_code, 400)
+
+    def test_canonical_host_is_accepted(self):
+        client = TestClient(main.app, base_url="https://app.example.org")
+        response = client.get("/")
+        self.assertEqual(response.status_code, 307)
+
     def test_authenticated_non_member_cannot_use_personal_signature_api(self):
         outsider = SimpleNamespace(
             session={"user": {"groups": ["employees"], "email": "outsider@example.org"}}
