@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import hmac
+import hashlib
 import secrets
 from urllib.parse import urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
@@ -868,6 +869,8 @@ async def get_rspamd_signature(
     response: Response,
     x_engine_key: Optional[str] = Header(None),
     x_signature_mode: Optional[str] = Header(None, alias="X-OpenSigWeave-Mode"),
+    x_signature_name: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature"),
+    x_signature_code: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature-Code"),
     db: Session = Depends(get_db)
 ):
     response.headers["Cache-Control"] = "no-store, private"
@@ -896,8 +899,42 @@ async def get_rspamd_signature(
 
     selected_from_variant = False
     signature_id = None
+    marker_requested = bool(x_signature_name or x_signature_code)
     explicit_mode = bool(x_signature_mode and x_signature_mode.strip())
-    if override and domain_obj.allow_overrides and not explicit_mode:
+    if marker_requested and not explicit_mode:
+        # A text marker is a selector, not an authentication mechanism. It is
+        # accepted only when its four-character SHA-256 check matches exactly.
+        marker_name = (x_signature_name or "").strip()
+        marker_code = (x_signature_code or "").strip().casefold()
+        expected_code = hashlib.sha256(marker_name.casefold().encode("utf-8")).hexdigest()[:4]
+        if (not marker_name or len(marker_name) > 255 or len(marker_code) != 4
+                or not hmac.compare_digest(marker_code, expected_code)):
+            return empty_response
+        identity_attributes = await attribute_provider.get_attributes(normalized_email)
+        selected_signature = (
+            db.query(SignatureDB)
+            .filter(
+                func.lower(SignatureDB.name) == marker_name.casefold(),
+                SignatureDB.is_active.is_(True),
+                (SignatureDB.domain_id.is_(None) | (SignatureDB.domain_id == domain_obj.id)),
+            )
+            .first()
+        )
+        if selected_signature is None:
+            return empty_response
+        latest_version = (
+            db.query(SignatureVersionDB)
+            .filter(SignatureVersionDB.signature_id == selected_signature.id)
+            .order_by(SignatureVersionDB.version_number.desc())
+            .first()
+        )
+        if latest_version is None:
+            raise HTTPException(status_code=503, detail="Signature version metadata is missing")
+        try:
+            raw_template = signature_file_store.read(uuid.UUID(hex=latest_version.id), latest_version.sha256)
+        except (SignatureStorageError, ValueError, TypeError):
+            raise HTTPException(status_code=503, detail="Signature asset unavailable")
+    elif override and domain_obj.allow_overrides and not explicit_mode:
         identity_attributes = await attribute_provider.get_attributes(normalized_email)
         raw_template = override.html_content
     else:
