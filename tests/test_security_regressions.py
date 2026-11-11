@@ -169,7 +169,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("local signature_marker = find_signature_text_marker(task, is_reply)", lua)
         self.assertIn("if not requested_mode then", lua)
         self.assertIn("remove_text_marker_from_message()", lua)
-        self.assertIn("elseif signature_marker and signature_marker.valid then", lua)
+        self.assertIn("if signature_marker and signature_marker.valid and not requested_mode then", lua)
 
     def test_rspamd_outlook_marker_is_decoded_and_removed(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
