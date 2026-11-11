@@ -122,6 +122,7 @@ end
 
 local function find_signature_text_marker(task, is_reply)
     local found = {}
+    local marker_prefix_found = false
     local parts = task:get_text_parts() or {}
     for _, part in ipairs(parts) do
         local data = part:get_content("raw_utf")
@@ -138,6 +139,7 @@ local function find_signature_text_marker(task, is_reply)
                 local current = string.sub(content, 1, quote_start - 1)
                 -- HTML clients may encode angle brackets in text nodes.
                 current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
+                if current:find("<%-%-%-%[") then marker_prefix_found = true end
                 for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->") do
                     found[#found + 1] = { name = name, code = code }
                 end
@@ -146,7 +148,7 @@ local function find_signature_text_marker(task, is_reply)
     end
     if #found ~= 1 then
         if #found > 1 then rspamd_logger.warnx(task, "OpenSigWeave: multiple signature text markers; refusing automatic fallback") end
-        if #found > 0 then return { name = "", code = "" } end
+        if #found > 0 or marker_prefix_found then return { name = "", code = "" } end
         return nil
     end
     local marker = found[1]
