@@ -53,7 +53,7 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(variant.pool_name, "AUTO")
         self.assertEqual(variant.weight, 2)
         self.assertEqual(
-            self.store.read(uuid.UUID(hex=version.id), version.sha256),
+            self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256),
             "<p>Hello {{ first_name }}</p>",
         )
 
@@ -90,7 +90,7 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(first.version_number, 1)
         self.assertEqual(second.version_number, 2)
         self.assertEqual(
-            self.store.read(uuid.UUID(hex=second.id), second.sha256),
+            self.store.read(signature.name, uuid.UUID(hex=second.id), second.sha256),
             "<p>Version 2</p>",
         )
 
@@ -129,7 +129,7 @@ class SignatureCatalogTests(unittest.TestCase):
         self.session.commit()
 
         updated = update_signature(
-            self.session, signature.id, name="Renamed", domain_id=domain.id,
+            self.session, self.store, signature.id, name="Renamed", domain_id=domain.id,
             is_active=False,
         )
         self.assertEqual(updated.name, "Renamed")
@@ -189,7 +189,7 @@ class SignatureCatalogTests(unittest.TestCase):
                 '</p>'
             ),
         )
-        stored = self.store.read(uuid.UUID(hex=version.id), version.sha256)
+        stored = self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256)
         self.assertIn("{{ first_name }}", stored)
         self.assertIn('src="https://example.org/logo.png"', stored)
         self.assertNotIn("onclick", stored)
