@@ -26,6 +26,7 @@ class SignatureRule:
     conditions: tuple[RuleCondition, ...]
     action: str
     enabled: bool = True
+    signature_id: str | None = None
 
 
 def condition_matches(condition: RuleCondition, context: RuleContext) -> bool:
