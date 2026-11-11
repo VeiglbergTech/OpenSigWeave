@@ -1,203 +1,116 @@
-# Web UI and integration review
+# Web application and Rspamd security review
 
-**Reviewed:** `main.py`, `templates/index.html`, `templates/error.html`, `rspamd/opensigweave.lua`  
-**Baseline:** current `main` content as inspected on 2026-11-10
+**Branch:** `architecture/refactor-foundation`  
+**Review date:** 2026-11-11  
+**Status:** Code-level review of the standalone preview; not a penetration test.
 
-## Web UI security review
+## 1. Web application
 
-The initial review findings have been addressed in the current branch:
+### Authentication and authorization
 
-1. Domain create/update/delete routes enforce the authenticated administrator group in FastAPI; hiding the admin UI is not used as an authorization boundary.
-2. Signature previews are rendered in sandboxed iframes. Signature HTML is sanitized on write and again on read, and the editor uses Quill's clipboard parser rather than assigning untrusted HTML directly to the live DOM.
-3. Profile data is serialized with Jinja's JSON serializer and escaped for the HTML attribute context.
-4. Links opened in a new tab use `rel="noopener noreferrer"`.
-5. Quill is self-hosted. Alpine 3.17.5 uses the CSP-compatible build and a verified SHA-384 SRI attribute; its remaining CDN dependency is version-pinned.
-6. Browser state-changing requests carry a session-bound CSRF token, validated server-side by constant-time comparison. The UI attaches it to POST, PUT, PATCH and DELETE requests.
-7. Logout uses POST and is covered by the same CSRF protection.
-8. The access-denied template retains normal Jinja autoescaping; no unsafe interpolation was introduced.
+- OIDC login uses discovery metadata and an explicit HTTPS callback URI.
+- The callback requires a subject, a syntactically valid email, `email_verified` as the JSON boolean `true`, and a well-formed groups array.
+- The previous session is cleared before the authenticated user object is stored.
+- The session stores only the application-required identity fields and selected profile attributes.
+- Administrator routes check the `signature-admins` group server-side.
+- Personal signature routes require `signature-users` or `signature-admins`.
+- State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
 
-These controls have regression coverage, but the review remains a code-level assessment rather than a dynamic penetration test. The CSP remains report-only pending real-browser validation, and sandboxed preview behavior must be included in that validation.
+**Known provider limitation:** OIDC discovery and login are configurable, but the attribute provider and logout URL still use Authentik-specific APIs/paths. Authentik is the currently supported complete provider configuration. A generic OIDC provider cannot yet be assumed to provide all application behavior.
 
-## Rspamd integration review
+### Session and HTTP controls
 
-- The module obtains the sender from `task:get_from(1)`, while also requiring `task:get_user()` to be present. The trust relationship between envelope sender, authenticated SMTP identity and header From must be documented and tested.
-- The sender is concatenated into the API path. Use a URL-safe encoding strategy or a request body in a versioned API contract; validate normalized email input on the server.
-- The HTTP request has no explicit timeout, TLS policy, retry policy or documented failure mode in the visible request options.
-- The response body is parsed and used to reconstruct MIME content. Validate response shape and size before using it.
-- The callback mutates the message through `task:set_message`. Ensure it is invoked only once per message and add an idempotency marker or equivalent guard.
-- The module's manual MIME boundary search and transfer-encoding reconstruction need fixture-driven tests. The current implementation does not demonstrate correct handling of nested multipart structures or arbitrary MIME trees.
-- A `prefilter` registration is not sufficient evidence that message mutation precedes DKIM signing. Test against the effective Rspamd/Mailcow configuration and verify the delivered DKIM signature cryptographically.
+- Startup rejects missing, short and known-placeholder session/engine secrets.
+- Session cookie is Secure, HttpOnly, SameSite=Lax, uses the `__Host-` prefix and has a one-hour lifetime.
+- TrustedHostMiddleware derives the canonical hostname from `OIDC_REDIRECT_URI`; additional hostnames must be explicitly configured. Wildcards are rejected.
+- Security response headers include content-type/frame restrictions, HSTS and other hardening headers.
+- A global request-body limit rejects oversized/chunked requests; HTML fields and signature files have their own limits.
+- Database-backed rate limiting is shared across workers. The application fails closed if the limiter database is unavailable.
+- Forwarded client IP headers are ignored unless the immediate peer belongs to a CIDR in `TRUSTED_PROXY_CIDRS`.
 
-## Suggested first test matrix
+Reverse proxies must preserve the canonical Host header. Only configure trusted proxy CIDRs for proxies under administrative control. Do not trust client-supplied forwarding headers.
 
-| Area | Cases |
+### HTML, templates and browser rendering
+
+- Signature HTML is sanitized server-side before storage and again before use.
+- Dynamic identity values are rendered in a sandboxed Jinja environment with automatic HTML escaping.
+- Signature previews are isolated in sandboxed iframes.
+- Editor HTML is parsed through Quill's clipboard parser; client-side parsing is not treated as the security boundary.
+- Quill is self-hosted. Alpine's CSP-compatible build is version-pinned and protected with SHA-384 SRI, but is still loaded from a CDN.
+- The CSP is `Content-Security-Policy-Report-Only`, not enforced.
+
+The jsdom smoke test covers the CSP evaluator and checks the actual template for unsupported Alpine expression patterns. It does not replace a real-browser walkthrough. Before enforcing CSP, inspect actual browser reports, preview behavior and Quill's runtime style behavior. Do not add broad `unsafe-eval` or `unsafe-inline` directives merely to silence violations.
+
+## 2. Authentik attribute provider
+
+The attribute provider:
+
+- Requires an HTTPS Authentik base URL with no embedded credentials, query or fragment.
+- Verifies TLS certificates and uses a bounded HTTP timeout.
+- Searches for the requested email and requires exactly one case-insensitive exact email match.
+- Requires the Authentik account to be active.
+- Returns normalized name, phone/title custom attributes, groups and selected user claims.
+- Returns empty identity attributes if the lookup fails or does not produce one active exact match.
+
+Use a dedicated Authentik service account/API token with the minimum read permissions needed for user lookup. Do not put this token in the frontend, source control or Rspamd configuration.
+
+## 3. Rspamd adapter
+
+The Lua adapter:
+
+- Loads `api_url`, `engine_api_key`, `timeout` and `max_response_size` from the Rspamd `opensigweave` configuration section.
+- Requires an HTTPS API URL and an engine key of at least 32 characters.
+- Bounds the HTTP timeout and maximum response size.
+- URL-encodes the sender email in the API path.
+- Sends the engine key in `X-Engine-Key`.
+- Supports one validated `X-OpenSigWeave-Mode` header on authenticated submissions, removes the control header and otherwise checks the supported Outlook HTML markers.
+- Requires `task:get_user()` and uses the SMTP envelope sender from `task:get_from(1)`.
+
+### Multipart behavior
+
+The adapter detects the top-level Content-Type. If it is `multipart/*`, it logs a warning and returns without changing the message.
+
+This includes common `multipart/alternative`, `multipart/related` and `multipart/mixed` messages. The current rewrite path is limited to non-multipart messages. This is deliberate fail-safe behavior; do not attempt to enable multipart rewriting through regular-expression boundary reconstruction.
+
+### Sender authorization
+
+`task:get_user()` only indicates that the message was submitted through an authenticated SMTP session. It does not prove that the authenticated mailbox may use the envelope sender.
+
+Mailcow/Postfix sender verification must remain enabled. Aliases and delegated send-as identities must be granted explicitly. Do not create broad send-as permissions or broad Postfix restriction exceptions to make signature injection work.
+
+### DKIM and processing order
+
+The fact that the Lua module registers a prefilter does not prove that signature mutation occurs before DKIM signing in every Mailcow/Rspamd version and configuration.
+
+Before enabling the adapter in a mail flow, use a disposable Mailcow environment and verify:
+1. The effective Rspamd processing order.
+2. Signature insertion occurs before DKIM signing.
+3. The final delivered message passes DKIM verification.
+4. No later stage mutates the signed message.
+5. Repeated processing does not inject duplicate signatures.
+
+No production Mailcow configuration has been changed and no end-to-end SMTP/DKIM test has been completed.
+
+## 4. Suggested preview acceptance matrix
+
+| Area | Test cases |
 |---|---|
-| Authorization | Anonymous, normal user, admin; each domain CRUD method |
-| CSRF | Missing token, invalid token, valid token; cross-origin request |
-| HTML | Script tag, event handler, javascript URL, SVG payload, valid table-based signature |
-| OIDC | Valid login, invalid state, expired session, missing email, missing group |
-| Engine API | Missing/wrong/rotated credential, malformed email, oversized response, timeout |
-| MIME | Plain text, HTML, multipart/alternative, multipart/mixed with attachment, nested multipart, base64, quoted-printable |
-| Mail behavior | New message, reply, forwarded message, duplicate processing, no matching signature |
-| DKIM | Final delivered message passes DKIM after signature injection |
+| Login | Valid OIDC login; invalid state; missing subject; unverified email; missing/malformed groups |
+| Roles | Anonymous, normal user, administrator; direct API calls as well as UI visibility |
+| CSRF | Missing, invalid and valid token for POST/PUT/DELETE; logout |
+| Host/proxy | Canonical host, rejected unknown host, configured alias, proxy forwarding behavior |
+| HTML | Script, event handler, unsafe URL, SVG payload, valid table layout, dynamic value escaping |
+| Signature storage | Create version, read integrity, tamper detection, symlink rejection, backup/restore |
+| Rules | Priority, disabled rules, AND conditions, group/attribute matching, targeted signature mode |
+| Engine API | Missing/wrong key, malformed email, valid mode, duplicate mode header, oversized response, timeout |
+| Rspamd MIME | Single-part plain text, single-part HTML, multipart/alternative, nested multipart, attachment, base64, quoted-printable |
+| Mail behavior | New message, reply, forward, repeated processing, no matching signature |
+| DKIM | Verify the final delivered message after injection |
 
-## Immediate implementation guardrails
+The multipart cases should currently confirm that the message remains unchanged. They must not be interpreted as supported injection cases.
 
-- Do not solve the UI preview issue by stripping all rich email HTML; email signatures legitimately use tables and inline styles. Define a sanitizer/preview isolation strategy that preserves required email markup.
-- Do not trust a browser-side role check. Enforce permissions in FastAPI dependencies for every protected route.
-- Do not log tokens, engine credentials, full message bodies or signature HTML.
-- Keep Rspamd-specific parsing and mutation isolated behind an adapter boundary.
+## 5. CI evidence and limits
 
-## SMTP sender authorization boundary
+The latest confirmed Docker integration run (#520, commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62`) passed image build, Compose startup, healthchecks, PostgreSQL migrations inside the container, authenticated engine API smoke test and 102 regression tests. Dependency audit and full-history Gitleaks scan also passed.
 
-Rspamd's `task:get_user()` only establishes that the message was submitted through an authenticated SMTP session. It does **not** prove that the authenticated mailbox is authorized to use the envelope sender returned by `task:get_from(1)`. OpenSigWeave currently uses that envelope sender to select the signature identity.
-
-Therefore, sender ownership must be enforced by Mailcow/Postfix **before** the message reaches the signature hook:
-
-- Keep Mailcow's sender verification enabled. Do not disable sender checks globally and do not grant a mailbox the broad `Allow to send as *` permission merely to make signature selection work.
-- Use Mailcow's mailbox alias and delegated-send-as controls to grant only the addresses that the authenticated mailbox may legitimately use. Mailcow's sender/receiver model documents that mailbox aliases and alias domains can be authorized send-as identities, while catch-all aliases do not automatically grant send-as permission.
-- Preserve Postfix's authenticated-sender/login mismatch rejection. Do not add broad `OK` exceptions to `smtpd_sender_restrictions` without a narrowly scoped, reviewed requirement.
-- Treat the SMTP envelope sender as the signature identity. Do not switch to the untrusted message `From:` header for authorization or identity selection.
-
-### Required Mailcow integration tests
-
-Run these tests in a disposable Mailcow environment before enabling the integration:
-
-| Authenticated SMTP identity | Envelope sender | Expected result |
-|---|---|---|
-| Mailbox address | Same mailbox address | Accepted; matching signature identity |
-| Mailbox address | Explicitly configured alias | Accepted; alias signature policy applied |
-| Mailbox address | Explicitly delegated send-as address | Accepted only when delegation is configured |
-| Mailbox address | Unrelated mailbox address | Rejected by Postfix before signature injection |
-| Mailbox address | Unauthorized address in same domain | Rejected by Postfix before signature injection |
-| Unauthenticated SMTP client | Any local sender | Rejected or relay denied according to the public SMTP policy |
-
-Also verify that the effective Postfix configuration still contains the authenticated sender/login mismatch enforcement after Mailcow updates and custom configuration reloads. Mailcow's current documentation exposes sender verification and per-mailbox send-as permissions through its UI; use those supported controls rather than copying deprecated global Postfix overrides.
-
-**Status:** This is a documented integration prerequisite, not a verified production setting. No Mailcow configuration has been changed and no end-to-end SMTP test has been run.
-
-## Rspamd MIME parser and CPU-feature prerequisite
-
-Multipart rewriting remains deliberately disabled in the OpenSigWeave Lua integration. The current code returns without mutation for every `multipart/*` message; it does not attempt to reconstruct nested boundaries, transfer encodings, inline resources or attachments with string operations.
-
-A deployment compatibility issue must be checked before implementing parser-backed multipart support: a Mailcow/Rspamd report documented that Rspamd 4.2.1 on a VM exposing the legacy `kvm64` CPU model without SSSE3 parsed a multipart container but lost its child MIME parts. The same image parsed the children when SSSE3 was exposed. The report's suggested VM workaround is a CPU model with at least SSSE3/SSE4.2, such as `x86-64-v2-AES` or `host`; select a model only after checking live-migration compatibility across the hypervisor cluster. This is an upstream parser/runtime issue, not something that can safely be repaired by Lua string handling.
-
-Before enabling multipart support in any deployment:
-- Verify that the guest CPU exposes SSSE3 (and inspect Rspamd startup logs for the Hyperscan/SSSE3 warning).
-- Confirm that `task:get_parts()` and `task:get_text_parts()` expose the expected leaf parts for representative `multipart/alternative`, `multipart/related`, `multipart/mixed` and nested `message/rfc822` messages.
-- Use Rspamd's MIME-aware rewrite facilities, preserve boundaries/attachments/inline Content-IDs, and honor the helper's returned content-transfer encoding. Do not assume every rewritten part is quoted-printable.
-- Keep unsupported or malformed structures unchanged and log the reason; never send a partially reconstructed message.
-
-References: [Rspamd task API](https://docs.rspamd.com/lua/rspamd_task/), [Rspamd MIME helper API](https://docs.rspamd.com/lua/lua_mime/), and [Mailcow issue #7398 documenting the SSSE3/kvm64 reproduction and workaround](https://github.com/mailcow/mailcow-dockerized/issues/7398).
-
-**Status:** This is a deployment preflight and design constraint. No Mailcow/Rspamd configuration has been changed, and no multipart rewriting has been enabled.
-
-## Host-header trust boundary
-
-The application now uses Starlette's `TrustedHostMiddleware`. The canonical host is derived from the fixed HTTPS `OIDC_REDIRECT_URI`; explicitly configured reverse-proxy aliases may be added through comma-separated `APP_ALLOWED_HOSTS`. Wildcard hosts are rejected. Reverse proxies must preserve the expected Host value or set a configured alias. A regression test rejects an untrusted Host header and accepts the canonical hostname.
-
-
-## Authentik service-token transport
-
-The Authentik attribute provider now rejects a configured base URL unless it uses HTTPS and contains no URL-embedded username/password, query or fragment. The HTTP client already verifies TLS certificates, uses a bounded timeout and does not follow redirects by default. Regression tests cover plaintext HTTP and embedded credentials. Do not disable TLS verification to work around certificate errors; configure a trusted CA instead.
-
-
-## OIDC email verification and transport headers
-
-The OIDC callback now accepts `email_verified` only when the claim is the JSON boolean `true`; string values such as `"false"` and numeric truthy values are rejected. Responses also include HSTS (`max-age=31536000`, deliberately without `includeSubDomains` or preload) and `X-Permitted-Cross-Domain-Policies: none`. HSTS must be delivered over the browser-facing HTTPS connection; terminate TLS at a trusted reverse proxy and do not expose the application directly over plaintext HTTP.
-
-
-## Shared request rate limiting
-
-Sensitive entry points now use atomic fixed-window counters stored in PostgreSQL (or
-SQLite for compatibility tests). Counters are shared across application workers and
-replicas; the application fails closed with HTTP 503 if the limiter database is
-unavailable. Requests above the configured threshold receive HTTP 429 and
-`Retry-After`.
-
-Default policies:
-- `/login`: 10 requests per client in 5 minutes.
-- `/auth`: 20 callback requests per client in 5 minutes.
-- `/api/signature/{email}`: 1,800 requests per client in 60 seconds.
-
-Override these values with `LOGIN_RATE_LIMIT`, `AUTH_CALLBACK_RATE_LIMIT` and
-`ENGINE_RATE_LIMIT`. The engine policy is deliberately higher because it serves
-mail-flow traffic; size it against measured peak message throughput before rollout.
-Only SHA-256 digests of bucket identifiers are stored, not raw addresses or engine
-credentials. Old counters are opportunistically pruned.
-
-Client addresses come from the TCP peer by default. Forwarding headers are ignored
-unless the immediate peer belongs to a network listed in `TRUSTED_PROXY_CIDRS`.
-Only configure networks for proxies under your control, and ensure those proxies
-overwrite/append X-Forwarded-For correctly. If this is omitted behind a reverse
-proxy, all clients may share the proxy's rate-limit bucket. Do not trust arbitrary
-client-supplied forwarding headers.
-
-The limiter migration (`0004_rate_limit_buckets`) must be applied before deploying
-this version. No in-memory fallback is used, so protection remains consistent across
-workers and replicas.
-
-
-## Frontend dependency delivery
-
-Quill 1.3.7 JavaScript and Snow theme CSS are now vendored under
-`static/vendor/quill/1.3.7/` and served from the application's own origin. The
-runtime no longer requests Quill from jsDelivr. The upstream MIT license is included
-beside the assets. This removes the Quill CDN as a runtime supply-chain dependency.
-
-Alpine.js 3.17.5 now uses the CSP-compatible build. Complex actions were moved
-into named Alpine data components, and the jsdom smoke test exercises the CSP
-expression evaluator against representative UI interactions. The jsDelivr asset
-is protected by a verified SHA-384 Subresource Integrity digest; CI downloads the
-pinned artifact and recalculates the digest on every run. The browser still makes
-one external runtime request for Alpine, so local vendoring remains a possible
-supply-chain improvement. Do not add `unsafe-eval` or broad `unsafe-inline`
-merely to make the current build pass. The policy remains report-only until
-browser-level violations and Quill's runtime style behavior have been reviewed.
-
-
-## Full Git-history secret scan
-
-CI now fetches the complete Git history and runs Gitleaks 8.30.1 with a
-SHA-256-verified release binary. Findings are fully redacted in logs. A custom
-rule detects hardcoded `ENGINE_API_KEY` assignments in addition to Gitleaks'
-built-in rules.
-
-Two exact historical commits that introduced the previously identified Rspamd
-engine credentials are allowlisted because the credentials remain in immutable
-history. This does not mark them safe: they remain compromised and require
-rotation wherever deployed. Only those introducing commits are excluded; new
-hardcoded engine credentials in later commits fail CI. The Quill minified
-upstream distribution has one narrowly scoped path exclusion for a
-generic-api-key-shaped false positive.
-
-
-The portal's inline JavaScript and inline style block have been moved into same-origin
-static assets. Inline event-handler attributes have been removed, and initially hidden
-Alpine elements now use `x-cloak`. This prepares the UI for a restrictive CSP but does
-not yet complete it: the standard Alpine build still evaluates expressions dynamically,
-and Alpine's CSP build migration plus browser-level verification remain required.
-
-
-## Content Security Policy rollout
-
-A restrictive `Content-Security-Policy-Report-Only` header is now emitted as a
-diagnostic baseline. It disallows inline scripts/event-handler attributes and
-inline styles in the proposed policy, while allowing the currently pinned Alpine
-CDN host. It is deliberately report-only: the standard Alpine build still requires
-dynamic evaluation and will report a violation. This is not represented as an
-enforced CSP and does not yet protect users by blocking violations.
-
-The portal's inline scripts, inline handlers and inline style block have been
-externalized. Alpine's CSP build (`@alpinejs/csp@3.17.5`) is now loaded instead of
-the standard build. The remaining complex preview/confirmation handlers and inline
-component state have been moved into named Alpine data components. The CSP build
-is exercised by the jsdom smoke test, including a portal component method call;
-the test also checks the actual template for accidental reintroduction of the
-standard build or complex inline expressions.
-
-The policy remains report-only. The Alpine CSP asset is still loaded from a
-version-pinned jsDelivr URL and does not yet have a verified SRI digest or local
-vendored copy. Browser-level testing of the full rendered page, CSP report review,
-Quill's runtime style behavior, and a restrictive enforced policy remain open.
-Do not enable a permissive `unsafe-eval`/ `unsafe-inline` policy.
+This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
