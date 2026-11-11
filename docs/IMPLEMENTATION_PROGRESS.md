@@ -117,3 +117,8 @@ The CI run proves the container build/startup and database/API smoke path. It do
 - Do not implement native Mailcow UI integration in this repository. That will be a separate future project.
 - Keep the current pull request as Draft until the standalone preview has been tested.
 - Never deploy to production Mailcow as part of this development work without explicit approval.
+
+
+### Signature file layout
+
+The canonical HTML file is `signatur/{Signaturname}/signature.html`; immutable UUID-based version snapshots live under `signatur/{Signaturname}/.versions/`. The database ID remains stable when the signature name and directory are changed.
