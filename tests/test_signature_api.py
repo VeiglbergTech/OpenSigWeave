@@ -233,7 +233,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_canonical_host_is_accepted(self):
-        client = TestClient(main.app, base_url="https://app.example.org")
+        client = TestClient(main.app, base_url="https://app.example.org", follow_redirects=False)
         response = client.get("/")
         self.assertEqual(response.status_code, 307)
 
