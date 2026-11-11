@@ -18,6 +18,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
+from rate_limiter import RateLimitMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
@@ -168,6 +169,8 @@ if not canonical_host or any(
     raise RuntimeError("APP_ALLOWED_HOSTS must contain only explicit hostnames; wildcard hosts are not allowed")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
+# SecurityHeadersMiddleware wraps rate limiting so even 429/503 responses are hardened.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 
 oauth = OAuth()

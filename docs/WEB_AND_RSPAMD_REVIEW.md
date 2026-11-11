@@ -85,3 +85,34 @@ The Authentik attribute provider now rejects a configured base URL unless it use
 ## OIDC email verification and transport headers
 
 The OIDC callback now accepts `email_verified` only when the claim is the JSON boolean `true`; string values such as `"false"` and numeric truthy values are rejected. Responses also include HSTS (`max-age=31536000`, deliberately without `includeSubDomains` or preload) and `X-Permitted-Cross-Domain-Policies: none`. HSTS must be delivered over the browser-facing HTTPS connection; terminate TLS at a trusted reverse proxy and do not expose the application directly over plaintext HTTP.
+
+
+## Shared request rate limiting
+
+Sensitive entry points now use atomic fixed-window counters stored in PostgreSQL (or
+SQLite for compatibility tests). Counters are shared across application workers and
+replicas; the application fails closed with HTTP 503 if the limiter database is
+unavailable. Requests above the configured threshold receive HTTP 429 and
+`Retry-After`.
+
+Default policies:
+- `/login`: 10 requests per client in 5 minutes.
+- `/auth`: 20 callback requests per client in 5 minutes.
+- `/api/signature/{email}`: 1,800 requests per client in 60 seconds.
+
+Override these values with `LOGIN_RATE_LIMIT`, `AUTH_CALLBACK_RATE_LIMIT` and
+`ENGINE_RATE_LIMIT`. The engine policy is deliberately higher because it serves
+mail-flow traffic; size it against measured peak message throughput before rollout.
+Only SHA-256 digests of bucket identifiers are stored, not raw addresses or engine
+credentials. Old counters are opportunistically pruned.
+
+Client addresses come from the TCP peer by default. Forwarding headers are ignored
+unless the immediate peer belongs to a network listed in `TRUSTED_PROXY_CIDRS`.
+Only configure networks for proxies under your control, and ensure those proxies
+overwrite/append X-Forwarded-For correctly. If this is omitted behind a reverse
+proxy, all clients may share the proxy's rate-limit bucket. Do not trust arbitrary
+client-supplied forwarding headers.
+
+The limiter migration (`0004_rate_limit_buckets`) must be applied before deploying
+this version. No in-memory fallback is used, so protection remains consistent across
+workers and replicas.

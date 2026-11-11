@@ -89,3 +89,11 @@ class SignatureRuleConditionDB(Base):
     kind = Column(String(64), nullable=False)
     key = Column(String(255), nullable=False, default="")
     value = Column(Text, nullable=False)
+
+
+class RateLimitBucketDB(Base):
+    """One hashed fixed-window counter per rate-limit identity and policy."""
+    __tablename__ = "rate_limit_buckets"
+    bucket_key = Column(String(64), primary_key=True)
+    window_start = Column(Integer, nullable=False)
+    request_count = Column(Integer, nullable=False)

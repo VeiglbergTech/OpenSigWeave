@@ -205,3 +205,16 @@ class SecurityRegressionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_sensitive_routes_use_shared_database_rate_limiting(self):
+        self.assertIn("from rate_limiter import RateLimitMiddleware", self.source)
+        self.assertIn("app.add_middleware(RateLimitMiddleware)", self.source)
+        limiter = (ROOT / "rate_limiter.py").read_text(encoding="utf-8")
+        self.assertIn("on_conflict_do_update", limiter)
+        self.assertIn("postgres_insert", limiter)
+        self.assertIn("sqlite_insert", limiter)
+        self.assertIn("request.client.host", limiter)
+        self.assertIn("TRUSTED_PROXY_CIDRS", limiter)
+        self.assertIn("status_code=429", limiter)
+        self.assertIn("status_code=503", limiter)
