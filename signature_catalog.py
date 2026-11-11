@@ -12,6 +12,7 @@ from models import (
     SignatureVersionDB,
 )
 from signature_storage import SignatureFileStore, StoredSignature
+from signature_sanitizer import sanitize_signature_html
 
 
 class SignatureNotFoundError(LookupError):
@@ -27,7 +28,8 @@ def _persist_version(
     version_number: int,
 ) -> tuple[SignatureVersionDB, StoredSignature]:
     version_uuid = uuid.uuid4()
-    stored = store.write(version_uuid, html_content)
+    sanitized_html = sanitize_signature_html(html_content)
+    stored = store.write(version_uuid, sanitized_html)
     version = SignatureVersionDB(
         id=version_uuid.hex,
         signature_id=signature_id,
