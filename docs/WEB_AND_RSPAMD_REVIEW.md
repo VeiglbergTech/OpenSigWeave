@@ -3,16 +3,20 @@
 **Reviewed:** `main.py`, `templates/index.html`, `templates/error.html`, `rspamd/opensigweave.lua`  
 **Baseline:** current `main` content as inspected on 2026-11-10
 
-## Web UI observations
+## Web UI security review
 
-1. The admin interface calls the unauthenticated domain CRUD routes directly (`/domains/` and `/domains/{id}`). This matches finding SEC-02 in the repository audit: hiding the admin tab in the template is not an authorization boundary.
-2. The preview renders signature HTML using Alpine `x-html`. This is an intentional HTML preview feature, but it means untrusted HTML can execute in the application origin unless a strict sanitization policy is enforced before preview. The current HTML import path removes literal script elements with a regular expression; that is not a complete HTML sanitizer and does not cover event-handler attributes, dangerous URL schemes, SVG or malformed markup.
-3. The template interpolates profile values into a JavaScript object literal. Those values need context-appropriate JavaScript serialization/escaping rather than relying on ordinary HTML template escaping.
-4. The profile settings link is opened in a new tab. Add `rel="noopener noreferrer"` when retaining `target="_blank"`.
-5. Quill is self-hosted and Alpine is pinned to 3.17.5 using its CSP-compatible build with a verified SHA-384 Subresource Integrity attribute. Alpine remains an external runtime dependency; local vendoring would remove that remaining CDN dependency.
-6. State-changing actions use cookie-authenticated `fetch` calls and no CSRF token is visible in the inspected template. Add CSRF tokens and server-side validation; SameSite cookies and Origin checks are defense-in-depth, not substitutes for a complete threat model.
-7. Logout is implemented as a GET route. Prefer POST with CSRF protection for a state-changing session action.
-8. The access-denied template uses normal Jinja interpolation for the message; retain autoescaping and do not change this to `safe`.
+The initial review findings have been addressed in the current branch:
+
+1. Domain create/update/delete routes enforce the authenticated administrator group in FastAPI; hiding the admin UI is not used as an authorization boundary.
+2. Signature previews are rendered in sandboxed iframes. Signature HTML is sanitized on write and again on read, and the editor uses Quill's clipboard parser rather than assigning untrusted HTML directly to the live DOM.
+3. Profile data is serialized with Jinja's JSON serializer and escaped for the HTML attribute context.
+4. Links opened in a new tab use `rel="noopener noreferrer"`.
+5. Quill is self-hosted. Alpine 3.17.5 uses the CSP-compatible build and a verified SHA-384 SRI attribute; its remaining CDN dependency is version-pinned.
+6. Browser state-changing requests carry a session-bound CSRF token, validated server-side by constant-time comparison. The UI attaches it to POST, PUT, PATCH and DELETE requests.
+7. Logout uses POST and is covered by the same CSRF protection.
+8. The access-denied template retains normal Jinja autoescaping; no unsafe interpolation was introduced.
+
+These controls have regression coverage, but the review remains a code-level assessment rather than a dynamic penetration test. The CSP remains report-only pending real-browser validation, and sandboxed preview behavior must be included in that validation.
 
 ## Rspamd integration review
 
