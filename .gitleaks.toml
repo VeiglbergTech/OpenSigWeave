@@ -1,5 +1,8 @@
 title = "OpenSigWeave secret scanning"
 
+[extend]
+useDefault = true
+
 [[rules]]
 id = "opensigweave-hardcoded-engine-key"
 description = "Hardcoded OpenSigWeave Rspamd engine credential"
@@ -7,6 +10,13 @@ regex = '''ENGINE_API_KEY\s*=\s*["']([^"']{20,})["']'''
 secretGroup = 1
 entropy = 3.0
 keywords = ["ENGINE_API_KEY"]
+
+[[rules.allowlists]]
+description = "Ignore documented example placeholders, not real credentials"
+regexTarget = "line"
+regexes = [
+  '''(?i)ENGINE_API_KEY\\s*=\\s*["'](?:REPLACE_WITH_|your_|changeme)''',
+]
 
 # These two historical commits introduced hardcoded engine credentials. They are
 # treated as compromised and must be rotated anywhere deployed. They remain in
