@@ -218,7 +218,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
 
 
     def test_request_body_limit_rejects_oversized_payloads(self):
-        client = TestClient(main.app)
+        client = TestClient(main.app, base_url="https://app.example.org")
         response = client.post(
             "/api/my-signature",
             content=b"x" * (1024 * 1024 + 1),
