@@ -416,6 +416,7 @@ function confirmModal() {
 
 document.addEventListener("alpine:init", () => {
     Alpine.data("domainManager", domainManager);
+    Alpine.data("domainSettingsModal", domainSettingsModal);
     Alpine.data("signatureManager", signatureManager);
     Alpine.data("ruleManager", ruleManager);
     Alpine.data("toastManager", toastManager);

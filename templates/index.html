@@ -279,7 +279,7 @@
 
     </div>
 
-    <div x-data="domainSettingsModal()" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
