@@ -68,6 +68,17 @@ class SignatureCatalogTests(unittest.TestCase):
                 mode=SignatureMode.AUTO, html_content="<p>Second</p>",
             )
 
+    def test_create_signature_rejects_case_insensitive_duplicate_name(self):
+        create_signature(
+            self.session, self.store, name="Corporate", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+        )
+        with self.assertRaises(ValueError):
+            create_signature(
+                self.session, self.store, name="corporate", domain_id=None,
+                mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+            )
+
     def test_create_signature_rejects_blank_name(self):
         with self.assertRaises(ValueError):
             create_signature(
