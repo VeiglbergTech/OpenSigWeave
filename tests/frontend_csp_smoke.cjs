@@ -15,7 +15,7 @@ const dom = new JSDOM(`<!doctype html>
   </div>
   <div id="toggle" x-data="toggleManager">
     <button id="toggle-button" type="button" @click="open()">Toggle</button>
-    <p id="toggle-content" x-show="show" x-cloak>Visible</p>
+    <span id="toggle-state" x-text="show ? 'open' : 'closed'"></span><p id="toggle-content" x-show="show" x-cloak>Visible</p>
   </div>
 </body></html>`, {
   url: "https://opensigweave.test/",
@@ -101,7 +101,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   document.getElementById("toggle-button").click();
   await tick();
-  assert.notEqual(document.getElementById("toggle-content").style.display, "none");
+  assert.equal(document.getElementById("toggle-state").textContent, "open");
+  assert.equal(document.getElementById("toggle-content").hasAttribute("x-cloak"), false);
 
   console.log("Alpine CSP evaluator smoke test passed");
   dom.window.close();
