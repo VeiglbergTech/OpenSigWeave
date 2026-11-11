@@ -71,12 +71,16 @@ class AuthentikAttributeProvider:
             ) if isinstance(raw_groups, list) else frozenset()
             groups = frozenset(group for group in groups if group)
 
+            claim_keys = ("username", "email", "name", "is_active", "uid", "path", "type")
+            claims = {key: user[key] for key in claim_keys if key in user}
+
             return IdentityAttributes(
                 first_name=first_name,
                 last_name=last_name,
                 title=_attribute_value(attributes.get("title")),
                 phone=_attribute_value(attributes.get("phone")),
                 groups=groups,
+                claims=claims,
                 attributes=attributes,
             )
         except (httpx.HTTPError, ValueError, TypeError):
