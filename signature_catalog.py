@@ -29,7 +29,7 @@ def _persist_version(
 ) -> tuple[SignatureVersionDB, StoredSignature]:
     version_uuid = uuid.uuid4()
     sanitized_html = sanitize_signature_html(html_content)
-    stored = store.write(version_uuid, sanitized_html)
+    stored = store.write(version_uuid, session.get(SignatureDB, signature_id).name, sanitized_html)
     version = SignatureVersionDB(
         id=version_uuid.hex,
         signature_id=signature_id,
@@ -92,7 +92,7 @@ def create_signature(
         session.rollback()
         if stored is not None:
             try:
-                store.delete(uuid.UUID(hex=version.id))
+                store.delete(name, uuid.UUID(hex=version.id))
             except Exception:
                 pass
         raise
@@ -123,7 +123,7 @@ def add_signature_version(
     stored = None
     try:
         sanitized_html = sanitize_signature_html(html_content)
-        stored = store.write(version_uuid, sanitized_html)
+        stored = store.write(version_uuid, signature.name, sanitized_html)
         version = SignatureVersionDB(
             id=version_uuid.hex,
             signature_id=signature_id,
@@ -140,7 +140,7 @@ def add_signature_version(
         session.rollback()
         if stored is not None:
             try:
-                store.delete(version_uuid)
+                store.delete(signature.name, version_uuid)
             except Exception:
                 pass
         raise
@@ -179,6 +179,7 @@ def add_signature_variant(
 
 def update_signature(
     session: Session,
+    store: SignatureFileStore,
     signature_id: str,
     *,
     name: str,
@@ -193,7 +194,19 @@ def update_signature(
         raise ValueError("name must not be empty")
     if domain_id is not None and session.get(DomainDB, domain_id) is None:
         raise ValueError("domain_id does not exist")
-    signature.name = name.strip()
+    old_name = signature.name
+    new_name = name.strip()
+    renamed = old_name != new_name
+    if renamed:
+        store.rename_signature(old_name, new_name)
+        versions = session.execute(
+            select(SignatureVersionDB).where(SignatureVersionDB.signature_id == signature_id)
+        ).scalars().all()
+        for version in versions:
+            version.relative_path = version.relative_path.replace(
+                f"signatur/{old_name}/", f"signatur/{new_name}/", 1
+            )
+    signature.name = new_name
     signature.domain_id = domain_id
     signature.scope = "DOMAIN" if domain_id is not None else "GLOBAL"
     signature.is_active = bool(is_active)
@@ -202,6 +215,11 @@ def update_signature(
         return signature
     except Exception:
         session.rollback()
+        if renamed:
+            try:
+                store.rename_signature(new_name, old_name)
+            except Exception:
+                pass
         raise
 
 
