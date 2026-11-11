@@ -31,7 +31,7 @@ from core.selection_repository import select_and_record_variant
 from core.modes import SignatureMode, resolve_mode
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
-from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature
+from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 attribute_provider: AttributeProvider = AuthentikAttributeProvider(
     base_url=os.environ.get("AUTHENTIK_URL", ""),
@@ -70,6 +70,15 @@ class SignatureCreateRequest(BaseModel):
     mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL"] = "AUTO"
     html_content: str = Field(min_length=1, max_length=65536)
     weight: int = Field(default=1, ge=1, le=1000)
+
+class SignatureUpdateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    domain_id: Optional[int] = None
+    is_active: bool = True
+
+class SignatureVariantUpdateRequest(BaseModel):
+    weight: int = Field(ge=1, le=1000)
+    is_enabled: bool
 
 class SignatureVersionCreateRequest(BaseModel):
     html_content: str = Field(min_length=1, max_length=65536)
@@ -401,6 +410,64 @@ def create_signature_endpoint(
         "variant_id": variant.id,
         "version_number": version.version_number,
     }
+
+
+@app.put("/api/admin/signatures/{signature_id}")
+def update_signature_endpoint(
+    signature_id: str,
+    payload: SignatureUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        signature = update_signature(
+            db, signature_id, name=payload.name,
+            domain_id=payload.domain_id, is_active=payload.is_active,
+        )
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"id": signature.id, "name": signature.name, "domain_id": signature.domain_id,
+            "scope": signature.scope, "is_active": signature.is_active}
+
+
+@app.get("/api/admin/signatures/{signature_id}/variants")
+def list_signature_variants(signature_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if db.get(SignatureDB, signature_id) is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    variants = (
+        db.query(SignatureVariantDB)
+        .filter(SignatureVariantDB.signature_id == signature_id)
+        .order_by(SignatureVariantDB.pool_name.asc(), SignatureVariantDB.id.asc())
+        .all()
+    )
+    return [{"id": item.id, "pool_name": item.pool_name, "weight": item.weight,
+             "is_enabled": item.is_enabled} for item in variants]
+
+
+@app.put("/api/admin/signature-variants/{variant_id}")
+def update_signature_variant_endpoint(
+    variant_id: str,
+    payload: SignatureVariantUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        variant = update_signature_variant(
+            db, variant_id, weight=payload.weight, is_enabled=payload.is_enabled,
+        )
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature variant not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"id": variant.id, "weight": variant.weight, "is_enabled": variant.is_enabled}
 
 
 @app.get("/api/admin/signatures/{signature_id}/versions")
