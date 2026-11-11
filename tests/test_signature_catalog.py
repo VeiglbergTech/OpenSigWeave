@@ -57,6 +57,14 @@ class SignatureCatalogTests(unittest.TestCase):
             "<p>Hello {{ first_name }}</p>",
         )
 
+    def test_create_signature_can_start_inactive(self):
+        signature, _, _ = create_signature(
+            self.session, self.store, name="Inactive", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>Inactive</p>",
+            is_active=False,
+        )
+        self.assertFalse(signature.is_active)
+
     def test_new_version_increments_version_number(self):
         signature, first, _ = create_signature(
             self.session,
