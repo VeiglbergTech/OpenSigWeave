@@ -104,6 +104,34 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
 
+    def test_mode_selection_reads_name_based_signature_version(self):
+        domain = main.DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Professional",
+                domain_id=None,
+                mode="PROFESSIONAL",
+                html_content="<p>Selected variant signature</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode="PROFESSIONAL",
+                db=self.db,
+            ))
+        self.assertIn("Selected variant signature", result["html"])
+
     def test_signature_text_marker_is_used_when_mode_header_is_invalid(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
