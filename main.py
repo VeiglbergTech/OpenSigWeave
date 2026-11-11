@@ -42,15 +42,28 @@ from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from signature_sanitizer import sanitize_signature_html
+from auth_config import (
+    is_valid_email, is_valid_password_hash, oidc_enabled_from_env,
+    verify_local_admin_password,
+)
 logger = logging.getLogger(__name__)
 
-attribute_provider: AttributeProvider = AuthentikAttributeProvider(
-    base_url=os.environ.get("AUTHENTIK_URL", ""),
-    api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
+OIDC_ENABLED = oidc_enabled_from_env()
+LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
+LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
+
+attribute_provider: AttributeProvider | None = (
+    AuthentikAttributeProvider(
+        base_url=os.environ.get("AUTHENTIK_URL", ""),
+        api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
+    )
+    if OIDC_ENABLED else None
 )
 
 async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes:
-    """Refresh identity data from Authentik and fall back to the last good DB snapshot."""
+    """Refresh identity data from Authentik or return empty attributes in local-only mode."""
+    if attribute_provider is None:
+        return IdentityAttributes()
     normalized_email = email.strip().casefold()
     try:
         fresh = await attribute_provider.get_attributes(normalized_email)
@@ -206,59 +219,65 @@ app.add_middleware(
     https_only=True,
     max_age=3600,
 )
-# Accept only the canonical OIDC application host and explicitly configured aliases.
-# This prevents Host-header injection in absolute URL generation and routing.
+# Validate explicit hostnames before accepting requests. In local-only mode there is
+# no OIDC redirect URI from which to derive the canonical host.
 extra_allowed_hosts = [
     host.strip().lower()
     for host in os.environ.get("APP_ALLOWED_HOSTS", "").split(",")
     if host.strip()
 ]
 canonical_host = (urlsplit(os.environ.get("OIDC_REDIRECT_URI", "")).hostname or "").lower()
-allowed_hosts = list(dict.fromkeys([canonical_host, *extra_allowed_hosts]))
-if not canonical_host or any(
+allowed_hosts = list(dict.fromkeys(([canonical_host] if OIDC_ENABLED and canonical_host else []) + extra_allowed_hosts))
+if not allowed_hosts or any(
     host == "*" or "/" in host or "@" in host or not host
     for host in allowed_hosts
 ):
-    raise RuntimeError("APP_ALLOWED_HOSTS must contain only explicit hostnames; wildcard hosts are not allowed")
+    raise RuntimeError("Configure APP_ALLOWED_HOSTS with explicit hostnames; wildcard hosts are not allowed")
+if OIDC_ENABLED:
+    oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
+        f"{os.environ.get('AUTHENTIK_URL', '').rstrip('/')}/application/o/"
+        f"{os.environ.get('AUTHENTIK_SLUG', '')}/.well-known/openid-configuration"
+    )
+    oidc_client_id = os.environ.get("OIDC_CLIENT_ID") or os.environ.get("CLIENT_ID")
+    oidc_client_secret = os.environ.get("OIDC_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
+    oidc_redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "")
+    redirect_parts = urlsplit(oidc_redirect_uri)
+    if (
+        not isinstance(oidc_discovery_url, str)
+        or not oidc_discovery_url.startswith("https://")
+        or not oidc_client_id
+        or not oidc_client_secret
+        or str(oidc_client_id).lower().startswith(("your_", "replace_"))
+        or str(oidc_client_secret).lower().startswith(("your_", "replace_"))
+        or redirect_parts.scheme != "https"
+        or not redirect_parts.hostname
+        or redirect_parts.username is not None
+        or redirect_parts.password is not None
+        or redirect_parts.query
+        or redirect_parts.fragment
+        or not redirect_parts.path.endswith("/auth")
+    ):
+        raise RuntimeError("Configure HTTPS OIDC discovery, client credentials and an explicit OIDC_REDIRECT_URI ending in /auth")
+    oauth.register(
+        name="oidc",
+        server_metadata_url=oidc_discovery_url,
+        client_id=oidc_client_id,
+        client_secret=oidc_client_secret,
+        client_kwargs={"scope": os.environ.get("OIDC_SCOPES", "openid email profile groups")}
+    )
+else:
+    if not is_valid_email(LOCAL_ADMIN_EMAIL):
+        raise RuntimeError("LOCAL_ADMIN_EMAIL must be a valid email address when OIDC_ENABLED=false")
+    if not is_valid_password_hash(LOCAL_ADMIN_PASSWORD_HASH):
+        raise RuntimeError("LOCAL_ADMIN_PASSWORD_HASH must be a valid scrypt hash when OIDC_ENABLED=false")
+    redirect_parts = urlsplit("")
+
 # Host validation runs before rate limiting so invalid Host requests cannot consume buckets.
 app.add_middleware(RateLimitMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 # SecurityHeadersMiddleware wraps both middlewares, including 400/429/503 responses.
 app.add_middleware(SecurityHeadersMiddleware)
-
-oauth = OAuth()
-oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
-    f"{os.environ.get('AUTHENTIK_URL', '').rstrip('/')}/application/o/"
-    f"{os.environ.get('AUTHENTIK_SLUG', '')}/.well-known/openid-configuration"
-)
-oidc_client_id = os.environ.get("OIDC_CLIENT_ID") or os.environ.get("CLIENT_ID")
-oidc_client_secret = os.environ.get("OIDC_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
-oidc_redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "")
-redirect_parts = urlsplit(oidc_redirect_uri)
-if (
-    not isinstance(oidc_discovery_url, str)
-    or not oidc_discovery_url.startswith("https://")
-    or not oidc_client_id
-    or not oidc_client_secret
-    or str(oidc_client_id).lower().startswith(("your_", "replace_"))
-    or str(oidc_client_secret).lower().startswith(("your_", "replace_"))
-    or redirect_parts.scheme != "https"
-    or not redirect_parts.hostname
-    or redirect_parts.username is not None
-    or redirect_parts.password is not None
-    or redirect_parts.query
-    or redirect_parts.fragment
-    or not redirect_parts.path.endswith("/auth")
-):
-    raise RuntimeError("Configure HTTPS OIDC discovery, client credentials and an explicit OIDC_REDIRECT_URI ending in /auth")
-oauth.register(
-    name="oidc",
-    server_metadata_url=oidc_discovery_url,
-    client_id=oidc_client_id,
-    client_secret=oidc_client_secret,
-    client_kwargs={"scope": os.environ.get("OIDC_SCOPES", "openid email profile groups")}
-)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/branding", StaticFiles(directory="branding"), name="branding")
@@ -309,9 +328,60 @@ def normalize_domain(value: str) -> str:
 # --- Web UI Routes ---
 @app.get("/login")
 async def login(request: Request):
-    return await oauth.oidc.authorize_redirect(request, oidc_redirect_uri)
+    if OIDC_ENABLED:
+        return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
+    csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
+    return templates.TemplateResponse("login.html", {
+        "request": request,
+        "csrf_token": csrf_token,
+        "error": request.query_params.get("error") == "invalid_credentials",
+    })
 
-@app.get("/auth")
+
+@app.post("/login")
+async def local_login(request: Request):
+    if OIDC_ENABLED:
+        raise HTTPException(status_code=404, detail="Local authentication is disabled")
+    try:
+        form = await request.form()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid login form")
+    expected_csrf = request.session.pop("login_csrf", None)
+    supplied_csrf = form.get("csrf_token", "")
+    if (
+        not isinstance(expected_csrf, str)
+        or not isinstance(supplied_csrf, str)
+        or not hmac.compare_digest(expected_csrf, supplied_csrf)
+    ):
+        raise HTTPException(status_code=403, detail="CSRF validation failed")
+
+    submitted_email = form.get("email", "")
+    submitted_password = form.get("password", "")
+    submitted_email = submitted_email.strip().casefold() if isinstance(submitted_email, str) else ""
+    password_ok = verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH)
+    email_ok = hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL)
+    if not (password_ok and email_ok):
+        request.session.clear()
+        csrf_token = secrets.token_urlsafe(32)
+        request.session["login_csrf"] = csrf_token
+        return templates.TemplateResponse("login.html", {
+            "request": request, "csrf_token": csrf_token, "error": True,
+        }, status_code=401)
+
+    request.session.clear()
+    request.session["user"] = {
+        "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
+        "email": LOCAL_ADMIN_EMAIL,
+        "email_verified": True,
+        "name": LOCAL_ADMIN_EMAIL.split("@", 1)[0],
+        "groups": ["signature-admins", "signature-users"],
+        "attributes": {},
+        "auth_source": "local",
+    }
+    request.session["csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(url="/", status_code=303)
+
+
 async def auth(request: Request):
     try:
         token = await oauth.oidc.authorize_access_token(request)
@@ -355,20 +425,32 @@ async def auth(request: Request):
             "name": str(user.get("name") or "")[:256],
             "groups": groups,
             "attributes": safe_attributes,
+            "auth_source": "oidc",
         }
     except Exception:
         request.session.clear()
         return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
     return RedirectResponse(url="/", status_code=303)
 
+
+if OIDC_ENABLED:
+    app.add_api_route("/auth", auth, methods=["GET"], name="oidc_callback")
+
+
 @app.post("/logout")
 async def logout(request: Request):
     request.session.clear()
-    authentik_url = os.environ.get('AUTHENTIK_URL', '').rstrip('/')
-    slug = os.environ.get('AUTHENTIK_SLUG', '')
-    return_url = urlunsplit((redirect_parts.scheme, redirect_parts.netloc, redirect_parts.path[:-len("auth")], "", ""))
+    if not OIDC_ENABLED:
+        return {"logout_url": "/login"}
+    authentik_url = os.environ.get("AUTHENTIK_URL", "").rstrip("/")
+    slug = os.environ.get("AUTHENTIK_SLUG", "")
+    return_url = urlunsplit((
+        redirect_parts.scheme, redirect_parts.netloc,
+        redirect_parts.path[:-len("auth")], "", "",
+    ))
     logout_url = f"{authentik_url}/application/o/{slug}/end-session/?post_logout_redirect_uri={return_url}"
     return {"logout_url": logout_url}
+
 
 @app.get("/")
 def read_root(request: Request, db: Session = Depends(get_db)):
@@ -445,7 +527,10 @@ def read_root(request: Request, db: Session = Depends(get_db)):
 
     return templates.TemplateResponse("index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
-        "user": user, "is_admin": is_admin, "authentik_settings_url": f"{os.environ.get('AUTHENTIK_URL', '')}/if/user/#/settings",
+        "user": user, "is_admin": is_admin, "authentik_settings_url": (
+            f"{os.environ.get('AUTHENTIK_URL', '')}/if/user/#/settings"
+            if OIDC_ENABLED else None
+        ),
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
         "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token
     })
