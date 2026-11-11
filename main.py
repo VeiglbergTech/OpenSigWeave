@@ -70,6 +70,7 @@ class SignatureCreateRequest(BaseModel):
     mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL"] = "AUTO"
     html_content: str = Field(min_length=1, max_length=65536)
     weight: int = Field(default=1, ge=1, le=1000)
+    is_active: bool = True
 
 class SignatureUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
@@ -400,6 +401,7 @@ def create_signature_endpoint(
             mode=SignatureMode(payload.mode),
             html_content=payload.html_content,
             weight=payload.weight,
+            is_active=payload.is_active,
             created_by=user.get("email"),
         )
     except ValueError as exc:
