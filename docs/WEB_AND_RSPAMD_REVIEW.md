@@ -132,3 +132,19 @@ Content Security Policy can be enforced. Do not add `unsafe-eval` or broad
 local vendoring, and a strict CSP remain open. Subresource Integrity is not a
 substitute for removing external runtime dependencies and remains to be completed
 for any CDN asset that stays in use.
+
+
+## Full Git-history secret scan
+
+CI now fetches the complete Git history and runs Gitleaks 8.30.1 with a
+SHA-256-verified release binary. Findings are fully redacted in logs. A custom
+rule detects hardcoded `ENGINE_API_KEY` assignments in addition to Gitleaks'
+built-in rules.
+
+Two exact historical commits that introduced the previously identified Rspamd
+engine credentials are allowlisted because the credentials remain in immutable
+history. This does not mark them safe: they remain compromised and require
+rotation wherever deployed. Only those introducing commits are excluded; new
+hardcoded engine credentials in later commits fail CI. The Quill minified
+upstream distribution has one narrowly scoped path exclusion for a
+generic-api-key-shaped false positive.
