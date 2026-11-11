@@ -230,6 +230,11 @@ local function inject_signature(task)
                 remaining, removed = remove_literal_once(remaining, escaped)
                 changed = changed or removed
             until not removed or not signature_marker.cleanup_all
+            local quoted_printable = signature_marker.raw:gsub("<", "=3C"):gsub(">", "=3E")
+            repeat
+                remaining, removed = remove_literal_once(remaining, quoted_printable)
+                changed = changed or removed
+            until not removed or not signature_marker.cleanup_all
             body = remaining
         else
             local cleaned, count = body:gsub("<%-%-%-%[[^\r\n]*", "")
