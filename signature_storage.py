@@ -56,6 +56,11 @@ class SignatureFileStore:
             raise SignatureStorageError("Invalid signature directory")
         return path
 
+    def ensure_name_available(self, signature_name: str) -> None:
+        path = self._signature_dir(signature_name)
+        if path.exists() or path.is_symlink():
+            raise SignatureStorageError("A signature with this name already has a storage directory")
+
     @staticmethod
     def _version_filename(version_id: uuid.UUID) -> str:
         if not isinstance(version_id, uuid.UUID):
@@ -145,6 +150,13 @@ class SignatureFileStore:
             if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
                 raise SignatureStorageError("Refusing to delete a non-regular signature asset")
             path.unlink()
+            versions_dir = path.parent
+            if versions_dir.exists() and not any(versions_dir.iterdir()):
+                versions_dir.rmdir()
+                canonical = versions_dir.parent / "signature.html"
+                if canonical.is_file() and not canonical.is_symlink():
+                    canonical.unlink()
+                versions_dir.parent.rmdir()
         except FileNotFoundError:
             return
         except SignatureStorageError:
