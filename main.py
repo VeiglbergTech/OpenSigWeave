@@ -336,7 +336,7 @@ async def login(request: Request):
     if OIDC_ENABLED:
         return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
     csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
-    return templates.TemplateResponse("login.html", {
+    return templates.TemplateResponse(request, "login.html", {
         "request": request,
         "csrf_token": csrf_token,
         "error": request.query_params.get("error") == "invalid_credentials",
@@ -372,7 +372,7 @@ async def local_login(request: Request):
         request.session.clear()
         csrf_token = secrets.token_urlsafe(32)
         request.session["login_csrf"] = csrf_token
-        return templates.TemplateResponse("login.html", {
+        return templates.TemplateResponse(request, "login.html", {
             "request": request, "csrf_token": csrf_token, "error": True,
         }, status_code=401)
 
@@ -469,7 +469,7 @@ def read_root(request: Request, db: Session = Depends(get_db)):
     is_admin = 'signature-admins' in user_groups
     is_user = 'signature-users' in user_groups
     if not is_admin and not is_user:
-        return templates.TemplateResponse("error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token})
+        return templates.TemplateResponse(request, "error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token})
 
     has_logo = os.path.isfile("branding/logo.png")
     has_favicon = os.path.isfile("branding/favicon.ico")
@@ -532,7 +532,7 @@ def read_root(request: Request, db: Session = Depends(get_db)):
     except TemplateError:
         parsed_template = "<p>Signature template is invalid. Please contact an administrator.</p>"
 
-    return templates.TemplateResponse("index.html", {
+    return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin, "authentik_settings_url": (
             f"{os.environ.get('AUTHENTIK_URL', '')}/if/user/#/settings"
