@@ -163,6 +163,37 @@ class SignatureCatalogApiTests(unittest.TestCase):
             ))
         self.assertIn("Named marker signature", result["html"])
 
+    def test_signature_text_marker_uses_unicode_casefold_matching(self):
+        domain = main.DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Straße",
+                domain_id=None,
+                mode="PROFESSIONAL",
+                html_content="<p>Unicode marker signature</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        code = __import__("hashlib").sha256("strasse".encode("utf-8")).hexdigest()[:4]
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode=None,
+                x_signature_name="STRASSE",
+                x_signature_code=code,
+                db=self.db,
+            ))
+        self.assertIn("Unicode marker signature", result["html"])
+
     def test_signature_text_marker_rejects_wrong_four_character_code(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
