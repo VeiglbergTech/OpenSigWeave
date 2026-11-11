@@ -9,6 +9,10 @@ from identity.attributes import IdentityAttributes
 logger = logging.getLogger(__name__)
 
 
+class IdentityProviderUnavailable(RuntimeError):
+    """Raised when a fresh identity lookup could not be completed reliably."""
+
+
 def _attribute_value(value) -> str:
     if isinstance(value, list):
         return str(value[0]) if value else ""
@@ -38,80 +42,49 @@ class AuthentikAttributeProvider:
 
     async def get_attributes(self, email: str) -> IdentityAttributes:
         if not self.base_url or not self.api_token:
-            return IdentityAttributes()
+            raise IdentityProviderUnavailable("Authentik attribute provider is not configured")
 
-        headers = {
-            "Authorization": f"Bearer {self.api_token}",
-            "Accept": "application/json",
-        }
+        headers = {"Authorization": f"Bearer {self.api_token}", "Accept": "application/json"}
         url = f"{self.base_url}/api/v3/core/users/"
-
         try:
-            async with httpx.AsyncClient(
-                verify=True,
-                timeout=httpx.Timeout(self.timeout),
-            ) as client:
-                response = await client.get(
-                    url,
-                    params={"search": email},
-                    headers=headers,
-                )
+            async with httpx.AsyncClient(verify=True, timeout=httpx.Timeout(self.timeout)) as client:
+                response = await client.get(url, params={"search": email}, headers=headers)
             if response.status_code != 200:
-                logger.warning("Authentik attribute lookup returned HTTP %s", response.status_code)
-                return IdentityAttributes()
-
+                raise IdentityProviderUnavailable(f"Authentik returned HTTP {response.status_code}")
             payload = response.json()
-            if not isinstance(payload, dict):
-                return IdentityAttributes()
-            results = payload.get("results", [])
-            if not isinstance(results, list):
-                return IdentityAttributes()
-
+            if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+                raise IdentityProviderUnavailable("Authentik returned an invalid user response")
             requested_email = email.strip().casefold()
-            exact_matches = [
-                item for item in results
-                if isinstance(item, dict)
-                and isinstance(item.get("email"), str)
-                and item["email"].strip().casefold() == requested_email
-            ]
-            if len(exact_matches) != 1:
-                logger.warning("Authentik lookup did not return exactly one matching account")
-                return IdentityAttributes()
+            matches = [item for item in payload["results"] if isinstance(item, dict)
+                       and isinstance(item.get("email"), str)
+                       and item["email"].strip().casefold() == requested_email]
+            if len(matches) != 1 or matches[0].get("is_active") is not True:
+                raise IdentityProviderUnavailable("Authentik did not return exactly one active matching account")
 
-            user = exact_matches[0]
-            if user.get("is_active") is not True:
-                logger.warning("Authentik account is inactive; profile attributes were not used")
-                return IdentityAttributes()
-
+            user = matches[0]
             name_parts = str(user.get("name") or "").split()
             attributes = user.get("attributes")
             if not isinstance(attributes, dict):
                 attributes = {}
-
-            first_name = name_parts[0] if name_parts else ""
-            last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else ""
-
             raw_groups = user.get("groups", [])
             groups = frozenset(
-                str(group.get("name") or group.get("pk") or "")
-                if isinstance(group, dict) else str(group)
-                for group in raw_groups
-                if isinstance(group, (str, int, dict))
+                str(group.get("name") or group.get("pk") or "") if isinstance(group, dict) else str(group)
+                for group in raw_groups if isinstance(group, (str, int, dict))
             ) if isinstance(raw_groups, list) else frozenset()
             groups = frozenset(group for group in groups if group)
-
             claim_keys = ("username", "email", "name", "is_active", "uid", "path", "type")
             claims = {key: user[key] for key in claim_keys if key in user}
-
             return IdentityAttributes(
-                first_name=first_name,
-                last_name=last_name,
+                first_name=name_parts[0] if name_parts else "",
+                last_name=" ".join(name_parts[1:]) if len(name_parts) > 1 else "",
                 title=_attribute_value(attributes.get("title")),
                 phone=_attribute_value(attributes.get("phone")),
                 groups=groups,
                 claims=claims,
                 attributes=attributes,
             )
-        except (httpx.HTTPError, ValueError, TypeError):
-            logger.warning("Authentik attribute lookup failed; using empty profile attributes")
-            return IdentityAttributes()
+        except IdentityProviderUnavailable:
+            raise
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+            logger.warning("Authentik attribute lookup failed: %s", type(exc).__name__)
+            raise IdentityProviderUnavailable("Authentik attribute lookup failed") from exc
