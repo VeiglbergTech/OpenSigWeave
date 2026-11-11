@@ -143,6 +143,8 @@ Requires the `X-Engine-Key` header. The endpoint returns the rendered HTML and t
 
 Rspamd may send one `X-OpenSigWeave-Mode` header with one of these values: `AUTO`, `PROFESSIONAL`, `INTERNAL` or `NONE`. The Lua adapter accepts this header only on authenticated submissions, rejects duplicate or unsupported values, forwards a valid value to the engine API and removes the control header from the message.
 
+If no valid mode header is present, the adapter also checks decoded HTML text parts for an Outlook marker. Supported forms are `<!-- OpenSigWeave:MODE=PROFESSIONAL -->` and an element carrying `data-opensigweave-mode="PROFESSIONAL"`. Replace the mode with `AUTO`, `INTERNAL` or `NONE` as required. Place the marker in the newest message section; markers found only after a recognized quoted-reply boundary are ignored. On replies where no quote boundary can be identified, marker detection fails closed. The marker is stripped from the outgoing HTML before the signature is inserted. A valid explicit mode header takes precedence over the HTML marker.
+
 ## Resolution precedence
 
 1. An administrator-disabled user override returns no signature.
@@ -156,6 +158,6 @@ The `NONE` mode intentionally returns an empty signature.
 ## Current limitations
 
 - Variant deletion and logical signature deletion are not implemented. Prefer deactivation so rule references and historical versions remain intact.
-- Outlook HTML marker parsing is not yet implemented.
+- Outlook marker detection uses decoded HTML text parts and strips the marker before injection. Client-specific preservation of the marker and all reply-format variants still require tests with real Outlook versions.
 - Rspamd MIME mutation and DKIM processing order still require isolated end-to-end verification.
 - The current selection and rule tests cover SQLite. The CI pipeline separately verifies PostgreSQL and SQLite schema migrations. Concurrent PostgreSQL selection tests and full application-level API tests remain pending.
