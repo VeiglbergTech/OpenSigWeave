@@ -101,7 +101,7 @@ jobs:
         run: docker build --pull --tag opensigweave:ci .
       - name: Validate standalone Docker Compose configuration
         run: |
-          printf 'POSTGRES_PASSWORD=ci-password\\n' > .env
+          printf 'POSTGRES_PASSWORD=ci-password\n' > .env
           docker compose config --quiet
       - name: Run regression tests
         env:
