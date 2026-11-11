@@ -52,6 +52,8 @@ window.toastManager = () => ({
     this.toasts.push({ msg: event.detail.msg });
   },
 });
+global.ruleManager = window.ruleManager;
+global.toastManager = window.toastManager;
 
 const imported = require("@alpinejs/csp");
 const Alpine = imported.default || imported;
