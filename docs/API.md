@@ -31,7 +31,8 @@ Example request:
 - `is_active` is optional and defaults to `true`.
 - The initial HTML version is written to the configured signature file store; the database stores its generated version ID, relative path, SHA-256 hash and size.
 - An initial variant is created in the same mode pool.
-- Dynamic identity values are rendered with HTML autoescaping.
+- HTML is sanitized with an allowlist before every version is written. Common email layout tags, table attributes and a constrained set of inline CSS properties are retained; scripts, event handlers, embedded active content, unsafe URL schemes and relative URLs are removed.
+- Dynamic identity values are rendered with HTML autoescaping after sanitization.
 
 ### Update signature metadata
 
