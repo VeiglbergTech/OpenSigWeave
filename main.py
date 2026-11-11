@@ -654,6 +654,7 @@ async def get_rspamd_signature(
                 sender=normalized_email,
                 domain=domain_part,
                 groups=identity_attributes.groups,
+                claims=identity_attributes.claims,
                 attributes=identity_attributes.attributes,
             )
             matched_rule = evaluate_rules(load_signature_rules(db), context)
