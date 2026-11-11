@@ -176,7 +176,7 @@
                     <label class="text-sm text-gray-300">Domain scope
                         <select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
                             <option value="">Global</option>
-                            <template x-for="domain in domains" :key="domain.id"><option :value="String(domain.id)" x-text="domain.domain_name"></option></template>
+                            <template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
                         </select>
                     </label>
                     <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
