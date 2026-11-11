@@ -164,6 +164,10 @@ class SignatureFileStore:
         except OSError as exc:
             raise SignatureStorageError("Unable to delete signature version") from exc
 
+    def restore_current(self, signature_name: str, version_id: uuid.UUID, expected_sha256: str) -> None:
+        content = self.read(signature_name, version_id, expected_sha256)
+        self._atomic_write(self._signature_dir(signature_name) / "signature.html", content.encode("utf-8"))
+
     def rename_signature(self, old_name: str, new_name: str) -> None:
         old_dir = self._signature_dir(old_name)
         new_dir = self._signature_dir(new_name)
