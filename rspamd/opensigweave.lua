@@ -606,9 +606,9 @@ local function inject_signature(task)
             decoded = remove_outlook_mode_markers(decoded)
             local spliced_html, _ = splice_body_logic(decoded, html_splitters, html_sig, true)
             local encoded_html = tostring(rspamd_util.encode_qp(spliced_html, 76) or spliced_html)
-            local new_headers = raw_headers:gsub("[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\\r\\n]*\\r?\\n", "")
-            new_headers = new_headers:gsub("[\\r\\n]+$", "")
-            task:set_message(new_headers .. "\\r\\nContent-Transfer-Encoding: quoted-printable\\r\\n\\r\\n" .. encoded_html)
+            local new_headers = raw_headers:gsub("[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\r\n]*\r?\n", "")
+            new_headers = new_headers:gsub("[\r\n]+$", "")
+            task:set_message(new_headers .. "\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html)
             task:set_milter_reply({
                 remove_headers = { ['Content-Transfer-Encoding'] = 0 },
                 add_headers = { ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 } }
