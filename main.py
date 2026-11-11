@@ -359,7 +359,7 @@ async def local_login(request: Request):
     submitted_password = form.get("password", "")
     submitted_email = submitted_email.strip().casefold() if isinstance(submitted_email, str) else ""
     password_ok = verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH)
-    email_ok = hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL)
+    email_ok = hmac.compare_digest(submitted_email.encode("utf-8"), LOCAL_ADMIN_EMAIL.encode("utf-8"))
     if not (password_ok and email_ok):
         request.session.clear()
         csrf_token = secrets.token_urlsafe(32)
