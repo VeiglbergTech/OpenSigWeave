@@ -167,10 +167,11 @@ if not canonical_host or any(
     for host in allowed_hosts
 ):
     raise RuntimeError("APP_ALLOWED_HOSTS must contain only explicit hostnames; wildcard hosts are not allowed")
+# Host validation runs before rate limiting so invalid Host requests cannot consume buckets.
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
-# SecurityHeadersMiddleware wraps rate limiting so even 429/503 responses are hardened.
-app.add_middleware(RateLimitMiddleware)
+# SecurityHeadersMiddleware wraps both middlewares, including 400/429/503 responses.
 app.add_middleware(SecurityHeadersMiddleware)
 
 oauth = OAuth()
