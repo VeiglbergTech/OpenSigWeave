@@ -122,7 +122,8 @@ def add_signature_version(
     version_uuid = uuid.uuid4()
     stored = None
     try:
-        stored = store.write(version_uuid, html_content)
+        sanitized_html = sanitize_signature_html(html_content)
+        stored = store.write(version_uuid, sanitized_html)
         version = SignatureVersionDB(
             id=version_uuid.hex,
             signature_id=signature_id,
