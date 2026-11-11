@@ -97,7 +97,7 @@ Example request:
 }
 ```
 
-Supported condition kinds: `sender_equals`, `domain_equals`, `group_contains`, `claim_equals` and `attribute_equals`. If a signature target is supplied, its mode must match the rule action mode.
+Supported condition kinds: `sender_equals`, `domain_equals`, `group_contains`, `claim_equals` and `attribute_equals`. `claim_equals` evaluates selected Authentik user fields (`username`, `email`, `name`, `is_active`, `uid`, `path`, `type`); `attribute_equals` evaluates the user's custom Authentik attributes. If a signature target is supplied, its mode must match the rule action mode.
 
 ### Update and delete rules
 
@@ -128,4 +128,4 @@ The `NONE` mode intentionally returns an empty signature.
 - Signature update/deactivate/delete and variant update/delete endpoints are not yet implemented.
 - Outlook HTML marker parsing is not yet implemented.
 - Rspamd MIME mutation and DKIM processing order still require isolated end-to-end verification.
-- The current selection and rule tests cover SQLite. Concurrent PostgreSQL integration tests and full application-level API tests remain pending.
+- The current selection and rule tests cover SQLite. The CI pipeline separately verifies PostgreSQL and SQLite schema migrations. Concurrent PostgreSQL selection tests and full application-level API tests remain pending.
