@@ -31,7 +31,7 @@ The current preview is not yet fully provider-neutral: interactive login uses OI
 
 OIDC UserInfo is expected to provide a stable subject, a verified email and a groups array. The current code requires `email_verified` to be the JSON boolean `true`.
 
-The current `AuthentikAttributeProvider` uses Authentik's API to retrieve active user records and custom attributes by exact email match. It supplies name, phone, title, groups and selected claims to the rule engine and renderer. If the Authentik API is unavailable or returns no unique active match, the provider returns empty profile attributes.
+The current `AuthentikAttributeProvider` uses Authentik's API to retrieve active user records and custom attributes by exact email match. It supplies name, phone, title, groups and selected claims to the rule engine and renderer. A confirmed missing or inactive account is an authoritative empty result and clears the cached attributes. Technical lookup failures, invalid responses and ambiguous matches fall back to the last successfully cached identity record in PostgreSQL; if no cache exists, the engine uses empty profile attributes.
 
 The logout endpoint also constructs an Authentik-specific end-session URL. A future generic provider interface must cover logout and attribute retrieval before another OIDC provider can be described as fully supported.
 
