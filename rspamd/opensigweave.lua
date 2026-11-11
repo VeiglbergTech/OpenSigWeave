@@ -145,13 +145,14 @@ local function find_signature_text_marker(task, is_reply)
         end
     end
     if #found ~= 1 then
-        if #found > 1 then rspamd_logger.warnx(task, "OpenSigWeave: multiple signature text markers; ignoring all") end
+        if #found > 1 then rspamd_logger.warnx(task, "OpenSigWeave: multiple signature text markers; refusing automatic fallback") end
+        if #found > 0 then return { name = "", code = "" } end
         return nil
     end
     local marker = found[1]
     if marker.name == "" or #marker.name > 255 or #marker.code ~= 4 or not marker.code:match("^[%w][%w][%w][%w]$") then
         rspamd_logger.warnx(task, "OpenSigWeave: malformed signature text marker")
-        return nil
+        return { name = "", code = "" }
     end
     marker.raw = "<---[" .. marker.name .. "]--[" .. marker.code .. "]--->"
     return marker
@@ -192,7 +193,7 @@ local function inject_signature(task)
     if mode_header_count == 0 then
         signature_marker = find_signature_text_marker(task, is_reply)
     end
-    if not requested_mode and not signature_marker then
+    if mode_header_count == 0 and not signature_marker then
         requested_mode = find_outlook_mode_marker(task, is_reply)
     end
 
