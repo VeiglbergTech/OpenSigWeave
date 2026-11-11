@@ -1,5 +1,6 @@
 """Authentik-backed employee attribute provider."""
 import logging
+from urllib.parse import urlsplit
 
 import httpx2 as httpx
 
@@ -19,6 +20,19 @@ def _attribute_value(value) -> str:
 class AuthentikAttributeProvider:
     def __init__(self, base_url: str, api_token: str, timeout: float = 5.0):
         self.base_url = base_url.rstrip("/")
+        if self.base_url:
+            parsed_url = urlsplit(self.base_url)
+            if (
+                parsed_url.scheme != "https"
+                or not parsed_url.hostname
+                or parsed_url.username is not None
+                or parsed_url.password is not None
+                or parsed_url.query
+                or parsed_url.fragment
+            ):
+                raise ValueError(
+                    "AUTHENTIK_URL must be an HTTPS URL without embedded credentials, query or fragment"
+                )
         self.api_token = api_token
         self.timeout = timeout
 
