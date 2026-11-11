@@ -3,6 +3,8 @@ import asyncio
 import os
 import tempfile
 import unittest
+
+from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from pathlib import Path
 from types import SimpleNamespace
@@ -213,6 +215,16 @@ class SignatureCatalogApiTests(unittest.TestCase):
         )
         result = main.get_my_signature(request, self.db)
         self.assertEqual(result["html_content"], "<p>Exact account</p>")
+
+
+    def test_request_body_limit_rejects_oversized_payloads(self):
+        client = TestClient(main.app)
+        response = client.post(
+            "/api/my-signature",
+            content=b"x" * (1024 * 1024 + 1),
+            headers={"Content-Type": "application/json"},
+        )
+        self.assertEqual(response.status_code, 413)
 
     def test_authenticated_non_member_cannot_use_personal_signature_api(self):
         outsider = SimpleNamespace(
