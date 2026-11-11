@@ -400,3 +400,8 @@ The current development work is on `architecture/refactor-foundation`. The pull 
 ## License
 
 OpenSigWeave is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+
+
+### Signature file layout
+
+Signature HTML is stored by name under `signatur/{Signaturname}/signature.html`. Immutable version snapshots are kept in the same signature directory under `.versions/`; PostgreSQL keeps the stable internal signature ID and version metadata. Renaming a signature renames its directory and updates stored relative paths without changing the internal ID.
