@@ -1,5 +1,5 @@
 """SQLAlchemy persistence models for OpenSigWeave."""
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, JSON
 
 from database import Base
 
@@ -97,3 +97,17 @@ class RateLimitBucketDB(Base):
     bucket_key = Column(String(64), primary_key=True)
     window_start = Column(Integer, nullable=False)
     request_count = Column(Integer, nullable=False)
+
+
+class IdentityCacheDB(Base):
+    """Last successfully retrieved Authentik attributes per normalized sender."""
+    __tablename__ = "identity_attribute_cache"
+    email = Column(String(320), primary_key=True)
+    first_name = Column(String(256), nullable=False, default="")
+    last_name = Column(String(256), nullable=False, default="")
+    title = Column(String(256), nullable=False, default="")
+    phone = Column(String(256), nullable=False, default="")
+    groups = Column(JSON, nullable=False, default=list)
+    claims = Column(JSON, nullable=False, default=dict)
+    attributes = Column(JSON, nullable=False, default=dict)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
