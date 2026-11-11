@@ -13,6 +13,9 @@ class SignatureStorageError(Exception):
     """Raised when signature file storage or integrity validation fails."""
 
 
+MAX_SIGNATURE_BYTES = 65536
+
+
 @dataclass(frozen=True)
 class StoredSignature:
     relative_path: str
@@ -41,6 +44,8 @@ class SignatureFileStore:
             raise TypeError("html_content must be a string")
         filename = self._filename(version_id)
         payload = html_content.encode("utf-8")
+        if len(payload) > MAX_SIGNATURE_BYTES:
+            raise SignatureStorageError("Signature asset exceeds the maximum allowed size")
         digest = hashlib.sha256(payload).hexdigest()
 
         temp_path = None
@@ -84,6 +89,8 @@ class SignatureFileStore:
                 file_info = os.fstat(descriptor)
                 if not stat.S_ISREG(file_info.st_mode):
                     raise SignatureStorageError("Signature asset is not a regular file")
+                if file_info.st_size > MAX_SIGNATURE_BYTES:
+                    raise SignatureStorageError("Signature asset exceeds the maximum allowed size")
                 with os.fdopen(descriptor, "rb", closefd=False) as asset:
                     payload = asset.read()
             finally:
