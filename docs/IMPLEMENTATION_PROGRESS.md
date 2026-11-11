@@ -101,3 +101,12 @@ A branch-wide source review identified and addressed the following findings on `
 
 
 - Rate-limit bucket identifiers are pseudonymized with a keyed HMAC. The HMAC key is derived with domain separation from the mandatory `SESSION_SECRET`; a database-only disclosure therefore does not make low-entropy client IP addresses directly enumerable. Regression tests verify that stored bucket keys are not plain SHA-256 hashes.
+
+### Rate-limit key configuration correction — 2026-11-11
+
+A review of the shared rate limiter found that its HMAC pseudonymization key was read from
+`SESSION_SECRET`, while the application and `.env.example` configure the session secret as
+`SECRET_KEY`. This mismatch caused protected requests to fail closed with HTTP 503 unless
+an undocumented second variable was manually supplied. The limiter now derives its
+domain-separated HMAC key from the configured `SECRET_KEY`, and regression tests cover
+both successful derivation and placeholder rejection. CI validation is pending.
