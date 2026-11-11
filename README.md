@@ -213,22 +213,20 @@ The Authentik attribute lookup uses the exact email address and requires exactly
 
 ### 2.5 Review the environment
 
-At minimum, check that these entries are no longer placeholders:
+Always configure these common values:
 
 ```dotenv
 POSTGRES_PASSWORD="..."
 SECRET_KEY="..."
 ENGINE_API_KEY="..."
-OIDC_DISCOVERY_URL="https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration"
-OIDC_REDIRECT_URI="https://signature.example.org/auth"
-OIDC_CLIENT_ID="..."
-OIDC_CLIENT_SECRET="..."
-AUTHENTIK_URL="https://auth.example.org"
-AUTHENTIK_SLUG="opensigweave"
-AUTHENTIK_API_TOKEN="..."
 ```
 
-Keep `APP_ALLOWED_HOSTS` empty unless you deliberately need additional hostnames. If you add entries, use explicit hostnames only, comma-separated, without schemes, ports, paths or wildcards. The hostname in `OIDC_REDIRECT_URI` is always the canonical hostname.
+Then configure only the selected authentication mode:
+
+- **OIDC enabled:** set `OIDC_ENABLED="true"` and configure `OIDC_DISCOVERY_URL`, `OIDC_REDIRECT_URI`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `AUTHENTIK_URL`, `AUTHENTIK_SLUG` and `AUTHENTIK_API_TOKEN`.
+- **Local-only:** set `OIDC_ENABLED="false"`, `APP_ALLOWED_HOSTS` to the exact portal hostname, and configure `LOCAL_ADMIN_EMAIL` plus the generated `LOCAL_ADMIN_PASSWORD_HASH`. OIDC and Authentik values may be empty or omitted.
+
+When OIDC is enabled, the hostname in `OIDC_REDIRECT_URI` is canonical. In local-only mode, `APP_ALLOWED_HOSTS` must contain at least one explicit hostname. Never use wildcards, schemes, ports or paths in this setting.
 
 ### 2.6 Validate and start Docker Compose
 
