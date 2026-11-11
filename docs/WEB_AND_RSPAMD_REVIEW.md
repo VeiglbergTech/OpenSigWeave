@@ -80,3 +80,8 @@ The application now uses Starlette's `TrustedHostMiddleware`. The canonical host
 ## Authentik service-token transport
 
 The Authentik attribute provider now rejects a configured base URL unless it uses HTTPS and contains no URL-embedded username/password, query or fragment. The HTTP client already verifies TLS certificates, uses a bounded timeout and does not follow redirects by default. Regression tests cover plaintext HTTP and embedded credentials. Do not disable TLS verification to work around certificate errors; configure a trusted CA instead.
+
+
+## OIDC email verification and transport headers
+
+The OIDC callback now accepts `email_verified` only when the claim is the JSON boolean `true`; string values such as `"false"` and numeric truthy values are rejected. Responses also include HSTS (`max-age=31536000`, deliberately without `includeSubDomains` or preload) and `X-Permitted-Cross-Domain-Policies: none`. HSTS must be delivered over the browser-facing HTTPS connection; terminate TLS at a trusted reverse proxy and do not expose the application directly over plaintext HTTP.
