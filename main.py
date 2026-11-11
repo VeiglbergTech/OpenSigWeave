@@ -512,8 +512,12 @@ def create_signature_rule(
 ):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    if payload.signature_id and db.get(SignatureDB, payload.signature_id) is None:
-        raise HTTPException(status_code=404, detail="Signature not found")
+    if payload.signature_id:
+        target_signature = db.get(SignatureDB, payload.signature_id)
+        if target_signature is None:
+            raise HTTPException(status_code=404, detail="Signature not found")
+        if target_signature.mode != payload.action_mode:
+            raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
     rule = SignatureRuleDB(
         id=uuid.uuid4().hex,
         name=payload.name.strip(),
@@ -553,8 +557,12 @@ def update_signature_rule(
     rule = db.get(SignatureRuleDB, rule_id)
     if rule is None:
         raise HTTPException(status_code=404, detail="Rule not found")
-    if payload.signature_id and db.get(SignatureDB, payload.signature_id) is None:
-        raise HTTPException(status_code=404, detail="Signature not found")
+    if payload.signature_id:
+        target_signature = db.get(SignatureDB, payload.signature_id)
+        if target_signature is None:
+            raise HTTPException(status_code=404, detail="Signature not found")
+        if target_signature.mode != payload.action_mode:
+            raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
     try:
         rule.name = payload.name.strip()
         rule.priority = payload.priority
