@@ -78,7 +78,7 @@ The CI run proves the container build/startup and database/API smoke path. It do
 
 - OIDC discovery and login are configurable, but the employee-attribute provider and logout URL are still Authentik-specific.
 - Authentik UserInfo must provide a verified email and a groups array. The application currently uses `signature-users` and `signature-admins`.
-- The Authentik API service token is used to retrieve active user profile attributes. If that lookup fails, profile attributes are empty.
+- The Authentik API service token is used to retrieve active user profile attributes on every signature lookup. Technical lookup failures fall back to the last successful PostgreSQL cache; confirmed missing or inactive accounts clear that cache. If no cached record exists, profile attributes are empty.
 
 ### Browser and CSP
 
