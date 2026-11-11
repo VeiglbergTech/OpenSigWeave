@@ -234,7 +234,7 @@ local function inject_signature(task)
         else
             local cleaned, count = body:gsub("<%-%-%-%[[^\r\n]*", "")
             local escaped_cleaned, escaped_count = cleaned:gsub("&[lL][tT];%-%-%-%[[^\r\n]*", "")
-            local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[dD]?[lL][tT];%-%-%-%[[^\r\n]*", "")
+            local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[Cc]%-%-%-%[[^\r\n]*", "")
             if count + escaped_count + qp_count > 0 then body = qp_cleaned; changed = true end
         end
         if changed then
@@ -382,7 +382,7 @@ local function inject_signature(task)
                 else
                     local cleaned, count = spliced:gsub("<%-%-%-%[[^\r\n]*", "")
                     local escaped_cleaned, escaped_count = cleaned:gsub("&[lL][tT];%-%-%-%[[^\r\n]*", "")
-                    local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[dD]?[lL][tT];%-%-%-%[[^\r\n]*", "")
+                    local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[Cc]%-%-%-%[[^\r\n]*", "")
                     spliced = qp_cleaned
                     removed = count + escaped_count + qp_count > 0
                 end
