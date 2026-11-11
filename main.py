@@ -218,9 +218,10 @@ def read_root(request: Request, db: Session = Depends(get_db)):
     last_name = ' '.join(name_parts[1:]) if len(name_parts) > 1 else ''
     email = user.get('email', '')
     
-    domain_part = email.split('@')[-1] if '@' in email else ''
-    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
-    override_obj = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
+    email = email.strip().casefold() if isinstance(email, str) else ""
+    domain_part = email.rsplit("@", 1)[-1] if "@" in email else ""
+    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name.ilike(domain_part)).first()
+    override_obj = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
     
     can_edit = False
     lock_reason = "Your email domain is not registered in this system."
@@ -305,19 +306,22 @@ def delete_domain(domain_id: int, request: Request, db: Session = Depends(get_db
 def get_my_signature(request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')
     if not user: raise HTTPException(status_code=401)
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == user.get('email')).first()
+    email = user.get("email")
+    email = email.strip().casefold() if isinstance(email, str) else ""
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
     return {"html_content": override.html_content if override else ""}
 
 @app.post("/api/my-signature")
 def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')
     if not user: raise HTTPException(status_code=401)
-    email = user.get('email')
-    domain_part = email.rsplit("@", 1)[-1].casefold() if isinstance(email, str) and "@" in email else ""
-    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
+    email = user.get("email")
+    email = email.strip().casefold() if isinstance(email, str) else ""
+    domain_part = email.rsplit("@", 1)[-1] if "@" in email else ""
+    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name.ilike(domain_part)).first()
     if not domain_obj or not domain_obj.is_active or not domain_obj.allow_overrides:
         raise HTTPException(status_code=403, detail="Personal signature overrides are disabled for this domain")
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     if override: override.html_content = req.html_content
@@ -329,8 +333,9 @@ def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depen
 def delete_my_signature(request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')
     if not user: raise HTTPException(status_code=401)
-    email = user.get('email')
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
+    email = user.get("email")
+    email = email.strip().casefold() if isinstance(email, str) else ""
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     if override:
@@ -342,18 +347,20 @@ def delete_my_signature(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/admin/overrides/{domain_name}")
 def get_domain_overrides(domain_name: str, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
-    overrides = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.endswith(f"@{domain_name}")).all()
+    normalized_domain = domain_name.strip().casefold()
+    overrides = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(f"%@{normalized_domain}")).all()
     return overrides
 
 @app.post("/api/admin/overrides")
 def save_admin_override(req: AdminOverrideSave, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == req.user_email).first()
+    normalized_email = req.user_email.strip().casefold()
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(normalized_email)).first()
     if override: 
         override.html_content = req.html_content
         override.is_disabled = req.is_disabled
     else: 
-        db.add(UserOverrideDB(user_email=req.user_email, html_content=req.html_content, is_disabled=req.is_disabled))
+        db.add(UserOverrideDB(user_email=normalized_email, html_content=req.html_content, is_disabled=req.is_disabled))
     db.commit()
     return {"status": "success"}
 
@@ -712,7 +719,7 @@ async def get_rspamd_signature(
         return empty_response
 
     override = db.query(UserOverrideDB).filter(
-        UserOverrideDB.user_email == normalized_email
+        UserOverrideDB.user_email.ilike(normalized_email)
     ).first()
     if override and override.is_disabled:
         return empty_response
