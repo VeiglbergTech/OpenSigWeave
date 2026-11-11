@@ -15,7 +15,7 @@ keywords = ["ENGINE_API_KEY"]
 description = "Ignore documented example placeholders, not real credentials"
 regexTarget = "line"
 regexes = [
-  '''(?i)ENGINE_API_KEY\\s*=\\s*["'](?:REPLACE_WITH_|your_|changeme)''',
+  '''(?i)ENGINE_API_KEY\s*=\s*["'](?:REPLACE_WITH_|your_|changeme)''',
 ]
 
 # These two historical commits introduced hardcoded engine credentials. They are
