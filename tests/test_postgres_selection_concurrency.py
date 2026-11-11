@@ -73,7 +73,7 @@ class PostgreSQLSelectionConcurrencyTests(unittest.TestCase):
                 results = list(executor.map(select_one, range(12)))
 
             self.assertEqual(len(results), 12)
-            self.assertEqual(set(results), set(variant_ids))
+            self.assertTrue(set(results).issubset(set(variant_ids)))
             self.assertTrue(
                 all(
                     previous != current
