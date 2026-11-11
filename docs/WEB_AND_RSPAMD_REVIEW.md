@@ -8,7 +8,7 @@
 
 ### Authentication and authorization
 
-- OIDC login uses discovery metadata and an explicit HTTPS callback URI.
+- OIDC login (when enabled) uses discovery metadata and an explicit HTTPS callback URI. `OIDC_ENABLED=false` disables OIDC setup/callback registration and uses a local administrator login verified against a salted scrypt hash.
 - The callback requires a subject, a syntactically valid email, `email_verified` as the JSON boolean `true`, and a well-formed groups array.
 - The previous session is cleared before the authenticated user object is stored.
 - The session stores only the application-required identity fields and selected profile attributes.
@@ -16,13 +16,13 @@
 - Personal signature routes require `signature-users` or `signature-admins`.
 - State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
 
-**Known provider limitation:** OIDC discovery and login are configurable, but the attribute provider and logout URL still use Authentik-specific APIs/paths. Authentik is the currently supported complete provider configuration. A generic OIDC provider cannot yet be assumed to provide all application behavior.
+**Known provider limitation:** In OIDC mode, the attribute provider and logout URL still use Authentik-specific APIs/paths. Authentik is the currently supported complete external provider configuration. A generic OIDC provider cannot yet be assumed to provide all application behavior. Local-only mode bypasses the external provider entirely and returns empty identity attributes.
 
 ### Session and HTTP controls
 
 - Startup rejects missing, short and known-placeholder session/engine secrets.
 - Session cookie is Secure, HttpOnly, SameSite=Lax, uses the `__Host-` prefix and has a one-hour lifetime.
-- TrustedHostMiddleware derives the canonical hostname from `OIDC_REDIRECT_URI`; additional hostnames must be explicitly configured. Wildcards are rejected.
+- TrustedHostMiddleware derives the canonical hostname from `OIDC_REDIRECT_URI` in OIDC mode. Local-only mode requires explicit `APP_ALLOWED_HOSTS`. Wildcards are rejected.
 - Security response headers include content-type/frame restrictions, HSTS and other hardening headers.
 - A global request-body limit rejects oversized/chunked requests; HTML fields and signature files have their own limits.
 - Database-backed rate limiting is shared across workers. The application fails closed if the limiter database is unavailable.
