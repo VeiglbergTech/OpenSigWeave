@@ -120,6 +120,43 @@ local function remove_outlook_mode_markers(html)
     return html
 end
 
+local function find_signature_text_marker(task, is_reply)
+    local found = {}
+    local parts = task:get_text_parts() or {}
+    for _, part in ipairs(parts) do
+        local data = part:get_content("raw_utf")
+        local content = data and tostring(data) or ""
+        if content ~= "" then
+            local is_html = part:is_html()
+            local quote_start = #content + 1
+            local splitters = is_html and html_splitters or plain_splitters
+            for _, pattern in ipairs(splitters) do
+                local start_pos = string.find(content, pattern)
+                if start_pos and start_pos < quote_start then quote_start = start_pos end
+            end
+            if not (is_reply and quote_start == #content + 1) then
+                local current = string.sub(content, 1, quote_start - 1)
+                -- HTML clients may encode angle brackets in text nodes.
+                current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
+                for name, code in string.gmatch(current, "<%-%-%-%-%[(.-)%]%-%-([%w]+)%-%-%->") do
+                    found[#found + 1] = { name = name, code = code }
+                end
+            end
+        end
+    end
+    if #found ~= 1 then
+        if #found > 1 then rspamd_logger.warnx(task, "OpenSigWeave: multiple signature text markers; ignoring all") end
+        return nil
+    end
+    local marker = found[1]
+    if marker.name == "" or #marker.name > 255 or #marker.code ~= 4 or not marker.code:match("^[%w][%w][%w][%w]$") then
+        rspamd_logger.warnx(task, "OpenSigWeave: malformed signature text marker")
+        return nil
+    end
+    marker.raw = "<---[" .. marker.name .. "]--[" .. marker.code .. "]--->"
+    return marker
+end
+
 local function inject_signature(task)
     local envfrom = task:get_from(1)
     local uname = task:get_user()
@@ -150,8 +187,12 @@ local function inject_signature(task)
     if mode_header_count > 0 then
         task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
     end
-    -- An explicit SMTP/header mode always wins over the Outlook HTML marker.
-    if not requested_mode then
+    -- X-OpenSigWeave-Mode has strict precedence over both body marker formats.
+    local signature_marker = nil
+    if mode_header_count == 0 then
+        signature_marker = find_signature_text_marker(task, is_reply)
+    end
+    if not requested_mode and not signature_marker then
         requested_mode = find_outlook_mode_marker(task, is_reply)
     end
 
@@ -236,6 +277,18 @@ local function inject_signature(task)
         local function splice_body_logic(decoded_payload, splitters, signature, is_html)
             local spliced = decoded_payload
             local success = false
+
+            -- A validly-shaped text marker is replaced at its exact position.
+            -- The API has already verified its four-character SHA-256 check.
+            if signature_marker then
+                local marker_pattern = "<%-%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
+                    .. "%]%-%-" .. signature_marker.code .. "%-%-%->"
+                local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
+                if count > 0 then
+                    rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
+                    return replaced, true
+                end
+            end
 
             if strip_device_signatures then
                 spliced = spliced:gsub("\r?\n[Ss]ent from my [^\r\n<]+", "")
@@ -483,6 +536,9 @@ local function inject_signature(task)
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
     if requested_mode then
         request_headers['X-OpenSigWeave-Mode'] = requested_mode
+    elseif signature_marker then
+        request_headers['X-OpenSigWeave-Signature'] = signature_marker.name
+        request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code
     end
 
     local scheduled = rspamd_http.request({
