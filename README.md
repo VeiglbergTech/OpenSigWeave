@@ -98,7 +98,7 @@ The standalone Docker stack starts the OpenSigWeave web application and its Post
    python3 -c "import secrets; print(secrets.token_urlsafe(48))"
    ```
    Put the generated values into `.env`. Keep this file private and do not commit it.
-3. Configure the OIDC application and Authentik attribute-provider settings in `.env`. The callback URL must exactly match the HTTPS `OIDC_REDIRECT_URI`. Authentik must provide a verified email and the `groups` claim. Grant test users the `signature-users` group and administrators the `signature-admins` group.
+3. Configure the OIDC application and Authentik attribute-provider settings in `.env`. The callback URL must exactly match the HTTPS `OIDC_REDIRECT_URI`. Authentik must provide `email_verified` as the boolean value `true`, plus a `groups` claim containing the user's group names. The example requests both `groups` and `attributes` scopes; configure the corresponding property mappings in the Authentik provider. Grant test users the `signature-users` group and administrators the `signature-admins` group.
 4. Validate the Compose configuration and start the stack:
    ```bash
    docker compose config
