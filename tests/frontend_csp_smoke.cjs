@@ -33,6 +33,11 @@ global.Document = dom.window.Document;
 global.HTMLTemplateElement = dom.window.HTMLTemplateElement;
 global.CustomEvent = dom.window.CustomEvent;
 global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+for (const key of Object.getOwnPropertyNames(dom.window)) {
+  if (typeof dom.window[key] === "function" && global[key] === undefined) {
+    global[key] = dom.window[key];
+  }
+}
 
 window.ruleManager = () => ({
   form: { action_mode: "AUTO" },
