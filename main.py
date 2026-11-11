@@ -376,7 +376,6 @@ async def local_login(request: Request):
     request.session["user"] = {
         "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
         "email": LOCAL_ADMIN_EMAIL,
-        "email_verified": True,
         "name": LOCAL_ADMIN_EMAIL.split("@", 1)[0],
         "groups": ["signature-admins", "signature-users"],
         "attributes": {},
