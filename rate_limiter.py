@@ -33,9 +33,9 @@ TRUSTED_PROXY_NETWORKS = _trusted_proxy_networks()
 
 def _rate_limit_hash_key() -> bytes:
     """Derive a separate pseudonymization key from the mandatory session secret."""
-    secret = os.environ.get("SESSION_SECRET", "")
+    secret = os.environ.get("SECRET_KEY", "")
     if len(secret) < 32 or secret.lower().startswith(("replace_", "changeme", "your_")):
-        raise RuntimeError("SESSION_SECRET must be configured before rate limiting")
+        raise RuntimeError("SECRET_KEY must be configured before rate limiting")
     return hmac.new(
         secret.encode("utf-8"),
         b"OpenSigWeave/rate-limit-bucket/v1",
