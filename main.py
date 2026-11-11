@@ -273,12 +273,13 @@ async def logout(request: Request):
 def read_root(request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')
     if not user: return RedirectResponse(url='/login')
-        
+    csrf_token = request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
+
     user_groups = user.get('groups', [])
     is_admin = 'signature-admins' in user_groups
     is_user = 'signature-users' in user_groups
     if not is_admin and not is_user:
-        return templates.TemplateResponse("error.html", {"request": request, "message": "You do not have permission to access the Signature Portal."})
+        return templates.TemplateResponse("error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token})
 
     has_logo = os.path.isfile("branding/logo.png")
     has_favicon = os.path.isfile("branding/favicon.ico")
@@ -340,8 +341,6 @@ def read_root(request: Request, db: Session = Depends(get_db)):
         })
     except TemplateError:
         parsed_template = "<p>Signature template is invalid. Please contact an administrator.</p>"
-
-    csrf_token = request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
 
     return templates.TemplateResponse("index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
