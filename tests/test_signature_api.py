@@ -177,6 +177,9 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 403)
 
     def test_user_cannot_delete_administrator_disabled_override(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True, allow_overrides=True,
+        ))
         self.db.add(main.UserOverrideDB(
             user_email="user@example.org",
             html_content="<p>Managed</p>",
@@ -224,6 +227,22 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 with self.assertRaises(main.HTTPException) as raised:
                     operation()
                 self.assertEqual(raised.exception.status_code, 403)
+
+
+    def test_personal_override_delete_respects_domain_policy(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True, allow_overrides=False,
+        ))
+        self.db.add(main.UserOverrideDB(
+            user_email="user@example.org",
+            html_content="<p>Existing</p>",
+            is_disabled=False,
+        ))
+        self.db.commit()
+        with self.assertRaises(main.HTTPException) as raised:
+            main.delete_my_signature(self.user_request, self.db)
+        self.assertEqual(raised.exception.status_code, 403)
+        self.assertEqual(self.db.query(main.UserOverrideDB).count(), 1)
 
     def test_personal_override_html_is_sanitized_before_database_storage(self):
         self.db.add(main.DomainDB(
