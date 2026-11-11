@@ -236,6 +236,40 @@ class SignatureCatalogApiTests(unittest.TestCase):
         client = TestClient(main.app, base_url="https://app.example.org", follow_redirects=False)
         response = client.get("/")
         self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.headers["strict-transport-security"], "max-age=31536000")
+        self.assertEqual(response.headers["x-permitted-cross-domain-policies"], "none")
+
+    def test_oidc_email_verified_claim_must_be_boolean_true(self):
+        base_user = {
+            "sub": "user-123",
+            "email": "user@example.org",
+            "groups": ["signature-users"],
+            "name": "Test User",
+        }
+        for claim in ("false", 1, False, None):
+            with self.subTest(email_verified=claim):
+                request = SimpleNamespace(session={"stale": "session"})
+                token = {"userinfo": {**base_user, "email_verified": claim}}
+                with patch.object(main.oauth.oidc, "authorize_access_token", new=AsyncMock(return_value=token)):
+                    response = asyncio.run(main.auth(request))
+                self.assertEqual(response.status_code, 303)
+                self.assertIn("authentication_failed", response.headers["location"])
+                self.assertEqual(request.session, {})
+
+    def test_oidc_accepts_boolean_true_email_verified_claim(self):
+        request = SimpleNamespace(session={"stale": "session"})
+        token = {"userinfo": {
+            "sub": "user-123",
+            "email": "user@example.org",
+            "email_verified": True,
+            "groups": ["signature-users"],
+            "name": "Test User",
+        }}
+        with patch.object(main.oauth.oidc, "authorize_access_token", new=AsyncMock(return_value=token)):
+            response = asyncio.run(main.auth(request))
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/")
+        self.assertEqual(request.session["user"]["email_verified"], True)
 
     def test_authenticated_non_member_cannot_use_personal_signature_api(self):
         outsider = SimpleNamespace(
