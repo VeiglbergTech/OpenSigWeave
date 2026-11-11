@@ -157,7 +157,11 @@ class SignatureFileStore:
             raise SignatureStorageError("Signature version is not valid UTF-8") from exc
 
     def delete(self, signature_name: str, version_id: uuid.UUID) -> None:
-        path = self._signature_dir(signature_name) / ".versions" / self._version_filename(version_id)
+        signature_dir = self._signature_dir(signature_name)
+        versions_dir = signature_dir / ".versions"
+        if signature_dir.is_symlink() or versions_dir.is_symlink():
+            raise SignatureStorageError("Signature directory is unsafe")
+        path = versions_dir / self._version_filename(version_id)
         try:
             info = path.lstat()
             if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
@@ -179,7 +183,10 @@ class SignatureFileStore:
 
     def restore_current(self, signature_name: str, version_id: uuid.UUID, expected_sha256: str) -> None:
         content = self.read(signature_name, version_id, expected_sha256)
-        self._atomic_write(self._signature_dir(signature_name) / "signature.html", content.encode("utf-8"))
+        signature_dir = self._signature_dir(signature_name)
+        if signature_dir.is_symlink():
+            raise SignatureStorageError("Signature directory is unsafe")
+        self._atomic_write(signature_dir / "signature.html", content.encode("utf-8"))
 
     def rename_signature(self, old_name: str, new_name: str) -> None:
         old_dir = self._signature_dir(old_name)
