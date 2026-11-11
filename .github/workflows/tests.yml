@@ -70,7 +70,9 @@ jobs:
       - name: Compile Python sources
         run: python -m compileall -q .
       - name: Check browser JavaScript syntax
-        run: node --check static/js/portal.js
+        run: |
+          node --check static/js/portal.js
+          node --check static/js/logout.js
       - name: Test Alpine CSP evaluator in a DOM
         run: |
           npm install --no-save --package-lock=false @alpinejs/csp@3.17.5 jsdom@26.1.0
