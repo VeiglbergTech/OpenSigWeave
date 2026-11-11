@@ -204,11 +204,28 @@ async def login(request: Request):
 async def auth(request: Request):
     try:
         token = await oauth.oidc.authorize_access_token(request)
-        user = token.get('userinfo')
-        if user: request.session['user'] = user
-    except Exception as e:
-        print(f"Login failed: {e}")
-    return RedirectResponse(url='/')
+        user = token.get("userinfo")
+        if not isinstance(user, dict) or not user.get("sub"):
+            raise ValueError("OIDC userinfo is missing the subject")
+        email = user.get("email")
+        if not isinstance(email, str) or not user.get("email_verified", False):
+            raise ValueError("OIDC account email is missing or unverified")
+        groups = user.get("groups", [])
+        if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
+            raise ValueError("OIDC groups claim has an invalid format")
+        request.session.clear()
+        request.session["user"] = {
+            "sub": user["sub"],
+            "email": email,
+            "email_verified": True,
+            "name": str(user.get("name") or ""),
+            "groups": groups,
+            "attributes": user.get("attributes") if isinstance(user.get("attributes"), dict) else {},
+        }
+    except Exception:
+        request.session.clear()
+        return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
 
 @app.post("/logout")
 async def logout(request: Request):
@@ -257,8 +274,8 @@ def read_root(request: Request, db: Session = Depends(get_db)):
     
     email = email.strip().casefold() if isinstance(email, str) else ""
     domain_part = email.rsplit("@", 1)[-1] if "@" in email else ""
-    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name.ilike(domain_part)).first()
-    override_obj = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
+    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
+    override_obj = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
     
     can_edit = False
     lock_reason = "Your email domain is not registered in this system."
@@ -366,11 +383,9 @@ def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depen
 
 @app.delete("/api/my-signature")
 def delete_my_signature(request: Request, db: Session = Depends(get_db)):
-    user = request.session.get('user')
-    if not user: raise HTTPException(status_code=401)
-    email = user.get("email")
-    email = email.strip().casefold() if isinstance(email, str) else ""
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
+    user = require_signature_user(request)
+    email = normalized_user_email(user)
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     if override:
@@ -834,6 +849,7 @@ async def get_rspamd_signature(
     phone = identity_attributes.phone
 
     try:
+        raw_template = sanitize_signature_html(raw_template)
         parsed = render_signature_template(raw_template, {
             "first_name": first_name,
             "last_name": last_name,
