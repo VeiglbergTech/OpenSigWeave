@@ -233,7 +233,9 @@ local function inject_signature(task)
             body = remaining
         else
             local cleaned, count = body:gsub("<%-%-%-%[[^\r\n]*", "")
-            if count > 0 then body = cleaned; changed = true end
+            local escaped_cleaned, escaped_count = cleaned:gsub("&[lL][tT];%-%-%-%[[^\r\n]*", "")
+            local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[dD]?[lL][tT];%-%-%-%[[^\r\n]*", "")
+            if count + escaped_count + qp_count > 0 then body = qp_cleaned; changed = true end
         end
         if changed then
             task:set_message(headers:gsub("[\r\n]+$", "") .. "\r\n\r\n" .. body)
@@ -379,8 +381,10 @@ local function inject_signature(task)
                     end
                 else
                     local cleaned, count = spliced:gsub("<%-%-%-%[[^\r\n]*", "")
-                    spliced = cleaned
-                    removed = count > 0
+                    local escaped_cleaned, escaped_count = cleaned:gsub("&[lL][tT];%-%-%-%[[^\r\n]*", "")
+                    local qp_cleaned, qp_count = escaped_cleaned:gsub("=3[dD]?[lL][tT];%-%-%-%[[^\r\n]*", "")
+                    spliced = qp_cleaned
+                    removed = count + escaped_count + qp_count > 0
                 end
                 if removed then rspamd_logger.infox(task, "OpenSigWeave: removed unused signature text marker") end
             end
