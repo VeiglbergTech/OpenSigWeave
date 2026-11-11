@@ -628,6 +628,7 @@ async def get_rspamd_signature(
     if override and override.is_disabled:
         return empty_response
 
+    identity_attributes = await attribute_provider.get_attributes(normalized_email)
     selected_from_variant = False
     signature_id = None
     if override:
@@ -689,7 +690,6 @@ async def get_rspamd_signature(
     if not raw_template:
         return empty_response
 
-    identity_attributes = await attribute_provider.get_attributes(normalized_email)
     first_name = identity_attributes.first_name or normalized_email.split("@")[0].capitalize()
     last_name = identity_attributes.last_name
     title = identity_attributes.title
