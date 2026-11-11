@@ -66,6 +66,16 @@ class SignatureRuleTests(unittest.TestCase):
         )
         self.assertEqual(evaluate_rules([rule], self.context), rule)
 
+
+    def test_oidc_claim_condition_matches_case_insensitively(self):
+        rule = SignatureRule(
+            "active-user",
+            10,
+            (RuleCondition("claim_equals", "true", key="is_active"),),
+            "PROFESSIONAL",
+        )
+        self.assertEqual(evaluate_rules([rule], self.context), rule)
+
     def test_unknown_condition_is_rejected(self):
         invalid = SignatureRule(
             "invalid",
