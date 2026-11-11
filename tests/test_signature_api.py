@@ -130,6 +130,34 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertIn("Domain Alice", result["html"])
         self.assertNotIn("Personal override", result["html"])
 
+    def test_personal_override_save_respects_domain_policy(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True, allow_overrides=False,
+        ))
+        self.db.commit()
+        with self.assertRaises(main.HTTPException) as raised:
+            main.save_my_signature(
+                main.OverrideUpdate(html_content="<p>Bypass</p>"),
+                self.user_request,
+                self.db,
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
+    def test_user_cannot_delete_administrator_disabled_override(self):
+        self.db.add(main.UserOverrideDB(
+            user_email="user@example.org",
+            html_content="<p>Managed</p>",
+            is_disabled=True,
+        ))
+        self.db.commit()
+        with self.assertRaises(main.HTTPException) as raised:
+            main.delete_my_signature(self.user_request, self.db)
+        self.assertEqual(raised.exception.status_code, 403)
+        override = self.db.query(main.UserOverrideDB).filter_by(
+            user_email="user@example.org"
+        ).one()
+        self.assertTrue(override.is_disabled)
+
     def test_non_admin_cannot_mutate_signature_catalog(self):
         payload = main.SignatureCreateRequest(
             name="Denied", mode="AUTO", html_content="<p>Denied</p>"
