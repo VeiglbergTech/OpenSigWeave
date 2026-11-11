@@ -169,3 +169,54 @@ def add_signature_variant(
     except Exception:
         session.rollback()
         raise
+
+
+def update_signature(
+    session: Session,
+    signature_id: str,
+    *,
+    name: str,
+    domain_id: int | None,
+    is_active: bool,
+) -> SignatureDB:
+    """Update mutable catalog metadata without changing a signature's mode."""
+    signature = session.get(SignatureDB, signature_id)
+    if signature is None:
+        raise SignatureNotFoundError(signature_id)
+    if not name.strip():
+        raise ValueError("name must not be empty")
+    if domain_id is not None and session.get(DomainDB, domain_id) is None:
+        raise ValueError("domain_id does not exist")
+    signature.name = name.strip()
+    signature.domain_id = domain_id
+    signature.scope = "DOMAIN" if domain_id is not None else "GLOBAL"
+    signature.is_active = bool(is_active)
+    try:
+        session.commit()
+        return signature
+    except Exception:
+        session.rollback()
+        raise
+
+
+def update_signature_variant(
+    session: Session,
+    variant_id: str,
+    *,
+    weight: int,
+    is_enabled: bool,
+) -> SignatureVariantDB:
+    """Update a variant's weight and availability."""
+    if weight < 1:
+        raise ValueError("weight must be positive")
+    variant = session.get(SignatureVariantDB, variant_id)
+    if variant is None:
+        raise SignatureNotFoundError(variant_id)
+    variant.weight = weight
+    variant.is_enabled = bool(is_enabled)
+    try:
+        session.commit()
+        return variant
+    except Exception:
+        session.rollback()
+        raise
