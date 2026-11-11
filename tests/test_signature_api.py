@@ -25,6 +25,7 @@ from core.modes import SignatureMode
 from database import Base
 from signature_storage import SignatureFileStore
 from identity.attributes import IdentityAttributes
+from models import IdentityCacheDB
 
 
 class SignatureCatalogApiTests(unittest.TestCase):
