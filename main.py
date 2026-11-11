@@ -912,17 +912,23 @@ async def get_rspamd_signature(
                 or not hmac.compare_digest(marker_code, expected_code)):
             return empty_response
         identity_attributes = await attribute_provider.get_attributes(normalized_email)
-        selected_signature = (
+        matching_signatures = (
             db.query(SignatureDB)
             .filter(
                 func.lower(SignatureDB.name) == marker_name.casefold(),
                 SignatureDB.is_active.is_(True),
                 (SignatureDB.domain_id.is_(None) | (SignatureDB.domain_id == domain_obj.id)),
             )
-            .first()
+            .all()
         )
-        if selected_signature is None:
+        domain_matches = [item for item in matching_signatures if item.domain_id == domain_obj.id]
+        global_matches = [item for item in matching_signatures if item.domain_id is None]
+        # Prefer one exact-domain signature; otherwise accept exactly one global
+        # signature. Duplicate names are ambiguous and must not select arbitrarily.
+        candidates = domain_matches if domain_matches else global_matches
+        if len(candidates) != 1:
             return empty_response
+        selected_signature = candidates[0]
         latest_version = (
             db.query(SignatureVersionDB)
             .filter(SignatureVersionDB.signature_id == selected_signature.id)
