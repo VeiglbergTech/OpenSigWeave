@@ -63,6 +63,10 @@ def create_signature(
     if domain_id is not None and session.get(DomainDB, domain_id) is None:
         raise ValueError("domain_id does not exist")
 
+    existing_names = session.execute(select(SignatureDB.name)).scalars().all()
+    if any(existing.casefold() == name.strip().casefold() for existing in existing_names):
+        raise ValueError("A signature with this name already exists")
+
     signature_id = uuid.uuid4().hex
     signature = SignatureDB(
         id=signature_id,
@@ -209,6 +213,11 @@ def update_signature(
         raise ValueError("domain_id does not exist")
     old_name = signature.name
     new_name = name.strip()
+    existing_names = session.execute(
+        select(SignatureDB.name).where(SignatureDB.id != signature_id)
+    ).scalars().all()
+    if any(existing.casefold() == new_name.casefold() for existing in existing_names):
+        raise ValueError("A signature with this name already exists")
     renamed = old_name != new_name
     if renamed:
         try:
