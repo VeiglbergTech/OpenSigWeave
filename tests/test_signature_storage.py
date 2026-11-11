@@ -22,6 +22,13 @@ class SignatureFileStoreTests(unittest.TestCase):
             self.assertEqual(store.read(version_id, stored.sha256), content)
             self.assertEqual((Path(directory) / stored.relative_path).stat().st_mode & 0o777, 0o600)
 
+
+    def test_oversized_signature_asset_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            with self.assertRaises(SignatureStorageError):
+                store.write(uuid.uuid4(), "x" * 65537)
+
     def test_existing_version_id_cannot_be_overwritten(self):
         with tempfile.TemporaryDirectory() as directory:
             store = SignatureFileStore(directory)
