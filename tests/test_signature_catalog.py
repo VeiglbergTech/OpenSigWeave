@@ -173,6 +173,31 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(list(Path(self.tempdir.name).glob("*.html")), [])
         self.assertEqual(self.session.execute(select(SignatureDB)).scalars().all(), [])
 
+    def test_signature_html_is_sanitized_before_storage(self):
+        signature, version, _ = create_signature(
+            self.session,
+            self.store,
+            name="Untrusted template",
+            domain_id=None,
+            mode=SignatureMode.AUTO,
+            html_content=(
+                '<p style="color: red; position: fixed" onclick="alert(1)">'
+                '{{ first_name }}'
+                '<img src="https://example.org/logo.png" onerror="alert(1)">'
+                '<a href="javascript:alert(1)">link</a>'
+                '<script>alert(1)</script>'
+                '</p>'
+            ),
+        )
+        stored = self.store.read(uuid.UUID(hex=version.id), version.sha256)
+        self.assertIn("{{ first_name }}", stored)
+        self.assertIn('src="https://example.org/logo.png"', stored)
+        self.assertNotIn("onclick", stored)
+        self.assertNotIn("onerror", stored)
+        self.assertNotIn("javascript:", stored)
+        self.assertNotIn("<script", stored)
+        self.assertNotIn("position", stored)
+
 
 if __name__ == "__main__":
     unittest.main()
