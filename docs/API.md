@@ -12,6 +12,8 @@ State-changing browser requests require the session CSRF token in the `X-CSRF-To
 
 The OIDC discovery URL and client credentials are configurable. However, the current implementation still uses Authentik-specific logout handling and an Authentik API-backed employee-attribute provider. Authentik is therefore the supported complete configuration for this preview; a generic OIDC-only provider is not yet fully supported.
 
+For Authentik, the default `profile` scope mapping provides group membership. The custom `opensigweave` scope mapping must provide `email_verified` as a JSON boolean and an `attributes` object. Authentik 2025.10 and newer no longer assert email verification by default; see the README for the required mapping and user attribute configuration.
+
 The application recognizes these group names:
 - `signature-users`: normal portal access and personal signature endpoints.
 - `signature-admins`: administrator access.
