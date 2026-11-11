@@ -57,6 +57,17 @@ class SignatureCatalogTests(unittest.TestCase):
             "<p>Hello {{ first_name }}</p>",
         )
 
+    def test_create_signature_rejects_duplicate_storage_name(self):
+        create_signature(
+            self.session, self.store, name="Shared name", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+        )
+        with self.assertRaises(Exception):
+            create_signature(
+                self.session, self.store, name="Shared name", domain_id=None,
+                mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+            )
+
     def test_create_signature_rejects_blank_name(self):
         with self.assertRaises(ValueError):
             create_signature(
@@ -136,6 +147,12 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(updated.scope, "DOMAIN")
         self.assertEqual(updated.domain_id, domain.id)
         self.assertFalse(updated.is_active)
+        version = self.session.execute(
+            select(SignatureVersionDB).where(SignatureVersionDB.signature_id == signature.id)
+        ).scalar_one()
+        self.assertEqual(version.relative_path, f"signatur/Renamed/.versions/{version.id}.html")
+        self.assertEqual(self.store.read("Renamed", uuid.UUID(hex=version.id), version.sha256), "<p>Signature</p>")
+        self.assertTrue((Path(self.tempdir.name) / "signatur" / "Renamed" / "signature.html").exists())
 
     def test_update_variant_weight_and_enabled_state(self):
         _, _, variant = create_signature(
@@ -155,7 +172,7 @@ class SignatureCatalogTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             update_signature(
-                self.session, signature.id, name="Original", domain_id=999,
+                self.session, self.store, signature.id, name="Original", domain_id=999,
                 is_active=True,
             )
 
