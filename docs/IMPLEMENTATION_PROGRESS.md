@@ -66,8 +66,8 @@ A branch-wide source review identified and addressed the following findings on `
 ### Security review limitations and follow-up
 
 - The review so far is static code review plus targeted unit/runtime regression tests, not a full dynamic penetration test.
-- Content Security Policy is not yet enforced. The current UI contains inline JavaScript and Alpine expressions; introducing a strict CSP requires a deliberate nonce/hash migration rather than a permissive policy that would create a false sense of protection.
-- Subresource Integrity hashes and local vendoring for third-party browser assets remain outstanding. Versions are pinned, but CDN delivery is still a supply-chain dependency.
+- Content Security Policy remains report-only. Inline scripts, event handlers and style blocks have been externalized; the portal now uses Alpine's CSP-compatible build 3.17.5 and named components for the complex actions. The report-only policy is not yet an enforced security boundary.
+- Subresource Integrity hashes and local vendoring for Alpine remain outstanding. Quill is self-hosted; Alpine's CSP build is pinned to 3.17.5 on jsDelivr and remains a third-party runtime dependency until vendored or protected with a verified SRI hash.
 - OIDC provider configuration must expose the standard `email_verified` claim. This is intentionally fail-closed; deployments that do not provide it must correct their provider mapping rather than silently accepting unverified identities.
 - GitHub branch protection and a complete Git-history secret scan remain outstanding. GitHub Actions are now pinned to immutable commit SHAs and checkout credential persistence is disabled.
 - Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
