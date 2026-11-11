@@ -22,7 +22,7 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB
 
 from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
@@ -75,6 +75,19 @@ class SignatureVersionCreateRequest(BaseModel):
 class SignatureVariantCreateRequest(BaseModel):
     pool_name: Literal["AUTO", "PROFESSIONAL", "INTERNAL"]
     weight: int = Field(default=1, ge=1, le=1000)
+
+class SignatureRuleConditionRequest(BaseModel):
+    kind: Literal["sender_equals", "domain_equals", "group_contains", "claim_equals", "attribute_equals"]
+    key: str = Field(default="", max_length=255)
+    value: str = Field(min_length=1, max_length=4096)
+
+class SignatureRuleCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    priority: int = Field(default=0, ge=-100000, le=100000)
+    action_mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL", "NONE"] = "AUTO"
+    signature_id: Optional[str] = None
+    is_enabled: bool = True
+    conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list)
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -458,6 +471,127 @@ def create_signature_variant_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"id": variant.id, "pool_name": variant.pool_name, "weight": variant.weight}
+
+
+@app.get("/api/admin/rules")
+def list_signature_rules(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    rules = (
+        db.query(SignatureRuleDB)
+        .order_by(SignatureRuleDB.priority.desc(), SignatureRuleDB.id.asc())
+        .all()
+    )
+    return [
+        {
+            "id": rule.id,
+            "name": rule.name,
+            "priority": rule.priority,
+            "action_mode": rule.action_mode,
+            "signature_id": rule.signature_id,
+            "is_enabled": rule.is_enabled,
+            "conditions": [
+                {"kind": item.kind, "key": item.key, "value": item.value}
+                for item in db.query(SignatureRuleConditionDB)
+                .filter(SignatureRuleConditionDB.rule_id == rule.id)
+                .order_by(SignatureRuleConditionDB.id.asc())
+                .all()
+            ],
+        }
+        for rule in rules
+    ]
+
+
+@app.post("/api/admin/rules", status_code=201)
+def create_signature_rule(
+    payload: SignatureRuleCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if payload.signature_id and db.get(SignatureDB, payload.signature_id) is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    rule = SignatureRuleDB(
+        id=uuid.uuid4().hex,
+        name=payload.name.strip(),
+        priority=payload.priority,
+        action_mode=payload.action_mode,
+        signature_id=payload.signature_id,
+        is_enabled=payload.is_enabled,
+    )
+    try:
+        db.add(rule)
+        db.flush()
+        db.add_all([
+            SignatureRuleConditionDB(
+                rule_id=rule.id,
+                kind=condition.kind,
+                key=condition.key,
+                value=condition.value,
+            )
+            for condition in payload.conditions
+        ])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"id": rule.id}
+
+
+@app.put("/api/admin/rules/{rule_id}")
+def update_signature_rule(
+    rule_id: str,
+    payload: SignatureRuleCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    rule = db.get(SignatureRuleDB, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    if payload.signature_id and db.get(SignatureDB, payload.signature_id) is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    try:
+        rule.name = payload.name.strip()
+        rule.priority = payload.priority
+        rule.action_mode = payload.action_mode
+        rule.signature_id = payload.signature_id
+        rule.is_enabled = payload.is_enabled
+        db.query(SignatureRuleConditionDB).filter(
+            SignatureRuleConditionDB.rule_id == rule_id
+        ).delete(synchronize_session=False)
+        db.add_all([
+            SignatureRuleConditionDB(
+                rule_id=rule_id,
+                kind=condition.kind,
+                key=condition.key,
+                value=condition.value,
+            )
+            for condition in payload.conditions
+        ])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"status": "updated"}
+
+
+@app.delete("/api/admin/rules/{rule_id}")
+def delete_signature_rule(
+    rule_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    rule = db.get(SignatureRuleDB, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Rule not found")
+    db.delete(rule)
+    db.commit()
+    return {"status": "deleted"}
 
 # ==========================================
 # THE RSPAMD COMPILATION ENGINE
