@@ -488,6 +488,7 @@ local function inject_signature(task)
         
         local is_multipart = string.find(ct_header, "multipart") ~= nil
         local is_flat_plain = not is_multipart and (ct_header == "" or string.find(ct_header, "text/plain") ~= nil)
+        local is_flat_html = not is_multipart and string.find(ct_header, "text/html", 1, true) ~= nil
 
         -- Do not rewrite raw multipart bodies with string patterns. Nested boundaries,
         -- transfer encodings and inline resources require a parser-backed rewrite path.
@@ -591,6 +592,27 @@ local function inject_signature(task)
                 }
             })
             
+        elseif is_flat_html then
+            local enc_raw = task:get_header_raw('Content-Transfer-Encoding')
+            local encoding = (enc_raw and tostring(enc_raw) or "7bit"):lower()
+            local decoded = tostring(raw_body)
+            if encoding:find("base64", 1, true) then
+                local dec = rspamd_util.decode_base64(raw_body)
+                if dec then decoded = tostring(dec) end
+            elseif encoding:find("quoted-printable", 1, true) then
+                local dec = rspamd_util.decode_qp(raw_body)
+                if dec then decoded = tostring(dec) end
+            end
+            decoded = remove_outlook_mode_markers(decoded)
+            local spliced_html, _ = splice_body_logic(decoded, html_splitters, html_sig, true)
+            local encoded_html = tostring(rspamd_util.encode_qp(spliced_html, 76) or spliced_html)
+            local new_headers = raw_headers:gsub("[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\\r\\n]*\\r?\\n", "")
+            new_headers = new_headers:gsub("[\\r\\n]+$", "")
+            task:set_message(new_headers .. "\\r\\nContent-Transfer-Encoding: quoted-printable\\r\\n\\r\\n" .. encoded_html)
+            task:set_milter_reply({
+                remove_headers = { ['Content-Transfer-Encoding'] = 0 },
+                add_headers = { ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 } }
+            })
         else
             local html_success, plain_success = false, false
             raw_body, html_success = process_mime_block(raw_body, "html")
