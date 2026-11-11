@@ -1,5 +1,6 @@
 """Database-backed, multi-worker rate limiting for sensitive endpoints."""
 import hashlib
+import hmac
 import ipaddress
 import os
 import time
@@ -30,6 +31,18 @@ def _trusted_proxy_networks():
 TRUSTED_PROXY_NETWORKS = _trusted_proxy_networks()
 
 
+def _rate_limit_hash_key() -> bytes:
+    """Derive a separate pseudonymization key from the mandatory session secret."""
+    secret = os.environ.get("SESSION_SECRET", "")
+    if len(secret) < 32 or secret.lower().startswith(("replace_", "changeme", "your_")):
+        raise RuntimeError("SESSION_SECRET must be configured before rate limiting")
+    return hmac.new(
+        secret.encode("utf-8"),
+        b"OpenSigWeave/rate-limit-bucket/v1",
+        hashlib.sha256,
+    ).digest()
+
+
 def client_identity(request: Request) -> str:
     """Resolve the client address without trusting arbitrary forwarding headers."""
     peer = request.client.host if request.client else ""
@@ -57,17 +70,29 @@ def client_identity(request: Request) -> str:
     return current.compressed
 
 
-def consume_rate_limit(bucket: str, limit: int, window_seconds: int, *, now=None, bind=None) -> int:
+def consume_rate_limit(
+    bucket: str,
+    limit: int,
+    window_seconds: int,
+    *,
+    now=None,
+    bind=None,
+    hash_key: bytes | None = None,
+) -> int:
     """Atomically increment a fixed-window counter shared by all application replicas.
 
-    Only a SHA-256 digest of the bucket identifier is persisted; raw IP addresses
-    and engine credentials are never written to the database.
+    Only a keyed HMAC of the bucket identifier is persisted. The key is derived
+    from SESSION_SECRET with domain separation; raw IP addresses and engine
+    credentials are never written to the database.
     """
     if limit < 1 or window_seconds < 1:
         raise ValueError("Rate-limit values must be positive")
     timestamp = int(time.time() if now is None else now)
     window_start = timestamp - timestamp % window_seconds
-    digest = hashlib.sha256(bucket.encode("utf-8")).hexdigest()
+    key = _rate_limit_hash_key() if hash_key is None else hash_key
+    if not isinstance(key, bytes) or len(key) < 16:
+        raise ValueError("Rate-limit hash key must contain at least 16 bytes")
+    digest = hmac.new(key, bucket.encode("utf-8"), hashlib.sha256).hexdigest()
     table = RateLimitBucketDB.__table__
     database = bind or engine
 

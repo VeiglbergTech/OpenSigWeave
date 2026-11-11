@@ -7,6 +7,7 @@ from unittest.mock import patch
 from starlette.requests import Request
 import ipaddress
 import hashlib
+import hmac
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -17,6 +18,8 @@ from sqlalchemy import create_engine
 
 from models import Base, RateLimitBucketDB
 from rate_limiter import client_identity, consume_rate_limit
+
+TEST_HASH_KEY = b"opensigweave-test-rate-limit-key"
 
 
 class RateLimiterTests(unittest.TestCase):
@@ -33,26 +36,27 @@ class RateLimiterTests(unittest.TestCase):
         self.tempdir.cleanup()
 
     def test_fixed_window_increments_atomically_and_enforces_limit(self):
-        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine), 1)
-        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=122, bind=self.engine), 2)
-        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=123, bind=self.engine), 3)
+        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY), 1)
+        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=122, bind=self.engine, hash_key=TEST_HASH_KEY), 2)
+        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=123, bind=self.engine, hash_key=TEST_HASH_KEY), 3)
 
     def test_new_window_resets_counter(self):
-        consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine)
-        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=180, bind=self.engine), 1)
+        consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY)
+        self.assertEqual(consume_rate_limit("login:client-a", 2, 60, now=180, bind=self.engine, hash_key=TEST_HASH_KEY), 1)
 
     def test_buckets_are_isolated(self):
-        consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine)
-        self.assertEqual(consume_rate_limit("login:client-b", 2, 60, now=121, bind=self.engine), 1)
+        consume_rate_limit("login:client-a", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY)
+        self.assertEqual(consume_rate_limit("login:client-b", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY), 1)
 
     def test_only_digest_is_persisted(self):
         identity = "198.51.100.25"
-        consume_rate_limit(f"login:{identity}", 2, 60, now=121, bind=self.engine)
+        consume_rate_limit(f"login:{identity}", 2, 60, now=121, bind=self.engine, hash_key=TEST_HASH_KEY)
         with self.engine.connect() as connection:
             stored = connection.execute(
                 RateLimitBucketDB.__table__.select()
             ).scalar_one()
         self.assertNotIn(identity, stored)
+        self.assertNotEqual(stored, hashlib.sha256(f"login:{identity}".encode("utf-8")).hexdigest())
 
 
 
@@ -62,12 +66,12 @@ class RateLimiterTests(unittest.TestCase):
         try:
             with ThreadPoolExecutor(max_workers=8) as executor:
                 counts = list(executor.map(
-                    lambda _: consume_rate_limit(bucket, 100, 60),
+                    lambda _: consume_rate_limit(bucket, 100, 60, hash_key=TEST_HASH_KEY),
                     range(32),
                 ))
             self.assertEqual(sorted(counts), list(range(1, 33)))
         finally:
-            digest = hashlib.sha256(bucket.encode("utf-8")).hexdigest()
+            digest = hmac.new(TEST_HASH_KEY, bucket.encode("utf-8"), hashlib.sha256).hexdigest()
             with application_engine.begin() as connection:
                 connection.execute(
                     delete(RateLimitBucketDB.__table__).where(
