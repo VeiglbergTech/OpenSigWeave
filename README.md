@@ -109,10 +109,34 @@ The application expects the OIDC UserInfo response to contain:
 - `sub`: stable user subject.
 - `email`: the user's email address.
 - `email_verified`: the JSON boolean `true`.
-- `groups`: a JSON array of group names.
-- `attributes`: a JSON object is used when available for custom profile attributes.
+- `groups`: a JSON array of group names. Authentik's default `profile` scope mapping includes group membership.
+- `attributes`: an object containing the profile fields `phone` and `title`.
 
-Configure Authentik scope/property mappings so these claims are present in UserInfo. The configured scopes in `.env.example` are `openid email profile groups attributes`. The `groups` and `attributes` scopes must be available from the provider; creating a scope name alone does not create the required property mapping.
+**Important for Authentik 2025.10 and newer:** the default `email` scope mapping returns `email_verified: false` unless you explicitly provide a verified value. OpenSigWeave rejects login unless the claim is the JSON boolean `true`. Do not simply hard-code it to true for unverified addresses.
+
+Create a custom scope mapping:
+
+1. In Authentik Admin, open **Customization → Property Mappings** and create a **Scope Mapping**.
+2. Name it `OpenSigWeave claims` and set its scope name to `opensigweave`.
+3. Use this expression:
+
+   ```python
+   return {
+       "email_verified": request.user.attributes.get("email_verified", False),
+       "attributes": {
+           "phone": request.user.attributes.get("phone", ""),
+           "title": request.user.attributes.get("title", ""),
+       },
+   }
+   ```
+
+4. Save the mapping and add it to the OAuth2/OpenID Provider's **Advanced protocol settings → Scopes** (scope mappings).
+5. In each Authentik user record, set the custom `email_verified` attribute to the boolean `true` only after the address has actually been verified. Set `phone` and `title` as user attributes when needed.
+6. Keep the default `profile` and `email` mappings assigned to the provider. Confirm that the UserInfo response contains a `groups` array and the expected custom claims.
+
+The configured scopes in `.env.example` are `openid email profile opensigweave`. A scope name is not enough by itself: the mapping must be assigned to the provider and the client must request that scope.
+
+Official Authentik references: [create an OAuth2/OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/), [OAuth2 provider scopes and email verification](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/), and [provider property mappings](https://docs.goauthentik.io/add-secure-apps/providers/property-mappings/).
 
 Create these groups in Authentik:
 
@@ -133,7 +157,16 @@ Set the following values to match your Authentik deployment:
 - `OIDC_DISCOVERY_URL`: normally `https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration`.
 - `OIDC_REDIRECT_URI`: the exact HTTPS callback URI registered above.
 
-The application currently uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account/API token with only the read permissions required to query users, then set `AUTHENTIK_API_TOKEN`. Do not use a personal administrator token if a restricted service account can be used.
+The application currently uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account and API token:
+
+1. Open **Directory → Users → New User** and select **Service Account**.
+2. Create a dedicated role under **Directory → Roles**.
+3. Grant that role the global **Can view User** permission. The current attribute provider queries `/api/v3/core/users/` by email and needs read access to user records; it does not need user write permissions.
+4. Assign the role to the service account.
+5. Open **Directory → Tokens and App passwords → Create**, select the service account and choose **API Token** as the intent.
+6. Copy the token when it is shown and set `AUTHENTIK_API_TOKEN` in `.env`.
+
+Do not use a personal administrator token. Prefer an expiring token and document its renewal date. See the [Authentik service account documentation](https://docs.goauthentik.io/users-sources/user/account-types/service-accounts/) and [permission management](https://docs.goauthentik.io/users-sources/access-control/manage_permissions/).
 
 The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is unavailable, the engine returns empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
 
