@@ -552,6 +552,7 @@ def list_signatures(request: Request, db: Session = Depends(get_db)):
         {
             "id": item.id,
             "name": item.name,
+            "marker_code": hashlib.sha256(item.name.casefold().encode("utf-8")).hexdigest()[:4],
             "domain_id": item.domain_id,
             "scope": item.scope,
             "mode": item.mode,
