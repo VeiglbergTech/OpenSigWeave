@@ -15,6 +15,8 @@ from signature_catalog import (
     add_signature_variant,
     add_signature_version,
     create_signature,
+    update_signature,
+    update_signature_variant,
 )
 from signature_storage import SignatureFileStore
 
@@ -100,6 +102,46 @@ class SignatureCatalogTests(unittest.TestCase):
                 self.store,
                 uuid.uuid4().hex,
                 "<p>Not found</p>",
+            )
+
+    def test_update_signature_metadata_and_deactivate(self):
+        signature, _, _ = create_signature(
+            self.session, self.store, name="Original", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+        )
+        domain = DomainDB(domain_name="example.org")
+        self.session.add(domain)
+        self.session.commit()
+
+        updated = update_signature(
+            self.session, signature.id, name="Renamed", domain_id=domain.id,
+            is_active=False,
+        )
+        self.assertEqual(updated.name, "Renamed")
+        self.assertEqual(updated.scope, "DOMAIN")
+        self.assertEqual(updated.domain_id, domain.id)
+        self.assertFalse(updated.is_active)
+
+    def test_update_variant_weight_and_enabled_state(self):
+        _, _, variant = create_signature(
+            self.session, self.store, name="Variant", domain_id=None,
+            mode=SignatureMode.INTERNAL, html_content="<p>Internal</p>",
+        )
+        updated = update_signature_variant(
+            self.session, variant.id, weight=7, is_enabled=False,
+        )
+        self.assertEqual(updated.weight, 7)
+        self.assertFalse(updated.is_enabled)
+
+    def test_update_signature_rejects_unknown_domain(self):
+        signature, _, _ = create_signature(
+            self.session, self.store, name="Original", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+        )
+        with self.assertRaises(ValueError):
+            update_signature(
+                self.session, signature.id, name="Original", domain_id=999,
+                is_active=True,
             )
 
     def test_failed_database_commit_removes_written_file(self):
