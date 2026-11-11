@@ -103,6 +103,66 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
 
+    def test_signature_text_marker_selects_named_active_signature(self):
+        domain = main.DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Professional",
+                domain_id=None,
+                mode="PROFESSIONAL",
+                html_content="<p>Named marker signature</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        code = __import__("hashlib").sha256(b"professional").hexdigest()[:4]
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode=None,
+                x_signature_name="pROfessional",
+                x_signature_code=code.upper(),
+                db=self.db,
+            ))
+        self.assertIn("Named marker signature", result["html"])
+
+    def test_signature_text_marker_rejects_wrong_four_character_code(self):
+        domain = main.DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Professional",
+                mode="PROFESSIONAL",
+                html_content="<p>Must not be selected</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode=None,
+                x_signature_name="Professional",
+                x_signature_code="0000",
+                db=self.db,
+            ))
+        self.assertEqual(result["html"], "")
+
     def test_domain_policy_disables_existing_personal_overrides(self):
         domain = main.DomainDB(
             domain_name="example.org",
