@@ -900,7 +900,7 @@ async def get_rspamd_signature(
 
     selected_from_variant = False
     signature_id = None
-    marker_requested = bool(x_signature_name or x_signature_code)
+    marker_requested = x_signature_name is not None or x_signature_code is not None
     explicit_mode = bool(x_signature_mode and x_signature_mode.strip())
     if marker_requested and not explicit_mode:
         # A text marker is a selector, not an authentication mechanism. It is
