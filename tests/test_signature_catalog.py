@@ -170,7 +170,7 @@ class SignatureCatalogTests(unittest.TestCase):
                     mode=SignatureMode.AUTO,
                     html_content="<p>Rollback</p>",
                 )
-        self.assertEqual(list(Path(self.tempdir.name).glob("*.html")), [])
+        self.assertFalse((Path(self.tempdir.name) / "signatur" / "Rollback").exists())
         self.assertEqual(self.session.execute(select(SignatureDB)).scalars().all(), [])
 
     def test_signature_html_is_sanitized_before_storage(self):
@@ -207,7 +207,7 @@ class SignatureCatalogTests(unittest.TestCase):
             self.session, self.store, signature.id,
             '<div onmouseover="alert(1)">Version 2<script>bad()</script></div>',
         )
-        stored = self.store.read(uuid.UUID(hex=version.id), version.sha256)
+        stored = self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256)
         self.assertIn("Version 2", stored)
         self.assertNotIn("onmouseover", stored)
         self.assertNotIn("<script", stored)
