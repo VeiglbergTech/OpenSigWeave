@@ -67,6 +67,55 @@ local plain_splitters = {
     '\r?\n> '
 }
 
+local function find_outlook_mode_marker(task)
+    local parts = task:get_text_parts() or {}
+    local found_modes = {}
+    for _, part in ipairs(parts) do
+        if part:is_html() then
+            local content_data = part:get_content("raw_utf")
+            local html = content_data and tostring(content_data) or ""
+            if html ~= "" then
+                -- A marker must occur in the newest message section, never solely in quoted history.
+                local quote_start = #html + 1
+                for _, pattern in ipairs(html_splitters) do
+                    local start_pos = string.find(html, pattern)
+                    if start_pos and start_pos < quote_start then quote_start = start_pos end
+                end
+                local current_html = string.sub(html, 1, quote_start - 1)
+                for value in string.gmatch(current_html, "<!%-%-%s*OpenSigWeave:MODE=([%a]+)%s*%-%->") do
+                    found_modes[string.upper(value)] = true
+                end
+                local lower_html = string.lower(current_html)
+                for value in string.gmatch(lower_html, "data%-opensigweave%-mode%s*=%s*[\"']([%a]+)[\"']") do
+                    found_modes[string.upper(value)] = true
+                end
+            end
+        end
+    end
+
+    local selected = nil
+    local count = 0
+    for value in pairs(found_modes) do
+        if value == "AUTO" or value == "PROFESSIONAL" or value == "INTERNAL" or value == "NONE" then
+            selected = value
+            count = count + 1
+        else
+            return nil
+        end
+    end
+    if count == 1 then return selected end
+    if count > 1 then
+        rspamd_logger.warnx(task, "OpenSigWeave: ignoring conflicting Outlook mode markers")
+    end
+    return nil
+end
+
+local function remove_outlook_mode_markers(html)
+    html = html:gsub("<!%-%-%s*OpenSigWeave:MODE=[%a]+%s*%-%->", "")
+    html = html:gsub("<[%w]+[^>]-data%-opensigweave%-mode%s*=%s*[\"'][%a]+[\"'][^>]*>.-</[%w]+%s*>", "")
+    return html
+end
+
 local function inject_signature(task)
     local envfrom = task:get_from(1)
     local uname = task:get_user()
@@ -96,6 +145,10 @@ local function inject_signature(task)
     end
     if mode_header_count > 0 then
         task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
+    end
+    -- An explicit SMTP/header mode always wins over the Outlook HTML marker.
+    if not requested_mode then
+        requested_mode = find_outlook_mode_marker(task)
     end
 
     local function http_callback(err, code, body, headers)
@@ -279,6 +332,9 @@ local function inject_signature(task)
             end
 
             local is_html = (target_type == "html")
+            if is_html then
+                decoded = remove_outlook_mode_markers(decoded)
+            end
             local spliced_payload, _ = splice_body_logic(decoded, is_html and html_splitters or plain_splitters, is_html and html_sig or plain_sig, is_html)
 
             local enc_payload = rspamd_util.encode_qp(spliced_payload, 76)
