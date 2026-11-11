@@ -38,6 +38,26 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
+      - name: Scan complete Git history for secrets (initial review)
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C /tmp gitleaks
+          /tmp/gitleaks git --redact=100 --report-format=json --report-path=/tmp/gitleaks-report.json --exit-code=0 --log-opts="--all" .
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("/tmp/gitleaks-report.json").read_text())
+          print(f"Gitleaks findings: {len(report)}")
+          for finding in report:
+              print(
+                  "rule={RuleID} file={File} commit={Commit} line={StartLine} fingerprint={Fingerprint}".format(
+                      **finding
+                  )
+              )
+          PY
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
       - name: Audit Python dependencies

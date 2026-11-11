@@ -116,3 +116,19 @@ client-supplied forwarding headers.
 The limiter migration (`0004_rate_limit_buckets`) must be applied before deploying
 this version. No in-memory fallback is used, so protection remains consistent across
 workers and replicas.
+
+
+## Frontend dependency delivery
+
+Quill 1.3.7 JavaScript and Snow theme CSS are now vendored under
+`static/vendor/quill/1.3.7/` and served from the application's own origin. The
+runtime no longer requests Quill from jsDelivr. The upstream MIT license is included
+beside the assets. This removes the Quill CDN as a runtime supply-chain dependency.
+
+Alpine.js remains version-pinned on jsDelivr for now. The current UI uses Alpine
+expressions that require a deliberate migration to the CSP build before a strict
+Content Security Policy can be enforced. Do not add `unsafe-eval` or broad
+`unsafe-inline` merely to make the current build pass. Alpine CSP migration,
+local vendoring, and a strict CSP remain open. Subresource Integrity is not a
+substitute for removing external runtime dependencies and remains to be completed
+for any CDN asset that stays in use.
