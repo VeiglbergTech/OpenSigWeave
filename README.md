@@ -17,8 +17,23 @@ The current preview is a **standalone Docker Compose deployment**. It runs OpenS
 - Signature catalog with HTML versions stored as files and metadata stored in PostgreSQL.
 - Signature variants, weighted selection and rules based on sender, domain, groups and attributes.
 - Four engine modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
+- Explicit signature selection through the message-body marker `<---[Signature name]--[4-character code]--->`; the X-OpenSigWeave-Mode header has priority.
 - HTML sanitization, sandboxed previews, CSRF protection, secure session cookies and shared database-backed rate limits.
 - Rspamd Lua adapter. Multipart messages are deliberately left unchanged by the current adapter.
+
+## Explicit signature marker
+
+The administrator signature catalog displays a ready-to-copy marker for each active or inactive signature. Its four-character check is the first four hexadecimal characters of the SHA-256 digest of the signature name after Unicode case-folding, encoded as UTF-8. Matching is case-insensitive.
+
+Example format:
+
+```text
+<---[Professional]--[a1b2]--->
+```
+
+Replace the illustrative code with the code displayed beside the signature in the administrator catalog. The marker selects that exact active signature for the sender's domain; it does not act as authentication or authorization. An invalid code, unknown name, inactive signature or ambiguous marker fails closed and does not fall back to automatic selection. A valid `X-OpenSigWeave-Mode` header takes precedence over a body marker.
+
+The current Rspamd adapter still leaves all top-level multipart messages unchanged. Therefore body-marker replacement currently applies only to non-multipart messages handled by the adapter. Multipart MIME support and full client interoperability remain separate integration work.
 
 ## Current limitations
 
