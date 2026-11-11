@@ -147,7 +147,10 @@
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="signature in signatures" :key="signature.id">
                             <tr>
-                                <td class="px-4 py-3 font-medium" x-text="signature.name"></td>
+                                <td class="px-4 py-3 font-medium">
+                                    <div x-text="signature.name"></div>
+                                    <div class="text-xs text-gray-500 font-mono mt-1" x-text="'&lt;---[' + signature.name + ']--[' + signature.marker_code + ']---&gt;'"></div>
+                                </td>
                                 <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
                                 <td class="px-4 py-3 text-sm" x-text="signature.scope === 'GLOBAL' ? 'Global' : 'Domain #' + signature.domain_id"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
