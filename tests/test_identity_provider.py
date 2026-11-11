@@ -13,6 +13,9 @@ class FakeResponse:
             "results": [
                 {
                     "name": "Alice Example",
+                    "username": "alice",
+                    "email": "alice@example.org",
+                    "is_active": True,
                     "attributes": {
                         "title": ["Systems Engineer"],
                         "phone": "+49 123",
@@ -58,6 +61,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
                 title="Systems Engineer",
                 phone="+49 123",
                 groups=frozenset({"sales", "signature-users"}),
+                claims={"username": "alice", "email": "alice@example.org", "name": "Alice Example", "is_active": True},
                 attributes={
                     "title": ["Systems Engineer"],
                     "phone": "+49 123",
