@@ -167,8 +167,15 @@ dynamic evaluation and will report a violation. This is not represented as an
 enforced CSP and does not yet protect users by blocking violations.
 
 The portal's inline scripts, inline handlers and inline style block have been
-externalized. Alpine expressions that require statement blocks, arrow functions,
-or iframe evaluation have been moved to named component methods. Remaining work
-is to load Alpine's CSP build, vendor or integrity-pin it, run browser-level
-regression tests, review the report-only violations, and only then move to an
-enforced CSP. Do not enable a permissive `unsafe-eval`/ `unsafe-inline` policy.
+externalized. Alpine's CSP build (`@alpinejs/csp@3.17.5`) is now loaded instead of
+the standard build. The remaining complex preview/confirmation handlers and inline
+component state have been moved into named Alpine data components. The CSP build
+is exercised by the jsdom smoke test, including a portal component method call;
+the test also checks the actual template for accidental reintroduction of the
+standard build or complex inline expressions.
+
+The policy remains report-only. The Alpine CSP asset is still loaded from a
+version-pinned jsDelivr URL and does not yet have a verified SRI digest or local
+vendored copy. Browser-level testing of the full rendered page, CSP report review,
+Quill's runtime style behavior, and a restrictive enforced policy remain open.
+Do not enable a permissive `unsafe-eval`/ `unsafe-inline` policy.
