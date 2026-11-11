@@ -100,7 +100,7 @@ class SignatureRuleCreateRequest(BaseModel):
     action_mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL", "NONE"] = "AUTO"
     signature_id: Optional[str] = None
     is_enabled: bool = True
-    conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list)
+    conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list, max_length=64)
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
@@ -110,6 +110,17 @@ if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secu
 ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
 if len(ENGINE_API_KEY) < 32 or ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_")):
     raise RuntimeError("ENGINE_API_KEY must be configured with a generated value of at least 32 characters")
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        return response
+
+
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user"):
@@ -122,8 +133,9 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
 # SessionMiddleware must wrap CSRFProtectionMiddleware so the session is available
 # while validating the anti-CSRF token.
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
-app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax", https_only=True)
+app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax", https_only=True, max_age=3600)
 
 oauth = OAuth()
 oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
@@ -188,6 +200,7 @@ def normalize_domain(value: str) -> str:
     normalized = value.strip().casefold().rstrip(".")
     if len(normalized) > 253 or not normalized or any(
         not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+        or not label.isascii()
         or not all(ch.isalnum() or ch == "-" for ch in label)
         for label in normalized.split(".")
     ):
