@@ -138,7 +138,7 @@ local function find_signature_text_marker(task, is_reply)
                 local current = string.sub(content, 1, quote_start - 1)
                 -- HTML clients may encode angle brackets in text nodes.
                 current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
-                for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[([%w]+)%]%-%-%->") do
+                for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->") do
                     found[#found + 1] = { name = name, code = code }
                 end
             end
