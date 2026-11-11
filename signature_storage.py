@@ -47,7 +47,7 @@ class SignatureFileStore:
                 or re.search(r'[\\/\x00-\x1f\x7f]', name)
                 or re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", name, re.I)):
             raise SignatureStorageError("Signature name is not a safe directory name")
-        if len(name.encode("utf-8")) > 255:
+        if len(name.encode("utf-8")) > 198:
             raise SignatureStorageError("Signature name is too long for filesystem storage")
         return name
 
