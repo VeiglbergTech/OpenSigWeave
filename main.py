@@ -304,7 +304,10 @@ def read_root(request: Request, db: Session = Depends(get_db)):
             can_edit = True
             lock_reason = ""
     
-    raw_template = (domain_obj.template_html if domain_obj else None) or "<p>No active domain template found for your email domain.</p>"
+    raw_template = sanitize_signature_html(
+        (domain_obj.template_html if domain_obj else None)
+        or "<p>No active domain template found for your email domain.</p>"
+    )
     
     try:
         parsed_template = render_signature_template(raw_template, {
@@ -375,7 +378,7 @@ def get_my_signature(request: Request, db: Session = Depends(get_db)):
     user = require_signature_user(request)
     email = normalized_user_email(user)
     override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
-    return {"html_content": override.html_content if override else ""}
+    return {"html_content": sanitize_signature_html(override.html_content) if override else ""}
 
 @app.post("/api/my-signature")
 def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
@@ -412,7 +415,15 @@ def get_domain_overrides(domain_name: str, request: Request, db: Session = Depen
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
     normalized_domain = normalize_domain(domain_name)
     overrides = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.endswith("@" + normalized_domain, autoescape=True)).all()
-    return overrides
+    return [
+        {
+            "id": item.id,
+            "user_email": item.user_email,
+            "html_content": sanitize_signature_html(item.html_content),
+            "is_disabled": item.is_disabled,
+        }
+        for item in overrides
+    ]
 
 @app.post("/api/admin/overrides")
 def save_admin_override(req: AdminOverrideSave, request: Request, db: Session = Depends(get_db)):
