@@ -103,7 +103,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
 
-    def test_signature_text_marker_selects_named_active_signature(self):
+    def test_signature_text_marker_is_used_when_mode_header_is_invalid(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         self.db.commit()
@@ -127,7 +127,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode=None,
+                x_signature_mode="INVALID-MODE",
                 x_signature_name="pROfessional",
                 x_signature_code=code.upper(),
                 db=self.db,
@@ -451,6 +451,25 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(stored.groups, [])
         self.assertEqual(stored.claims, {})
         self.assertEqual(stored.attributes, {})
+
+    def test_invalid_mode_header_falls_back_to_automatic_selection(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True,
+            template_html="<p>Automatic fallback</p>",
+        ))
+        self.db.commit()
+        with patch.object(
+            main.attribute_provider, "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode="NOT-A-VALID-MODE",
+                db=self.db,
+            ))
+        self.assertIn("Automatic fallback", result["html"])
 
 
 if __name__ == "__main__":
