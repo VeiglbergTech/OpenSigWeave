@@ -147,7 +147,7 @@ local function find_signature_text_marker(task, is_reply)
         end
     end
     if #found == 0 then
-        if marker_prefix_found then return { cleanup = true, valid = false } end
+        if marker_prefix_found then return { cleanup = true, valid = false, name = "", code = "" } end
         return nil
     end
     local marker = found[1]
@@ -157,6 +157,9 @@ local function find_signature_text_marker(task, is_reply)
     marker.valid = #found == 1 and marker.name ~= "" and #marker.name <= 255
         and #marker.code == 4 and marker.code:match("^[%w][%w][%w][%w]$") ~= nil
     if not marker.valid then
+        -- Send an explicitly invalid selector so AUTO cannot silently bypass a malformed marker.
+        marker.name = ""
+        marker.code = ""
         rspamd_logger.warnx(task, "OpenSigWeave: malformed or ambiguous signature text marker")
     end
     return marker
@@ -635,9 +638,9 @@ local function inject_signature(task)
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
     if requested_mode then
         request_headers['X-OpenSigWeave-Mode'] = requested_mode
-    elseif signature_marker and signature_marker.valid then
-        request_headers['X-OpenSigWeave-Signature'] = signature_marker.name
-        request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code
+    elseif signature_marker then
+        request_headers['X-OpenSigWeave-Signature'] = signature_marker.name or ""
+        request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code or ""
     end
 
     local scheduled = rspamd_http.request({
