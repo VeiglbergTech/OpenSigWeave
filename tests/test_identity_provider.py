@@ -93,8 +93,8 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
                 response.json = lambda results=results: {"results": results}
                 with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
                     with patch.object(client, "get", new=AsyncMock(return_value=response)):
-                        actual = await provider.get_attributes("alice@example.org")
-                self.assertEqual(actual, IdentityAttributes())
+                        with self.assertRaises(Exception):
+                            await provider.get_attributes("alice@example.org")
 
     async def test_http_authentik_url_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "HTTPS URL"):
@@ -106,7 +106,23 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_provider_credentials_return_empty_attributes(self):
         provider = AuthentikAttributeProvider(base_url="", api_token="")
-        self.assertEqual(await provider.get_attributes("alice@example.org"), IdentityAttributes())
+        with self.assertRaises(Exception):
+            await provider.get_attributes("alice@example.org")
+
+    async def test_successful_empty_attributes_are_a_valid_fresh_result(self):
+        provider = AuthentikAttributeProvider(
+            base_url="https://auth.example.org", api_token="test-token"
+        )
+        client = FakeClient()
+        response = FakeResponse()
+        response.json = lambda: {"results": [{
+            "name": "", "email": "alice@example.org", "is_active": True,
+            "attributes": {}, "groups": [],
+        }]}
+        with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
+            with patch.object(client, "get", new=AsyncMock(return_value=response)):
+                result = await provider.get_attributes("alice@example.org")
+        self.assertEqual(result, IdentityAttributes(claims={"email": "alice@example.org", "is_active": True}))
 
 
 if __name__ == "__main__":
