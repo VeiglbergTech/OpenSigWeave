@@ -115,7 +115,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('name="oidc"', self.source)
         self.assertIn('os.environ.get("OIDC_DISCOVERY_URL")', self.source)
         self.assertIn('not oidc_discovery_url.startswith("https://")', self.source)
-        self.assertIn("Configure an HTTPS OIDC discovery URL", self.source)
+        self.assertIn("explicit OIDC_REDIRECT_URI ending in /auth", self.source)
         self.assertNotIn("oauth.authentik.", self.source)
         self.assertIn("oauth.oidc.authorize_redirect", self.source)
         self.assertIn("oauth.oidc.authorize_access_token", self.source)
