@@ -83,3 +83,6 @@ A branch-wide source review identified and addressed the following findings on `
 - Inspected the original Rspamd engine credential in the earliest Git commit without reproducing its value. It is not an obvious placeholder and should continue to be treated as compromised. Credential rotation remains required wherever it may have been deployed; Git history has not been rewritten.
 
 - Added an explicit trusted-host allowlist. The canonical hostname is taken from the fixed HTTPS `OIDC_REDIRECT_URI`; additional reverse-proxy host aliases must be explicitly listed in `APP_ALLOWED_HOSTS`. Wildcard hosts are rejected at startup. Runtime tests verify that the canonical host is accepted and an attacker-controlled Host header is rejected. This closes a separate Host-header trust boundary; OIDC callback generation already uses the fixed redirect URI.
+
+
+- Hardened the Authentik attribute provider against bearer-token disclosure: a configured `AUTHENTIK_URL` must use HTTPS and cannot contain embedded credentials, query parameters or fragments. Added regression tests for plaintext HTTP and URL-embedded credentials. This prevents a mistyped or malicious base URL from sending the service-account token over an unencrypted connection.
