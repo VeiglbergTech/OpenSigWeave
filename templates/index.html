@@ -9,11 +9,11 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
     <script src="/static/vendor/quill/1.3.7/quill.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.17.5/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js"></script>
 
     <link href="/static/css/portal.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
 
     <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
@@ -69,7 +69,7 @@
                     <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
                         <h2 class="text-lg font-semibold text-white">Custom Override Signature</h2>
                         <div class="flex gap-2">
-                            <button @click="$dispatch('open-confirm', { action: 'clear-user' })" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
+                            <button @click="confirmClearUser()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
                             <button id="save-user-signature" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
                         </div>
                     </div>
@@ -84,14 +84,14 @@
                         <div id="quill-editor" class="h-[300px]"></div>
                     </div>
                     
-                    <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
+                    <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
                         <div class="flex justify-between items-center px-4 py-3">
                             <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                             <div class="flex gap-2">
                                 <button @click="$dispatch('open-sanitizer', 'personal')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                 </button>
-                                <button @click="$dispatch('open-preview', { html: document.getElementById('raw-html-editor').value })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
+                                <button @click="previewUserSignature()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
                             </div>
                         </div>
                         <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
@@ -118,10 +118,10 @@
                         <template x-for="domain in domains" :key="domain.id">
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
-                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="$dispatch('open-confirm', {domain: domain, action: 'toggle'})" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
                                 <td class="px-6 py-4 text-right space-x-3">
                                     <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Settings & Users</button>
-                                    <button @click="$dispatch('open-confirm', {domain: domain, action: 'delete'})" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                                    <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                                 </td>
                             </tr>
                         </template>
@@ -349,14 +349,14 @@
                                     </div>
                                     <div id="domain-quill-editor" class="h-[250px]"></div>
                                 </div>
-                                <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
+                                <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
                                     <div class="flex justify-between items-center px-4 py-3">
                                         <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                         <div class="flex gap-2">
                                             <button @click="$dispatch('open-sanitizer', 'domain')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                             </button>
-                                            <button @click="$dispatch('open-preview', { html: document.getElementById('domain-raw-html-editor').value, previewDomain: domain.domain_name })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
+                                            <button @click="previewDomainSignature(domain)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                         </div>
                                     </div>
                                     <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
@@ -394,14 +394,14 @@
                                 </div>
                                 <div id="admin-quill-editor" class="h-[200px]"></div>
                             </div>
-                            <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
+                            <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
                                 <div class="flex justify-between items-center px-4 py-3">
                                     <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                     <div class="flex gap-2">
                                         <button @click="$dispatch('open-sanitizer', 'admin')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                         </button>
-                                        <button @click="$dispatch('open-preview', { html: document.getElementById('admin-raw-html-editor').value, previewEmail: editingUserEmail })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
+                                        <button @click="previewAdminSignature(editingUserEmail)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                     </div>
                                 </div>
                                 <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
@@ -420,7 +420,7 @@
                                             </td>
                                             <td class="px-4 py-3 text-right space-x-3">
                                                 <button @click="loadAdminEditor(user.user_email, user.html_content, user.is_disabled)" class="text-blue-400 hover:text-blue-300">Edit</button>
-                                                <button @click="$dispatch('open-confirm', { action: 'clear-admin', targetId: user.id })" class="text-red-400 hover:text-red-300">Clear</button>
+                                                <button @click="confirmClearAdmin(user.id)" class="text-red-400 hover:text-red-300">Clear</button>
                                             </td>
                                         </tr>
                                     </template>
