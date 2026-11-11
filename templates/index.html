@@ -205,7 +205,7 @@
                     <label class="text-sm text-gray-300">Specific Signature (optional)
                         <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
                             <option value="">Any signature in selected mode</option>
-                            <template x-for="signature in signatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                            <template x-for="signature in signatures.filter(item => item.mode === form.action_mode)" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
                         </select>
                     </label>
                 </div>
