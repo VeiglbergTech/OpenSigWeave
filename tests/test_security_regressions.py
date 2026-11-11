@@ -229,7 +229,7 @@ class SecurityRegressionTests(unittest.TestCase):
         )
         for expression in expressions:
             with self.subTest(expression=expression[:100]):
-                self.assertNotRegex(expression, r"=>|;|\bif\s*\\(|\\?\\.")
+                self.assertNotRegex(expression, r"=>|;|\bif\s*\(|\?\.")
         self.assertNotIn("x-bind:srcdoc", template)
         for component in ("toastManager", "sanitizerModal", "previewModal", "addDomainModal", "confirmModal"):
             self.assertIn(f"function {component}()", portal_js)
