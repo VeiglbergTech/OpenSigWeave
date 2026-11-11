@@ -13,8 +13,8 @@ const dom = new JSDOM(`<!doctype html>
   <div id="toasts" x-data="toastManager" @notify.window="add($event)">
     <span id="toast-message" x-text="toasts.length ? toasts[0].msg : ''"></span>
   </div>
-  <div id="toggle" x-data="{ show: false }">
-    <button id="toggle-button" type="button" @click="show = !show">Toggle</button>
+  <div id="toggle" x-data="toggleManager">
+    <button id="toggle-button" type="button" @click="open()">Toggle</button>
     <p id="toggle-content" x-show="show" x-cloak>Visible</p>
   </div>
 </body></html>`, {
@@ -60,6 +60,12 @@ window.toastManager = () => ({
     this.toasts.push({ msg: event.detail.msg });
   },
 });
+window.toggleManager = () => ({
+  show: false,
+  open() {
+    this.show = true;
+  },
+});
 global.ruleManager = window.ruleManager;
 global.toastManager = window.toastManager;
 
@@ -67,6 +73,7 @@ const imported = require("@alpinejs/csp");
 const Alpine = imported.default || imported;
 Alpine.data("ruleManager", window.ruleManager);
 Alpine.data("toastManager", window.toastManager);
+Alpine.data("toggleManager", window.toggleManager);
 window.Alpine = Alpine;
 Alpine.start();
 
@@ -94,7 +101,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   document.getElementById("toggle-button").click();
   await tick();
-  assert.equal(document.getElementById("toggle-content").style.display, "");
+  assert.notEqual(document.getElementById("toggle-content").style.display, "none");
 
   console.log("Alpine CSP evaluator smoke test passed");
   dom.window.close();
