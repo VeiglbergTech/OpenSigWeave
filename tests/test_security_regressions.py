@@ -192,6 +192,16 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('html = html:gsub("%s+data%-opensigweave%-mode', remover)
         self.assertNotIn('>.-</', remover)
 
+    def test_rspamd_fails_closed_for_multipart_until_safe_rewriter_exists(self):
+        lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
+        guard = lua.index('if is_multipart then')
+        warning = lua.index('multipart message left unchanged', guard)
+        early_return = lua.index('return', warning)
+        raw_rewriter = lua.index('process_mime_block(raw_body, "html")')
+        self.assertLess(guard, warning)
+        self.assertLess(warning, early_return)
+        self.assertLess(early_return, raw_rewriter)
+
 
 if __name__ == "__main__":
     unittest.main()
