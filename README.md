@@ -1,286 +1,350 @@
 # OpenSigWeave
 
-OpenSigWeave is a centralized, self-hosted email signature manager designed to integrate an OIDC identity provider with **Rspamd / Mailcow** (Mail Filtering). 
+OpenSigWeave is a self-hosted application for centrally managing email signatures. It provides a web portal, a signature/rule engine, versioned HTML signature storage and an adapter for Rspamd.
 
-Instead of forcing users to configure signatures in their individual mail clients (Outlook, Apple Mail, mobile devices, etc.), OpenSigWeave injects rich HTML signatures at the gateway level. It dynamically pulls live user attributes (Phone, Title, Name) from Authentik and appends them to outgoing emails seamlessly. Signature variables are rendered in a sandboxed template environment with automatic HTML escaping.
+The current preview is a **standalone Docker Compose deployment**. It runs OpenSigWeave and PostgreSQL independently of a mail server. Mailcow is not required to install or test the portal.
 
-## ✨ Key Features
-* **Gateway-Level Injection:** Signatures are applied by the mail server, meaning they work identically across all devices and email clients.
-* **OIDC SSO:** Login uses the provider's OIDC discovery document and an explicitly configured HTTPS `OIDC_REDIRECT_URI` that must exactly match the redirect URI registered at the identity provider. The callback URL is never derived from the incoming Host header. The current live employee-attribute lookup and logout integration still use Authentik and are being separated in the ongoing refactor. The application should be reached through an HTTPS reverse proxy; its session cookie is Secure.
-* **Rich Visual Editor:** A custom UI built with Tailwind CSS, Alpine.js, and Quill.js allows users and admins to design signatures visually or via raw HTML.
-* **Advanced HTML Import:** Sanitize and import complex layouts from external generators with an intelligent visual editor lock that protects table-based signatures from accidental formatting loss.
-* **Domain-Level Master Templates:** Enforce a corporate signature standard across an entire domain.
-* **User Overrides:** Allow specific users to customize their signatures, or administratively lock them out.
-* **Intelligent Reply-Chain Detection:** An experimental Lua engine detects when an email is a reply and cleanly injects the signature *above* the quoted history.
-* **Whitespace Normalization (The "Peeler"):** Aggressively strips rogue HTML spaces, empty paragraphs, and quoted-printable soft-breaks from user emails to ensure perfectly crisp spacing around injected signatures.
-* **Plain Text Conversion:** Automatically intercepts flat `text/plain` emails and upgrades them to `multipart/alternative` containers so rich HTML signatures can be injected.
-* **Mobile Signature Assassin:** Automatically detects and strips default mobile sign-offs (e.g., "Sent from my iPhone" or "Get Outlook for iOS") before applying the professional corporate signature.
-* **The "Kill Switch":** Easily disable signatures entirely for specific service accounts (e.g., `noreply@` or `billing@`).
-* **Branding:** Easy white label branding options for logo, title and title color via simple, persistent files.
-* **Rspamd Integration:** Signature mutation is performed by a Rspamd adapter. The deployed Rspamd processing order must be verified to ensure injection happens before DKIM signing; no blanket deliverability guarantee is made.
+> **Preview status:** The Docker image, PostgreSQL migrations, application healthcheck and authenticated engine API smoke test pass in CI. The complete browser workflow and end-to-end mail delivery path have not yet been validated. Do not connect this preview to a production mail flow.
 
----
-## 📸 UI Images
+## What is implemented
 
-<table width="100%">
-  <tr>
-    <td align="center">
-      <b>User UI</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/UserUI.png" alt="User UI">
-    </td>
-    <td align="center">
-      <b>Admin UI</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/AdminUI.png" alt="Admin UI">
-    </td>
-  </tr>
-</table>
+- FastAPI web application with an OIDC login flow.
+- Authentik as the currently supported employee-attribute provider.
+- Group-based portal authorization:
+  - `signature-users`: normal portal access.
+  - `signature-admins`: administrator access.
+- Domain settings, personal overrides and administrator controls.
+- Signature catalog with HTML versions stored as files and metadata stored in PostgreSQL.
+- Signature variants, weighted selection and rules based on sender, domain, groups and attributes.
+- Four engine modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
+- HTML sanitization, sandboxed previews, CSRF protection, secure session cookies and shared database-backed rate limits.
+- Rspamd Lua adapter. Multipart messages are deliberately left unchanged by the current adapter.
 
-<table width="100%">
-  <tr>
-    <td align="center">
-      <b>Advanced HTML Import</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/AdvancedHTMLImport.png" alt="Advanced HTML Import">
-    </td>
-    <td align="center">
-      <b>Domain Settings</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/DomainSettingsUI.png" alt="Domain Settings UI">
-    </td>
-    <td align="center">
-      <b>User Overrides</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/UserOverridesUI.png" alt="User Overrides UI">
-    </td>
-  </tr>
-</table>
+## Current limitations
+
+- The standalone application currently requires OIDC for interactive login. Authentik is the only fully documented and supported identity/attribute-provider setup for this preview.
+- Although OIDC discovery is configurable, employee attributes and logout still use Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
+- The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
+- Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
+- Real-browser testing, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
+- CSP is currently report-only. Do not treat it as an enforced browser security boundary.
+- This is a preview, not a production-ready mail-flow release.
 
 ---
 
-## 📧 Supported Mail Clients (Reply Injection)
-The current integration targets outbound messages. Actual behavior depends on the MIME structure and the configured Rspamd processing pipeline; validate each supported client with integration tests. 
+## 1. Requirements
 
-However, because there is no universal web standard for how email clients format reply chains, OpenSigWeave's **Experimental Reply Injection** uses specific Regex patterns to find the exact HTML line where the "quoted history" begins. 
+For the standalone Docker deployment you need:
 
-The Lua engine officially supports injecting signatures cleanly into replies sent from the following clients:
-* **Thunderbird:** Desktop and Mobile.
-* **Self-Hosted Webmail:** Horde, Roundcube, SOGo (Mailcow default), and Nextcloud Mail.
-The Lua engine also theoretically supports injecting signatures into replies sent from these clients, but has not been verified:
-* **Microsoft Outlook:** Classic Desktop, New Desktop, OWA (Web), and iOS/Android Mobile Apps.
-* **Apple Mail:** iOS, iPadOS, and macOS native mail apps.
-* **Gmail:** Web, iOS, and Android Mobile Apps.
-* **Yahoo Mail & Open-Xchange:** Web clients.
+- A Linux host with Docker Engine.
+- Docker Compose plugin v2 (`docker compose`).
+- Git.
+- A DNS name for the portal, for example `signature.example.org`.
+- HTTPS termination through a reverse proxy.
+- An Authentik instance reachable by the application.
+- An Authentik OAuth2/OpenID Provider and a service API token for employee-attribute lookup.
 
-*Note: If a user sends a reply from an unrecognized client, the Lua engine acts defensively. It will safely abort the inline injection and append the signature to the absolute bottom of the email rather than risk placing it in the middle of a sentence.*
+The application container listens on port `8085`. Compose publishes it on `127.0.0.1:8085` only. PostgreSQL is not published to the host.
 
----
+## 2. Install the standalone preview
 
-## 💡 Usage Tips
-* **External Builders:** For the best results with multi-column layouts, it's recommended to design your signature in an online generator and use the HTML import feature. Review imported markup before saving.
-* **Variable Injection:** When using external builders, simply type {{ first_name }}, {{ title }}, etc., directly into their form fields. When you import the HTML into OpenSigWeave, these will become dynamic placeholders.
-* **Table Support:** If you paste a table into the "Advanced HTML" editor, the Visual Editor will lock to protect your layout. To return to the Visual Editor, you must clear the signature or remove the `<table>` tags.
+The commands below install the current development preview branch. They do not modify Mailcow or any mail-server configuration.
 
----
+### 2.1 Create the installation directory and clone the branch
 
-## 🚀 1. Deploying the Web App
+Run as a user who can access Docker:
 
-OpenSigWeave is a FastAPI application with PostgreSQL as the recommended new-install database. SQLite remains supported for legacy installations; Alembic manages schema migrations. 
+```bash
+sudo mkdir -p /opt/opensigweave
+sudo chown "$USER":"$USER" /opt/opensigweave
+git clone --branch architecture/refactor-foundation https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
+cd /opt/opensigweave
+```
 
-### Standalone Docker quick start (recommended)
+### 2.2 Create the environment file
 
-The standalone Docker stack starts the OpenSigWeave web application and its PostgreSQL database. It does not install or modify a mail server. Rspamd is connected separately after the application has been configured and tested.
+```bash
+cp .env.example .env
+chmod 600 .env
+```
 
-1. Check out the preview branch and create the environment file:
-   ```bash
-   git clone --branch architecture/refactor-foundation https://github.com/VeiglbergTech/OpenSigWeave.git
-   cd OpenSigWeave
-   cp .env.example .env
-   ```
-2. Generate three independent secrets. Use separate values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY`:
-   ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
-   ```
-   Put the generated values into `.env`. Keep this file private and do not commit it.
-3. Configure the OIDC application and Authentik attribute-provider settings in `.env`. The callback URL must exactly match the HTTPS `OIDC_REDIRECT_URI`. Authentik must provide `email_verified` as the boolean value `true`, plus a `groups` claim containing the user's group names. The example requests both `groups` and `attributes` scopes; configure the corresponding property mappings in the Authentik provider. Grant test users the `signature-users` group and administrators the `signature-admins` group.
-4. Validate the Compose configuration and start the stack:
-   ```bash
-   docker compose config
-   docker compose up -d --build
-   docker compose logs -f opensigweave
-   ```
-   The application waits for PostgreSQL and applies Alembic migrations automatically before starting Uvicorn.
-5. Configure a trusted HTTPS reverse proxy to forward to `http://127.0.0.1:8085`. The application port is bound to loopback only and must not be exposed directly to the internet. Use the same hostname as `OIDC_REDIRECT_URI`.
+Generate three different random secrets. Run this command three times and use a different result for each variable:
 
-PostgreSQL and signature files are stored in separate named Docker volumes. Back up both together. The stack uses a non-root application user, a read-only container filesystem, dropped Linux capabilities and no-new-privileges.
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
 
-This is the first standalone preview deployment path. It is intended for testing the portal and API; it does not yet automatically configure a Rspamd server or provide a production-ready mail-flow integration.
+Edit the environment file:
 
-### Prerequisites
-* Python 3.11+ (Starlette 1.8 and newer)
-* Docker Engine and Docker Compose plugin (for the bundled PostgreSQL service)
-* An active Authentik deployment
-* An active Rspamd/Mailcow deployment
-* A Reverse Proxy (Nginx, Traefik, Caddy, etc.) for SSL termination
+```bash
+nano .env
+```
 
-### Installation
-1. Clone the repository to your application server.
-   ```bash
-   sudo mkdir -p /opt/opensigweave
-   sudo chown "$USER":"$USER" /opt/opensigweave
-   git clone https://github.com/TylerHats/OpenSigWeave.git /opt/opensigweave
-   cd /opt/opensigweave
-   ```
-2. Create and activate a Python virtual environment.
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. Install the required Python modules.
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Prepare your environment variables. Generate separate random values for `SECRET_KEY`, `POSTGRES_PASSWORD` and `ENGINE_API_KEY`; all must be kept private and must never be committed.
-   ```bash
-   cp .env.example .env
-   python -c "import secrets; print(secrets.token_urlsafe(48))"
-   nano .env
-   ```
-   Set `SECRET_KEY` and `ENGINE_API_KEY` to separate generated values. Generate `POSTGRES_PASSWORD` as well, then put the same URL-safe value in both `POSTGRES_PASSWORD` and the password portion of `DATABASE_URL`. The application refuses to start with placeholder secrets or mismatched PostgreSQL credentials. Serve the web application over HTTPS: session cookies are configured as Secure.
-5. Start the bundled PostgreSQL service:
-   ```bash
-   docker compose up -d --wait postgres
-   ```
-   PostgreSQL is bound to localhost only. If you use an external database or legacy SQLite, adjust `DATABASE_URL` accordingly. Signature HTML versions are stored below `SIGNATURE_STORAGE_PATH`; back up this directory together with the PostgreSQL volume so file hashes and metadata remain consistent.
+Replace these values:
 
-6. Apply the database schema using Alembic. Run this after configuring `DATABASE_URL` and before starting the web application:
-   ```bash
-   alembic upgrade head
-   ```
-   The initial migration detects existing `domains` and `user_overrides` tables so existing SQLite data is not recreated or dropped.
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL database user |
+| `SECRET_KEY` | Signs the application session cookie |
+| `ENGINE_API_KEY` | Authenticates Rspamd to the signature API |
 
-7. Prepare your branding (Optional).
-   ```bash
-   cp branding/logo.example.png branding/logo.png
-   cp branding/settings.example.json branding/settings.json
-   ```
-8. Start the application to verify it works. (See the systemd section below for running as a permanent service).
-   ```bash
-   uvicorn main:app --host 127.0.0.1 --port 8085
-   ```
+All three values must be independent. Use the generated URL-safe values without adding whitespace. Do not reuse the same secret for different purposes and never commit `.env` to Git.
 
-### Running as a Systemd Service (Recommended)
-To keep OpenSigWeave running permanently and ensure it starts automatically on server reboots, create a dedicated unprivileged service account and a systemd service. Do not run the web application as root.
+The Compose file constructs the internal PostgreSQL `DATABASE_URL` from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. Keep the example `DATABASE_URL` password synchronized if you inspect or use it outside Compose; Compose overrides it for the application container.
 
-1. Create a dedicated service account and ensure the application directory is owned by it (adjust the path to your checkout):
-   ```bash
-   sudo useradd --system --home /opt/opensigweave --shell /usr/sbin/nologin opensigweave
-   sudo chown -R opensigweave:opensigweave /opt/opensigweave
-   sudo chmod 600 /opt/opensigweave/.env
-   sudo nano /etc/systemd/system/opensigweave.service
-   ```
+### 2.3 Configure the OIDC provider in Authentik
 
-2. Paste the following configuration. Adjust paths if your checkout is not located at `/opt/opensigweave`.
+Create an OAuth2/OpenID Provider and an application in Authentik.
 
-   ```ini
-   [Unit]
-   Description=OpenSigWeave FastAPI Backend
-   After=network.target
+Configure the provider for the Authorization Code flow and register this exact redirect URI:
 
-   [Service]
-   User=opensigweave
-   Group=opensigweave
-   WorkingDirectory=/opt/opensigweave
-   Environment="PATH=/opt/opensigweave/venv/bin"
-   EnvironmentFile=/opt/opensigweave/.env
-   UMask=0077
-   ExecStart=/opt/opensigweave/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8085 --proxy-headers --forwarded-allow-ips=127.0.0.1
-   Restart=always
-   RestartSec=3
+```text
+https://signature.example.org/auth
+```
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+Replace the hostname with the real portal hostname. The URI must match `OIDC_REDIRECT_URI` exactly, including the `/auth` path and scheme.
 
-3. Enable and start the service:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable opensigweave
-   sudo systemctl start opensigweave
-   ```
+The application expects the OIDC UserInfo response to contain:
 
-### Reverse Proxy & SSL Configuration
-OpenSigWeave does not handle SSL termination natively. It runs as a plain HTTP FastAPI application and **must** be placed behind a reverse proxy to secure the SSO callbacks and administrative sessions via HTTPS.
+- `sub`: stable user subject.
+- `email`: the user's email address.
+- `email_verified`: the JSON boolean `true`.
+- `groups`: a JSON array of group names.
+- `attributes`: a JSON object is used when available for custom profile attributes.
 
-Here is a standard configuration example for **Nginx**:
+Configure Authentik scope/property mappings so these claims are present in UserInfo. The configured scopes in `.env.example` are `openid email profile groups attributes`. The `groups` and `attributes` scopes must be available from the provider; creating a scope name alone does not create the required property mapping.
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name signature.yourdomain.com;
+Create these groups in Authentik:
 
-    # SSL Certificates (Managed by Certbot, etc.)
-    ssl_certificate /etc/letsencrypt/live/signature.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/signature.yourdomain.com/privkey.pem;
+- `signature-users`
+- `signature-admins`
 
-    location / {
-        proxy_pass [http://127.0.0.1:8085](http://127.0.0.1:8085);
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
+Add ordinary portal users to `signature-users`. Add administrators to `signature-admins`; administrators can also be members of `signature-users` if they need the normal user view.
+
+Copy the provider's Client ID and Client Secret into `.env`:
+
+- `OIDC_CLIENT_ID`
+- `OIDC_CLIENT_SECRET`
+
+Set the following values to match your Authentik deployment:
+
+- `AUTHENTIK_URL`: base URL only, for example `https://auth.example.org`.
+- `AUTHENTIK_SLUG`: the application slug used in the Authentik provider URL.
+- `OIDC_DISCOVERY_URL`: normally `https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration`.
+- `OIDC_REDIRECT_URI`: the exact HTTPS callback URI registered above.
+
+The application currently uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account/API token with only the read permissions required to query users, then set `AUTHENTIK_API_TOKEN`. Do not use a personal administrator token if a restricted service account can be used.
+
+The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is unavailable, the engine returns empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
+
+### 2.4 Review the environment
+
+At minimum, check that these entries are no longer placeholders:
+
+```dotenv
+POSTGRES_PASSWORD="..."
+SECRET_KEY="..."
+ENGINE_API_KEY="..."
+OIDC_DISCOVERY_URL="https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration"
+OIDC_REDIRECT_URI="https://signature.example.org/auth"
+OIDC_CLIENT_ID="..."
+OIDC_CLIENT_SECRET="..."
+AUTHENTIK_URL="https://auth.example.org"
+AUTHENTIK_SLUG="opensigweave"
+AUTHENTIK_API_TOKEN="..."
+```
+
+Keep `APP_ALLOWED_HOSTS` empty unless you deliberately need additional hostnames. If you add entries, use explicit hostnames only, comma-separated, without schemes, ports, paths or wildcards. The hostname in `OIDC_REDIRECT_URI` is always the canonical hostname.
+
+### 2.5 Validate and start Docker Compose
+
+From `/opt/opensigweave`:
+
+```bash
+docker compose config --quiet
+docker compose up -d --build
+```
+
+Check the containers:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 opensigweave
+```
+
+The application waits for PostgreSQL to become healthy, applies Alembic migrations, and then starts Uvicorn on port `8085`. The application healthcheck verifies that the web process accepts a local TCP connection.
+
+Useful commands:
+
+```bash
+# Follow application logs
+docker compose logs -f opensigweave
+
+# Follow PostgreSQL logs
+docker compose logs -f postgres
+
+# Restart the application
+docker compose restart opensigweave
+
+# Stop the stack without deleting persistent data
+docker compose down
+
+# Start it again
+docker compose up -d
+```
+
+**Do not use `docker compose down --volumes` for normal maintenance.** That command deletes the PostgreSQL and signature-storage volumes and therefore destroys the application data.
+
+## 3. Configure HTTPS reverse proxy
+
+The browser-facing URL must use HTTPS because the application session cookie is Secure and the OIDC redirect URI must be HTTPS.
+
+The following Caddy example assumes Caddy runs on the same host and can reach the host loopback interface:
+
+```caddyfile
+signature.example.org {
+    reverse_proxy 127.0.0.1:8085
 }
 ```
 
-### Authentik Setup
-You will need two configurations in Authentik:
-1. **OIDC Provider:** Create a standard OIDC Application/Provider for user logins. Ensure the scopes include `openid`, `email`, `profile`, and the claims required by your group/attribute mappings.
-2. **Service Account API Token:** Create an App Token (Intent: **API Token**) bound to an administrative account. This is required for the Rspamd engine to query user attributes securely in the background.
+Caddy obtains and renews the certificate automatically when DNS and inbound connectivity are configured correctly.
 
-**Note on SSO Compatibility:** OpenSigWeave was built and tested specifically for **Authentik** and **Mailcow**. While the OIDC web login is standard and adaptable, the backend signature engine strictly relies on Authentik's REST API (`/api/v3/core/users/`) to poll live user attributes during mail transit. Adapting this for Authelia, Keycloak, or Entra ID will require modifying the API request logic inside the `get_rspamd_signature` route in `main.py`.
+If your reverse proxy runs in a separate Docker bridge network or on another host, `127.0.0.1` will not refer to the OpenSigWeave host from inside that proxy. Do not expose port `8085` publicly. Instead, deliberately publish it on a private interface, restrict access with the host firewall to the proxy address/network, and configure `TRUSTED_PROXY_CIDRS` only for the actual proxy peer networks. Never trust arbitrary client-supplied forwarding headers.
 
----
+The reverse proxy must preserve the canonical Host header. The application validates it against the hostname in `OIDC_REDIRECT_URI` and any explicit `APP_ALLOWED_HOSTS` entries.
 
-## 🛠️ 2. Deploying the Rspamd Lua Engine (Mailcow)
+After HTTPS is active, open:
 
-The web app is only half the puzzle. To actually inject signatures, you must deploy the provided Lua script into your Mailcow/Rspamd instance.
+```text
+https://signature.example.org/
+```
 
-1. **Copy the Script:**
-   Transfer the `opensigweave.lua` script from this repository into your Mailcow server's custom Lua directory:
-   ```text
-   /opt/mailcow-dockerized/data/conf/rspamd/lua/opensigweave.lua
+You should be redirected to Authentik. Sign in with a user in one of the configured groups.
+
+## 4. First application test
+
+After signing in:
+
+1. Confirm a normal user can access the portal but cannot access administrator functions.
+2. Sign in as a member of `signature-admins`.
+3. Create a domain in the administration area, for example `example.org`.
+4. Enable the domain.
+5. Create a signature in the signature catalog.
+6. Add a simple test signature, for example:
+
+   ```html
+   <table>
+     <tr><td>{{ first_name }} {{ last_name }}</td></tr>
+     <tr><td>{{ title }}</td></tr>
+     <tr><td>{{ phone }}</td></tr>
+     <tr><td>{{ email }}</td></tr>
+   </table>
    ```
 
-2. **Configure the Lua Script:**
-   The Lua source contains no credentials. Add the configuration section from `rspamd/opensigweave.conf.example` to `/opt/mailcow-dockerized/data/conf/rspamd/rspamd.conf.local`. Set `api_url` to your HTTPS OpenSigWeave endpoint and set `engine_api_key` to exactly the same random value as the backend's `ENGINE_API_KEY` in `.env`. Keep this configuration file restricted because it contains a service credential.
+7. Save it and verify that the catalog lists the signature and its initial version/variant.
+8. Create or adjust a rule if you want to test group, sender or attribute matching.
+9. Use the preview and verify that untrusted HTML is sanitized.
 
-3. **Enable the Plugin:**
-   Tell Rspamd to load the Lua file by adding this line to the same `rspamd.conf.local` file:
-   ```hcl
-   lua = "/etc/rspamd/lua/opensigweave.lua";
-   ```
-   The Lua module reads its settings through Rspamd's `rspamd_config:get_all_opt("opensigweave")` API. It refuses to start without a valid HTTPS URL and a sufficiently long key.
+The first Docker CI smoke test exercises the authenticated engine endpoint against PostgreSQL. It does not simulate a real OIDC browser login or a complete SMTP transaction; those remain manual preview tests.
 
-4. **Restart Rspamd:**
-   Apply the changes by restarting the Mailcow Rspamd container.
-   ```bash
-   docker compose restart rspamd-mailcow
-   ```
+## 5. Persistent data and backups
 
----
+Compose creates two named volumes:
 
-## 🔒 Security Notes
-* OpenSigWeave's API endpoint (`/api/signature/{email}`) exposes employee metadata (Phone, Title, etc.) to successfully compile signatures. 
-* This endpoint is strictly protected by the `X-Engine-Key` header. Ensure your `ENGINE_API_KEY` is a long, cryptographically secure string, and never expose it to frontend clients.
-* The engine key previously present in the Lua source must be treated as compromised if it was ever deployed. Rotate it in the backend environment and the protected Rspamd configuration. Removing a credential from the current source file does not remove it from earlier Git commits.
+- `opensigweave-postgres-data`: PostgreSQL database.
+- `opensigweave-signatures`: versioned HTML signature files.
 
----
+The database stores metadata and hashes for the signature files. Back up both volumes as one consistent backup set. Restoring only one of them can leave database references without their corresponding files, or files without matching metadata.
 
-## 🪲 Bugs and Feature Requests
-* **Bug reports and Feature Requests** are always welcome! Where possible, patches and new updates will be pushed with responses directly on submitted issues for status, questions, etc.
-* **Pull requests** are also welcome and will be reviewed as soon as possible for *functionality, quality of code, and scope*. If approved, changes will be included in the next update of **OpenSigWeave**.
+Do not delete either volume when upgrading or recreating containers.
 
----
+## 6. Update the preview
 
-## 🙏 Acknowledgments & Licensing
+Before updating, create a consistent backup of both persistent volumes and keep a copy of `.env`.
 
-OpenSigWeave's Rspamd injection engine (`opensigweave.lua`) heavily relies on the MIME-rebuild array logic originally developed by the **Mailcow** team for their internal `MOO_FOOTER` module. 
+Then, from the installation directory:
 
-A massive thank you to Mailcow / Servercow for their hard work. In compliance with their original work and to give back to the community, this entire project is proudly open-sourced under the **GNU GPL v3.0** license.
+```bash
+git fetch origin
+git pull --ff-only origin architecture/refactor-foundation
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100 opensigweave
+```
+
+The container applies pending Alembic migrations before starting the web process. Read the release notes and migration notes before updating a test instance that contains data.
+
+## 7. Optional Rspamd integration (not part of standalone installation)
+
+The standalone Compose stack does not install Rspamd, change Mailcow or enable message rewriting. Keep this step separate until the portal and signature rules have been tested.
+
+The adapter files are:
+
+- `rspamd/opensigweave.lua`
+- `rspamd/opensigweave.conf.example`
+
+The example configuration uses the same `ENGINE_API_KEY` as the application and an HTTPS URL ending in `/api/signature/`. Store the actual key only in the protected Rspamd configuration; never put it in the Lua source file.
+
+**Current safety limitation:** the Lua adapter deliberately leaves every top-level `multipart/*` message unchanged. This includes common messages with `multipart/alternative` or attachments. Only non-multipart messages enter the current rewrite path. The actual Rspamd processing order, SMTP sender authorization and DKIM signing order have not yet been validated in a disposable Mailcow environment. Do not enable this adapter in a production mail flow.
+
+If you later test it, use a disposable Mailcow/Rspamd instance, retain Mailcow's sender verification, and verify the final delivered message's DKIM signature after mutation. See [the Rspamd review](docs/WEB_AND_RSPAMD_REVIEW.md).
+
+## 8. Troubleshooting
+
+### Application container keeps restarting
+
+```bash
+docker compose ps
+docker compose logs --tail=200 opensigweave
+```
+
+Check that `SECRET_KEY` and `ENGINE_API_KEY` are independently generated values of at least 32 characters and that no placeholder remains.
+
+### PostgreSQL password validation fails
+
+```bash
+docker compose config
+```
+
+Check that `POSTGRES_PASSWORD` is set and that the Compose-generated `DATABASE_URL` uses the same value. If you changed PostgreSQL credentials after the database volume was initialized, changing the environment variable alone does not change the password stored inside the existing database. Use a documented PostgreSQL password-rotation procedure; do not delete the volume to work around it.
+
+### Browser reports an invalid Host
+
+Use the exact hostname from `OIDC_REDIRECT_URI` in the browser. If a deliberate alias is required, add only that hostname to `APP_ALLOWED_HOSTS` and restart the application.
+
+### OIDC callback fails
+
+Check:
+
+- `OIDC_DISCOVERY_URL` is reachable from the container and uses HTTPS.
+- The Client ID and Client Secret match the Authentik provider.
+- The redirect URI registered in Authentik exactly matches `OIDC_REDIRECT_URI`.
+- The reverse proxy preserves the canonical Host header.
+- UserInfo returns a verified email and a `groups` JSON array containing the expected group names.
+
+### User can log in but has no portal access
+
+Check group mappings in Authentik. The group names must exactly match `signature-users` or `signature-admins`.
+
+### Signature profile fields are empty
+
+Check `AUTHENTIK_URL`, `AUTHENTIK_API_TOKEN`, the service account permissions and the exact active user email in Authentik. Check the application logs for attribute lookup warnings. The current attribute provider fails closed to empty attributes if lookup fails.
+
+### Reverse proxy cannot connect
+
+The Compose port is bound to host loopback. A proxy running in a separate bridge-network container cannot reach the host's `127.0.0.1` through its own loopback. Use a deliberate private-interface binding and firewall rule as described above; do not publish the service to the public internet.
+
+## 9. Documentation and project status
+
+- [Technical architecture](docs/ARCHITECTURE.md)
+- [Management and engine API](docs/API.md)
+- [Implementation progress and verification](docs/IMPLEMENTATION_PROGRESS.md)
+- [Repository audit](docs/REPOSITORY_AUDIT.md)
+- [Web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md)
+
+The current development work is on `architecture/refactor-foundation`. The pull request is a draft and is not a production release. The standalone product is being completed first; a native Mailcow UI/integration is planned as a separate future project.
+
+## License
+
+OpenSigWeave is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
