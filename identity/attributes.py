@@ -10,4 +10,5 @@ class IdentityAttributes:
     title: str = ""
     phone: str = ""
     groups: frozenset[str] = frozenset()
+    claims: Mapping[str, Any] = field(default_factory=dict)
     attributes: Mapping[str, Any] = field(default_factory=dict)
