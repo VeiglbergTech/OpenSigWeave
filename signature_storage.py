@@ -62,6 +62,12 @@ class SignatureFileStore:
         path = self._signature_dir(signature_name)
         if path.exists() or path.is_symlink():
             raise SignatureStorageError("A signature with this name already has a storage directory")
+        normalized_name = self._safe_name(signature_name).casefold()
+        if any(
+            entry.name.casefold() == normalized_name
+            for entry in self.signatures_root.iterdir()
+        ):
+            raise SignatureStorageError("A signature with this name already has a storage directory")
 
     @staticmethod
     def _version_filename(version_id: uuid.UUID) -> str:
@@ -195,7 +201,10 @@ class SignatureFileStore:
             return
         if not old_dir.exists() or old_dir.is_symlink() or not old_dir.is_dir():
             raise SignatureStorageError("Existing signature directory is unavailable or unsafe")
-        if new_dir.exists() or new_dir.is_symlink():
+        if new_dir.exists() or new_dir.is_symlink() or any(
+            entry != old_dir and entry.name.casefold() == new_dir.name.casefold()
+            for entry in self.signatures_root.iterdir()
+        ):
             raise SignatureStorageError("A signature directory with the new name already exists")
         try:
             os.rename(old_dir, new_dir)
