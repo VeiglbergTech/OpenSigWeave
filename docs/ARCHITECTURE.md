@@ -14,7 +14,7 @@ The intended long-term product boundary is:
 - **Mail adapters:** separate integrations such as Rspamd. They consume a stable engine API and must not make the core depend on a particular mail server.
 - **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
 
-The current preview is not yet fully provider-neutral: interactive login uses OIDC, while employee-attribute lookup and logout still contain Authentik-specific behavior. This is documented as a current implementation limitation, not as a completed abstraction.
+OIDC is enabled by default and retains the Authentik login flow. For standalone installations, `OIDC_ENABLED=false` disables OIDC initialization and the `/auth` callback route and enables a local administrator account configured with a scrypt password hash. Local-only mode does not call Authentik and supplies empty profile attributes. The external identity-provider path remains Authentik-specific.
 
 ## 2. Current runtime components
 
@@ -22,7 +22,7 @@ The current preview is not yet fully provider-neutral: interactive login uses OI
 
 - FastAPI application served by Uvicorn on TCP port 8085 inside the container.
 - Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
-- OIDC Authorization Code login using the configured discovery document.
+- Optional OIDC Authorization Code login using the configured discovery document (`OIDC_ENABLED=true`, default), or local administrator login (`OIDC_ENABLED=false`).
 - Browser session authorization based on the `signature-users` and `signature-admins` groups.
 - CSRF protection for state-changing browser requests.
 - Secure session cookies and trusted-host validation.
@@ -70,9 +70,9 @@ The current rewrite path is limited to non-multipart messages. No production mai
 
 ### Browser identity
 
-The browser completes OIDC login at `/login` and returns to the fixed HTTPS callback `OIDC_REDIRECT_URI`, ending in `/auth`. The callback validates the subject, email, boolean email verification and groups claim, clears the old session, and stores only the claims required by the application.
+With OIDC enabled, the browser starts the Authorization Code flow at `/login` and returns to the fixed HTTPS callback `OIDC_REDIRECT_URI`, ending in `/auth`. The callback validates the subject, email, boolean email verification and groups claim, clears the old session, and stores only the claims required by the application. With OIDC disabled, `/login` serves a local administrator form; the password is verified against a salted scrypt hash, and `/auth` is not registered.
 
-The canonical hostname is derived from `OIDC_REDIRECT_URI`. Optional aliases must be explicit hostnames in `APP_ALLOWED_HOSTS`; wildcards are rejected.
+With OIDC enabled, the canonical hostname is derived from `OIDC_REDIRECT_URI`. With OIDC disabled, `APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected in both modes.
 
 ### Portal permissions
 
@@ -160,7 +160,7 @@ The current adapter intentionally skips multipart messages. Do not work around t
 The first testable standalone revision should focus on:
 
 - Reliable Docker installation and upgrade instructions.
-- Authentik login and group authorization.
+- Authentik login and group authorization when OIDC is enabled; local-only mode grants the configured local administrator account the administrator and user roles.
 - Domain, signature, variant and rule workflows.
 - PostgreSQL persistence and signature-file persistence.
 - Browser-level verification and CSP report review.
