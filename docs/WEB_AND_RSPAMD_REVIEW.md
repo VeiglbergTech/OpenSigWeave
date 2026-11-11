@@ -148,3 +148,10 @@ rotation wherever deployed. Only those introducing commits are excluded; new
 hardcoded engine credentials in later commits fail CI. The Quill minified
 upstream distribution has one narrowly scoped path exclusion for a
 generic-api-key-shaped false positive.
+
+
+The portal's inline JavaScript and inline style block have been moved into same-origin
+static assets. Inline event-handler attributes have been removed, and initially hidden
+Alpine elements now use `x-cloak`. This prepares the UI for a restrictive CSP but does
+not yet complete it: the standard Alpine build still evaluates expressions dynamically,
+and Alpine's CSP build migration plus browser-level verification remain required.

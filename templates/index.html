@@ -15,7 +15,7 @@
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}">
 
-    <div x-data="{ toasts: [] }" @notify.window="toasts.push({id: Date.now(), msg: $event.detail.msg, type: $event.detail.type || 'success'}); setTimeout(() => { toasts.shift() }, 2900)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div x-data="toastManager()" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
             <div class="animate-toast px-4 py-3 rounded shadow-lg text-white font-medium text-sm pointer-events-auto flex items-center gap-2" :class="toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'"><span x-text="toast.msg"></span></div>
         </template>
@@ -190,7 +190,7 @@
             </div>
 
             <div x-show="variantEditor" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
-                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature?.name"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature ? variantSignature.name : """></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="space-y-3">
                     <template x-for="variant in variants" :key="variant.id">
                         <div class="flex flex-wrap items-center gap-4 bg-gray-900 rounded p-3">
@@ -224,7 +224,7 @@
                                 <td class="px-4 py-3 font-medium" x-text="rule.name"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="rule.priority"></td>
                                 <td class="px-4 py-3 text-sm" x-text="rule.action_mode"></td>
-                                <td class="px-4 py-3 text-xs text-gray-400" x-text="rule.conditions.length ? rule.conditions.map(c => c.kind + ': ' + (c.key ? c.key + '=' : '') + c.value).join(' AND ') : 'Always matches'"></td>
+                                <td class="px-4 py-3 text-xs text-gray-400" x-text="formatRuleConditions(rule)"></td>
                                 <td class="px-4 py-3"><span class="text-xs" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
                                     <button @click="editRule(rule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
@@ -250,7 +250,7 @@
                     <label class="text-sm text-gray-300">Specific Signature (optional)
                         <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
                             <option value="">Any signature in selected mode</option>
-                            <template x-for="signature in signatures.filter(item => item.is_active && item.mode === form.action_mode)" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                            <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
                         </select>
                     </label>
                 </div>
@@ -289,7 +289,7 @@
                         <div class="h-8 w-px bg-gray-700 ml-4"></div>
                         <div class="flex gap-2 ml-4">
                             <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings & Template</button>
-                            <button @click="modalTab = 'users'; fetchOverrides();" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
+                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
                         </div>
                     </div>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-300"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
@@ -432,7 +432,7 @@
                 </div>
 
                 <div x-show="modalTab === 'settings'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('save-domain-settings', {domain: domain, allowOverrides: allowOverrides, injectOnReplies: injectOnReplies, trimWhitespace: trimWhitespace, stripDeviceSignatures: stripDeviceSignatures, html: document.getElementById('domain-raw-html-editor').value}); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
+                    <button @click="saveSettings()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
                     <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
                 </div>
                 <div x-show="modalTab === 'users'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
@@ -442,8 +442,8 @@
         </div>
     </div>
 
-    <div x-data="{ show: false, rawInput: '', targetEditor: '' }" 
-         @open-sanitizer.window="show = true; targetEditor = $event.detail; rawInput = ''; setTimeout(() => $refs.sanitizerInput.focus(), 100);" 
+    <div x-data="sanitizerModal()" 
+         @open-sanitizer.window="open($event)" 
          @keydown.escape.window="show = false" 
          x-show="show" x-cloak class="fixed inset-0 z-[70] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
@@ -457,7 +457,7 @@
                     <textarea x-ref="sanitizerInput" x-model="rawInput" placeholder="Paste your <!DOCTYPE HTML>... code here" class="w-full h-64 bg-gray-950 border border-gray-600 rounded-lg p-3 text-green-400 font-mono text-sm focus:outline-none focus:border-blue-500"></textarea>
                 </div>
                 <div class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('sanitize-html', { html: rawInput, target: targetEditor }); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
+                    <button @click="apply()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
                         Import HTML
                     </button>
@@ -467,38 +467,8 @@
         </div>
     </div>
 
-    <div x-data="{ show: false, previewHtml: '' }" 
-         @open-preview.window="
-            show = true; 
-            let raw = $event.detail.html; 
-            
-            let pEmail = $event.detail.previewEmail || userData.email;
-            let pDomain = $event.detail.previewDomain || pEmail.split('@')[1] || '';
-            
-            let pFirst = userData.first_name;
-            let pLast = userData.last_name;
-            let pTitle = userData.title;
-            let pPhone = userData.phone;
-
-            if ($event.detail.previewEmail) {
-                let namePart = pEmail.split('@')[0];
-                let parts = namePart.split('.');
-                pFirst = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'User';
-                pLast = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
-                pTitle = 'Title (Preview)';
-                pPhone = 'Phone (Preview)';
-            }
-
-            raw = raw.replace(/\{\{\s*first_name\s*\}\}/g, pFirst)
-                     .replace(/\{\{\s*last_name\s*\}\}/g, pLast)
-                     .replace(/\{\{\s*title\s*\}\}/g, pTitle)
-                     .replace(/\{\{\s*phone\s*\}\}/g, pPhone)
-                     .replace(/\{\{\s*email\s*\}\}/g, pEmail)
-                     .replace(/\{\{\s*domain_name\s*\}\}/g, pDomain);
-            
-            previewHtml = raw;
-         " 
-         @keydown.escape.window="show = false" 
+    <div x-data="previewModal()" 
+         @open-preview.window="open($event)" @keydown.escape.window="show = false" 
          x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
@@ -507,14 +477,14 @@
                     <h3 class="text-lg font-bold text-gray-900">Live Signature Preview</h3>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
-                <iframe title="Signature preview" sandbox="" x-bind:srcdoc="previewHtml" class="w-full min-h-[320px] bg-white border-0"></iframe>
+                <iframe id="signature-preview-frame" title="Signature preview" sandbox="" class="w-full min-h-[320px] bg-white border-0"></iframe>
             </div>
         </div>
     </div>
     
-    <div x-data="{ show: false, domainName: '' }" @open-add-domain.window="show = true; domainName = ''; setTimeout(() => $refs.domainInput.focus(), 100);" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="$dispatch('submit-new-domain', domainName); show = false;" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('submit-new-domain', domainName); show = false;" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="addDomainModal()" @open-add-domain.window="open()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="submit()" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="submit()" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
     
-    <div x-data="{ show: false, domain: null, action: '', title: '', message: '', targetId: null }" @open-confirm.window="show = true; action = $event.detail.action; domain = $event.detail.domain || null; targetId = $event.detail.targetId || null; if (action === 'toggle') { title = (domain.is_active ? 'Disable' : 'Enable') + ' Domain?'; message = 'Are you sure you want to ' + (domain.is_active ? 'disable' : 'enable') + ' ' + domain.domain_name + '?'; } else if (action === 'delete') { title = 'Delete Domain?'; message = 'CRITICAL WARNING: Delete ' + domain.domain_name + ' permanently?'; } else if (action === 'clear-user') { title = 'Clear Custom Signature?'; message = 'Are you sure you want to clear your custom signature? Your emails will revert to the domain\'s default template.'; } else if (action === 'clear-admin') { title = 'Clear User Override?'; message = 'Are you sure you want to permanently delete this user\'s custom signature?'; }" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('confirm-action', {domain: domain, action: action, targetId: targetId}); show = false;" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="confirmModal()" @open-confirm.window="open($event)" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="confirm()" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
 
 
     <script src="/static/js/portal.js"></script>

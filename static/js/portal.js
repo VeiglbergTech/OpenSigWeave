@@ -85,6 +85,7 @@ window.fetch = (resource, options = {}) => {
             return {
                 signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
                 form: { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 },
+                get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
                 async fetchAll() {
                     try {
                         const [signaturesResponse, domainsResponse] = await Promise.all([fetch('/api/admin/signatures'), fetch('/domains/')]);
@@ -207,6 +208,21 @@ window.fetch = (resource, options = {}) => {
                         document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
                     }
                 },
+                openUsers() {
+                    this.modalTab = 'users';
+                    this.fetchOverrides();
+                },
+                saveSettings() {
+                    window.dispatchEvent(new CustomEvent('save-domain-settings', { detail: {
+                        domain: this.domain,
+                        allowOverrides: this.allowOverrides,
+                        injectOnReplies: this.injectOnReplies,
+                        trimWhitespace: this.trimWhitespace,
+                        stripDeviceSignatures: this.stripDeviceSignatures,
+                        html: document.getElementById('domain-raw-html-editor').value
+                    }}));
+                    this.show = false;
+                },
                 async fetchOverrides() {
                     const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
                     if(res.ok) this.userOverrides = await res.json();
@@ -266,6 +282,129 @@ window.fetch = (resource, options = {}) => {
                 if(res.ok) { notify("User override deleted."); window.dispatchEvent(new CustomEvent('refresh-admin-overrides')); }
             }
         });
+
+
+function formatRuleConditions(rule) {
+    return rule.conditions.length
+        ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
+        : 'Always matches';
+}
+
+function toastManager() {
+    return {
+        toasts: [],
+        add(event) {
+            const detail = event.detail || {};
+            this.toasts.push({ id: Date.now(), msg: detail.msg, type: detail.type || 'success' });
+            window.setTimeout(() => this.toasts.shift(), 2900);
+        }
+    };
+}
+
+function sanitizerModal() {
+    return {
+        show: false,
+        rawInput: '',
+        targetEditor: '',
+        open(event) {
+            this.show = true;
+            this.targetEditor = event.detail;
+            this.rawInput = '';
+            window.setTimeout(() => this.$refs.sanitizerInput.focus(), 100);
+        },
+        apply() {
+            window.dispatchEvent(new CustomEvent('sanitize-html', {
+                detail: { html: this.rawInput, target: this.targetEditor }
+            }));
+            this.show = false;
+        }
+    };
+}
+
+function previewModal() {
+    return {
+        show: false,
+        open(event) {
+            this.show = true;
+            const detail = event.detail || {};
+            const email = detail.previewEmail || userData.email;
+            const domain = detail.previewDomain || email.split('@')[1] || '';
+            let first = userData.first_name;
+            let last = userData.last_name;
+            let title = userData.title;
+            let phone = userData.phone;
+            if (detail.previewEmail) {
+                const nameParts = email.split('@')[0].split('.');
+                first = nameParts[0] ? nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1) : 'User';
+                last = nameParts[1] ? nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1) : '';
+                title = 'Title (Preview)';
+                phone = 'Phone (Preview)';
+            }
+            const html = String(detail.html || '')
+                .replace(/\{\{\s*first_name\s*\}\}/g, first)
+                .replace(/\{\{\s*last_name\s*\}\}/g, last)
+                .replace(/\{\{\s*title\s*\}\}/g, title)
+                .replace(/\{\{\s*phone\s*\}\}/g, phone)
+                .replace(/\{\{\s*email\s*\}\}/g, email)
+                .replace(/\{\{\s*domain_name\s*\}\}/g, domain);
+            const frame = document.getElementById('signature-preview-frame');
+            if (frame) frame.srcdoc = html;
+        }
+    };
+}
+
+function addDomainModal() {
+    return {
+        show: false,
+        domainName: '',
+        open() {
+            this.show = true;
+            this.domainName = '';
+            window.setTimeout(() => this.$refs.domainInput.focus(), 100);
+        },
+        submit() {
+            window.dispatchEvent(new CustomEvent('submit-new-domain', { detail: this.domainName }));
+            this.show = false;
+        }
+    };
+}
+
+function confirmModal() {
+    return {
+        show: false,
+        domain: null,
+        action: '',
+        title: '',
+        message: '',
+        targetId: null,
+        open(event) {
+            const detail = event.detail || {};
+            this.show = true;
+            this.action = detail.action;
+            this.domain = detail.domain || null;
+            this.targetId = detail.targetId || null;
+            if (this.action === 'toggle') {
+                this.title = (this.domain.is_active ? 'Disable' : 'Enable') + ' Domain?';
+                this.message = 'Are you sure you want to ' + (this.domain.is_active ? 'disable' : 'enable') + ' ' + this.domain.domain_name + '?';
+            } else if (this.action === 'delete') {
+                this.title = 'Delete Domain?';
+                this.message = 'CRITICAL WARNING: Delete ' + this.domain.domain_name + ' permanently?';
+            } else if (this.action === 'clear-user') {
+                this.title = 'Clear Custom Signature?';
+                this.message = "Are you sure you want to clear your custom signature? Your emails will revert to the domain's default template.";
+            } else if (this.action === 'clear-admin') {
+                this.title = 'Clear User Override?';
+                this.message = "Are you sure you want to permanently delete this user's custom signature?";
+            }
+        },
+        confirm() {
+            window.dispatchEvent(new CustomEvent('confirm-action', {
+                detail: { domain: this.domain, action: this.action, targetId: this.targetId }
+            }));
+            this.show = false;
+        }
+    };
+}
 
 document.addEventListener("DOMContentLoaded", () => {
     const logoutButton = document.getElementById("logout-button");
