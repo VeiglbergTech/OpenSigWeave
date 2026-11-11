@@ -655,7 +655,7 @@ def update_signature_endpoint(
         raise HTTPException(status_code=403, detail="Admins only")
     try:
         signature = update_signature(
-            db, signature_id, name=payload.name,
+            db, signature_file_store, signature_id, name=payload.name,
             domain_id=payload.domain_id, is_active=payload.is_active,
         )
     except SignatureNotFoundError:
@@ -986,7 +986,7 @@ async def get_rspamd_signature(
         if latest_version is None:
             raise HTTPException(status_code=503, detail="Signature version metadata is missing")
         try:
-            raw_template = signature_file_store.read(uuid.UUID(hex=latest_version.id), latest_version.sha256)
+            raw_template = signature_file_store.read(selected_signature.name, uuid.UUID(hex=latest_version.id), latest_version.sha256)
         except (SignatureStorageError, ValueError, TypeError):
             raise HTTPException(status_code=503, detail="Signature asset unavailable")
     elif override and domain_obj.allow_overrides and not explicit_mode:
