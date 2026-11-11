@@ -124,6 +124,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode=None,
                 db=self.db,
             ))
 
