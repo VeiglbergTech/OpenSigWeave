@@ -11,7 +11,7 @@ from models import (
     SignatureVariantDB,
     SignatureVersionDB,
 )
-from signature_storage import SignatureFileStore, StoredSignature
+from signature_storage import SignatureFileStore, SignatureStorageError, StoredSignature
 from signature_sanitizer import sanitize_signature_html
 
 
@@ -66,7 +66,7 @@ def create_signature(
     signature_id = uuid.uuid4().hex
     signature = SignatureDB(
         id=signature_id,
-        name=name,
+        name=name.strip(),
         domain_id=domain_id,
         scope="DOMAIN" if domain_id is not None else "GLOBAL",
         mode=mode.value,
@@ -74,7 +74,10 @@ def create_signature(
     )
 
     stored = None
-    store.ensure_name_available(name.strip())
+    try:
+        store.ensure_name_available(name.strip())
+    except SignatureStorageError as exc:
+        raise ValueError(str(exc)) from exc
     try:
         session.add(signature)
         version, stored = _persist_version(
@@ -208,7 +211,10 @@ def update_signature(
     new_name = name.strip()
     renamed = old_name != new_name
     if renamed:
-        store.rename_signature(old_name, new_name)
+        try:
+            store.rename_signature(old_name, new_name)
+        except SignatureStorageError as exc:
+            raise ValueError(str(exc)) from exc
         versions = session.execute(
             select(SignatureVersionDB).where(SignatureVersionDB.signature_id == signature_id)
         ).scalars().all()
