@@ -191,6 +191,25 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertTrue(override.is_disabled)
 
 
+
+    def test_literal_email_lookup_does_not_treat_sql_like_wildcards_as_patterns(self):
+        self.db.add_all([
+            main.UserOverrideDB(
+                user_email="userXname@example.org",
+                html_content="<p>Wrong account</p>",
+            ),
+            main.UserOverrideDB(
+                user_email="user_name@example.org",
+                html_content="<p>Exact account</p>",
+            ),
+        ])
+        self.db.commit()
+        request = SimpleNamespace(
+            session={"user": {"groups": ["signature-users"], "email": "user_name@example.org"}}
+        )
+        result = main.get_my_signature(request, self.db)
+        self.assertEqual(result["html_content"], "<p>Exact account</p>")
+
     def test_authenticated_non_member_cannot_use_personal_signature_api(self):
         outsider = SimpleNamespace(
             session={"user": {"groups": ["employees"], "email": "outsider@example.org"}}
