@@ -233,11 +233,26 @@ async def auth(request: Request):
         if not isinstance(user, dict) or not user.get("sub"):
             raise ValueError("OIDC userinfo is missing the subject")
         email = user.get("email")
-        if not isinstance(email, str) or not user.get("email_verified", False):
-            raise ValueError("OIDC account email is missing or unverified")
+        if (
+            not isinstance(email, str)
+            or len(email) > 254
+            or email.count("@") != 1
+            or any(ch.isspace() for ch in email)
+            or not user.get("email_verified", False)
+        ):
+            raise ValueError("OIDC account email is missing, invalid or unverified")
+        local_part, email_domain = email.rsplit("@", 1)
+        if not local_part or "." not in email_domain or not email_domain:
+            raise ValueError("OIDC account email is invalid")
         groups = user.get("groups", [])
-        if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
+        if (
+            not isinstance(groups, list)
+            or len(groups) > 128
+            or not all(isinstance(group, str) and 0 < len(group) <= 255 for group in groups)
+        ):
             raise ValueError("OIDC groups claim has an invalid format")
+        if len(str(user["sub"])) > 255:
+            raise ValueError("OIDC subject exceeds the supported length")
         request.session.clear()
         raw_attributes = user.get("attributes")
         if not isinstance(raw_attributes, dict):
@@ -252,7 +267,7 @@ async def auth(request: Request):
             "email": email.strip(),
             "email_verified": True,
             "name": str(user.get("name") or "")[:256],
-            "groups": groups[:128],
+            "groups": groups,
             "attributes": safe_attributes,
         }
     except Exception:
