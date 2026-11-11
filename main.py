@@ -3,6 +3,7 @@ import uuid
 import json
 import hmac
 import secrets
+from urllib.parse import urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -147,6 +148,8 @@ oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
 )
 oidc_client_id = os.environ.get("OIDC_CLIENT_ID") or os.environ.get("CLIENT_ID")
 oidc_client_secret = os.environ.get("OIDC_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
+oidc_redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "")
+redirect_parts = urlsplit(oidc_redirect_uri)
 if (
     not isinstance(oidc_discovery_url, str)
     or not oidc_discovery_url.startswith("https://")
@@ -154,8 +157,15 @@ if (
     or not oidc_client_secret
     or str(oidc_client_id).lower().startswith(("your_", "replace_"))
     or str(oidc_client_secret).lower().startswith(("your_", "replace_"))
+    or redirect_parts.scheme != "https"
+    or not redirect_parts.hostname
+    or redirect_parts.username is not None
+    or redirect_parts.password is not None
+    or redirect_parts.query
+    or redirect_parts.fragment
+    or not redirect_parts.path.endswith("/auth")
 ):
-    raise RuntimeError("Configure an HTTPS OIDC discovery URL, OIDC_CLIENT_ID and OIDC_CLIENT_SECRET")
+    raise RuntimeError("Configure HTTPS OIDC discovery, client credentials and an explicit OIDC_REDIRECT_URI ending in /auth")
 oauth.register(
     name="oidc",
     server_metadata_url=oidc_discovery_url,
@@ -213,8 +223,7 @@ def normalize_domain(value: str) -> str:
 # --- Web UI Routes ---
 @app.get("/login")
 async def login(request: Request):
-    redirect_uri = request.url_for('auth').replace(scheme='https')
-    return await oauth.oidc.authorize_redirect(request, str(redirect_uri))
+    return await oauth.oidc.authorize_redirect(request, oidc_redirect_uri)
 
 @app.get("/auth")
 async def auth(request: Request):
@@ -256,7 +265,7 @@ async def logout(request: Request):
     request.session.clear()
     authentik_url = os.environ.get('AUTHENTIK_URL', '').rstrip('/')
     slug = os.environ.get('AUTHENTIK_SLUG', '')
-    return_url = str(request.url_for('read_root')).replace('http://', 'https://')
+    return_url = urlunsplit((redirect_parts.scheme, redirect_parts.netloc, redirect_parts.path[:-len("auth")], "", ""))
     logout_url = f"{authentik_url}/application/o/{slug}/end-session/?post_logout_redirect_uri={return_url}"
     return {"logout_url": logout_url}
 
