@@ -140,3 +140,14 @@ A review of the shared rate limiter found that its HMAC pseudonymization key was
 an undocumented second variable was manually supplied. The limiter now derives its
 domain-separated HMAC key from the configured `SECRET_KEY`, and regression tests cover
 both successful derivation and placeholder rejection. CI validation is pending.
+
+
+### Standalone Docker baseline — 2026-11-11
+
+- Added a Python 3.12 application image running as an unprivileged UID/GID.
+- The Compose stack now starts the application and PostgreSQL, keeps PostgreSQL off published host ports, persists the database and signature assets in separate named volumes, and binds the web port to loopback only.
+- The application container uses a read-only root filesystem, a bounded temporary filesystem, dropped Linux capabilities and `no-new-privileges`.
+- Alembic migrations run before Uvicorn starts. Compose waits for PostgreSQL health and exposes an application process healthcheck.
+- Added a standalone `.env.example` and Docker quick-start instructions. Authentik remains the first supported OIDC/profile-attribute provider for this MVP; Mailcow is not required to run the standalone portal.
+- CI run #520 on commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62` passed the Docker image build, Compose configuration/startup, PostgreSQL migrations inside the container, authenticated signature API smoke test, all 102 regression tests, dependency audit and full-history secret scan.
+- This validates the standalone container startup and API/database path. It does not yet validate real-browser behavior or a complete outbound mail/Rspamd flow. Multipart messages remain unchanged by the current Rspamd adapter.
