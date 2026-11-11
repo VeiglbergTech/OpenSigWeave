@@ -355,7 +355,20 @@ def read_root(request: Request, db: Session = Depends(get_db)):
 def read_domains(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    return db.query(DomainDB).all()
+    domains = db.query(DomainDB).order_by(DomainDB.domain_name.asc()).all()
+    return [
+        {
+            "id": item.id,
+            "domain_name": item.domain_name,
+            "is_active": item.is_active,
+            "allow_overrides": item.allow_overrides,
+            "inject_on_replies": item.inject_on_replies,
+            "trim_whitespace": item.trim_whitespace,
+            "strip_device_signatures": item.strip_device_signatures,
+            "template_html": sanitize_signature_html(item.template_html or ""),
+        }
+        for item in domains
+    ]
 
 @app.post("/domains/")
 def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(get_db)):
@@ -421,6 +434,10 @@ def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depen
 def delete_my_signature(request: Request, db: Session = Depends(get_db)):
     user = require_signature_user(request)
     email = normalized_user_email(user)
+    domain_part = email.rsplit("@", 1)[-1]
+    domain_obj = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_part).first()
+    if not domain_obj or not domain_obj.is_active or not domain_obj.allow_overrides:
+        raise HTTPException(status_code=403, detail="Personal signature overrides are disabled for this domain")
     override = db.query(UserOverrideDB).filter(func.lower(UserOverrideDB.user_email) == email).first()
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
