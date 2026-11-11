@@ -48,6 +48,7 @@ from auth_config import (
 )
 logger = logging.getLogger(__name__)
 
+oauth = OAuth()
 OIDC_ENABLED = oidc_enabled_from_env()
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
