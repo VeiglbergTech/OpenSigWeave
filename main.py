@@ -228,13 +228,21 @@ async def auth(request: Request):
         if not isinstance(groups, list) or not all(isinstance(group, str) for group in groups):
             raise ValueError("OIDC groups claim has an invalid format")
         request.session.clear()
+        raw_attributes = user.get("attributes")
+        if not isinstance(raw_attributes, dict):
+            raw_attributes = {}
+        safe_attributes = {
+            key: value[:256] if isinstance(value, str) else ""
+            for key in ("phone", "title")
+            if isinstance((value := raw_attributes.get(key)), str)
+        }
         request.session["user"] = {
-            "sub": user["sub"],
-            "email": email,
+            "sub": str(user["sub"])[:255],
+            "email": email.strip(),
             "email_verified": True,
-            "name": str(user.get("name") or ""),
-            "groups": groups,
-            "attributes": user.get("attributes") if isinstance(user.get("attributes"), dict) else {},
+            "name": str(user.get("name") or "")[:256],
+            "groups": groups[:128],
+            "attributes": safe_attributes,
         }
     except Exception:
         request.session.clear()
