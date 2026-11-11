@@ -53,6 +53,8 @@ def create_signature(
     is_active: bool = True,
     created_by: str | None = None,
 ) -> tuple[SignatureDB, SignatureVersionDB, SignatureVariantDB]:
+    if not name.strip():
+        raise ValueError("name must not be empty")
     if weight < 1:
         raise ValueError("weight must be positive")
     if domain_id is not None and session.get(DomainDB, domain_id) is None:
