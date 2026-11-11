@@ -18,7 +18,6 @@ from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
-from rate_limiter import RateLimitMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
@@ -28,6 +27,7 @@ load_dotenv()
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db
 from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB
+from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
