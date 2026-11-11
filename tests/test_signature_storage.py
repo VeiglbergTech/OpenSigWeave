@@ -1,4 +1,5 @@
 import hashlib
+import os
 import tempfile
 import unittest
 import uuid
@@ -38,6 +39,28 @@ class SignatureFileStoreTests(unittest.TestCase):
             (Path(directory) / stored.relative_path).write_text("tampered", encoding="utf-8")
             with self.assertRaises(SignatureStorageError):
                 store.read(version_id, stored.sha256)
+
+
+    def test_symlinked_signature_asset_is_rejected_for_read_and_delete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            target_id = uuid.uuid4()
+            target = store.write(target_id, "trusted")
+            linked_id = uuid.uuid4()
+            link_path = Path(directory) / f"{linked_id.hex}.html"
+            link_path.symlink_to(Path(directory) / target.relative_path)
+
+            with self.assertRaises(SignatureStorageError):
+                store.read(linked_id, target.sha256)
+            with self.assertRaises(SignatureStorageError):
+                store.delete(linked_id)
+            self.assertEqual(store.read(target_id, target.sha256), "trusted")
+
+    def test_storage_root_permissions_are_restricted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            os.chmod(directory, 0o755)
+            store = SignatureFileStore(directory)
+            self.assertEqual(store.root.stat().st_mode & 0o777, 0o700)
 
     def test_version_identifier_must_be_uuid(self):
         with tempfile.TemporaryDirectory() as directory:
