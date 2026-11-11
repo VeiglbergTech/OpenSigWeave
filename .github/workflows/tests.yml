@@ -113,7 +113,7 @@ jobs:
           APP_ALLOWED_HOSTS=signature.example.test
           LOCAL_ADMIN_EMAIL=admin@example.test
           LOCAL_ADMIN_PASSWORD_HASH='$local_admin_hash'
-          EOFF
+          EOF
           trap 'docker compose down --volumes' EXIT
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
