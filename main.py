@@ -313,7 +313,13 @@ def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depen
     user = request.session.get('user')
     if not user: raise HTTPException(status_code=401)
     email = user.get('email')
+    domain_part = email.rsplit("@", 1)[-1].casefold() if isinstance(email, str) and "@" in email else ""
+    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
+    if not domain_obj or not domain_obj.is_active or not domain_obj.allow_overrides:
+        raise HTTPException(status_code=403, detail="Personal signature overrides are disabled for this domain")
     override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
+    if override and override.is_disabled:
+        raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     if override: override.html_content = req.html_content
     else: db.add(UserOverrideDB(user_email=email, html_content=req.html_content))
     db.commit()
@@ -325,6 +331,8 @@ def delete_my_signature(request: Request, db: Session = Depends(get_db)):
     if not user: raise HTTPException(status_code=401)
     email = user.get('email')
     override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
+    if override and override.is_disabled:
+        raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     if override:
         db.delete(override)
         db.commit()
