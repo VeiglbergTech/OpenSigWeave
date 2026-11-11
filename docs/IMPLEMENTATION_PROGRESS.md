@@ -12,10 +12,10 @@ This document describes the current branch state. It is not a promise that defer
 ### Application and identity
 
 - FastAPI application with server-rendered portal and management APIs.
-- OIDC Authorization Code login using a configured discovery URL.
-- OIDC callback validates subject, email, boolean `email_verified` and the `groups` array.
+- Optional OIDC Authorization Code login using a configured discovery URL; local administrator login is available when `OIDC_ENABLED=false`.
+- OIDC callback (registered only when enabled) validates subject, email, boolean `email_verified` and the `groups` array. Local-only mode uses a configured email and salted scrypt password hash.
 - Portal authorization uses the exact group names `signature-users` and `signature-admins`.
-- Authentik API-backed employee attribute lookup provides profile fields, groups, claims and custom attributes.
+- Authentik API-backed employee attribute lookup provides profile fields, groups, claims and custom attributes in OIDC mode; local-only mode returns empty external attributes.
 - Authentik-specific logout and attribute lookup remain; a generic OIDC-only provider is not yet fully supported.
 
 ### Signature functionality
@@ -70,7 +70,7 @@ CI run #520 on commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62` passed:
 - Authenticated signature-engine API request against the running PostgreSQL-backed application.
 - All 102 regression tests.
 
-The CI run proves the container build/startup and database/API smoke path. It does not prove successful interactive OIDC login, full browser behavior or end-to-end email delivery.
+The CI run proves the container build/startup and database/API smoke path and exercises local-only startup/authentication configuration. It does not prove successful interactive OIDC login, full browser behavior or end-to-end email delivery.
 
 ## 3. Current limitations
 
