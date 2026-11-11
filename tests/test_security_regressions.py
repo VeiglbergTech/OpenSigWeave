@@ -77,11 +77,13 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('{"POST", "PUT", "PATCH", "DELETE"}', self.source)
         self.assertIn("hmac.compare_digest(expected, supplied)", self.source)
         template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("X-CSRF-Token", template)
+        portal_js = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
+        self.assertIn("data-csrf-token", template)
+        self.assertIn("X-CSRF-Token", portal_js)
         self.assertIn("csrf_token", self.source)
         self.assertIn('@app.post("/logout")', self.source)
         self.assertNotIn('@app.get("/logout")', self.source)
-        self.assertIn("fetch('/logout'", template)
+        self.assertIn('fetch("/logout"', portal_js)
 
     def test_signature_previews_are_sandboxed_and_js_data_is_serialized(self):
         template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
@@ -89,8 +91,9 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('sandbox=""', template)
         self.assertNotIn('x-html="previewHtml"', template)
         self.assertNotIn("{{ domain_template | safe }}", template)
-        self.assertNotIn("root.innerHTML =", template)
-        self.assertIn("clipboard.dangerouslyPasteHTML", template)
+        portal_js = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
+        self.assertNotIn("root.innerHTML =", portal_js)
+        self.assertIn("clipboard.dangerouslyPasteHTML", portal_js)
 
     def test_rspamd_credentials_are_external_and_http_is_bounded(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
