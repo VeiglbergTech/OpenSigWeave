@@ -97,12 +97,29 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./ci_test.db
         run: alembic upgrade head
-      - name: Build standalone Docker image
-        run: docker build --pull --tag opensigweave:ci .
-      - name: Validate standalone Docker Compose configuration
+      - name: Build and smoke-test standalone Docker stack
         run: |
-          printf 'POSTGRES_PASSWORD=ci-password\n' > .env
+          cat > .env <<'EOF'
+          POSTGRES_DB=opensigweave
+          POSTGRES_USER=opensigweave
+          POSTGRES_PASSWORD=ci-password
+          SECRET_KEY=ci-session-secret-that-is-long-enough-for-tests-123456
+          ENGINE_API_KEY=ci-engine-secret-that-is-long-enough-for-tests-123456
+          OIDC_DISCOVERY_URL=https://auth.example.test/application/o/opensigweave/.well-known/openid-configuration
+          OIDC_REDIRECT_URI=https://signature.example.test/auth
+          OIDC_CLIENT_ID=ci-client
+          OIDC_CLIENT_SECRET=ci-client-secret
+          OIDC_SCOPES=openid email profile attributes
+          AUTHENTIK_URL=https://auth.example.test
+          AUTHENTIK_SLUG=opensigweave
+          AUTHENTIK_API_TOKEN=ci-authentik-token
+          EOF
+          trap 'docker compose down --volumes' EXIT
           docker compose config --quiet
+          docker compose up -d --build --wait --wait-timeout 120
+          docker compose exec -T opensigweave alembic current
+          response="$(curl --fail --silent --show-error -H 'X-Engine-Key: ci-engine-secret-that-is-long-enough-for-tests-123456' http://127.0.0.1:8085/api/signature/smoke@example.test)"
+          python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
       - name: Run regression tests
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
