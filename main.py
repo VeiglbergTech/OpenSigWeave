@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.body_limit import RequestBodyLimitMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
@@ -149,6 +150,22 @@ app.add_middleware(
     https_only=True,
     max_age=3600,
 )
+# Accept only the canonical OIDC application host and explicitly configured aliases.
+# This prevents Host-header injection in absolute URL generation and routing.
+extra_allowed_hosts = [
+    host.strip().lower()
+    for host in os.environ.get("APP_ALLOWED_HOSTS", "").split(",")
+    if host.strip()
+]
+canonical_host = (redirect_parts.hostname or "").lower()
+allowed_hosts = list(dict.fromkeys([canonical_host, *extra_allowed_hosts]))
+if not canonical_host or any(
+    host == "*" or "/" in host or "@" in host or not host
+    for host in allowed_hosts
+):
+    raise RuntimeError("APP_ALLOWED_HOSTS must contain only explicit hostnames; wildcard hosts are not allowed")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+
 app.add_middleware(SecurityHeadersMiddleware)
 
 oauth = OAuth()
