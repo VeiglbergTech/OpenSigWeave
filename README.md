@@ -9,7 +9,7 @@ The current preview is a **standalone Docker Compose deployment**. It runs OpenS
 ## What is implemented
 
 - FastAPI web application with an OIDC login flow.
-- Authentik as the currently supported employee-attribute provider.
+- Authentik as the currently supported employee-attribute provider; the last successful identity attributes are cached in PostgreSQL per normalized sender address and used when a fresh lookup fails.
 - Group-based portal authorization:
   - `signature-users`: normal portal access.
   - `signature-admins`: administrator access.
@@ -31,9 +31,13 @@ Example format:
 <---[Professional]--[a1b2]--->
 ```
 
-Replace the illustrative code with the code displayed beside the signature in the administrator catalog. The marker selects that exact active signature for the sender's domain; it does not act as authentication or authorization. An invalid code, unknown name, inactive signature or ambiguous marker fails closed and does not fall back to automatic selection. A valid `X-OpenSigWeave-Mode` header takes precedence over a body marker.
+Replace the illustrative code with the code displayed beside the signature in the administrator catalog. The marker selects that exact active signature for the sender's domain; it does not act as authentication or authorization. A valid `X-OpenSigWeave-Mode` header takes precedence. Invalid or duplicate mode headers are ignored and selection continues with the body marker, Outlook marker or automatic mode. A body marker is consumed even when it is invalid, overridden by an X-header, or no signature can be inserted.
 
 The current Rspamd adapter still leaves all top-level multipart messages unchanged. Therefore body-marker replacement currently applies only to non-multipart messages handled by the adapter. Multipart MIME support and full client interoperability remain separate integration work.
+
+## Identity attribute fallback
+
+For each sender, OpenSigWeave requests fresh profile attributes from Authentik on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If Authentik is unavailable or the lookup cannot be trusted (for example, an invalid response, ambiguous account match or inactive account), the last successfully stored record is used. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
 
 ## Current limitations
 
