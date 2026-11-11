@@ -57,4 +57,5 @@ jobs:
       - name: Run regression tests
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
+          POSTGRES_PASSWORD: ci-password
         run: python -m unittest discover -s tests -v
