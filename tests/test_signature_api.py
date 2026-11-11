@@ -131,6 +131,37 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertIn("Domain Alice", result["html"])
         self.assertNotIn("Personal override", result["html"])
 
+    def test_personal_override_email_matching_is_case_insensitive(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True, allow_overrides=True,
+            template_html="<p>Domain default</p>",
+        ))
+        self.db.commit()
+        uppercase_request = SimpleNamespace(
+            session={"user": {"groups": ["signature-users"], "email": "User@EXAMPLE.ORG"}}
+        )
+        main.save_my_signature(
+            main.OverrideUpdate(html_content="<p>Personal {{ first_name }}</p>"),
+            uppercase_request,
+            self.db,
+        )
+        stored = self.db.query(main.UserOverrideDB).one()
+        self.assertEqual(stored.user_email, "user@example.org")
+
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode=None,
+                db=self.db,
+            ))
+        self.assertIn("Personal Alice", result["html"])
+
     def test_personal_override_save_respects_domain_policy(self):
         self.db.add(main.DomainDB(
             domain_name="example.org", is_active=True, allow_overrides=False,
