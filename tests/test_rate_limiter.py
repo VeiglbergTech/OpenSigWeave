@@ -6,6 +6,12 @@ from unittest.mock import patch
 
 from starlette.requests import Request
 import ipaddress
+import hashlib
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+
+from sqlalchemy import delete
+from database import engine as application_engine
 
 from sqlalchemy import create_engine
 
@@ -48,6 +54,26 @@ class RateLimiterTests(unittest.TestCase):
             ).scalar_one()
         self.assertNotIn(identity, stored)
 
+
+
+    @unittest.skipUnless(application_engine.dialect.name == "postgresql", "PostgreSQL concurrency test")
+    def test_postgresql_concurrent_increments_are_atomic(self):
+        bucket = f"concurrency-test:{uuid.uuid4().hex}"
+        try:
+            with ThreadPoolExecutor(max_workers=8) as executor:
+                counts = list(executor.map(
+                    lambda _: consume_rate_limit(bucket, 100, 60),
+                    range(32),
+                ))
+            self.assertEqual(sorted(counts), list(range(1, 33)))
+        finally:
+            digest = hashlib.sha256(bucket.encode("utf-8")).hexdigest()
+            with application_engine.begin() as connection:
+                connection.execute(
+                    delete(RateLimitBucketDB.__table__).where(
+                        RateLimitBucketDB.bucket_key == digest
+                    )
+                )
 
     def test_untrusted_forwarded_header_is_ignored(self):
         request = Request(
