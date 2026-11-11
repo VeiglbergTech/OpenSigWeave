@@ -1,8 +1,10 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const { JSDOM } = require("jsdom");
 
 const dom = new JSDOM(`<!doctype html>
 <html><body>
+  <div id="portal" x-data="portalShell"><button id="portal-preview" @click="previewUserSignature()">Preview</button></div>
   <div id="rules" x-data="ruleManager">
     <span id="mode" x-text="form.action_mode"></span>
     <button id="switch" type="button" @click="setMode('INTERNAL')">Switch</button>
@@ -39,6 +41,9 @@ for (const key of Object.getOwnPropertyNames(dom.window)) {
   }
 }
 
+window.portalShell = () => ({
+  previewUserSignature() { window.dispatchEvent(new CustomEvent("preview-requested", { detail: "ok" })); },
+});
 window.ruleManager = () => ({
   form: { action_mode: "AUTO" },
   signatures: [
@@ -71,6 +76,7 @@ global.toastManager = window.toastManager;
 
 const imported = require("@alpinejs/csp");
 const Alpine = imported.default || imported;
+Alpine.data("portalShell", window.portalShell);
 Alpine.data("ruleManager", window.ruleManager);
 Alpine.data("toastManager", window.toastManager);
 Alpine.data("toggleManager", window.toggleManager);
@@ -82,6 +88,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 (async () => {
   await tick();
   assert.equal(document.getElementById("mode").textContent, "AUTO");
+  let previewRequested = false;
+  window.addEventListener("preview-requested", event => { previewRequested = event.detail === "ok"; });
+  document.getElementById("portal-preview").click();
+  await tick();
+  assert.equal(previewRequested, true);
   assert.deepEqual(
     [...document.querySelectorAll(".signature")].map(node => node.textContent),
     ["Automatic"],
@@ -104,6 +115,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(document.getElementById("toggle-state").textContent, "open");
   assert.equal(document.getElementById("toggle-content").hasAttribute("x-cloak"), false);
 
+  const template = fs.readFileSync("templates/index.html", "utf8");
+  assert.match(template, /@alpinejs\/csp@3\.17\.5/);
+  assert.doesNotMatch(template, /alpinejs@3\.17\.5\/dist\/cdn\.min\.js/);
+  assert.doesNotMatch(template, /x-data="\{ showHtml: false \}"/);
+  assert.doesNotMatch(template, /document\.getElementById\(/);
   console.log("Alpine CSP evaluator smoke test passed");
   dom.window.close();
 })().catch(error => {
