@@ -5,7 +5,7 @@ import json
 import hmac
 import hashlib
 import secrets
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -347,10 +347,13 @@ async def login(request: Request):
 async def local_login(request: Request):
     if OIDC_ENABLED:
         raise HTTPException(status_code=404, detail="Local authentication is disabled")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
+        raise HTTPException(status_code=415, detail="Login form must be URL encoded")
     try:
-        form = await request.form()
-    except Exception:
+        form_data = parse_qs((await request.body()).decode("utf-8"), keep_blank_values=True, max_num_fields=8)
+    except (UnicodeDecodeError, ValueError):
         raise HTTPException(status_code=400, detail="Invalid login form")
+    form = {key: values[0] for key, values in form_data.items() if values}
     expected_csrf = request.session.pop("login_csrf", None)
     supplied_csrf = form.get("csrf_token", "")
     if (
