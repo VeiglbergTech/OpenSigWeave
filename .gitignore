@@ -3,7 +3,16 @@ venv/
 *.sqlite
 signatures/
 .env
+.env.*
+!.env.example
 __pycache__/
 branding/logo.png
 branding/favicon.ico
 branding/settings.json
+
+# Private keys and local secret/config artifacts
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
