@@ -250,7 +250,7 @@ local function inject_signature(task)
                 body = remaining
             end
             if changed then
-                task:set_message(headers:gsub("[\\r\\n]+$", "") .. "\\r\\n\\r\\n" .. body)
+                task:set_message(headers:gsub("[\r\n]+$", "") .. "\r\n\r\n" .. body)
             end
         end
 
