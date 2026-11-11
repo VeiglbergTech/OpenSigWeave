@@ -1,6 +1,6 @@
 # OpenSigWeave management and engine API
 
-Browser administration endpoints use the authenticated OIDC session and require the configured administrator group. State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The rule-management endpoints are connected to the administrator UI; signature-catalog endpoints are currently API-only.
+Browser administration endpoints use the authenticated OIDC session and require the configured administrator group. State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The rule-management and signature-catalog endpoints are connected to the administrator UI.
 
 ## Signature catalog
 
@@ -28,9 +28,26 @@ Example request:
 
 - `domain_id` may be `null` for a global signature.
 - `mode` is one of `AUTO`, `PROFESSIONAL` or `INTERNAL`.
+- `is_active` is optional and defaults to `true`.
 - The initial HTML version is written to the configured signature file store; the database stores its generated version ID, relative path, SHA-256 hash and size.
 - An initial variant is created in the same mode pool.
 - Dynamic identity values are rendered with HTML autoescaping.
+
+### Update signature metadata
+
+`PUT /api/admin/signatures/{signature_id}`
+
+Example request:
+
+```json
+{
+  "name": "Corporate signature",
+  "domain_id": 1,
+  "is_active": false
+}
+```
+
+This endpoint changes the name, global/domain scope and active state. The signature mode is intentionally immutable after creation because it determines the variant pool and rule compatibility. Deactivation preserves versions and metadata but excludes the signature from selection.
 
 ### Add a version
 
@@ -60,6 +77,20 @@ Example:
 ```
 
 The pool must match the signature's mode. Weights must be positive and determine relative selection probability.
+
+### List and update variants
+
+- `GET /api/admin/signatures/{signature_id}/variants` returns the signature's variants.
+- `PUT /api/admin/signature-variants/{variant_id}` updates `weight` and `is_enabled`.
+
+Example update:
+
+```json
+{
+  "weight": 3,
+  "is_enabled": true
+}
+```
 
 ### List versions
 
@@ -124,8 +155,7 @@ The `NONE` mode intentionally returns an empty signature.
 
 ## Current limitations
 
-- Signature catalog management has API endpoints but no complete administrator UI yet.
-- Signature update/deactivate/delete and variant update/delete endpoints are not yet implemented.
+- Variant deletion and logical signature deletion are not implemented. Prefer deactivation so rule references and historical versions remain intact.
 - Outlook HTML marker parsing is not yet implemented.
 - Rspamd MIME mutation and DKIM processing order still require isolated end-to-end verification.
 - The current selection and rule tests cover SQLite. The CI pipeline separately verifies PostgreSQL and SQLite schema migrations. Concurrent PostgreSQL selection tests and full application-level API tests remain pending.
