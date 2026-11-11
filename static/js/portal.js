@@ -88,7 +88,22 @@ window.fetch = (resource, options = {}) => {
             if(res.ok) notify("Signature saved successfully!"); else notify("Failed to save.", "error");
         }
 
-        function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
+        function portalShell() {
+    return {
+        tab: "personal",
+        emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
+        confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
+        confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
+        confirmDomainDelete(domain) { this.emit("open-confirm", { domain, action: "delete" }); },
+        confirmClearAdmin(targetId) { this.emit("open-confirm", { action: "clear-admin", targetId }); },
+        previewUserSignature() { this.emit("open-preview", { html: document.getElementById("raw-html-editor")?.value || "" }); },
+        previewDomainSignature(domain) { this.emit("open-preview", { html: document.getElementById("domain-raw-html-editor")?.value || "", previewDomain: domain.domain_name }); },
+        previewAdminSignature(email) { this.emit("open-preview", { html: document.getElementById("admin-raw-html-editor")?.value || "", previewEmail: email }); }
+    };
+}
+function htmlEditorToggle() { return { showHtml: false }; }
+
+function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
         function signatureManager() {
             return {
                 signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
@@ -415,6 +430,8 @@ function confirmModal() {
 }
 
 document.addEventListener("alpine:init", () => {
+    Alpine.data("portalShell", portalShell);
+    Alpine.data("htmlEditorToggle", htmlEditorToggle);
     Alpine.data("domainManager", domainManager);
     Alpine.data("domainSettingsModal", domainSettingsModal);
     Alpine.data("signatureManager", signatureManager);
