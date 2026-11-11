@@ -157,6 +157,11 @@ window.fetch = (resource, options = {}) => {
             return {
                 rules: [], signatures: [], editing: false,
                 form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] },
+                formatConditions(rule) {
+                    return rule.conditions.length
+                        ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
+                        : 'Always matches';
+                },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode); },
                 async fetchAll() {
                     try {
@@ -293,12 +298,6 @@ window.fetch = (resource, options = {}) => {
         });
 
 
-function formatRuleConditions(rule) {
-    return rule.conditions.length
-        ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
-        : 'Always matches';
-}
-
 function toastManager() {
     return {
         toasts: [],
@@ -414,6 +413,17 @@ function confirmModal() {
         }
     };
 }
+
+document.addEventListener("alpine:init", () => {
+    Alpine.data("domainManager", domainManager);
+    Alpine.data("signatureManager", signatureManager);
+    Alpine.data("ruleManager", ruleManager);
+    Alpine.data("toastManager", toastManager);
+    Alpine.data("sanitizerModal", sanitizerModal);
+    Alpine.data("previewModal", previewModal);
+    Alpine.data("addDomainModal", addDomainModal);
+    Alpine.data("confirmModal", confirmModal);
+});
 
 document.addEventListener("DOMContentLoaded", () => {
     const logoutButton = document.getElementById("logout-button");

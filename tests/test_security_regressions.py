@@ -239,6 +239,8 @@ class SecurityRegressionTests(unittest.TestCase):
         for component in ("toastManager", "sanitizerModal", "previewModal", "addDomainModal", "confirmModal"):
             self.assertIn(f"function {component}()", portal_js)
         self.assertIn("get matchingSignatures()", portal_js)
+        self.assertIn('Alpine.data("ruleManager", ruleManager)', portal_js)
+        self.assertIn('Alpine.data("previewModal", previewModal)', portal_js)
 
     def test_content_security_policy_is_report_only_until_browser_migration_is_complete(self):
         self.assertIn("Content-Security-Policy-Report-Only", self.source)

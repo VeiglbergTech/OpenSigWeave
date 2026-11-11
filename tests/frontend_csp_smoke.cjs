@@ -3,14 +3,14 @@ const { JSDOM } = require("jsdom");
 
 const dom = new JSDOM(`<!doctype html>
 <html><body>
-  <div id="rules" x-data="ruleManager()">
+  <div id="rules" x-data="ruleManager">
     <span id="mode" x-text="form.action_mode"></span>
     <button id="switch" type="button" @click="setMode('INTERNAL')">Switch</button>
     <template x-for="signature in matchingSignatures" :key="signature.id">
       <span class="signature" x-text="signature.name"></span>
     </template>
   </div>
-  <div id="toasts" x-data="toastManager()" @notify.window="add($event)">
+  <div id="toasts" x-data="toastManager" @notify.window="add($event)">
     <span id="toast-message" x-text="toasts.length ? toasts[0].msg : ''"></span>
   </div>
   <div id="toggle" x-data="{ show: false }">
@@ -65,6 +65,8 @@ global.toastManager = window.toastManager;
 
 const imported = require("@alpinejs/csp");
 const Alpine = imported.default || imported;
+Alpine.data("ruleManager", window.ruleManager);
+Alpine.data("toastManager", window.toastManager);
 window.Alpine = Alpine;
 Alpine.start();
 
