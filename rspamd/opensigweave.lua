@@ -67,7 +67,7 @@ local plain_splitters = {
     '\r?\n> '
 }
 
-local function find_outlook_mode_marker(task)
+local function find_outlook_mode_marker(task, is_reply)
     local parts = task:get_text_parts() or {}
     local found_modes = {}
     for _, part in ipairs(parts) do
@@ -81,6 +81,8 @@ local function find_outlook_mode_marker(task)
                     local start_pos = string.find(html, pattern)
                     if start_pos and start_pos < quote_start then quote_start = start_pos end
                 end
+                -- On replies, fail closed if no known quote boundary can be identified.
+                if not (is_reply and quote_start == #html + 1) then
                 local current_html = string.sub(html, 1, quote_start - 1)
                 for value in string.gmatch(current_html, "<!%-%-%s*OpenSigWeave:MODE=([%a]+)%s*%-%->") do
                     found_modes[string.upper(value)] = true
@@ -88,6 +90,7 @@ local function find_outlook_mode_marker(task)
                 local lower_html = string.lower(current_html)
                 for value in string.gmatch(lower_html, "data%-opensigweave%-mode%s*=%s*[\"']([%a]+)[\"']") do
                     found_modes[string.upper(value)] = true
+                end
                 end
             end
         end
@@ -148,7 +151,7 @@ local function inject_signature(task)
     end
     -- An explicit SMTP/header mode always wins over the Outlook HTML marker.
     if not requested_mode then
-        requested_mode = find_outlook_mode_marker(task)
+        requested_mode = find_outlook_mode_marker(task, is_reply)
     end
 
     local function http_callback(err, code, body, headers)
