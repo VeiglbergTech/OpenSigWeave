@@ -115,12 +115,18 @@ def add_signature_version(
     if signature is None:
         raise SignatureNotFoundError(signature_id)
 
-    latest_version = session.scalar(
+    latest_version_number = session.scalar(
         select(func.max(SignatureVersionDB.version_number)).where(
             SignatureVersionDB.signature_id == signature_id
         )
     )
-    version_number = (latest_version or 0) + 1
+    latest_version = session.execute(
+        select(SignatureVersionDB)
+        .where(SignatureVersionDB.signature_id == signature_id)
+        .order_by(SignatureVersionDB.version_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    version_number = (latest_version_number or 0) + 1
     version_uuid = uuid.uuid4()
     stored = None
     try:
