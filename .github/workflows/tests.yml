@@ -118,7 +118,7 @@ jobs:
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
           docker compose exec -T opensigweave alembic current
-          response="$(curl --fail --silent --show-error -H 'X-Engine-Key: ci-engine-secret-that-is-long-enough-for-tests-123456' http://127.0.0.1:8085/api/signature/smoke@example.test)"
+          response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H 'X-Engine-Key: ci-engine-secret-that-is-long-enough-for-tests-123456' http://127.0.0.1:8085/api/signature/smoke@example.test)"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
       - name: Run regression tests
         env:
