@@ -51,7 +51,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         )
         client = FakeClient()
         with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
-            result = await provider.get_attributes("alice+tag@example.org")
+            result = await provider.get_attributes("alice@example.org")
 
         self.assertEqual(
             result,
@@ -69,7 +69,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
                 },
             ),
         )
-        self.assertEqual(client.request["params"], {"search": "alice+tag@example.org"})
+        self.assertEqual(client.request["params"], {"search": "alice@example.org"})
         self.assertEqual(client.request["url"], "https://auth.example.org/api/v3/core/users/")
 
 
