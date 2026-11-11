@@ -37,7 +37,7 @@ The current Rspamd adapter still leaves all top-level multipart messages unchang
 
 ## Identity attribute fallback
 
-For each sender, OpenSigWeave requests fresh profile attributes from Authentik on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If Authentik is unavailable or the lookup cannot be trusted (for example, an invalid response, ambiguous account match or inactive account), the last successfully stored record is used. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
+For each sender, OpenSigWeave requests fresh profile attributes from Authentik on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If Authentik is unavailable or the lookup cannot be trusted (for example, an invalid response or ambiguous account match), the last successfully stored record is used. A successful lookup confirming that the account is missing or inactive clears the cached attributes instead of reusing stale group membership. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
 
 ## Current limitations
 
