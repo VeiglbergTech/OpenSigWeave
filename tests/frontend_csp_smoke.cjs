@@ -120,6 +120,24 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.doesNotMatch(template, /alpinejs@3\.17\.5\/dist\/cdn\.min\.js/);
   assert.doesNotMatch(template, /x-data="\{ showHtml: false \}"/);
   assert.doesNotMatch(template, /document\.getElementById\(/);
+  assert.match(template, /integrity="sha384-Q4UOujiwqAb\/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj\/YIKY7IQQFMw73wkrX"/);
+  const templateDom = new JSDOM(template);
+  const directiveAttributes = [...templateDom.window.document.querySelectorAll("*")]
+    .flatMap(element => [...element.attributes])
+    .filter(attribute => attribute.name.startsWith("x-") || attribute.name.startsWith("@") || attribute.name.startsWith(":"));
+  assert.ok(directiveAttributes.length >= 150, "Expected the complete Alpine template to be inspected");
+  for (const attribute of directiveAttributes) {
+    const expression = attribute.value;
+    assert.doesNotMatch(expression, /=>/, "Arrow functions are not supported by the CSP evaluator");
+    assert.equal(expression.includes(String.fromCharCode(96)), false, "Template literals are not supported by the CSP evaluator");
+    assert.doesNotMatch(expression, /\?\./, "Optional chaining is not supported by the CSP evaluator");
+    assert.doesNotMatch(expression, /\?\?/, "Nullish coalescing is not supported by the CSP evaluator");
+    assert.doesNotMatch(expression, /\bnew\s+/, "Constructor expressions are not supported by the CSP evaluator");
+    assert.doesNotMatch(expression, /;/, "Multi-statement directive expressions are not supported by the CSP evaluator");
+  }
+  assert.equal(templateDom.window.document.querySelectorAll("script:not([src])").length, 0, "The template must not introduce inline scripts");
+  assert.equal([...templateDom.window.document.querySelectorAll("script[src^='https://']")].every(script => script.hasAttribute("integrity") && script.getAttribute("crossorigin") === "anonymous"), true, "External scripts must use SRI and anonymous CORS");
+  templateDom.window.close();
   console.log("Alpine CSP evaluator smoke test passed");
   dom.window.close();
 })().catch(error => {
