@@ -16,7 +16,9 @@ class FakeResponse:
                     "attributes": {
                         "title": ["Systems Engineer"],
                         "phone": "+49 123",
+                        "department": "Sales",
                     },
+                    "groups": ["sales", "signature-users"],
                 }
             ]
         }
@@ -55,6 +57,12 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
                 last_name="Example",
                 title="Systems Engineer",
                 phone="+49 123",
+                groups=frozenset({"sales", "signature-users"}),
+                attributes={
+                    "title": ["Systems Engineer"],
+                    "phone": "+49 123",
+                    "department": "Sales",
+                },
             ),
         )
         self.assertEqual(client.request["params"], {"search": "alice+tag@example.org"})
