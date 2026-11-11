@@ -946,7 +946,10 @@ async def get_rspamd_signature(
     selected_from_variant = False
     signature_id = None
     marker_requested = isinstance(x_signature_name, str) or isinstance(x_signature_code, str)
-    explicit_mode = bool(x_signature_mode and x_signature_mode.strip())
+    mode_candidate = x_signature_mode.strip().upper() if isinstance(x_signature_mode, str) else ""
+    explicit_mode = mode_candidate in {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
+    # Invalid mode headers are not fatal: continue with a body marker or automatic rules.
+    x_signature_mode = mode_candidate if explicit_mode else None
     if marker_requested and not explicit_mode:
         # A text marker is a selector, not an authentication mechanism. It is
         # accepted only when its four-character SHA-256 check matches exactly.
