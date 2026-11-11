@@ -50,6 +50,7 @@ def create_signature(
     mode: SignatureMode,
     html_content: str,
     weight: int = 1,
+    is_active: bool = True,
     created_by: str | None = None,
 ) -> tuple[SignatureDB, SignatureVersionDB, SignatureVariantDB]:
     if weight < 1:
@@ -64,7 +65,7 @@ def create_signature(
         domain_id=domain_id,
         scope="DOMAIN" if domain_id is not None else "GLOBAL",
         mode=mode.value,
-        is_active=True,
+        is_active=is_active,
     )
 
     stored = None
