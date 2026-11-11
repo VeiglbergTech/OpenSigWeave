@@ -41,7 +41,7 @@ For each sender, OpenSigWeave requests fresh profile attributes from Authentik o
 
 ## Current limitations
 
-- The standalone application currently requires OIDC for interactive login. Authentik is the only fully documented and supported identity/attribute-provider setup for this preview.
+- OIDC is enabled by default for backward compatibility. Standalone local-administrator login is available with `OIDC_ENABLED=false`; in that mode profile attributes are empty unless populated by a future identity provider.
 - Although OIDC discovery is configurable, employee attributes and logout still use Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
 - The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
 - Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
@@ -59,9 +59,8 @@ For the standalone Docker deployment you need:
 - Docker Compose plugin v2 (`docker compose`).
 - Git.
 - A DNS name for the portal, for example `signature.example.org`.
-- HTTPS termination through a reverse proxy.
-- An Authentik instance reachable by the application.
-- An Authentik OAuth2/OpenID Provider and a service API token for employee-attribute lookup.
+- HTTPS termination through a reverse proxy (the session cookie is Secure).
+- Either an Authentik OAuth2/OpenID Provider (`OIDC_ENABLED=true`, the default), or a local administrator email and scrypt password hash (`OIDC_ENABLED=false`).
 
 The application container listens on port `8085`. Compose publishes it on `127.0.0.1:8085` only. PostgreSQL is not published to the host.
 
@@ -111,7 +110,30 @@ All three values must be independent. Use the generated URL-safe values without 
 
 The Compose file constructs the internal PostgreSQL `DATABASE_URL` from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. Keep the example `DATABASE_URL` password synchronized if you inspect or use it outside Compose; Compose overrides it for the application container.
 
-### 2.3 Configure the OIDC provider in Authentik
+### 2.3 Run without OIDC (local administrator)
+
+For an isolated standalone test installation, set:
+
+```dotenv
+OIDC_ENABLED="false"
+APP_ALLOWED_HOSTS="signature-test.example.org"
+LOCAL_ADMIN_EMAIL="admin@example.org"
+LOCAL_ADMIN_PASSWORD_HASH="..."
+```
+
+Generate the password hash interactively from the repository root:
+
+```bash
+python scripts/hash_password.py
+```
+
+The utility prompts twice and prints a salted scrypt hash. Put that complete value in `LOCAL_ADMIN_PASSWORD_HASH`; do not put the plaintext password in the environment file. Use a password of at least 12 characters and protect `.env` with mode `0600`.
+
+When OIDC is disabled, OpenSigWeave does not require or initialize OIDC discovery, client credentials, redirect URI, or Authentik API access. The `/auth` callback route is not registered. The `/login` page provides the local administrator login, and the local account receives the `signature-admins` and `signature-users` roles. Local profile attributes (name, title, phone, groups and claims) are empty; signature selection and administration can still be tested, but rules depending on external identity attributes cannot be meaningfully evaluated.
+
+The local account is intended for standalone administration and isolated testing. Keep the portal behind HTTPS and restrict access to trusted networks. Do not expose it directly to the internet. Switching `OIDC_ENABLED` changes the authentication mode on restart; it does not migrate or link user identities between local and OIDC accounts.
+
+### 2.4 Configure the OIDC provider in Authentik
 
 Create an OAuth2/OpenID Provider and an application in Authentik.
 
@@ -176,7 +198,7 @@ Set the following values to match your Authentik deployment:
 - `OIDC_DISCOVERY_URL`: normally `https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration`.
 - `OIDC_REDIRECT_URI`: the exact HTTPS callback URI registered above.
 
-The application currently uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account and API token:
+When OIDC is enabled, the application also uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account and API token:
 
 1. Open **Directory → Users → New User** and select **Service Account**.
 2. Create a dedicated role under **Directory → Roles**.
@@ -189,7 +211,7 @@ Do not use a personal administrator token. Prefer an expiring token and document
 
 The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is technically unavailable, the engine falls back to the last successfully cached identity attributes in PostgreSQL. A confirmed missing or inactive account clears the cached attributes. If no cached record exists yet, the engine proceeds with empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
 
-### 2.4 Review the environment
+### 2.5 Review the environment
 
 At minimum, check that these entries are no longer placeholders:
 
@@ -208,7 +230,7 @@ AUTHENTIK_API_TOKEN="..."
 
 Keep `APP_ALLOWED_HOSTS` empty unless you deliberately need additional hostnames. If you add entries, use explicit hostnames only, comma-separated, without schemes, ports, paths or wildcards. The hostname in `OIDC_REDIRECT_URI` is always the canonical hostname.
 
-### 2.5 Validate and start Docker Compose
+### 2.6 Validate and start Docker Compose
 
 From `/opt/opensigweave`:
 
