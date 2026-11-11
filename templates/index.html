@@ -26,7 +26,7 @@
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
             {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
-            {% if app_name %}<div class="text-xl font-bold tracking-wider" class="app-brand" data-app-color="{{ app_color|e }}">{{ app_name }}</div>{% endif %}
+            {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand" data-app-color="{{ app_color|e }}">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
