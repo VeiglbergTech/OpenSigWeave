@@ -69,6 +69,8 @@ jobs:
           pip-audit -r requirements.txt
       - name: Compile Python sources
         run: python -m compileall -q .
+      - name: Check browser JavaScript syntax
+        run: node --check static/js/portal.js
       - name: Check Rspamd Lua syntax
         run: |
           sudo apt-get update

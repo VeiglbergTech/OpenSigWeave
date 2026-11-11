@@ -155,3 +155,20 @@ static assets. Inline event-handler attributes have been removed, and initially 
 Alpine elements now use `x-cloak`. This prepares the UI for a restrictive CSP but does
 not yet complete it: the standard Alpine build still evaluates expressions dynamically,
 and Alpine's CSP build migration plus browser-level verification remain required.
+
+
+## Content Security Policy rollout
+
+A restrictive `Content-Security-Policy-Report-Only` header is now emitted as a
+diagnostic baseline. It disallows inline scripts/event-handler attributes and
+inline styles in the proposed policy, while allowing the currently pinned Alpine
+CDN host. It is deliberately report-only: the standard Alpine build still requires
+dynamic evaluation and will report a violation. This is not represented as an
+enforced CSP and does not yet protect users by blocking violations.
+
+The portal's inline scripts, inline handlers and inline style block have been
+externalized. Alpine expressions that require statement blocks, arrow functions,
+or iframe evaluation have been moved to named component methods. Remaining work
+is to load Alpine's CSP build, vendor or integrity-pin it, run browser-level
+regression tests, review the report-only violations, and only then move to an
+enforced CSP. Do not enable a permissive `unsafe-eval`/ `unsafe-inline` policy.

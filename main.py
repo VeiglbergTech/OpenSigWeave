@@ -120,6 +120,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Content-Security-Policy-Report-Only",
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+            "form-action 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'none'; "
+            "style-src 'self'; style-src-attr 'none'; img-src 'self' data: https:; "
+            "font-src 'self' data:; connect-src 'self'; frame-src 'self'"
+        )
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")

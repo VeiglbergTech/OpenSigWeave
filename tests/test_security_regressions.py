@@ -5,6 +5,7 @@ when the application is split into importable services and dependency overrides.
 """
 import ast
 import pathlib
+import re
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -215,6 +216,32 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("x-cloak", index)
         self.assertTrue((ROOT / "static" / "js" / "portal.js").is_file())
         self.assertTrue((ROOT / "static" / "css" / "portal.css").is_file())
+
+
+
+    def test_frontend_is_prepared_for_alpine_csp_evaluator(self):
+        template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        portal_js = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
+        expressions = re.findall(
+            r'(?:@[\\w.:-]+|x-[\\w.:-]+|:[\\w.:-]+)="([^"]*)"',
+            template,
+            flags=re.DOTALL,
+        )
+        for expression in expressions:
+            with self.subTest(expression=expression[:100]):
+                self.assertNotRegex(expression, r"=>|;|\\bif\\s*\\(|\\?\\.")
+        self.assertNotIn("x-bind:srcdoc", template)
+        for component in ("toastManager", "sanitizerModal", "previewModal", "addDomainModal", "confirmModal"):
+            self.assertIn(f"function {component}()", portal_js)
+        self.assertIn("get matchingSignatures()", portal_js)
+
+    def test_content_security_policy_is_report_only_until_browser_migration_is_complete(self):
+        self.assertIn("Content-Security-Policy-Report-Only", self.source)
+        self.assertNotIn("Content-Security-Policy\",", self.source)
+        self.assertIn("script-src-attr 'none'", self.source)
+        self.assertIn("style-src-attr 'none'", self.source)
+        self.assertNotIn("'unsafe-inline'", self.source)
+        self.assertNotIn("'unsafe-eval'", self.source)
 
 
 
