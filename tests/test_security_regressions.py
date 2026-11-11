@@ -183,6 +183,15 @@ class SecurityRegressionTests(unittest.TestCase):
             args = [arg.arg for arg in node.args.args]
             self.assertIn("request", args, name)
 
+    def test_rspamd_marker_removal_preserves_the_marked_html_element(self):
+        lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
+        start = lua.index("local function remove_outlook_mode_markers")
+        end = lua.index("\nend", start)
+        remover = lua[start:end]
+        self.assertIn('data%-opensigweave%-mode', remover)
+        self.assertIn('html = html:gsub("%s+data%-opensigweave%-mode', remover)
+        self.assertNotIn('>.-</', remover)
+
 
 if __name__ == "__main__":
     unittest.main()
