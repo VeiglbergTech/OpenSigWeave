@@ -75,3 +75,8 @@ Also verify that the effective Postfix configuration still contains the authenti
 ## Host-header trust boundary
 
 The application now uses Starlette's `TrustedHostMiddleware`. The canonical host is derived from the fixed HTTPS `OIDC_REDIRECT_URI`; explicitly configured reverse-proxy aliases may be added through comma-separated `APP_ALLOWED_HOSTS`. Wildcard hosts are rejected. Reverse proxies must preserve the expected Host value or set a configured alias. A regression test rejects an untrusted Host header and accepts the canonical hostname.
+
+
+## Authentik service-token transport
+
+The Authentik attribute provider now rejects a configured base URL unless it uses HTTPS and contains no URL-embedded username/password, query or fragment. The HTTP client already verifies TLS certificates, uses a bounded timeout and does not follow redirects by default. Regression tests cover plaintext HTTP and embedded credentials. Do not disable TLS verification to work around certificate errors; configure a trusted CA instead.
