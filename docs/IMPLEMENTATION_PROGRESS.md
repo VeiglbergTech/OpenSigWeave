@@ -69,7 +69,7 @@ A branch-wide source review identified and addressed the following findings on `
 - Content Security Policy is not yet enforced. The current UI contains inline JavaScript and Alpine expressions; introducing a strict CSP requires a deliberate nonce/hash migration rather than a permissive policy that would create a false sense of protection.
 - Subresource Integrity hashes and local vendoring for third-party browser assets remain outstanding. Versions are pinned, but CDN delivery is still a supply-chain dependency.
 - OIDC provider configuration must expose the standard `email_verified` claim. This is intentionally fail-closed; deployments that do not provide it must correct their provider mapping rather than silently accepting unverified identities.
-- Rate limiting, GitHub branch protection, and a complete Git-history secret scan remain outstanding. GitHub Actions are now pinned to immutable commit SHAs and checkout credential persistence is disabled.
+- GitHub branch protection and a complete Git-history secret scan remain outstanding. GitHub Actions are now pinned to immutable commit SHAs and checkout credential persistence is disabled.
 - Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
 - No production Mailcow deployment or configuration was modified.
 
@@ -93,3 +93,8 @@ A branch-wide source review identified and addressed the following findings on `
 
 - Tightened OIDC email verification to require the JSON boolean `true` exactly. Previously, a malformed truthy value such as the string `"false"` could pass a generic truthiness check. Added tests for boolean false, string false, integer and missing claims, plus the valid boolean-true case.
 - Added HSTS with a one-year max-age (without `includeSubDomains` or preload) and disabled legacy cross-domain policy files through response headers. The canonical-host runtime test checks both headers. HSTS is effective in browsers on HTTPS responses; TLS termination must remain at the trusted reverse proxy.
+
+
+- Added shared database-backed fixed-window rate limiting for OIDC login, the OIDC callback and the Rspamd signature endpoint. PostgreSQL upserts make counters atomic across workers and replicas; SQLite support is retained for compatibility tests. The limiter fails closed when its database is unavailable, returns HTTP 429 with Retry-After when limits are exceeded, and stores only hashed bucket identifiers.
+- Added Alembic revision `0004_rate_limit_buckets`, configurable per-endpoint thresholds and optional trusted reverse-proxy CIDRs. Forwarded client addresses are ignored unless the immediate TCP peer belongs to an explicitly configured trusted network. Unit tests cover counter increments, window resets, bucket isolation, hashed storage and forwarded-header trust boundaries.
+- Default rate limits are 10 login requests/5 minutes, 20 callback requests/5 minutes and 1,800 engine requests/minute. The engine threshold must be reviewed against measured production mail throughput before rollout. Apply migration 0004 before deploying this code.
