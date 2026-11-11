@@ -82,7 +82,22 @@ local function inject_signature(task)
     if mode_header_count == 1 then
         local raw_mode = task:get_header('X-OpenSigWeave-Mode')
         if type(raw_mode) == 'string' then
-            local candidate = raw_mode:match('^%s*(.-)%s*
+            local candidate = raw_mode:gsub("^%s+", ""):gsub("%s+$", "")
+            candidate = candidate:upper()
+            if candidate == 'AUTO' or candidate == 'PROFESSIONAL'
+                or candidate == 'INTERNAL' or candidate == 'NONE' then
+                requested_mode = candidate
+            else
+                rspamd_logger.warnx(task, "OpenSigWeave: ignoring unsupported mode header value")
+            end
+        end
+    elseif mode_header_count > 1 then
+        rspamd_logger.warnx(task, "OpenSigWeave: ignoring duplicate mode headers")
+    end
+    if mode_header_count > 0 then
+        task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
+    end
+
     local function http_callback(err, code, body, headers)
         if err or code ~= 200 then
             rspamd_logger.errx(task, "OpenSigWeave: API error (%s)", err or code)
