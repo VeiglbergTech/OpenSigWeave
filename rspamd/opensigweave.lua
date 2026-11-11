@@ -200,20 +200,54 @@ local function inject_signature(task)
         requested_mode = find_outlook_mode_marker(task, is_reply)
     end
 
+    local function remove_text_marker_from_message()
+        if not signature_marker or not signature_marker.cleanup then return end
+        local body_data = task:get_rawbody()
+        local headers_data = task:get_raw_headers()
+        local body = body_data and tostring(body_data) or ""
+        local headers = headers_data and tostring(headers_data) or ""
+        local function remove_literal_once(value, literal)
+            if not literal or literal == "" then return value, false end
+            local first, last = string.find(value, literal, 1, true)
+            if not first then return value, false end
+            return string.sub(value, 1, first - 1) .. string.sub(value, last + 1), true
+        end
+        local changed = false
+        if signature_marker.raw then
+            local remaining = body
+            local removed
+            repeat
+                remaining, removed = remove_literal_once(remaining, signature_marker.raw)
+                changed = changed or removed
+            until not removed or not signature_marker.cleanup_all
+            local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
+            repeat
+                remaining, removed = remove_literal_once(remaining, escaped)
+                changed = changed or removed
+            until not removed or not signature_marker.cleanup_all
+            body = remaining
+        end
+        if changed then
+            task:set_message(headers:gsub("[\r\n]+$", "") .. "\r\n\r\n" .. body)
+        end
+    end
+
+
     local function http_callback(err, code, body, headers)
         if err or code ~= 200 then
+            remove_text_marker_from_message()
             rspamd_logger.errx(task, "OpenSigWeave: API error (%s)", err or code)
             return
         end
 
         local parser = ucl.parser()
         local res, ucl_err = parser:parse_string(body)
-        if not res then return end
+        if not res then remove_text_marker_from_message(); return end
         
         local data = parser:get_object()
-        if type(data) ~= "table" then return end
+        if type(data) ~= "table" then remove_text_marker_from_message(); return end
         local html_sig = data.html
-        if type(html_sig) ~= "string" then return end
+        if type(html_sig) ~= "string" then remove_text_marker_from_message(); return end
         
         local inject_on_replies = data.inject_on_replies
         local trim_whitespace = data.trim_whitespace
@@ -222,37 +256,6 @@ local function inject_signature(task)
         if trim_whitespace == nil then trim_whitespace = true end
         if strip_device_signatures == nil then strip_device_signatures = false end
 
-        local function remove_text_marker_from_message()
-            if not signature_marker or not signature_marker.cleanup then return end
-            local body_data = task:get_rawbody()
-            local headers_data = task:get_raw_headers()
-            local body = body_data and tostring(body_data) or ""
-            local headers = headers_data and tostring(headers_data) or ""
-            local function remove_literal_once(value, literal)
-                if not literal or literal == "" then return value, false end
-                local first, last = string.find(value, literal, 1, true)
-                if not first then return value, false end
-                return string.sub(value, 1, first - 1) .. string.sub(value, last + 1), true
-            end
-            local changed = false
-            if signature_marker.raw then
-                local remaining = body
-                local removed
-                repeat
-                    remaining, removed = remove_literal_once(remaining, signature_marker.raw)
-                    changed = changed or removed
-                until not removed or not signature_marker.cleanup_all
-                local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
-                repeat
-                    remaining, removed = remove_literal_once(remaining, escaped)
-                    changed = changed or removed
-                until not removed or not signature_marker.cleanup_all
-                body = remaining
-            end
-            if changed then
-                task:set_message(headers:gsub("[\r\n]+$", "") .. "\r\n\r\n" .. body)
-            end
-        end
 
         local content_type = task:get_header_raw("Content-Type")
         local multipart_message = content_type and tostring(content_type):lower():find("multipart", 1, true) ~= nil
