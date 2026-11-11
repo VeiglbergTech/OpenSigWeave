@@ -342,6 +342,13 @@ local function inject_signature(task)
                     replaced, count = spliced:gsub(escaped_pattern, function() return signature end, 1)
                 end
                 if count > 0 then
+                    if strip_device_signatures then
+                        replaced = replaced:gsub("\\r?\\n[Ss]ent from my [^\\r\\n<]+", "")
+                        replaced = replaced:gsub("\\r?\\n[Gg]et Outlook for [^\\r\\n<]+", "")
+                        replaced = replaced:gsub("<[bB][rR]%s*/?>[Ss]ent from my [^<]+", "")
+                        replaced = replaced:gsub("<[bB][rR]%s*/?>[Gg]et Outlook for [^<]+", "")
+                    end
+                    replaced = is_html and clean_trailing_html(replaced) or clean_trailing_plain(replaced)
                     rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
                     return replaced, true
                 end
