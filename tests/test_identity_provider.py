@@ -129,7 +129,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
             with patch.object(client, "get", new=AsyncMock(return_value=response)):
                 result = await provider.get_attributes("alice@example.org")
-        self.assertEqual(result, IdentityAttributes(claims={"email": "alice@example.org", "is_active": True}))
+        self.assertEqual(result, IdentityAttributes(claims={"email": "alice@example.org", "name": "", "is_active": True}))
 
 
 if __name__ == "__main__":
