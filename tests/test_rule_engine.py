@@ -14,7 +14,7 @@ class SignatureRuleTests(unittest.TestCase):
             sender="Alice@Example.org",
             domain="example.org",
             groups=frozenset({"Sales", "Employees"}),
-            claims={"department": "Sales"},
+            claims={"department": "Sales", "is_active": True},
             attributes={"title": "Account Manager", "departments": ["Sales", "Operations"]},
         )
 
