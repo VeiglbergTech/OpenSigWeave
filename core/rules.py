@@ -29,6 +29,11 @@ class SignatureRule:
     signature_id: str | None = None
 
 
+def _matches_value(actual: Any, expected: str) -> bool:
+    values = actual if isinstance(actual, (list, tuple, set, frozenset)) else (actual,)
+    return any(str(value).casefold() == expected.casefold() for value in values if value is not None)
+
+
 def condition_matches(condition: RuleCondition, context: RuleContext) -> bool:
     if condition.kind == "sender_equals":
         return context.sender.casefold() == condition.value.casefold()
@@ -37,9 +42,9 @@ def condition_matches(condition: RuleCondition, context: RuleContext) -> bool:
     if condition.kind == "group_contains":
         return condition.value.casefold() in {group.casefold() for group in context.groups}
     if condition.kind == "claim_equals":
-        return str(context.claims.get(condition.key, "")) == condition.value
+        return _matches_value(context.claims.get(condition.key, ""), condition.value)
     if condition.kind == "attribute_equals":
-        return str(context.attributes.get(condition.key, "")) == condition.value
+        return _matches_value(context.attributes.get(condition.key, ""), condition.value)
     raise ValueError(f"Unsupported rule condition: {condition.kind}")
 
 
