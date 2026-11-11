@@ -160,6 +160,80 @@
             </div>
         </div>
 
+        <div x-data="signatureManager()" x-init="fetchAll()" class="mt-10 space-y-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold">Signature Catalog</h2>
+                    <p class="text-sm text-gray-400 mt-1">Manage signature assets, versions and delivery variants.</p>
+                </div>
+                <button @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Signature</button>
+            </div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Mode</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Variants</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="signature in signatures" :key="signature.id">
+                            <tr>
+                                <td class="px-4 py-3 font-medium" x-text="signature.name"></td>
+                                <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
+                                <td class="px-4 py-3 text-sm" x-text="signature.scope === 'GLOBAL' ? 'Global' : 'Domain #' + signature.domain_id"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="signature.variants"></td>
+                                <td class="px-4 py-3"><span class="text-xs" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Inactive'"></span></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <button @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
+                                    <button @click="manageVariants(signature)" class="text-indigo-400 hover:text-indigo-300 text-sm">Variants</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="signatures.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No signatures configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div x-show="editing" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Mode
+                        <select x-model="form.mode" :disabled="!!form.id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-300">Domain scope
+                        <select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="">Global</option>
+                            <template x-for="domain in domains" :key="domain.id"><option :value="String(domain.id)" x-text="domain.domain_name"></option></template>
+                        </select>
+                    </label>
+                    <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
+                    <label x-show="!form.id" class="text-sm text-gray-300">Initial variant weight<input type="number" min="1" max="1000" x-model.number="form.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                </div>
+                <label class="block text-sm text-gray-300">
+                    <span x-text="form.id ? 'New HTML version (leave empty to keep current version)' : 'HTML template'"></span>
+                    <textarea x-model="form.html_content" rows="9" maxlength="65536" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono text-xs" placeholder="<p>Hello {{ first_name }}</p>"></textarea>
+                </label>
+                <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
+            </div>
+
+            <div x-show="variantEditor" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature?.name"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="space-y-3">
+                    <template x-for="variant in variants" :key="variant.id">
+                        <div class="flex flex-wrap items-center gap-4 bg-gray-900 rounded p-3">
+                            <span class="font-medium text-sm w-36" x-text="variant.pool_name"></span>
+                            <label class="text-sm text-gray-300">Weight <input type="number" min="1" max="1000" x-model.number="variant.weight" class="ml-2 w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1"></label>
+                            <label class="text-sm text-gray-300"><input type="checkbox" x-model="variant.is_enabled" class="mr-1"> Enabled</label>
+                            <button @click="saveVariant(variant)" class="text-blue-400 hover:text-blue-300 text-sm ml-auto">Save</button>
+                        </div>
+                    </template>
+                    <p x-show="variants.length === 0" class="text-sm text-gray-400">No variants configured.</p>
+                </div>
+            </div>
+        </div>
+
         <div x-data="ruleManager()" x-init="fetchAll()" class="mt-10 space-y-5">
             <div class="flex items-center justify-between">
                 <div>
@@ -542,6 +616,69 @@
         }
 
         function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
+        function signatureManager() {
+            return {
+                signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
+                form: { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 },
+                async fetchAll() {
+                    try {
+                        const [signaturesResponse, domainsResponse] = await Promise.all([fetch('/api/admin/signatures'), fetch('/domains/')]);
+                        if (!signaturesResponse.ok || !domainsResponse.ok) throw new Error('Could not load signature catalog');
+                        this.signatures = await signaturesResponse.json();
+                        this.domains = await domainsResponse.json();
+                    } catch (error) { notify(error.message, 'error'); }
+                },
+                newSignature() {
+                    this.form = { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 };
+                    this.editing = true;
+                },
+                editSignature(signature) {
+                    this.form = { id: signature.id, name: signature.name, mode: signature.mode,
+                        domain_id: signature.domain_id == null ? '' : String(signature.domain_id),
+                        is_active: signature.is_active, html_content: '', weight: 1 };
+                    this.editing = true;
+                },
+                async saveSignature() {
+                    if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
+                    const domainId = this.form.domain_id === '' ? null : Number(this.form.domain_id);
+                    if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
+                    let response;
+                    if (!this.form.id) {
+                        response = await fetch('/api/admin/signatures', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: this.form.name, mode: this.form.mode, domain_id: domainId,
+                                is_active: this.form.is_active, html_content: this.form.html_content, weight: this.form.weight }) });
+                    } else {
+                        response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ name: this.form.name, domain_id: domainId, is_active: this.form.is_active }) });
+                        if (response.ok && this.form.html_content.trim()) {
+                            response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
+                                { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
+                        }
+                    }
+                    if (!response.ok) { notify('Could not save signature: ' + (await response.text()), 'error'); return; }
+                    notify('Signature saved.');
+                    this.editing = false;
+                    await this.fetchAll();
+                },
+                async manageVariants(signature) {
+                    this.variantSignature = signature;
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signature.id) + '/variants');
+                    if (!response.ok) { notify('Could not load variants.', 'error'); return; }
+                    this.variants = await response.json();
+                    this.variantEditor = true;
+                },
+                async saveVariant(variant) {
+                    const response = await fetch('/api/admin/signature-variants/' + encodeURIComponent(variant.id), {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ weight: Number(variant.weight), is_enabled: variant.is_enabled })
+                    });
+                    if (!response.ok) { notify('Could not save variant: ' + (await response.text()), 'error'); return; }
+                    notify('Variant updated.');
+                    await this.fetchAll();
+                }
+            };
+        }
+
         function ruleManager() {
             return {
                 rules: [], signatures: [], editing: false,
