@@ -16,6 +16,7 @@ from typing import List, Optional, Literal
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
@@ -140,6 +141,7 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(SessionMiddleware, secret_key=session_secret, same_site="lax", https_only=True, max_age=3600)
+app.add_middleware(RequestBodyLimitMiddleware, max_body_size=1024 * 1024)
 
 oauth = OAuth()
 oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
