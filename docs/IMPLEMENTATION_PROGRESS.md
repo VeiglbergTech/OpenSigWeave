@@ -89,3 +89,7 @@ A branch-wide source review identified and addressed the following findings on `
 
 - Trusted-host middleware regression tests exposed two test-harness edge cases: early Host rejection can occur before SessionMiddleware has populated the request scope, and TestClient follows the valid-host login redirect unless explicitly told not to. The security-header middleware now safely handles requests rejected before session creation, and the canonical-host test disables redirect following. These fixes are included in the current branch; CI for the latest commit is pending.
 - Authentik's service-token provider now refuses plaintext HTTP and URL-embedded credentials. The CI run before this final fix confirmed dependency audit, Python compilation, Lua syntax and both database migration jobs; the regression suite caught the two Host-test issues above, which have been corrected.
+
+
+- Tightened OIDC email verification to require the JSON boolean `true` exactly. Previously, a malformed truthy value such as the string `"false"` could pass a generic truthiness check. Added tests for boolean false, string false, integer and missing claims, plus the valid boolean-true case.
+- Added HSTS with a one-year max-age (without `includeSubDomains` or preload) and disabled legacy cross-domain policy files through response headers. The canonical-host runtime test checks both headers. HSTS is effective in browsers on HTTPS responses; TLS termination must remain at the trusted reverse proxy.
