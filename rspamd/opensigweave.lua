@@ -343,8 +343,8 @@ local function inject_signature(task)
                 end
                 if count > 0 then
                     if strip_device_signatures then
-                        replaced = replaced:gsub("\\r?\\n[Ss]ent from my [^\\r\\n<]+", "")
-                        replaced = replaced:gsub("\\r?\\n[Gg]et Outlook for [^\\r\\n<]+", "")
+                        replaced = replaced:gsub("\r?\n[Ss]ent from my [^\r\n<]+", "")
+                        replaced = replaced:gsub("\r?\n[Gg]et Outlook for [^\r\n<]+", "")
                         replaced = replaced:gsub("<[bB][rR]%s*/?>[Ss]ent from my [^<]+", "")
                         replaced = replaced:gsub("<[bB][rR]%s*/?>[Gg]et Outlook for [^<]+", "")
                     end
