@@ -1,6 +1,7 @@
 """Optional OIDC and standalone local administrator authentication tests."""
 import asyncio
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -47,6 +48,31 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         self.assertTrue(is_valid_email("admin@example.org"))
         self.assertFalse(is_valid_email("not-an-email"))
         self.assertFalse(is_valid_email("admin@localhost"))
+
+    def test_local_login_http_flow_uses_secure_session_cookie(self):
+        password_hash = hash_local_admin_password("correct horse battery staple")
+        with (
+            patch.object(main, "OIDC_ENABLED", False),
+            patch.object(main, "LOCAL_ADMIN_EMAIL", "admin@example.org"),
+            patch.object(main, "LOCAL_ADMIN_PASSWORD_HASH", password_hash),
+            patch("rate_limiter.consume_rate_limit", return_value=1),
+        ):
+            client = TestClient(main.app, base_url="https://app.example.org")
+            page = client.get("/login")
+            self.assertEqual(page.status_code, 200)
+            token_match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+            self.assertIsNotNone(token_match)
+            response = client.post("/login", data={
+                "csrf_token": token_match.group(1),
+                "email": "admin@example.org",
+                "password": "correct horse battery staple",
+            }, follow_redirects=False)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/")
+        cookie = response.headers.get("set-cookie", "").casefold()
+        self.assertIn("secure", cookie)
+        self.assertIn("httponly", cookie)
+        self.assertIn("samesite=lax", cookie)
 
     def test_local_login_establishes_admin_session(self):
         password_hash = hash_local_admin_password("correct horse battery staple")
