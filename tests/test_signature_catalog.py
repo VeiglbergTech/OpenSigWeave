@@ -57,6 +57,13 @@ class SignatureCatalogTests(unittest.TestCase):
             "<p>Hello {{ first_name }}</p>",
         )
 
+    def test_create_signature_rejects_blank_name(self):
+        with self.assertRaises(ValueError):
+            create_signature(
+                self.session, self.store, name="   ", domain_id=None,
+                mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+            )
+
     def test_create_signature_can_start_inactive(self):
         signature, _, _ = create_signature(
             self.session, self.store, name="Inactive", domain_id=None,
