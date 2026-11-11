@@ -83,6 +83,33 @@ class SelectionRepositoryTests(unittest.TestCase):
         self.assertIsNone(select_and_record_variant(self.session, "alice@example.org", "INTERNAL"))
         self.assertEqual(self.session.execute(select(SelectionStateDB)).scalars().all(), [])
 
+    def test_rule_target_limits_selection_to_signature(self):
+        targeted_signature = SignatureDB(
+            id=uuid.uuid4().hex,
+            name="Targeted professional",
+            scope="DOMAIN",
+            mode="AUTO",
+            is_active=True,
+        )
+        targeted_variant = SignatureVariantDB(
+            id=uuid.uuid4().hex,
+            signature_id=targeted_signature.id,
+            pool_name="AUTO",
+            weight=1,
+            is_enabled=True,
+        )
+        self.session.add_all([targeted_signature, targeted_variant])
+        self.session.commit()
+
+        selected = select_and_record_variant(
+            self.session,
+            "rules@example.org",
+            "AUTO",
+            signature_id=targeted_signature.id,
+        )
+        self.assertEqual(selected.id, targeted_variant.id)
+        self.session.rollback()
+
 
 if __name__ == "__main__":
     unittest.main()
