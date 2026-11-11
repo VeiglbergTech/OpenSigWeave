@@ -28,7 +28,9 @@ from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import AttributeProvider
 from core.selection_repository import select_and_record_variant
-from core.modes import SignatureMode
+from core.modes import SignatureMode, resolve_mode
+from core.rules import RuleContext, evaluate_rules
+from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature
 from signature_storage import SignatureFileStore, SignatureStorageError
 attribute_provider: AttributeProvider = AuthentikAttributeProvider(
@@ -601,36 +603,65 @@ async def get_rspamd_signature(
     email: str,
     response: Response,
     x_engine_key: Optional[str] = Header(None),
+    x_signature_mode: Optional[str] = Header(None, alias="X-OpenSigWeave-Mode"),
     db: Session = Depends(get_db)
 ):
     response.headers["Cache-Control"] = "no-store, private"
-    # --- SECURITY LOCK ---
-    expected_key = ENGINE_API_KEY
-    if not expected_key or x_engine_key != expected_key:
+    if not ENGINE_API_KEY or not hmac.compare_digest(x_engine_key or "", ENGINE_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized Engine Request")
-        
-    # 1. Look up Domain Rules
-    domain_part = email.split('@')[-1] if '@' in email else ''
+
+    normalized_email = email.strip().casefold()
+    domain_part = normalized_email.rsplit("@", 1)[-1] if "@" in normalized_email else ""
     domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
-    
+    empty_response = {
+        "html": "",
+        "inject_on_replies": bool(domain_obj and domain_obj.inject_on_replies),
+        "trim_whitespace": bool(domain_obj.trim_whitespace) if domain_obj else True,
+        "strip_device_signatures": bool(domain_obj.strip_device_signatures) if domain_obj else False,
+    }
     if not domain_obj or not domain_obj.is_active:
-        return {"html": "", "inject_on_replies": False, "trim_whitespace": True, "strip_device_signatures": False}
-        
-    # 2. Check for User Override AND KILL SWITCH
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
-    
+        return empty_response
+
+    override = db.query(UserOverrideDB).filter(
+        UserOverrideDB.user_email == normalized_email
+    ).first()
     if override and override.is_disabled:
-        return {"html": "", "inject_on_replies": False, "trim_whitespace": True, "strip_device_signatures": False}
-    
+        return empty_response
+
     selected_from_variant = False
+    signature_id = None
     if override:
         raw_template = override.html_content
     else:
+        identity_attributes = await attribute_provider.get_attributes(normalized_email)
+        if x_signature_mode and x_signature_mode.strip():
+            try:
+                mode = resolve_mode(x_signature_mode)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc))
+        else:
+            context = RuleContext(
+                sender=normalized_email,
+                domain=domain_part,
+                groups=identity_attributes.groups,
+                attributes=identity_attributes.attributes,
+            )
+            matched_rule = evaluate_rules(load_signature_rules(db), context)
+            try:
+                mode = resolve_mode(matched_rule.action if matched_rule else None)
+            except ValueError as exc:
+                raise HTTPException(status_code=500, detail="A stored signature rule has an invalid action")
+            signature_id = matched_rule.signature_id if matched_rule else None
+
+        if mode == SignatureMode.NONE:
+            return empty_response
+
         selected_variant = select_and_record_variant(
             db,
-            sender_email=email,
-            pool_name="AUTO",
+            sender_email=normalized_email,
+            pool_name=mode.value,
             domain_id=domain_obj.id,
+            signature_id=signature_id,
         )
         if selected_variant:
             latest_version = (
@@ -649,46 +680,39 @@ async def get_rspamd_signature(
                 except (SignatureStorageError, ValueError, TypeError):
                     raise HTTPException(status_code=503, detail="Signature asset unavailable")
             else:
-                raw_template = domain_obj.template_html
-        else:
+                raise HTTPException(status_code=503, detail="Signature version metadata is missing")
+        elif mode == SignatureMode.AUTO and signature_id is None:
             raw_template = domain_obj.template_html
-        
+        else:
+            return empty_response
+
     if not raw_template:
-        return {
-            "html": "", 
-            "inject_on_replies": domain_obj.inject_on_replies,
-            "trim_whitespace": domain_obj.trim_whitespace,
-            "strip_device_signatures": domain_obj.strip_device_signatures
-        }
-        
-    # 3. Resolve normalized identity attributes through the provider abstraction.
-    identity_attributes = await attribute_provider.get_attributes(email)
-    first_name = identity_attributes.first_name or email.split('@')[0].capitalize()
+        return empty_response
+
+    identity_attributes = await attribute_provider.get_attributes(normalized_email)
+    first_name = identity_attributes.first_name or normalized_email.split("@")[0].capitalize()
     last_name = identity_attributes.last_name
     title = identity_attributes.title
     phone = identity_attributes.phone
 
-    # 4. Compile the HTML in a sandbox and escape every identity attribute.
     try:
         parsed = render_signature_template(raw_template, {
             "first_name": first_name,
             "last_name": last_name,
             "title": title,
             "phone": phone,
-            "email": email,
+            "email": normalized_email,
             "domain_name": domain_part,
         })
     except TemplateError:
         raise HTTPException(status_code=422, detail="Invalid signature template")
-    
-    # Commit the selected variant only after the asset has been read and rendered.
+
     if selected_from_variant:
         db.commit()
 
-    # 5. Deliver to Rspamd
     return {
         "html": parsed,
         "inject_on_replies": domain_obj.inject_on_replies,
         "trim_whitespace": domain_obj.trim_whitespace,
-        "strip_device_signatures": domain_obj.strip_device_signatures
+        "strip_device_signatures": domain_obj.strip_device_signatures,
     }
