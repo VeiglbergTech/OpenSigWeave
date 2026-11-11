@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import tempfile
 import uuid
+import stat
 
 
 class SignatureStorageError(Exception):
@@ -25,6 +26,9 @@ class SignatureFileStore:
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if not self.root.is_dir():
+            raise SignatureStorageError("Signature storage root must be a directory")
+        os.chmod(self.root, 0o700)
 
     @staticmethod
     def _filename(version_id: uuid.UUID) -> str:
@@ -73,13 +77,21 @@ class SignatureFileStore:
 
     def read(self, version_id: uuid.UUID, expected_sha256: str) -> str:
         filename = self._filename(version_id)
-        path = (self.root / filename).resolve()
-        if path.parent != self.root:
-            raise SignatureStorageError("Signature path escapes configured storage root")
+        path = self.root / filename
         try:
-            payload = path.read_bytes()
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                file_info = os.fstat(descriptor)
+                if not stat.S_ISREG(file_info.st_mode):
+                    raise SignatureStorageError("Signature asset is not a regular file")
+                with os.fdopen(descriptor, "rb", closefd=False) as asset:
+                    payload = asset.read()
+            finally:
+                os.close(descriptor)
+        except SignatureStorageError:
+            raise
         except OSError as exc:
-            raise SignatureStorageError("Signature version is unavailable") from exc
+            raise SignatureStorageError("Signature version is unavailable or unsafe") from exc
 
         actual_sha256 = hashlib.sha256(payload).hexdigest()
         if not hmac.compare_digest(actual_sha256, expected_sha256):
@@ -91,10 +103,15 @@ class SignatureFileStore:
 
     def delete(self, version_id: uuid.UUID) -> None:
         filename = self._filename(version_id)
-        path = (self.root / filename).resolve()
-        if path.parent != self.root:
-            raise SignatureStorageError("Signature path escapes configured storage root")
+        path = self.root / filename
         try:
-            path.unlink(missing_ok=True)
+            file_info = path.lstat()
+            if stat.S_ISLNK(file_info.st_mode) or not stat.S_ISREG(file_info.st_mode):
+                raise SignatureStorageError("Refusing to delete a non-regular signature asset")
+            path.unlink()
+        except FileNotFoundError:
+            return
+        except SignatureStorageError:
+            raise
         except OSError as exc:
             raise SignatureStorageError("Unable to delete signature version") from exc
