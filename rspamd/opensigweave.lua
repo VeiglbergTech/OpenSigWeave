@@ -231,6 +231,9 @@ local function inject_signature(task)
                 changed = changed or removed
             until not removed or not signature_marker.cleanup_all
             body = remaining
+        else
+            local cleaned, count = body:gsub("<%-%-%-%[[^\\r\\n]*", "")
+            if count > 0 then body = cleaned; changed = true end
         end
         if changed then
             task:set_message(headers:gsub("[\r\n]+$", "") .. "\r\n\r\n" .. body)
@@ -355,17 +358,23 @@ local function inject_signature(task)
                     rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
                     return replaced, true
                 end
-            elseif signature_marker and signature_marker.raw then
+            elseif signature_marker and signature_marker.cleanup then
                 local removed = false
-                local first, last = string.find(spliced, signature_marker.raw, 1, true)
-                if first then
-                    spliced = string.sub(spliced, 1, first - 1) .. string.sub(spliced, last + 1)
-                    removed = true
-                end
-                if is_html then
-                    local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
-                    local a, b = string.find(spliced, escaped, 1, true)
-                    if a then spliced = string.sub(spliced, 1, a - 1) .. string.sub(spliced, b + 1); removed = true end
+                if signature_marker.raw then
+                    local first, last = string.find(spliced, signature_marker.raw, 1, true)
+                    if first then
+                        spliced = string.sub(spliced, 1, first - 1) .. string.sub(spliced, last + 1)
+                        removed = true
+                    end
+                    if is_html then
+                        local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
+                        local a, b = string.find(spliced, escaped, 1, true)
+                        if a then spliced = string.sub(spliced, 1, a - 1) .. string.sub(spliced, b + 1); removed = true end
+                    end
+                else
+                    local cleaned, count = spliced:gsub("<%-%-%-%[[^\\r\\n]*", "")
+                    spliced = cleaned
+                    removed = count > 0
                 end
                 if removed then rspamd_logger.infox(task, "OpenSigWeave: removed unused signature text marker") end
             end
