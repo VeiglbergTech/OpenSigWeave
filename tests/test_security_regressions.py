@@ -152,7 +152,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("from core.rule_repository import load_signature_rules", self.source)
         self.assertIn("evaluate_rules(load_signature_rules(db), context)", self.source)
         self.assertIn('alias="X-OpenSigWeave-Mode"', self.source)
-        self.assertIn("if override and not explicit_mode:", self.source)
+        self.assertIn("if override and domain_obj.allow_overrides and not explicit_mode:", self.source)
         self.assertIn("signature_id=signature_id", self.source)
 
 
