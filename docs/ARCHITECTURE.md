@@ -41,7 +41,7 @@ The implemented services cover:
 
 - Signature modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`.
 - Signature catalog metadata and active state.
-- Versioned HTML files with UUID identifiers, SHA-256 hashes and integrity checks.
+- Name-based signature directories at `signatur/{Signaturname}/signature.html`, with immutable UUID-addressed snapshots in each directory's `.versions/` subdirectory. PostgreSQL retains stable internal signature IDs, version metadata, SHA-256 hashes and integrity checks; renaming a signature moves its directory without changing its ID.
 - Weighted variants and selection state to avoid immediate repetition for a sender/mode pool.
 - Rules with priorities and AND-combined conditions for sender, domain, groups, claims and attributes.
 - HTML sanitization before storage and rendering with automatic escaping of dynamic identity values.
@@ -50,7 +50,7 @@ The implemented services cover:
 
 PostgreSQL is the supported standalone deployment database. SQLAlchemy manages relational records and Alembic manages schema migrations. SQLite remains available for compatibility and unit-test scenarios.
 
-PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, rules, selection state and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`.
+PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, rules, selection state and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
 
 The application image stores files in `/data/signatures`; Compose persists this path in the `opensigweave-signatures` named volume. PostgreSQL uses the separate `opensigweave-postgres-data` volume. Both volumes must be backed up and restored together.
 
