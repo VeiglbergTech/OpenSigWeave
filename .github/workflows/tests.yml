@@ -99,12 +99,15 @@ jobs:
         run: alembic upgrade head
       - name: Build and smoke-test standalone Docker stack
         run: |
-          cat > .env <<'EOF'
+          postgres_password='ci-password'
+          session_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          engine_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          cat > .env <<EOF
           POSTGRES_DB=opensigweave
           POSTGRES_USER=opensigweave
-          POSTGRES_PASSWORD=ci-password
-          SECRET_KEY=ci-session-secret-that-is-long-enough-for-tests-123456
-          ENGINE_API_KEY=ci-engine-secret-that-is-long-enough-for-tests-123456
+          POSTGRES_PASSWORD=$postgres_password
+          SECRET_KEY=$session_key
+          ENGINE_API_KEY=$engine_key
           OIDC_DISCOVERY_URL=https://auth.example.test/application/o/opensigweave/.well-known/openid-configuration
           OIDC_REDIRECT_URI=https://signature.example.test/auth
           OIDC_CLIENT_ID=ci-client
@@ -118,7 +121,8 @@ jobs:
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
           docker compose exec -T opensigweave alembic current
-          response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H 'X-Engine-Key: ci-engine-secret-that-is-long-enough-for-tests-123456' http://127.0.0.1:8085/api/signature/smoke@example.test)"
+          engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
+          response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
       - name: Run regression tests
         env:
