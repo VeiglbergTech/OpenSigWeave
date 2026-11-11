@@ -71,3 +71,7 @@ A branch-wide source review identified and addressed the following findings on `
 - Rate limiting, request-wide body limits, dependency/action SHA pinning, GitHub branch protection, and a complete Git-history secret scan remain outstanding.
 - Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
 - No production Mailcow deployment or configuration was modified.
+
+- OIDC login and logout now use the explicit HTTPS `OIDC_REDIRECT_URI`; the callback is no longer constructed from the incoming Host header. Configure the exact callback URI at the identity provider and in `.env`.
+- Signature storage now enforces mode `0700` on its dedicated root, opens assets with `O_NOFOLLOW`, verifies regular-file type, and refuses symlink deletion. Regression tests cover symlinked assets and directory permissions.
+- Authenticated portal/API responses are marked `Cache-Control: no-store, private`. The editor's external dependencies are version-pinned; CDN SRI/local vendoring remains a follow-up.
