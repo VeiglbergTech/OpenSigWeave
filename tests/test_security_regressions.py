@@ -147,6 +147,14 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("make_url(DATABASE_URL).password != postgres_password", database_source)
         self.assertTrue((ROOT / "compose.yaml").exists())
 
+
+    def test_rspamd_resolution_uses_persisted_rules_and_explicit_mode_override(self):
+        self.assertIn("from core.rule_repository import load_signature_rules", self.source)
+        self.assertIn("evaluate_rules(load_signature_rules(db), context)", self.source)
+        self.assertIn('alias="X-OpenSigWeave-Mode"', self.source)
+        self.assertIn("if override and not explicit_mode:", self.source)
+        self.assertIn("signature_id=signature_id", self.source)
+
     def test_domain_routes_receive_request_context(self):
         for name in ("read_domains", "create_domain", "update_domain", "delete_domain"):
             node = next(
