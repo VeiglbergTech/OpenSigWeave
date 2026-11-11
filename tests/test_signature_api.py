@@ -190,6 +190,55 @@ class SignatureCatalogApiTests(unittest.TestCase):
         ).one()
         self.assertTrue(override.is_disabled)
 
+
+    def test_authenticated_non_member_cannot_use_personal_signature_api(self):
+        outsider = SimpleNamespace(
+            session={"user": {"groups": ["employees"], "email": "outsider@example.org"}}
+        )
+        for operation in (
+            lambda: main.get_my_signature(outsider, self.db),
+            lambda: main.save_my_signature(main.OverrideUpdate(html_content="<p>Denied</p>"), outsider, self.db),
+            lambda: main.delete_my_signature(outsider, self.db),
+        ):
+            with self.subTest(operation=operation):
+                with self.assertRaises(main.HTTPException) as raised:
+                    operation()
+                self.assertEqual(raised.exception.status_code, 403)
+
+    def test_personal_override_html_is_sanitized_before_database_storage(self):
+        self.db.add(main.DomainDB(
+            domain_name="example.org", is_active=True, allow_overrides=True,
+        ))
+        self.db.commit()
+        main.save_my_signature(
+            main.OverrideUpdate(html_content='<p onclick="alert(1)">Safe<script>bad()</script></p>'),
+            self.user_request,
+            self.db,
+        )
+        stored = self.db.query(main.UserOverrideDB).one().html_content
+        self.assertIn("Safe", stored)
+        self.assertNotIn("onclick", stored)
+        self.assertNotIn("<script", stored)
+
+    def test_domain_template_is_sanitized_before_storage(self):
+        domain = main.DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        main.update_domain(
+            domain.id,
+            main.DomainUpdate(
+                is_active=True, allow_overrides=True, inject_on_replies=False,
+                trim_whitespace=True, strip_device_signatures=False,
+                template_html='<div onmouseover="bad()">Domain<script>bad()</script></div>',
+            ),
+            self.admin_request,
+            self.db,
+        )
+        self.db.refresh(domain)
+        self.assertIn("Domain", domain.template_html)
+        self.assertNotIn("onmouseover", domain.template_html)
+        self.assertNotIn("<script", domain.template_html)
+
     def test_non_admin_cannot_mutate_signature_catalog(self):
         payload = main.SignatureCreateRequest(
             name="Denied", mode="AUTO", html_content="<p>Denied</p>"
