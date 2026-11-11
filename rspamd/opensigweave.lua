@@ -114,8 +114,9 @@ local function find_outlook_mode_marker(task, is_reply)
 end
 
 local function remove_outlook_mode_markers(html)
+    -- Remove only the control marker, never the containing element or its user content.
     html = html:gsub("<!%-%-%s*OpenSigWeave:MODE=[%a]+%s*%-%->", "")
-    html = html:gsub("<[%w]+[^>]-data%-opensigweave%-mode%s*=%s*[\"'][%a]+[\"'][^>]*>.-</[%w]+%s*>", "")
+    html = html:gsub("%s+data%-opensigweave%-mode%s*=%s*[\"'][%a]+[\"']", "")
     return html
 end
 
