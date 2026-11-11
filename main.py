@@ -27,11 +27,11 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
-from identity.providers.authentik import AuthentikAttributeProvider
+from identity.providers.authentik import AuthentikAttributeProvider, IdentityProviderUnavailable
 from identity.providers.base import AttributeProvider
 from core.selection_repository import select_and_record_variant
 from core.modes import SignatureMode, resolve_mode
@@ -44,6 +44,48 @@ attribute_provider: AttributeProvider = AuthentikAttributeProvider(
     base_url=os.environ.get("AUTHENTIK_URL", ""),
     api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
 )
+
+async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes:
+    """Refresh identity data from Authentik and fall back to the last good DB snapshot."""
+    normalized_email = email.strip().casefold()
+    try:
+        fresh = await get_identity_attributes(db, normalized_email)
+        if not isinstance(fresh, IdentityAttributes):
+            raise IdentityProviderUnavailable("Authentik returned an unsupported identity result")
+        cached = db.get(IdentityCacheDB, normalized_email)
+        values = {
+            "first_name": fresh.first_name[:256],
+            "last_name": fresh.last_name[:256],
+            "title": fresh.title[:256],
+            "phone": fresh.phone[:256],
+            "groups": sorted(fresh.groups),
+            "claims": dict(fresh.claims),
+            "attributes": dict(fresh.attributes),
+        }
+        if cached is None:
+            cached = IdentityCacheDB(email=normalized_email, **values)
+            db.add(cached)
+        else:
+            for key, value in values.items():
+                setattr(cached, key, value)
+        db.commit()
+        return fresh
+    except Exception as exc:
+        db.rollback()
+        if not isinstance(exc, IdentityProviderUnavailable):
+            logger.warning("Identity refresh failed; attempting database fallback (%s)", type(exc).__name__)
+        cached = db.get(IdentityCacheDB, normalized_email)
+        if cached is None:
+            return IdentityAttributes()
+        return IdentityAttributes(
+            first_name=cached.first_name or "",
+            last_name=cached.last_name or "",
+            title=cached.title or "",
+            phone=cached.phone or "",
+            groups=frozenset(cached.groups or []),
+            claims=cached.claims or {},
+            attributes=cached.attributes or {},
+        )
 
 signature_file_store = SignatureFileStore(
     os.environ.get("SIGNATURE_STORAGE_PATH", "./signatures")
@@ -911,7 +953,7 @@ async def get_rspamd_signature(
         if (not marker_name or len(marker_name) > 255 or len(marker_code) != 4
                 or not hmac.compare_digest(marker_code, expected_code)):
             return empty_response
-        identity_attributes = await attribute_provider.get_attributes(normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email)
         matching_signatures = (
             db.query(SignatureDB)
             .filter(
@@ -942,10 +984,10 @@ async def get_rspamd_signature(
         except (SignatureStorageError, ValueError, TypeError):
             raise HTTPException(status_code=503, detail="Signature asset unavailable")
     elif override and domain_obj.allow_overrides and not explicit_mode:
-        identity_attributes = await attribute_provider.get_attributes(normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email)
         raw_template = override.html_content
     else:
-        identity_attributes = await attribute_provider.get_attributes(normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email)
         if explicit_mode:
             try:
                 mode = resolve_mode(x_signature_mode)
