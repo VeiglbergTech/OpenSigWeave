@@ -76,8 +76,7 @@ async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes
         return fresh
     except Exception as exc:
         db.rollback()
-        if not isinstance(exc, IdentityProviderUnavailable):
-            logger.warning("Identity refresh failed; attempting database fallback (%s)", type(exc).__name__)
+        logger.warning("Authentik identity refresh unavailable; attempting database fallback (%s)", type(exc).__name__)
         cached = db.get(IdentityCacheDB, normalized_email)
         if cached is None:
             return IdentityAttributes()
