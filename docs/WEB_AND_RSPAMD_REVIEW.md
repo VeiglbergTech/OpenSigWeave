@@ -9,7 +9,7 @@
 2. The preview renders signature HTML using Alpine `x-html`. This is an intentional HTML preview feature, but it means untrusted HTML can execute in the application origin unless a strict sanitization policy is enforced before preview. The current HTML import path removes literal script elements with a regular expression; that is not a complete HTML sanitizer and does not cover event-handler attributes, dangerous URL schemes, SVG or malformed markup.
 3. The template interpolates profile values into a JavaScript object literal. Those values need context-appropriate JavaScript serialization/escaping rather than relying on ordinary HTML template escaping.
 4. The profile settings link is opened in a new tab. Add `rel="noopener noreferrer"` when retaining `target="_blank"`.
-5. Quill and Alpine are loaded from public CDNs without Subresource Integrity attributes or pinned immutable asset URLs. This creates a third-party supply-chain dependency in the administrative UI. Prefer self-hosted, version-pinned assets or integrity-pinned CDN resources.
+5. Quill is self-hosted and Alpine is pinned to 3.17.5 using its CSP-compatible build with a verified SHA-384 Subresource Integrity attribute. Alpine remains an external runtime dependency; local vendoring would remove that remaining CDN dependency.
 6. State-changing actions use cookie-authenticated `fetch` calls and no CSRF token is visible in the inspected template. Add CSRF tokens and server-side validation; SameSite cookies and Origin checks are defense-in-depth, not substitutes for a complete threat model.
 7. Logout is implemented as a GET route. Prefer POST with CSRF protection for a state-changing session action.
 8. The access-denied template uses normal Jinja interpolation for the message; retain autoescaping and do not change this to `safe`.
@@ -125,13 +125,15 @@ Quill 1.3.7 JavaScript and Snow theme CSS are now vendored under
 runtime no longer requests Quill from jsDelivr. The upstream MIT license is included
 beside the assets. This removes the Quill CDN as a runtime supply-chain dependency.
 
-Alpine.js remains version-pinned on jsDelivr for now. The current UI uses Alpine
-expressions that require a deliberate migration to the CSP build before a strict
-Content Security Policy can be enforced. Do not add `unsafe-eval` or broad
-`unsafe-inline` merely to make the current build pass. Alpine CSP migration,
-local vendoring, and a strict CSP remain open. Subresource Integrity is not a
-substitute for removing external runtime dependencies and remains to be completed
-for any CDN asset that stays in use.
+Alpine.js 3.17.5 now uses the CSP-compatible build. Complex actions were moved
+into named Alpine data components, and the jsdom smoke test exercises the CSP
+expression evaluator against representative UI interactions. The jsDelivr asset
+is protected by a verified SHA-384 Subresource Integrity digest; CI downloads the
+pinned artifact and recalculates the digest on every run. The browser still makes
+one external runtime request for Alpine, so local vendoring remains a possible
+supply-chain improvement. Do not add `unsafe-eval` or broad `unsafe-inline`
+merely to make the current build pass. The policy remains report-only until
+browser-level violations and Quill's runtime style behavior have been reviewed.
 
 
 ## Full Git-history secret scan
