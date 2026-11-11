@@ -200,6 +200,21 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('html = html:gsub("%s+data%-opensigweave%-mode', remover)
         self.assertNotIn('>.-</', remover)
 
+    def test_signature_storage_uses_named_signature_directories(self):
+        storage = (ROOT / "signature_storage.py").read_text(encoding="utf-8")
+        catalog = (ROOT / "signature_catalog.py").read_text(encoding="utf-8")
+        self.assertIn('self.signatures_root = self.root / "signatur"', storage)
+        self.assertIn('"signature.html"', storage)
+        self.assertIn('".versions"', storage)
+        self.assertIn("store.rename_signature(old_name, new_name)", catalog)
+        self.assertIn("version.relative_path.replace(", catalog)
+
+    def test_rspamd_removes_incomplete_html_escaped_and_quoted_printable_markers(self):
+        lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
+        self.assertIn('&[lL][tT];%-%-%-%[', lua)
+        self.assertIn('=3[Cc]%-%-%-%[', lua)
+        self.assertIn('local quoted_printable = signature_marker.raw:gsub("<", "=3C")', lua)
+
     def test_rspamd_fails_closed_for_multipart_until_safe_rewriter_exists(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
         guard = lua.index('if is_multipart then')
