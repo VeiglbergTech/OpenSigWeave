@@ -1032,9 +1032,12 @@ async def get_rspamd_signature(
                 .first()
             )
             if latest_version:
+                selected_signature = db.get(SignatureDB, selected_variant.signature_id)
+                if selected_signature is None:
+                    raise HTTPException(status_code=503, detail="Selected signature metadata is missing")
                 try:
                     raw_template = signature_file_store.read(
-                        selected_variant.name,
+                        selected_signature.name,
                         uuid.UUID(hex=latest_version.id),
                         latest_version.sha256,
                     )
