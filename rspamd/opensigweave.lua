@@ -652,6 +652,7 @@ local function inject_signature(task)
     })
 
     if not scheduled then
+        remove_text_marker_from_message()
         rspamd_logger.errx(task, "OpenSigWeave: unable to schedule signature API request")
     end
     return true
