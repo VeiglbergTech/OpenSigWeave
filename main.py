@@ -597,8 +597,6 @@ def create_signature_rule(
             raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
         if not target_signature.is_active:
             raise HTTPException(status_code=422, detail="Inactive signatures cannot be rule targets")
-        if not target_signature.is_active:
-            raise HTTPException(status_code=422, detail="Inactive signatures cannot be rule targets")
     rule = SignatureRuleDB(
         id=uuid.uuid4().hex,
         name=payload.name.strip(),
@@ -644,6 +642,8 @@ def update_signature_rule(
             raise HTTPException(status_code=404, detail="Signature not found")
         if target_signature.mode != payload.action_mode:
             raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
+        if not target_signature.is_active:
+            raise HTTPException(status_code=422, detail="Inactive signatures cannot be rule targets")
     try:
         rule.name = payload.name.strip()
         rule.priority = payload.priority
