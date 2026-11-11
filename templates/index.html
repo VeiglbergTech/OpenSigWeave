@@ -159,6 +159,77 @@
                 </table>
             </div>
         </div>
+
+        <div x-data="ruleManager()" x-init="fetchAll()" class="mt-10 space-y-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold">Signature Rules</h2>
+                    <p class="text-sm text-gray-400 mt-1">Rules are evaluated by priority. Conditions within one rule are combined with AND.</p>
+                </div>
+                <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
+            </div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Action</th><th class="px-4 py-3">Conditions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="rule in rules" :key="rule.id">
+                            <tr>
+                                <td class="px-4 py-3 font-medium" x-text="rule.name"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="rule.priority"></td>
+                                <td class="px-4 py-3 text-sm" x-text="rule.action_mode"></td>
+                                <td class="px-4 py-3 text-xs text-gray-400" x-text="rule.conditions.length ? rule.conditions.map(c => c.kind + ': ' + (c.key ? c.key + '=' : '') + c.value).join(' AND ') : 'Always matches'"></td>
+                                <td class="px-4 py-3"><span class="text-xs" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <button @click="editRule(rule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
+                                    <button @click="deleteRule(rule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="rules.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-500">No signature rules configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div x-show="editing" style="display:none" class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature Rule' : 'Create Signature Rule'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Action
+                        <select x-model="form.action_mode" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>NONE</option>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-300">Specific Signature (optional)
+                        <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="">Any signature in selected mode</option>
+                            <template x-for="signature in signatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                        </select>
+                    </label>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled"> Rule enabled</label>
+                <div class="border-t border-gray-700 pt-4 space-y-3">
+                    <div class="flex items-center justify-between"><h4 class="font-medium">Conditions</h4><span class="text-xs text-gray-500">All conditions must match</span></div>
+                    <template x-for="(condition, index) in form.conditions" :key="index">
+                        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                            <select x-model="condition.kind" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                <option value="sender_equals">Sender equals</option><option value="domain_equals">Domain equals</option><option value="group_contains">Group contains</option><option value="attribute_equals">Attribute equals</option><option value="claim_equals">Claim equals</option>
+                            </select>
+                            <input x-model="condition.key" :disabled="['sender_equals','domain_equals','group_contains'].includes(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm disabled:opacity-40">
+                            <input x-model="condition.value" placeholder="Value" class="md:col-span-5 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                            <button @click="form.conditions.splice(index,1)" class="text-red-400 text-sm md:col-span-1">Remove</button>
+                        </div>
+                    </template>
+                    <button @click="addCondition()" class="text-blue-400 hover:text-blue-300 text-sm">+ Add condition</button>
+                </div>
+                <div class="flex justify-end gap-2 border-t border-gray-700 pt-4">
+                    <button @click="editing=false" class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button>
+                    <button @click="saveRule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Rule</button>
+                </div>
+            </div>
+        </div>
         {% endif %}
 
     </div>
@@ -471,6 +542,50 @@
         }
 
         function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
+        function ruleManager() {
+            return {
+                rules: [], signatures: [], editing: false,
+                form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] },
+                async fetchAll() {
+                    try {
+                        const [rulesResponse, signaturesResponse] = await Promise.all([
+                            fetch('/api/admin/rules'), fetch('/api/admin/signatures')
+                        ]);
+                        if (!rulesResponse.ok || !signaturesResponse.ok) throw new Error('Could not load rule data');
+                        this.rules = await rulesResponse.json();
+                        this.signatures = await signaturesResponse.json();
+                    } catch (error) { notify(error.message, 'error'); }
+                },
+                newRule() {
+                    this.form = { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] };
+                    this.editing = true;
+                },
+                editRule(rule) {
+                    this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '' }));
+                    this.editing = true;
+                },
+                addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
+                async saveRule() {
+                    if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
+                    if (this.form.conditions.some(c => !c.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
+                    const payload = { ...this.form, signature_id: this.form.signature_id || null };
+                    const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
+                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) { notify('Could not save rule: ' + (await response.text()), 'error'); return; }
+                    notify('Signature rule saved.');
+                    this.editing = false;
+                    await this.fetchAll();
+                },
+                async deleteRule(rule) {
+                    if (!window.confirm('Delete rule "' + rule.name + '"?')) return;
+                    const response = await fetch('/api/admin/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
+                    if (!response.ok) { notify('Could not delete rule.', 'error'); return; }
+                    notify('Signature rule deleted.');
+                    await this.fetchAll();
+                }
+            };
+        }
+
 
         function domainSettingsModal() {
             return {
