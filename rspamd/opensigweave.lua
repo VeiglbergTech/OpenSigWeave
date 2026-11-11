@@ -196,8 +196,10 @@ local function inject_signature(task)
     -- Always inspect the body so a text marker can be consumed even when an
     -- X-header has priority. Invalid X-headers simply fall through to the next selector.
     local signature_marker = find_signature_text_marker(task, is_reply)
-    if not requested_mode and (not signature_marker or not signature_marker.valid) then
-        requested_mode = find_outlook_mode_marker(task, is_reply)
+    if not requested_mode then
+        if not signature_marker or not signature_marker.valid then
+            requested_mode = find_outlook_mode_marker(task, is_reply)
+        end
     end
 
     local function remove_text_marker_from_message()
