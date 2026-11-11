@@ -1,7 +1,7 @@
 """Authentik-backed employee attribute provider."""
 import logging
 
-import httpx
+import httpx2 as httpx
 
 from identity.attributes import IdentityAttributes
 
