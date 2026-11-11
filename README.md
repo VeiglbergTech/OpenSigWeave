@@ -187,7 +187,7 @@ The application currently uses Authentik's API to retrieve employee profile fiel
 
 Do not use a personal administrator token. Prefer an expiring token and document its renewal date. See the [Authentik service account documentation](https://docs.goauthentik.io/users-sources/user/account-types/service-accounts/) and [permission management](https://docs.goauthentik.io/users-sources/access-control/manage_permissions/).
 
-The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is unavailable, the engine returns empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
+The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is technically unavailable, the engine falls back to the last successfully cached identity attributes in PostgreSQL. A confirmed missing or inactive account clears the cached attributes. If no cached record exists yet, the engine proceeds with empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
 
 ### 2.4 Review the environment
 
