@@ -4,9 +4,9 @@
 # Builds a versioned image and publishes it to GitHub Container Registry.
 #
 # Usage:
-#   ./build/build-opensigweave.sh --check
-#   ./build/build-opensigweave.sh --dry-run
-#   GHCR_USERNAME=... GHCR_TOKEN=... ./build/build-opensigweave.sh
+#   bash build/build-opensigweave.sh --check
+#   bash build/build-opensigweave.sh --dry-run
+#   GHCR_USERNAME=... GHCR_TOKEN=... bash build/build-opensigweave.sh
 #
 set -Eeuo pipefail
 IFS=$'\n\t'
@@ -27,6 +27,7 @@ EXPECTED_BRANCH="${EXPECTED_BRANCH:-architecture/refactor-foundation}"
 BUILD_IMAGE="${IMAGE_NAME}:build-$$"
 VERSION=""
 STATE_HASH=""
+SOURCE_STATE_HASH=""
 SOURCE_REVISION=""
 BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 DRY_RUN=0
@@ -100,14 +101,14 @@ SOURCE_REVISION="$(git rev-parse HEAD)"
 DOCKERFILE_HASH="$(sha256sum "$DOCKERFILE_PATH" | awk '{print $1}')"
 REQUIREMENTS_HASH="$(sha256sum "${PROJECT_ROOT}/requirements.txt" | awk '{print $1}')"
 SOURCE_TREE_HASH="$(git archive HEAD | sha256sum | awk '{print $1}')"
-STATE_HASH="$(printf '%s\n%s\n%s\n' "$SOURCE_TREE_HASH" "$DOCKERFILE_HASH" "$REQUIREMENTS_HASH" | sha256sum | awk '{print $1}')"
+SOURCE_STATE_HASH="$(printf '%s\n%s\n%s\n' "$SOURCE_TREE_HASH" "$DOCKERFILE_HASH" "$REQUIREMENTS_HASH" | sha256sum | awk '{print $1}')"
 
 if ((CHECK_ONLY)); then
     log "Repository layout: OK"
     log "Branch: $CURRENT_BRANCH"
     log "Source revision: $SOURCE_REVISION"
     log "Target image: $REGISTRY_IMAGE"
-    log "Build state: $STATE_HASH"
+    log "Source state: $SOURCE_STATE_HASH"
     exit 0
 fi
 
@@ -115,6 +116,7 @@ if ((DRY_RUN)); then
     log "Dry run: no Docker commands, registry login, build or push will be performed."
     log "Source revision: $SOURCE_REVISION"
     log "Target image: $REGISTRY_IMAGE"
+    log "Source state: $SOURCE_STATE_HASH"
     log "Version format: YYYY.MM.N (UTC)"
     log "Tags to publish after a successful build: version tag, then latest"
     exit 0
@@ -131,6 +133,15 @@ if [[ -n "${GHCR_TOKEN:-}" ]]; then
 else
     log "No GHCR_TOKEN supplied; using existing Docker registry credentials."
 fi
+
+# Include the resolved base-image digest in the build state. This detects upstream
+# base-image updates even when the OpenSigWeave source has not changed.
+BASE_IMAGE="$(awk '$1 == "FROM" { print $2; exit }' "$DOCKERFILE_PATH")"
+[[ -n "$BASE_IMAGE" ]] || die "Could not determine the Docker base image from the Dockerfile"
+docker pull "$BASE_IMAGE" >/dev/null
+BASE_DIGEST="$(docker image inspect "$BASE_IMAGE" --format '{{range .RepoDigests}}{{println .}}{{end}}' | sort | head -n 1)"
+[[ -n "$BASE_DIGEST" ]] || die "Could not resolve a digest for base image $BASE_IMAGE"
+STATE_HASH="$(printf '%s\n%s\n' "$SOURCE_STATE_HASH" "$BASE_DIGEST" | sha256sum | awk '{print $1}')"
 
 # Pull latest only for a comparison. A missing remote tag is expected on first publish.
 if docker pull "$REGISTRY_IMAGE:latest" >/dev/null 2>&1; then
@@ -168,7 +179,7 @@ docker run --rm --entrypoint python "$BUILD_IMAGE" -c 'import alembic, fastapi, 
 
 docker tag "$BUILD_IMAGE" "$REGISTRY_IMAGE:$VERSION"
 docker push "$REGISTRY_IMAGE:$VERSION"
-log "Published immutable release tag: $REGISTRY_IMAGE:$VERSION"
+log "Published version tag: $REGISTRY_IMAGE:$VERSION"
 
 docker tag "$BUILD_IMAGE" "$REGISTRY_IMAGE:latest"
 docker push "$REGISTRY_IMAGE:latest"
