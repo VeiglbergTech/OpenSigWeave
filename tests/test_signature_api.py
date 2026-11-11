@@ -432,6 +432,26 @@ class SignatureCatalogApiTests(unittest.TestCase):
             result = asyncio.run(main.get_identity_attributes(self.db, "new@example.org"))
         self.assertEqual(result, IdentityAttributes())
 
+    def test_successful_empty_identity_refresh_replaces_cached_attributes(self):
+        previous = IdentityCacheDB(
+            email="user@example.org", first_name="Old", last_name="Profile",
+            title="Old title", phone="123", groups=["old-group"],
+            claims={"old": True}, attributes={"department": "Old"},
+        )
+        self.db.add(previous)
+        self.db.commit()
+        with patch.object(
+            main.attribute_provider, "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes()),
+        ):
+            refreshed = asyncio.run(main.get_identity_attributes(self.db, "user@example.org"))
+        self.assertEqual(refreshed, IdentityAttributes())
+        stored = self.db.get(main.IdentityCacheDB, "user@example.org")
+        self.assertEqual(stored.first_name, "")
+        self.assertEqual(stored.groups, [])
+        self.assertEqual(stored.claims, {})
+        self.assertEqual(stored.attributes, {})
+
 
 if __name__ == "__main__":
     unittest.main()
