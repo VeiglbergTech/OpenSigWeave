@@ -207,8 +207,8 @@ class SecurityRegressionTests(unittest.TestCase):
     def test_templates_do_not_use_inline_scripts_or_event_handlers(self):
         for name in ("index.html", "error.html"):
             template = (ROOT / "templates" / name).read_text(encoding="utf-8")
-            self.assertNotRegex(template, r"<script(?![^>]*\\bsrc=)[^>]*>")
-            self.assertNotRegex(template, r"\\bon[a-z]+\\s*=")
+            self.assertNotRegex(template, r"<script(?![^>]*\bsrc=)[^>]*>")
+            self.assertNotRegex(template, r"\bon[a-z]+\s*=")
         index = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
         self.assertIn("/static/js/portal.js", index)
         self.assertIn("/static/css/portal.css", index)
@@ -223,13 +223,13 @@ class SecurityRegressionTests(unittest.TestCase):
         template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
         portal_js = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
         expressions = re.findall(
-            r'(?:@[\\w.:-]+|x-[\\w.:-]+|:[\\w.:-]+)="([^"]*)"',
+            r'(?:@[\w.:-]+|x-[\w.:-]+|:[\w.:-]+)="([^"]*)"',
             template,
             flags=re.DOTALL,
         )
         for expression in expressions:
             with self.subTest(expression=expression[:100]):
-                self.assertNotRegex(expression, r"=>|;|\\bif\\s*\\(|\\?\\.")
+                self.assertNotRegex(expression, r"=>|;|\bif\s*\\(|\\?\\.")
         self.assertNotIn("x-bind:srcdoc", template)
         for component in ("toastManager", "sanitizerModal", "previewModal", "addDomainModal", "confirmModal"):
             self.assertIn(f"function {component}()", portal_js)
@@ -237,16 +237,12 @@ class SecurityRegressionTests(unittest.TestCase):
 
     def test_content_security_policy_is_report_only_until_browser_migration_is_complete(self):
         self.assertIn("Content-Security-Policy-Report-Only", self.source)
-        self.assertNotIn("Content-Security-Policy\",", self.source)
+        self.assertNotIn('"Content-Security-Policy"', self.source)
         self.assertIn("script-src-attr 'none'", self.source)
         self.assertIn("style-src-attr 'none'", self.source)
         self.assertNotIn("'unsafe-inline'", self.source)
         self.assertNotIn("'unsafe-eval'", self.source)
 
-
-
-if __name__ == "__main__":
-    unittest.main()
 
 
     def test_sensitive_routes_use_shared_database_rate_limiting(self):
@@ -260,3 +256,9 @@ if __name__ == "__main__":
         self.assertIn("TRUSTED_PROXY_CIDRS", limiter)
         self.assertIn("status_code=429", limiter)
         self.assertIn("status_code=503", limiter)
+
+
+
+if __name__ == "__main__":
+    unittest.main()
+
