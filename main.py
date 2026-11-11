@@ -1034,6 +1034,7 @@ async def get_rspamd_signature(
             if latest_version:
                 try:
                     raw_template = signature_file_store.read(
+                        selected_variant.name,
                         uuid.UUID(hex=latest_version.id),
                         latest_version.sha256,
                     )
