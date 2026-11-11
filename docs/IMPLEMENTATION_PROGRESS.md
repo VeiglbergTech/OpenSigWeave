@@ -86,3 +86,6 @@ A branch-wide source review identified and addressed the following findings on `
 
 
 - Hardened the Authentik attribute provider against bearer-token disclosure: a configured `AUTHENTIK_URL` must use HTTPS and cannot contain embedded credentials, query parameters or fragments. Added regression tests for plaintext HTTP and URL-embedded credentials. This prevents a mistyped or malicious base URL from sending the service-account token over an unencrypted connection.
+
+- Trusted-host middleware regression tests exposed two test-harness edge cases: early Host rejection can occur before SessionMiddleware has populated the request scope, and TestClient follows the valid-host login redirect unless explicitly told not to. The security-header middleware now safely handles requests rejected before session creation, and the canonical-host test disables redirect following. These fixes are included in the current branch; CI for the latest commit is pending.
+- Authentik's service-token provider now refuses plaintext HTTP and URL-embedded credentials. The CI run before this final fix confirmed dependency audit, Python compilation, Lua syntax and both database migration jobs; the regression suite caught the two Host-test issues above, which have been corrected.
