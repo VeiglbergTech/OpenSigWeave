@@ -13,6 +13,7 @@ def select_and_record_variant(
     sender_email: str,
     pool_name: str,
     domain_id: int | None = None,
+    signature_id: str | None = None,
 ) -> SignatureVariantDB | None:
     """Select and record a variant in the caller's transaction.
 
@@ -40,6 +41,7 @@ def select_and_record_variant(
             SignatureDB.is_active.is_(True),
             SignatureDB.mode == normalized_pool,
             domain_scope,
+            *([SignatureDB.id == signature_id] if signature_id is not None else []),
         )
     )
     if session.execute(candidate_query.limit(1)).first() is None:
