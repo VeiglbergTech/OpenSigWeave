@@ -33,6 +33,7 @@ from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
+from signature_sanitizer import sanitize_signature_html
 attribute_provider: AttributeProvider = AuthentikAttributeProvider(
     base_url=os.environ.get("AUTHENTIK_URL", ""),
     api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
@@ -45,7 +46,7 @@ signature_file_store = SignatureFileStore(
 
 # Pydantic Models
 class DomainCreate(BaseModel):
-    domain_name: str
+    domain_name: str = Field(min_length=3, max_length=253)
     is_active: bool = True
 
 class DomainUpdate(BaseModel):
@@ -54,14 +55,14 @@ class DomainUpdate(BaseModel):
     inject_on_replies: bool
     trim_whitespace: bool
     strip_device_signatures: bool
-    template_html: str
+    template_html: str = Field(max_length=65536)
 
 class OverrideUpdate(BaseModel):
-    html_content: str
+    html_content: str = Field(max_length=65536)
 
 class AdminOverrideSave(BaseModel):
-    user_email: str
-    html_content: str
+    user_email: str = Field(min_length=3, max_length=254)
+    html_content: str = Field(max_length=65536)
     is_disabled: bool = False
 
 class SignatureCreateRequest(BaseModel):
@@ -152,10 +153,46 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/branding", StaticFiles(directory="branding"), name="branding")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+def session_user(request: Request) -> dict:
+    user = request.session.get("user")
+    if not isinstance(user, dict):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    email = user.get("email")
+    if not isinstance(email, str) or len(email) > 254 or email.count("@") != 1 or any(ch.isspace() for ch in email):
+        raise HTTPException(status_code=401, detail="A valid account email is required")
+    local, domain = email.rsplit("@", 1)
+    if not local or not domain or "." not in domain:
+        raise HTTPException(status_code=401, detail="A valid account email is required")
+    return user
+
+
 def is_admin_user(request: Request):
-    user = request.session.get('user')
-    if not user: return False
-    return 'signature-admins' in user.get('groups', [])
+    user = request.session.get("user")
+    groups = user.get("groups", []) if isinstance(user, dict) else []
+    return isinstance(groups, (list, tuple, set)) and "signature-admins" in groups
+
+
+def require_signature_user(request: Request) -> dict:
+    user = session_user(request)
+    groups = user.get("groups", [])
+    if not isinstance(groups, (list, tuple, set)) or not ({"signature-admins", "signature-users"} & set(groups)):
+        raise HTTPException(status_code=403, detail="Signature portal access required")
+    return user
+
+
+def normalized_user_email(user: dict) -> str:
+    return user["email"].strip().casefold()
+
+
+def normalize_domain(value: str) -> str:
+    normalized = value.strip().casefold().rstrip(".")
+    if len(normalized) > 253 or not normalized or any(
+        not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+        or not all(ch.isalnum() or ch == "-" for ch in label)
+        for label in normalized.split(".")
+    ):
+        raise HTTPException(status_code=422, detail="Invalid domain name")
+    return normalized
 
 # --- Web UI Routes ---
 @app.get("/login")
@@ -271,7 +308,8 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
 def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    db_domain = DomainDB(domain_name=domain.domain_name, is_active=domain.is_active)
+    normalized_domain = normalize_domain(domain.domain_name)
+    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active)
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
@@ -288,7 +326,7 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
-    db_domain.template_html = domain_update.template_html
+    db_domain.template_html = sanitize_signature_html(domain_update.template_html)
     db.commit()
     return {"status": "success"}
 
@@ -304,28 +342,25 @@ def delete_domain(domain_id: int, request: Request, db: Session = Depends(get_db
 
 @app.get("/api/my-signature")
 def get_my_signature(request: Request, db: Session = Depends(get_db)):
-    user = request.session.get('user')
-    if not user: raise HTTPException(status_code=401)
-    email = user.get("email")
-    email = email.strip().casefold() if isinstance(email, str) else ""
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
+    user = require_signature_user(request)
+    email = normalized_user_email(user)
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
     return {"html_content": override.html_content if override else ""}
 
 @app.post("/api/my-signature")
 def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
-    user = request.session.get('user')
-    if not user: raise HTTPException(status_code=401)
-    email = user.get("email")
-    email = email.strip().casefold() if isinstance(email, str) else ""
-    domain_part = email.rsplit("@", 1)[-1] if "@" in email else ""
-    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name.ilike(domain_part)).first()
+    user = require_signature_user(request)
+    email = normalized_user_email(user)
+    domain_part = email.rsplit("@", 1)[-1]
+    domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
     if not domain_obj or not domain_obj.is_active or not domain_obj.allow_overrides:
         raise HTTPException(status_code=403, detail="Personal signature overrides are disabled for this domain")
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(email)).first()
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == email).first()
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
-    if override: override.html_content = req.html_content
-    else: db.add(UserOverrideDB(user_email=email, html_content=req.html_content))
+    safe_html = sanitize_signature_html(req.html_content)
+    if override: override.html_content = safe_html
+    else: db.add(UserOverrideDB(user_email=email, html_content=safe_html))
     db.commit()
     return {"status": "success"}
 
@@ -347,20 +382,23 @@ def delete_my_signature(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/admin/overrides/{domain_name}")
 def get_domain_overrides(domain_name: str, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
-    normalized_domain = domain_name.strip().casefold()
-    overrides = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(f"%@{normalized_domain}")).all()
+    normalized_domain = normalize_domain(domain_name)
+    overrides = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.endswith("@" + normalized_domain, autoescape=True)).all()
     return overrides
 
 @app.post("/api/admin/overrides")
 def save_admin_override(req: AdminOverrideSave, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
     normalized_email = req.user_email.strip().casefold()
-    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email.ilike(normalized_email)).first()
+    if normalized_email.count("@") != 1 or any(ch.isspace() for ch in normalized_email):
+        raise HTTPException(status_code=422, detail="Invalid email address")
+    safe_html = sanitize_signature_html(req.html_content)
+    override = db.query(UserOverrideDB).filter(UserOverrideDB.user_email == normalized_email).first()
     if override: 
-        override.html_content = req.html_content
+        override.html_content = safe_html
         override.is_disabled = req.is_disabled
     else: 
-        db.add(UserOverrideDB(user_email=normalized_email, html_content=req.html_content, is_disabled=req.is_disabled))
+        db.add(UserOverrideDB(user_email=normalized_email, html_content=safe_html, is_disabled=req.is_disabled))
     db.commit()
     return {"status": "success"}
 
@@ -707,7 +745,9 @@ async def get_rspamd_signature(
         raise HTTPException(status_code=401, detail="Unauthorized Engine Request")
 
     normalized_email = email.strip().casefold()
-    domain_part = normalized_email.rsplit("@", 1)[-1] if "@" in normalized_email else ""
+    if normalized_email.count("@") != 1 or any(ch.isspace() for ch in normalized_email):
+        raise HTTPException(status_code=400, detail="Invalid sender email")
+    domain_part = normalized_email.rsplit("@", 1)[-1]
     domain_obj = db.query(DomainDB).filter(DomainDB.domain_name == domain_part).first()
     empty_response = {
         "html": "",
@@ -719,7 +759,7 @@ async def get_rspamd_signature(
         return empty_response
 
     override = db.query(UserOverrideDB).filter(
-        UserOverrideDB.user_email.ilike(normalized_email)
+        UserOverrideDB.user_email == normalized_email
     ).first()
     if override and override.is_disabled:
         return empty_response
