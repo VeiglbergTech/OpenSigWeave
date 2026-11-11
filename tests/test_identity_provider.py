@@ -78,23 +78,30 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
             base_url="https://auth.example.org",
             api_token="test-token",
         )
-        cases = [
+        authoritative_empty_cases = [
             ([{"email": "alice2@example.org", "is_active": True, "name": "Wrong User"}], "no exact match"),
             ([{"email": "alice@example.org", "is_active": False, "name": "Inactive User"}], "inactive account"),
-            ([
-                {"email": "alice@example.org", "is_active": True, "name": "Alice One"},
-                {"email": "ALICE@example.org", "is_active": True, "name": "Alice Two"},
-            ], "ambiguous matches"),
         ]
-        for results, label in cases:
+        for results, label in authoritative_empty_cases:
             with self.subTest(label=label):
                 client = FakeClient()
                 response = FakeResponse()
                 response.json = lambda results=results: {"results": results}
                 with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
                     with patch.object(client, "get", new=AsyncMock(return_value=response)):
-                        with self.assertRaises(Exception):
-                            await provider.get_attributes("alice@example.org")
+                        self.assertEqual(await provider.get_attributes("alice@example.org"), IdentityAttributes())
+
+        ambiguous = [
+            {"email": "alice@example.org", "is_active": True, "name": "Alice One"},
+            {"email": "ALICE@example.org", "is_active": True, "name": "Alice Two"},
+        ]
+        client = FakeClient()
+        response = FakeResponse()
+        response.json = lambda: {"results": ambiguous}
+        with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
+            with patch.object(client, "get", new=AsyncMock(return_value=response)):
+                with self.assertRaises(Exception):
+                    await provider.get_attributes("alice@example.org")
 
     async def test_http_authentik_url_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "HTTPS URL"):
