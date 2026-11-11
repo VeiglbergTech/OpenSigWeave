@@ -28,6 +28,9 @@ global.MutationObserver = dom.window.MutationObserver;
 global.Element = dom.window.Element;
 global.HTMLElement = dom.window.HTMLElement;
 global.Node = dom.window.Node;
+global.ShadowRoot = dom.window.ShadowRoot;
+global.Document = dom.window.Document;
+global.HTMLTemplateElement = dom.window.HTMLTemplateElement;
 global.CustomEvent = dom.window.CustomEvent;
 global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
 
