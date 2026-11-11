@@ -109,6 +109,9 @@ function domainManager() { return { domains: [], async fetchDomains() { this.dom
                 signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
                 form: { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
+                formatSignatureMarker(signature) {
+                    return '<---[' + signature.name + ']--[' + signature.marker_code + ']--->';
+                },
                 async fetchAll() {
                     try {
                         const [signaturesResponse, domainsResponse] = await Promise.all([fetch('/api/admin/signatures'), fetch('/domains/')]);
