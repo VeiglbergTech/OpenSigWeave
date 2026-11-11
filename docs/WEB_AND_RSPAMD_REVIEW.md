@@ -76,6 +76,22 @@ Also verify that the effective Postfix configuration still contains the authenti
 
 **Status:** This is a documented integration prerequisite, not a verified production setting. No Mailcow configuration has been changed and no end-to-end SMTP test has been run.
 
+## Rspamd MIME parser and CPU-feature prerequisite
+
+Multipart rewriting remains deliberately disabled in the OpenSigWeave Lua integration. The current code returns without mutation for every `multipart/*` message; it does not attempt to reconstruct nested boundaries, transfer encodings, inline resources or attachments with string operations.
+
+A deployment compatibility issue must be checked before implementing parser-backed multipart support: a Mailcow/Rspamd report documented that Rspamd 4.2.1 on a VM exposing the legacy `kvm64` CPU model without SSSE3 parsed a multipart container but lost its child MIME parts. The same image parsed the children when SSSE3 was exposed. The report's suggested VM workaround is a CPU model with at least SSSE3/SSE4.2, such as `x86-64-v2-AES` or `host`; select a model only after checking live-migration compatibility across the hypervisor cluster. This is an upstream parser/runtime issue, not something that can safely be repaired by Lua string handling.
+
+Before enabling multipart support in any deployment:
+- Verify that the guest CPU exposes SSSE3 (and inspect Rspamd startup logs for the Hyperscan/SSSE3 warning).
+- Confirm that `task:get_parts()` and `task:get_text_parts()` expose the expected leaf parts for representative `multipart/alternative`, `multipart/related`, `multipart/mixed` and nested `message/rfc822` messages.
+- Use Rspamd's MIME-aware rewrite facilities, preserve boundaries/attachments/inline Content-IDs, and honor the helper's returned content-transfer encoding. Do not assume every rewritten part is quoted-printable.
+- Keep unsupported or malformed structures unchanged and log the reason; never send a partially reconstructed message.
+
+References: [Rspamd task API](https://docs.rspamd.com/lua/rspamd_task/), [Rspamd MIME helper API](https://docs.rspamd.com/lua/lua_mime/), and [Mailcow issue #7398 documenting the SSSE3/kvm64 reproduction and workaround](https://github.com/mailcow/mailcow-dockerized/issues/7398).
+
+**Status:** This is a deployment preflight and design constraint. No Mailcow/Rspamd configuration has been changed, and no multipart rewriting has been enabled.
+
 ## Host-header trust boundary
 
 The application now uses Starlette's `TrustedHostMiddleware`. The canonical host is derived from the fixed HTTPS `OIDC_REDIRECT_URI`; explicitly configured reverse-proxy aliases may be added through comma-separated `APP_ALLOWED_HOSTS`. Wildcard hosts are rejected. Reverse proxies must preserve the expected Host value or set a configured alias. A regression test rejects an untrusted Host header and accepts the canonical hostname.
