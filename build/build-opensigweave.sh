@@ -164,7 +164,6 @@ log "Building $REGISTRY_IMAGE:$VERSION"
 
 docker buildx build \
     --load \
-    --pull \
     --file "$DOCKERFILE_PATH" \
     --label "$LABEL_NAMESPACE.version=$VERSION" \
     --label "$LABEL_NAMESPACE.state=$STATE_HASH" \
