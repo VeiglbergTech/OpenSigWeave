@@ -10,7 +10,7 @@ _SCRYPT_N = 1 << 14
 _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_DKLEN = 64
-_EMAIL_RE = re.compile(r"^[^@\\s]{1,64}@[^@\\s.]+(?:\\.[^@\\s.]+)+$")
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
 
 
 def oidc_enabled_from_env(value: str | None = None) -> bool:
