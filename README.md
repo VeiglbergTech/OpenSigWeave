@@ -84,7 +84,7 @@ The Lua engine also theoretically supports injecting signatures into replies sen
 OpenSigWeave is a FastAPI application with PostgreSQL as the recommended new-install database. SQLite remains supported for legacy installations; Alembic manages schema migrations. 
 
 ### Prerequisites
-* Python 3.10+
+* Python 3.11+ (Starlette 1.8 and newer)
 * Docker Engine and Docker Compose plugin (for the bundled PostgreSQL service)
 * An active Authentik deployment
 * An active Rspamd/Mailcow deployment
