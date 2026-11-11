@@ -11,7 +11,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 
 ## 2. Current implementation summary
 
-- FastAPI application with OIDC login and group-based authorization.
+- FastAPI application with optional OIDC login or a local scrypt-protected administrator account; group-based authorization is shared by both modes.
 - Authentik API-backed employee attribute retrieval and Authentik-specific logout.
 - PostgreSQL and Alembic for standalone persistence; SQLite compatibility remains.
 - Hybrid signature storage: relational metadata plus versioned HTML files.
@@ -30,7 +30,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | Browser authorization | Admin and personal-user routes enforce group checks server-side. | Real-browser authorization walkthrough remains outstanding. |
 | CSRF | Session-bound token required for state-changing browser requests. | Verify complete browser behavior and edge cases. |
 | Session security | Strong startup secret validation; Secure, HttpOnly, SameSite cookie with limited lifetime. | Validate behind the intended reverse-proxy topology. |
-| OIDC | HTTPS discovery, verified email boolean, subject and groups validation; prior session cleared on login. | Logout and employee-attribute retrieval are still Authentik-specific. |
+| Authentication | OIDC validates HTTPS discovery, verified email, subject and groups; `OIDC_ENABLED=false` removes the callback route and uses a scrypt-protected local administrator. | Local-only mode has one environment-provisioned administrator and no external identity attributes. |
 | Authentik API | HTTPS required, TLS verification enabled, bounded timeout, exact email match and active-user check. | Validate least-privilege service account permissions in a real Authentik instance. |
 | HTML handling | Server-side allowlist sanitizer, re-sanitization before use, autoescaped identity data and sandboxed previews. | Real-browser testing and email-client rendering compatibility remain. |
 | Host validation | TrustedHostMiddleware accepts the callback hostname and explicit aliases only. | Proxy Host/forwarded-header behavior must match deployment topology. |
