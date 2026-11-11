@@ -149,7 +149,7 @@
                             <tr>
                                 <td class="px-4 py-3 font-medium">
                                     <div x-text="signature.name"></div>
-                                    <div class="text-xs text-gray-500 font-mono mt-1" x-text="'&lt;---[' + signature.name + ']--[' + signature.marker_code + ']---&gt;'"></div>
+                                    <div class="text-xs text-gray-500 font-mono mt-1" x-text="String.fromCharCode(60) + '---[' + signature.name + ']--[' + signature.marker_code + ']---' + String.fromCharCode(62)"></div>
                                 </td>
                                 <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
                                 <td class="px-4 py-3 text-sm" x-text="signature.scope === 'GLOBAL' ? 'Global' : 'Domain #' + signature.domain_id"></td>
