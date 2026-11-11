@@ -118,7 +118,7 @@ For an isolated standalone test installation, set:
 OIDC_ENABLED="false"
 APP_ALLOWED_HOSTS="signature-test.example.org"
 LOCAL_ADMIN_EMAIL="admin@example.org"
-LOCAL_ADMIN_PASSWORD_HASH="..."
+LOCAL_ADMIN_PASSWORD_HASH='scrypt$...'
 ```
 
 Generate the password hash interactively from the repository root:
@@ -127,7 +127,136 @@ Generate the password hash interactively from the repository root:
 python scripts/hash_password.py
 ```
 
-The utility prompts twice and prints a salted scrypt hash. Put that complete value in `LOCAL_ADMIN_PASSWORD_HASH`; do not put the plaintext password in the environment file. Use a password of at least 12 characters and protect `.env` with mode `0600`.
+The utility prompts twice and prints a salted scrypt hash. Put that complete value in `LOCAL_ADMIN_PASSWORD_HASH`, wrapped in single quotes because the hash contains `# OpenSigWeave
+
+OpenSigWeave is a self-hosted application for centrally managing email signatures. It provides a web portal, a signature/rule engine, versioned HTML signature storage and an adapter for Rspamd.
+
+The current preview is a **standalone Docker Compose deployment**. It runs OpenSigWeave and PostgreSQL independently of a mail server. Mailcow is not required to install or test the portal.
+
+> **Preview status:** The Docker image, PostgreSQL migrations, application healthcheck and authenticated engine API smoke test pass in CI. The complete browser workflow and end-to-end mail delivery path have not yet been validated. Do not connect this preview to a production mail flow.
+
+## What is implemented
+
+- FastAPI web application with an OIDC login flow.
+- Authentik as the currently supported employee-attribute provider; the last successful identity attributes are cached in PostgreSQL per normalized sender address and used when a fresh lookup fails.
+- Group-based portal authorization:
+  - `signature-users`: normal portal access.
+  - `signature-admins`: administrator access.
+- Domain settings, personal overrides and administrator controls.
+- Signature catalog with HTML versions stored as files and metadata stored in PostgreSQL.
+- Signature variants, weighted selection and rules based on sender, domain, groups and attributes.
+- Four engine modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
+- Explicit signature selection through the message-body marker `<---[Signature name]--[4-character code]--->`; the X-OpenSigWeave-Mode header has priority.
+- HTML sanitization, sandboxed previews, CSRF protection, secure session cookies and shared database-backed rate limits.
+- Rspamd Lua adapter. Multipart messages are deliberately left unchanged by the current adapter.
+
+## Explicit signature marker
+
+The administrator signature catalog displays a ready-to-copy marker for each active or inactive signature. Its four-character check is the first four hexadecimal characters of the SHA-256 digest of the signature name after Unicode case-folding, encoded as UTF-8. Matching is case-insensitive.
+
+Example format:
+
+```text
+<---[Professional]--[a1b2]--->
+```
+
+Replace the illustrative code with the code displayed beside the signature in the administrator catalog. The marker selects that exact active signature for the sender's domain; it does not act as authentication or authorization. A valid `X-OpenSigWeave-Mode` header takes precedence. Invalid or duplicate mode headers are ignored and selection continues with the body marker, Outlook marker or automatic mode. A body marker is consumed even when it is invalid, overridden by an X-header, or no signature can be inserted.
+
+The current Rspamd adapter still leaves all top-level multipart messages unchanged. Therefore body-marker replacement currently applies only to non-multipart messages handled by the adapter. Multipart MIME support and full client interoperability remain separate integration work.
+
+## Identity attribute fallback
+
+For each sender, OpenSigWeave requests fresh profile attributes from Authentik on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If Authentik is unavailable or the lookup cannot be trusted (for example, an invalid response or ambiguous account match), the last successfully stored record is used. A successful lookup confirming that the account is missing or inactive clears the cached attributes instead of reusing stale group membership. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
+
+## Current limitations
+
+- OIDC is enabled by default for backward compatibility. Standalone local-administrator login is available with `OIDC_ENABLED=false`; in that mode profile attributes are empty unless populated by a future identity provider.
+- Although OIDC discovery is configurable, employee attributes and logout still use Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
+- The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
+- Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
+- Real-browser testing, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
+- CSP is currently report-only. Do not treat it as an enforced browser security boundary.
+- This is a preview, not a production-ready mail-flow release.
+
+---
+
+## 1. Requirements
+
+For the standalone Docker deployment you need:
+
+- A Linux host with Docker Engine.
+- Docker Compose plugin v2 (`docker compose`).
+- Git.
+- A DNS name for the portal, for example `signature.example.org`.
+- HTTPS termination through a reverse proxy (the session cookie is Secure).
+- Either an Authentik OAuth2/OpenID Provider (`OIDC_ENABLED=true`, the default), or a local administrator email and scrypt password hash (`OIDC_ENABLED=false`).
+
+The application container listens on port `8085`. Compose publishes it on `127.0.0.1:8085` only. PostgreSQL is not published to the host.
+
+## 2. Install the standalone preview
+
+The commands below install the current development preview branch. They do not modify Mailcow or any mail-server configuration.
+
+### 2.1 Create the installation directory and clone the branch
+
+Run as a user who can access Docker:
+
+```bash
+sudo mkdir -p /opt/opensigweave
+sudo chown "$USER":"$USER" /opt/opensigweave
+git clone --branch architecture/refactor-foundation https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
+cd /opt/opensigweave
+```
+
+### 2.2 Create the environment file
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Generate three different random secrets. Run this command three times and use a different result for each variable:
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+Edit the environment file:
+
+```bash
+nano .env
+```
+
+Replace these values:
+
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_PASSWORD` | Password for the PostgreSQL database user |
+| `SECRET_KEY` | Signs the application session cookie |
+| `ENGINE_API_KEY` | Authenticates Rspamd to the signature API |
+
+All three values must be independent. Use the generated URL-safe values without adding whitespace. Do not reuse the same secret for different purposes and never commit `.env` to Git.
+
+The Compose file constructs the internal PostgreSQL `DATABASE_URL` from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. Keep the example `DATABASE_URL` password synchronized if you inspect or use it outside Compose; Compose overrides it for the application container.
+
+### 2.3 Run without OIDC (local administrator)
+
+For an isolated standalone test installation, set:
+
+```dotenv
+OIDC_ENABLED="false"
+APP_ALLOWED_HOSTS="signature-test.example.org"
+LOCAL_ADMIN_EMAIL="admin@example.org"
+LOCAL_ADMIN_PASSWORD_HASH='scrypt$...'
+```
+
+Generate the password hash interactively from the repository root:
+
+```bash
+python scripts/hash_password.py
+```
+
+ characters; do not put the plaintext password in the environment file. Use a password of at least 12 characters and protect `.env` with mode `0600`.
 
 When OIDC is disabled, OpenSigWeave does not require or initialize OIDC discovery, client credentials, redirect URI, or Authentik API access. The `/auth` callback route is not registered. The `/login` page provides the local administrator login, and the local account receives the `signature-admins` and `signature-users` roles. Local profile attributes (name, title, phone, groups and claims) are empty; signature selection and administration can still be tested, but rules depending on external identity attributes cannot be meaningfully evaluated.
 
