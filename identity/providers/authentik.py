@@ -58,10 +58,19 @@ class AuthentikAttributeProvider:
             matches = [item for item in payload["results"] if isinstance(item, dict)
                        and isinstance(item.get("email"), str)
                        and item["email"].strip().casefold() == requested_email]
-            if len(matches) != 1 or matches[0].get("is_active") is not True:
-                raise IdentityProviderUnavailable("Authentik did not return exactly one active matching account")
+            if not matches:
+                # A successful lookup with no matching account is authoritative.
+                # Clear cached groups and claims instead of reusing stale access data.
+                return IdentityAttributes()
+            if len(matches) > 1:
+                raise IdentityProviderUnavailable("Authentik returned ambiguous matching accounts")
 
             user = matches[0]
+            if user.get("is_active") is False:
+                # A confirmed deactivation must invalidate cached profile and group data.
+                return IdentityAttributes()
+            if user.get("is_active") is not True:
+                raise IdentityProviderUnavailable("Authentik response omitted a valid account status")
             name_parts = str(user.get("name") or "").split()
             attributes = user.get("attributes")
             if not isinstance(attributes, dict):
