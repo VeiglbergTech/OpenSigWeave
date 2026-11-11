@@ -38,9 +38,11 @@ This file tracks changes made on `architecture/refactor-foundation`. It is not a
 - Rspamd idempotency and MIME correctness work; HTTP timeout/TLS/URL encoding/payload size handling and credential externalization are now in place.
 - Verification of Rspamd/DKIM processing order in an isolated Mailcow test environment.
 - The transactional selection repository exists and is unit-tested on SQLite. It is not yet wired into the Rspamd message API, and concurrent PostgreSQL integration testing remains. The core mode resolver and prioritized rule evaluator are implemented but not yet connected to the message-processing API.
+- Added a database-backed rule repository that maps persisted rule and condition rows into the provider-neutral rule engine. Added tests for priority, disabled rules, AND-combined conditions and explicit signature targets.
+- Added administrator-protected CRUD API endpoints for listing, creating, updating and deleting signature rules. Rule conditions are validated against the supported condition types and are replaced transactionally on update. The management UI and message-engine integration remain pending.
 - SMTP-header and Outlook marker parsing/removal for explicit signature modes remains pending. The admin API currently has no corresponding management UI.
-- Runtime API tests and full integration tests remain pending.
-- Further model/service extraction, integration of file storage with the signature management API, transactional selection-state updates, and end-to-end PostgreSQL application testing. PostgreSQL and SQLite migrations now include the signature/version/variant/selection/rule/condition tables.
+- Runtime API tests and full integration tests remain pending. The most recent rule-repository/API commits have not yet been confirmed by a fresh complete CI run.
+- The signature catalog and file-storage service are connected to signature create/version/variant API endpoints. Further service extraction, management UI work, transactional selection-state integration into the message path, and end-to-end PostgreSQL application testing remain.
 
 ## Important operational note
 
