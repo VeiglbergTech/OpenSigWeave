@@ -2,11 +2,15 @@
 import pathlib
 import tempfile
 import unittest
+from unittest.mock import patch
+
+from starlette.requests import Request
+import ipaddress
 
 from sqlalchemy import create_engine
 
 from models import Base, RateLimitBucketDB
-from rate_limiter import consume_rate_limit
+from rate_limiter import client_identity, consume_rate_limit
 
 
 class RateLimiterTests(unittest.TestCase):
@@ -43,6 +47,31 @@ class RateLimiterTests(unittest.TestCase):
                 RateLimitBucketDB.__table__.select()
             ).scalar_one()
         self.assertNotIn(identity, stored)
+
+
+    def test_untrusted_forwarded_header_is_ignored(self):
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/", "headers": [(b"x-forwarded-for", b"203.0.113.99")],
+             "client": ("198.51.100.10", 12345), "server": ("test", 80), "scheme": "http", "query_string": b""}
+        )
+        with patch("rate_limiter.TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("10.0.0.0/8"),)):
+            self.assertEqual(client_identity(request), "198.51.100.10")
+
+    def test_trusted_proxy_forwarded_chain_is_resolved_from_the_right(self):
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/", "headers": [(b"x-forwarded-for", b"203.0.113.7, 10.0.0.2")],
+             "client": ("10.0.0.3", 12345), "server": ("test", 80), "scheme": "http", "query_string": b""}
+        )
+        with patch("rate_limiter.TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("10.0.0.0/8"),)):
+            self.assertEqual(client_identity(request), "203.0.113.7")
+
+    def test_malformed_forwarded_header_falls_back_to_peer(self):
+        request = Request(
+            {"type": "http", "method": "GET", "path": "/", "headers": [(b"x-forwarded-for", b"attacker-controlled")],
+             "client": ("10.0.0.3", 12345), "server": ("test", 80), "scheme": "http", "query_string": b""}
+        )
+        with patch("rate_limiter.TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("10.0.0.0/8"),)):
+            self.assertEqual(client_identity(request), "10.0.0.3")
 
 
 if __name__ == "__main__":
