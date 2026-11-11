@@ -1,156 +1,179 @@
-# OpenSigWeave – technical architecture
+# OpenSigWeave – architecture and implementation boundaries
 
-**Status:** Proposed target architecture  
-**Decision baseline:** 2026-11-10  
-**Implementation branch:** `architecture/refactor-foundation`
+**Document status:** Current preview architecture with explicit future boundaries  
+**Branch:** `architecture/refactor-foundation`  
+**Last reviewed:** 2026-11-11
 
-## 1. Goals
+## 1. Product boundary
 
-OpenSigWeave is a self-hosted, mail-gateway signature management system. Its core must remain independent of any single mail server or identity vendor. Mailcow/Rspamd is the first reference integration.
+OpenSigWeave is developed first as an independent, self-hosted application. Its standalone deployment must not require Mailcow or modify a mail server.
 
-Primary capabilities:
-- Central management of domains, signatures, variants and rules.
-- Per-message signature resolution at the mail gateway.
-- Random selection among eligible variants without immediately repeating the previous variant for a sender.
-- Explicit modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`.
-- Identity-aware rules based on sender, domain, OIDC claims and (later) directory attributes.
-- Hybrid storage: versioned HTML files plus PostgreSQL metadata.
-- OIDC-based web authentication.
-- Auditable administrative changes.
+The intended long-term product boundary is:
 
-Non-goals for the first implementation:
-- Replacing a mail server or filtering engine.
-- Requiring a specific identity provider.
-- Modifying the production mail system during development.
-- Guaranteeing deliverability without integration evidence.
+- **OpenSigWeave core:** signature catalog, versions, variants, rules, rendering, identity abstraction, management API and web UI.
+- **Mail adapters:** separate integrations such as Rspamd. They consume a stable engine API and must not make the core depend on a particular mail server.
+- **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
 
-## 2. Logical components
+The current preview is not yet fully provider-neutral: interactive login uses OIDC, while employee-attribute lookup and logout still contain Authentik-specific behavior. This is documented as a current implementation limitation, not as a completed abstraction.
 
-### Web/API layer
-FastAPI routers expose browser and engine APIs. Routers validate input and enforce authorization but do not contain signature selection logic.
+## 2. Current runtime components
 
-### Identity and authorization
-OIDC handles interactive login using discovery metadata. A normalized principal contains subject, issuer, email and claims. Authorization maps configured roles/groups to application permissions.
+### Web application
 
-An independent attribute-provider interface supplies employee attributes to templates and rules. OIDC claims are the initial provider. LDAP/AD enrichment can be added without changing the signature core.
+- FastAPI application served by Uvicorn on TCP port 8085 inside the container.
+- Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
+- OIDC Authorization Code login using the configured discovery document.
+- Browser session authorization based on the `signature-users` and `signature-admins` groups.
+- CSRF protection for state-changing browser requests.
+- Secure session cookies and trusted-host validation.
 
-### Signature core
-Pure application services:
-- `ModeResolver`: validates and resolves requested mode.
-- `RuleEngine`: evaluates prioritized conditions.
-- `VariantSelector`: chooses an eligible variant.
-- `SignatureRenderer`: renders approved HTML using normalized identity attributes.
-- `SignatureService`: orchestrates resolution without knowing the mail platform.
+### Identity and attributes
 
-### Persistence
-PostgreSQL stores relational metadata, rules, selection state, audit records and version manifests. Alembic owns schema evolution.
+OIDC UserInfo is expected to provide a stable subject, a verified email and a groups array. The current code requires `email_verified` to be the JSON boolean `true`.
 
-### File storage
-A configured signature root contains immutable or versioned HTML assets. Each version has a generated identifier, relative path and SHA-256 hash. The application validates paths remain beneath the configured root. Writes use temporary files followed by atomic rename; metadata activation occurs transactionally after file persistence succeeds.
+The current `AuthentikAttributeProvider` uses Authentik's API to retrieve active user records and custom attributes by exact email match. It supplies name, phone, title, groups and selected claims to the rule engine and renderer. If the Authentik API is unavailable or returns no unique active match, the provider returns empty profile attributes.
 
-### Mail adapter
-The Rspamd adapter extracts trusted sender context, reads the supported mode marker/header, calls the internal engine API and applies the returned signature. Rspamd-specific behavior remains isolated from the core.
+The logout endpoint also constructs an Authentik-specific end-session URL. A future generic provider interface must cover logout and attribute retrieval before another OIDC provider can be described as fully supported.
 
-## 3. Resolution order
+### Signature and rule services
 
-The default resolver uses explicit numeric priority, not incidental database ordering. Suggested default precedence:
+The implemented services cover:
 
-1. Explicit valid message mode (`PROFESSIONAL`, `INTERNAL`, `NONE`).
-2. Exact sender override.
-3. Matching identity/attribute/group rules.
-4. Domain rules.
-5. Global default.
+- Signature modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`.
+- Signature catalog metadata and active state.
+- Versioned HTML files with UUID identifiers, SHA-256 hashes and integrity checks.
+- Weighted variants and selection state to avoid immediate repetition for a sender/mode pool.
+- Rules with priorities and AND-combined conditions for sender, domain, groups, claims and attributes.
+- HTML sanitization before storage and rendering with automatic escaping of dynamic identity values.
 
-A mode can either select a named signature pool or short-circuit injection. Invalid or unauthorized mode requests fall back according to a documented policy; they must never grant elevated behavior.
+### Persistence and file storage
 
-## 4. No-immediate-repeat selection
+PostgreSQL is the supported standalone deployment database. SQLAlchemy manages relational records and Alembic manages schema migrations. SQLite remains available for compatibility and unit-test scenarios.
 
-Selection state is scoped by a stable sender key and selection pool. The database transaction must serialize concurrent selection for the same key (for example, row-level locking or an atomic update strategy). Candidate selection excludes the last selected variant when at least two eligible variants exist. If only one candidate exists, it remains selectable.
+PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, rules, selection state and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`.
 
-Persist the selected variant and update timestamp in the same transaction. Define behavior for deleted/disabled variants and for a changed pool membership.
+The application image stores files in `/data/signatures`; Compose persists this path in the `opensigweave-signatures` named volume. PostgreSQL uses the separate `opensigweave-postgres-data` volume. Both volumes must be backed up and restored together.
 
-## 5. Initial relational model
+### Rspamd adapter
 
-Proposed tables (names are provisional):
+The Lua adapter is a separate integration. It:
 
-- `domains`: normalized domain name, status and policy.
-- `principals`: optional cached identity subject/email and source issuer.
-- `signatures`: logical signature identity and scope.
-- `signature_versions`: immutable version metadata, relative file path, SHA-256, author and creation time.
-- `signature_variants`: eligible variant membership, mode/pool, weight and status.
-- `rules`: priority, enabled state, target action and scope.
-- `rule_conditions`: typed conditions (sender, domain, claim, group).
-- `user_overrides`: exact sender-specific behavior, including disable state.
-- `selection_state`: last selected variant per sender and pool.
+- Requires an authenticated Rspamd task and uses the SMTP envelope sender.
+- Calls the engine API with `X-Engine-Key`.
+- Supports a validated `X-OpenSigWeave-Mode` header and Outlook HTML markers.
+- Uses bounded HTTP request time and response-size settings.
+- Deliberately leaves every top-level `multipart/*` message unchanged.
 
-The current branch now contains initial SQLAlchemy models and an Alembic migration for `signatures`, `signature_versions`, `signature_variants` and `selection_state`. The filesystem component writes UUID-named immutable HTML files and verifies SHA-256 hashes. The transaction-aware selection repository now performs conflict-safe state creation and row locking for each sender/pool. Integration with the message API and PostgreSQL concurrency testing remain.
-- `audit_logs`: actor, action, target, timestamp and redacted change summary.
+The current rewrite path is limited to non-multipart messages. No production mail flow or DKIM ordering is certified.
 
-Use foreign keys, uniqueness constraints, indexes for normalized email/domain lookup and check constraints for valid modes/weights. Avoid storing unnecessary personal data; define retention for audit and cached identity attributes.
+## 3. Request and authorization boundaries
 
-## 6. API boundaries
+### Browser identity
 
-Initial internal engine contract (illustrative; exact schema to be versioned before implementation):
+The browser completes OIDC login at `/login` and returns to the fixed HTTPS callback `OIDC_REDIRECT_URI`, ending in `/auth`. The callback validates the subject, email, boolean email verification and groups claim, clears the old session, and stores only the claims required by the application.
 
-Request:
-- `sender`: normalized envelope sender.
-- `recipient_context`: optional trusted recipient/domain context if required by policy.
-- `mode`: optional validated mode.
-- `message_id`: optional correlation identifier; do not use it as an authorization credential.
-- `identity_context`: server-resolved identity claims only; never trust arbitrary client-supplied claims.
+The canonical hostname is derived from `OIDC_REDIRECT_URI`. Optional aliases must be explicit hostnames in `APP_ALLOWED_HOSTS`; wildcards are rejected.
 
-Response:
-- `signature_html`: rendered HTML or empty result.
-- `signature_version_id`: selected immutable version identifier.
-- `policy`: only the mail-adapter flags it needs.
-- `decision_id`: correlation/audit identifier.
+### Portal permissions
 
-The engine endpoint authenticates the Rspamd adapter with a rotatable secret or stronger service authentication. Do not put credentials in source code or frontend assets. Avoid sending full message bodies to the API.
+- `signature-users`: normal portal and personal-signature access.
+- `signature-admins`: administrator APIs and management operations.
 
-## 7. Mail processing and DKIM
+The server checks these permissions in route handlers. Hiding a menu item in the browser is not an authorization control.
 
-Rspamd integration must be verified against the actual deployed Rspamd version and effective configuration. The test must demonstrate:
-- Signature insertion occurs before DKIM signing.
-- The final delivered message has a valid DKIM signature.
-- No mutation occurs after signing.
-- Repeated processing is idempotent.
-- Multipart/alternative, nested multipart, attachments, HTML, plain text, quoted-printable and base64 fixtures remain valid.
+### Engine identity
 
-Do not treat the current Lua `prefilter` registration alone as proof of DKIM order.
+The Rspamd adapter authenticates to `GET /api/signature/{email}` with `X-Engine-Key`. The key is configured independently from the session secret and is never embedded in the tracked Lua source.
 
-## 8. Operational requirements
+The Lua adapter requires `task:get_user()`, but that only indicates an authenticated SMTP session. It does not prove that the authenticated mailbox may send as the envelope sender. Mailcow/Postfix sender verification and explicit alias/delegated-send-as permissions must enforce that relationship before the signature hook.
 
-- Non-root application container/process.
-- PostgreSQL credentials and engine secrets supplied through protected runtime secrets.
-- Mandatory strong session secret; secure cookies behind HTTPS.
-- TLS verification enabled by default.
-- Explicit health/readiness checks.
-- Structured logs with no signature HTML, tokens or unnecessary personal data.
-- Bounded HTTP timeouts and documented fail-open/fail-closed behavior.
-- Backups for PostgreSQL and signature assets; restore procedure must preserve version hashes.
-- Migrations run as a controlled deployment step, not implicitly at module import.
+## 4. Standalone Docker deployment
 
-## 9. Compatibility and migration strategy
+The root `compose.yaml` starts:
 
-Refactor incrementally:
-1. Add tests and record current API/UI behavior.
-2. Extract configuration/database modules while preserving SQLite only as a temporary migration bridge if needed; PostgreSQL remains the target.
-3. Introduce Alembic and migrate existing domain/override data.
-4. Extract core services behind tests.
-5. Add new variant/rule tables and migrate existing domain templates/overrides into a default variant model.
-6. Replace the Authentik-specific integration with OIDC plus attribute-provider interfaces.
-7. Replace the Rspamd hard-coded configuration and version the internal API.
-8. Keep old API routes temporarily as compatibility wrappers where safe, then deprecate them.
+- `postgres`: PostgreSQL 17 Alpine with a healthcheck and a persistent named volume.
+- `opensigweave`: the application image, built from the root Dockerfile.
 
-## 10. Open design questions
+The application container:
 
-Resolve these before implementing the corresponding feature:
-- Which OIDC claims are guaranteed by the provider, and which user attributes require directory enrichment?
-- Should `PROFESSIONAL` and `INTERNAL` be fixed signature pools or explicit rule targets?
-- What exact message marker formats survive Outlook, mobile clients and reply/forward composition?
-- Which sender identity is authoritative: SMTP envelope sender, authenticated user or message From? Define trusted precedence.
-- What is the default behavior when the engine is unavailable?
-- What HTML sanitization policy preserves email-client compatibility while protecting the management UI?
-- How should multiple recipients from different domains affect a single outgoing message?
+- Runs as UID/GID 10001, not root.
+- Uses a read-only root filesystem and a bounded `/tmp` tmpfs.
+- Drops all Linux capabilities and enables `no-new-privileges`.
+- Waits for PostgreSQL health and applies Alembic migrations before starting Uvicorn.
+- Exposes port 8085 only on host loopback by default.
+- Persists signature assets in a separate named volume.
 
-These are implementation gates, not reasons to block documentation and baseline test work.
+The deployment requires a reverse proxy for browser-facing HTTPS. A proxy on the same host can use `http://127.0.0.1:8085`. A proxy in a separate container or host requires a deliberately configured private network path and firewall restriction; do not expose the application port to the public internet.
+
+The Compose stack does not install Rspamd, change Mailcow, or configure a mail server.
+
+## 5. Implemented data model
+
+Current persisted concepts include:
+
+- Domains and their injection/override policy.
+- Personal user overrides.
+- Logical signatures and their scope/mode/active state.
+- Immutable signature versions and file integrity metadata.
+- Signature variants and weights.
+- Signature rules and typed conditions.
+- Per-sender variant-selection state.
+- Shared database-backed rate-limit buckets.
+
+An independent audit-log subsystem and a fully generic identity-provider/logout abstraction are not part of the current preview.
+
+## 6. Security and operational controls
+
+Current implementation includes:
+
+- Strong non-placeholder startup validation for `SECRET_KEY` and `ENGINE_API_KEY`.
+- HTTPS-only OIDC discovery and Authentik API URL validation.
+- TLS certificate verification and bounded Authentik API requests.
+- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime.
+- Session-bound CSRF checks for state-changing browser requests.
+- Trusted Host validation derived from the configured callback hostname.
+- Security response headers and a global request-body size limit.
+- Server-side HTML sanitization, sandboxed previews and autoescaped template variables.
+- File-store path/symlink checks, atomic writes and SHA-256 integrity validation.
+- Database-backed rate limiting shared across workers.
+- A non-root, read-only Docker application container.
+- CI dependency auditing and full Git-history secret scanning.
+
+The Content Security Policy is report-only until full browser validation. These controls are not a substitute for a dynamic penetration test or production deployment review.
+
+## 7. Mail-flow constraints
+
+Before enabling Rspamd in any real mail flow, a disposable integration environment must verify:
+
+1. The SMTP envelope sender is authorized for the authenticated mailbox by Mailcow/Postfix.
+2. The Lua module runs at the intended processing stage.
+3. Signature mutation occurs before DKIM signing.
+4. The final delivered message passes DKIM validation.
+5. Repeated processing does not inject duplicate signatures.
+6. Plain text and HTML single-part messages are preserved correctly.
+7. Multipart messages, attachments, inline Content-IDs and transfer encodings remain unchanged until a MIME-aware rewrite implementation is tested.
+
+The current adapter intentionally skips multipart messages. Do not work around this by adding raw string-based multipart reconstruction.
+
+## 8. Near-term development scope
+
+The first testable standalone revision should focus on:
+
+- Reliable Docker installation and upgrade instructions.
+- Authentik login and group authorization.
+- Domain, signature, variant and rule workflows.
+- PostgreSQL persistence and signature-file persistence.
+- Browser-level verification and CSP report review.
+- An isolated Rspamd test only after the portal works.
+
+Do not start native Mailcow UI integration in this repository. That work belongs in a separate project after the standalone product is stable.
+
+## 9. Deferred design work
+
+- Generic OIDC logout and non-Authentik attribute providers.
+- LDAP/Active Directory enrichment.
+- Native Mailcow authentication, user synchronization and UI integration.
+- Parser-backed multipart MIME mutation.
+- Full audit logging and retention policy.
+- Production-grade backup/restore automation and deployment orchestration.
+- Dynamic penetration testing, load testing and operational SLOs.
