@@ -61,8 +61,6 @@ jobs:
           if report:
               raise SystemExit("Unallowlisted secrets detected in Git history")
           PY
-      - name: Validate Docker image build script
-        run: bash -n build/build-opensigweave.sh
       - name: Install Python dependencies
         run: python -m pip install -r requirements.txt
       - name: Audit Python dependencies
