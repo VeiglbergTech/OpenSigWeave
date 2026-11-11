@@ -1,16 +1,17 @@
 # OpenSigWeave management and engine API
 
-This document describes the API implemented on the standalone preview branch. Browser management endpoints use the OIDC session. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
+This document describes the API implemented on the standalone preview branch. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
 
 State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests.
 
 ## Authentication and authorization
 
-- `GET /login`: starts the OIDC Authorization Code flow.
-- `GET /auth`: OIDC callback. The UserInfo response must include a subject, a valid email, `email_verified: true` (JSON boolean), and a `groups` array.
-- `POST /logout`: clears the local session and returns the Authentik logout URL.
+- `GET /login`: starts the OIDC Authorization Code flow when `OIDC_ENABLED=true`; serves the local administrator login form when `false`.
+- `POST /login`: local administrator login; available only when `OIDC_ENABLED=false`. Requires the one-time CSRF token from the login form.
+- `GET /auth`: OIDC callback, registered only when `OIDC_ENABLED=true`. The UserInfo response must include a subject, a valid email, `email_verified: true` (JSON boolean), and a `groups` array.
+- `POST /logout`: clears the local session and returns the appropriate redirect URL (Authentik end-session URL in OIDC mode, `/login` in local-only mode).
 
-The OIDC discovery URL and client credentials are configurable. However, the current implementation still uses Authentik-specific logout handling and an Authentik API-backed employee-attribute provider. Authentik is therefore the supported complete configuration for this preview; a generic OIDC-only provider is not yet fully supported.
+OIDC is enabled by default and requires valid HTTPS discovery, client credentials and an HTTPS redirect URI ending in `/auth`. Set `OIDC_ENABLED=false` to disable OIDC configuration checks and callback registration. Local-only mode requires `LOCAL_ADMIN_EMAIL`, a scrypt `LOCAL_ADMIN_PASSWORD_HASH`, and explicit `APP_ALLOWED_HOSTS`; Authentik settings may be omitted. The local administrator is assigned `signature-admins` and `signature-users`. Local-only mode returns empty external identity attributes.
 
 For Authentik, the default `profile` scope mapping provides group membership. The custom `opensigweave` scope mapping must provide `email_verified` as a JSON boolean and an `attributes` object. Authentik 2025.10 and newer no longer assert email verification by default; see the README for the required mapping and user attribute configuration.
 
