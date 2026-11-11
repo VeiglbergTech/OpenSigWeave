@@ -83,6 +83,35 @@ The Lua engine also theoretically supports injecting signatures into replies sen
 
 OpenSigWeave is a FastAPI application with PostgreSQL as the recommended new-install database. SQLite remains supported for legacy installations; Alembic manages schema migrations. 
 
+### Standalone Docker quick start (recommended)
+
+The standalone Docker stack starts the OpenSigWeave web application and its PostgreSQL database. It does not install or modify a mail server. Rspamd is connected separately after the application has been configured and tested.
+
+1. Check out the preview branch and create the environment file:
+   ```bash
+   git clone --branch architecture/refactor-foundation https://github.com/VeiglbergTech/OpenSigWeave.git
+   cd OpenSigWeave
+   cp .env.example .env
+   ```
+2. Generate three independent secrets. Use separate values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY`:
+   ```bash
+   python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+   Put the generated values into `.env`. Keep this file private and do not commit it.
+3. Configure the OIDC application and Authentik attribute-provider settings in `.env`. The callback URL must exactly match the HTTPS `OIDC_REDIRECT_URI`. Authentik must provide a verified email and the `groups` claim. Grant test users the `signature-users` group and administrators the `signature-admins` group.
+4. Validate the Compose configuration and start the stack:
+   ```bash
+   docker compose config
+   docker compose up -d --build
+   docker compose logs -f opensigweave
+   ```
+   The application waits for PostgreSQL and applies Alembic migrations automatically before starting Uvicorn.
+5. Configure a trusted HTTPS reverse proxy to forward to `http://127.0.0.1:8085`. The application port is bound to loopback only and must not be exposed directly to the internet. Use the same hostname as `OIDC_REDIRECT_URI`.
+
+PostgreSQL and signature files are stored in separate named Docker volumes. Back up both together. The stack uses a non-root application user, a read-only container filesystem, dropped Linux capabilities and no-new-privileges.
+
+This is the first standalone preview deployment path. It is intended for testing the portal and API; it does not yet automatically configure a Rspamd server or provide a production-ready mail-flow integration.
+
 ### Prerequisites
 * Python 3.11+ (Starlette 1.8 and newer)
 * Docker Engine and Docker Compose plugin (for the bundled PostgreSQL service)
