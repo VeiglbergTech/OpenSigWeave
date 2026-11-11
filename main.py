@@ -157,7 +157,7 @@ extra_allowed_hosts = [
     for host in os.environ.get("APP_ALLOWED_HOSTS", "").split(",")
     if host.strip()
 ]
-canonical_host = (redirect_parts.hostname or "").lower()
+canonical_host = (urlsplit(os.environ.get("OIDC_REDIRECT_URI", "")).hostname or "").lower()
 allowed_hosts = list(dict.fromkeys([canonical_host, *extra_allowed_hosts]))
 if not canonical_host or any(
     host == "*" or "/" in host or "@" in host or not host
