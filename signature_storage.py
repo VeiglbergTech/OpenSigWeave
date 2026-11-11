@@ -47,7 +47,7 @@ class SignatureFileStore:
                 or re.search(r'[\\/\x00-\x1f\x7f]', name)
                 or re.match(r"^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)", name, re.I)):
             raise SignatureStorageError("Signature name is not a safe directory name")
-        if len(name.encode("utf-8")) > 180:
+        if len(name.encode("utf-8")) > 255:
             raise SignatureStorageError("Signature name is too long for filesystem storage")
         return name
 
@@ -103,6 +103,7 @@ class SignatureFileStore:
         if signature_dir.is_symlink() or (signature_dir.exists() and not signature_dir.is_dir()):
             raise SignatureStorageError("Signature directory is unavailable or unsafe")
         signature_dir.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(signature_dir, 0o700)
         payload = html_content.encode("utf-8")
         if len(payload) > MAX_SIGNATURE_BYTES:
             raise SignatureStorageError("Signature asset exceeds the maximum allowed size")
@@ -111,6 +112,7 @@ class SignatureFileStore:
         if versions_dir.is_symlink() or (versions_dir.exists() and not versions_dir.is_dir()):
             raise SignatureStorageError("Signature versions directory is unsafe")
         versions_dir.mkdir(mode=0o700, exist_ok=True)
+        os.chmod(versions_dir, 0o700)
         self._atomic_write(versions_dir / filename, payload, exclusive=True)
         try:
             self._atomic_write(signature_dir / "signature.html", payload)
