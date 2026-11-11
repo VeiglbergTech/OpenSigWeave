@@ -59,8 +59,9 @@ A branch-wide source review identified and addressed the following findings on `
 - Domain names are normalized and validated before creation or administrative domain-override lookup. Domain suffix matching uses an escaped SQLAlchemy `endswith` expression.
 - Authentik attribute lookup now requires exactly one exact case-insensitive email match and an explicitly active account; it no longer trusts the first partial search result.
 - OIDC login now requires a subject, a verified email and a well-formed groups claim, clears any previous session before establishing the authenticated session, and stores only the application-required user claims.
-- Session lifetime is limited to one hour. Standard response hardening headers are added, and rule condition counts and legacy HTML input sizes are bounded.
-- Quill was upgraded from 1.3.6 to 1.3.7 to address the documented reverse-tabnabbing issue. Alpine.js is pinned to the exact 3.17.5 version rather than a floating 3.x alias.
+- Session lifetime is limited to one hour. The cookie uses the `__Host-` prefix, Secure, HttpOnly, `Path=/` and SameSite=Lax. Standard response hardening headers and `Cache-Control: no-store, private` are applied to authenticated responses.
+- A global 1 MiB request-body limit rejects oversized and chunked requests; legacy HTML inputs are separately capped at 64 KiB. Signature storage also enforces a 64 KiB file limit and rejects symlinks.
+- Quill was upgraded from 1.3.6 to 1.3.7 to address the documented reverse-tabnabbing issue. Alpine.js is pinned to the exact 3.17.5 version rather than a floating 3.x alias. External links opened in a new tab use `noopener noreferrer`.
 
 ### Security review limitations and follow-up
 
@@ -68,10 +69,12 @@ A branch-wide source review identified and addressed the following findings on `
 - Content Security Policy is not yet enforced. The current UI contains inline JavaScript and Alpine expressions; introducing a strict CSP requires a deliberate nonce/hash migration rather than a permissive policy that would create a false sense of protection.
 - Subresource Integrity hashes and local vendoring for third-party browser assets remain outstanding. Versions are pinned, but CDN delivery is still a supply-chain dependency.
 - OIDC provider configuration must expose the standard `email_verified` claim. This is intentionally fail-closed; deployments that do not provide it must correct their provider mapping rather than silently accepting unverified identities.
-- Rate limiting, request-wide body limits, dependency/action SHA pinning, GitHub branch protection, and a complete Git-history secret scan remain outstanding.
+- Rate limiting, GitHub branch protection, and a complete Git-history secret scan remain outstanding. GitHub Actions are now pinned to immutable commit SHAs and checkout credential persistence is disabled.
 - Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
 - No production Mailcow deployment or configuration was modified.
 
 - OIDC login and logout now use the explicit HTTPS `OIDC_REDIRECT_URI`; the callback is no longer constructed from the incoming Host header. Configure the exact callback URI at the identity provider and in `.env`.
+- Python dependencies were upgraded after `pip-audit` found 40 known vulnerabilities in six packages. The affected packages were updated, the deprecated HTTPX integration was migrated to HTTPX2, and the latest CI dependency audit now reports **no known vulnerabilities**. FastAPI 0.162.4 uses Starlette 1.10.0; Python 3.11+ is now the documented minimum.
+- Latest CI on this branch passes dependency auditing, Python compilation, Rspamd Lua syntax, PostgreSQL and SQLite migrations, and all 82 regression tests.
 - Signature storage now enforces mode `0700` on its dedicated root, opens assets with `O_NOFOLLOW`, verifies regular-file type, and refuses symlink deletion. Regression tests cover symlinked assets and directory permissions.
 - Authenticated portal/API responses are marked `Cache-Control: no-store, private`. The editor's external dependencies are version-pinned; CDN SRI/local vendoring remains a follow-up.
