@@ -31,6 +31,12 @@ services:
         condition: service_healthy
     ports:
       - "127.0.0.1:8085:8085"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8085), timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     volumes:
       - opensigweave-signatures:/data/signatures
     read_only: true
