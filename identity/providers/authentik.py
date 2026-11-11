@@ -50,10 +50,25 @@ class AuthentikAttributeProvider:
             if not isinstance(payload, dict):
                 return IdentityAttributes()
             results = payload.get("results", [])
-            if not isinstance(results, list) or not results or not isinstance(results[0], dict):
+            if not isinstance(results, list):
                 return IdentityAttributes()
 
-            user = results[0]
+            requested_email = email.strip().casefold()
+            exact_matches = [
+                item for item in results
+                if isinstance(item, dict)
+                and isinstance(item.get("email"), str)
+                and item["email"].strip().casefold() == requested_email
+            ]
+            if len(exact_matches) != 1:
+                logger.warning("Authentik lookup did not return exactly one matching account")
+                return IdentityAttributes()
+
+            user = exact_matches[0]
+            if user.get("is_active") is not True:
+                logger.warning("Authentik account is inactive; profile attributes were not used")
+                return IdentityAttributes()
+
             name_parts = str(user.get("name") or "").split()
             attributes = user.get("attributes")
             if not isinstance(attributes, dict):
