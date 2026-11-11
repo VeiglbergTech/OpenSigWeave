@@ -35,6 +35,8 @@ class SignatureFileStore:
         os.chmod(self.root, 0o700)
         self.signatures_root = self.root / "signatur"
         self.signatures_root.mkdir(mode=0o700, exist_ok=True)
+        if self.signatures_root.is_symlink() or not self.signatures_root.is_dir():
+            raise SignatureStorageError("Signature directory root must be a real directory")
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -98,12 +100,17 @@ class SignatureFileStore:
             raise TypeError("html_content must be a string")
         filename = self._version_filename(version_id)
         signature_dir = self._signature_dir(signature_name)
+        if signature_dir.is_symlink() or (signature_dir.exists() and not signature_dir.is_dir()):
+            raise SignatureStorageError("Signature directory is unavailable or unsafe")
+        signature_dir.mkdir(mode=0o700, exist_ok=True)
         payload = html_content.encode("utf-8")
         if len(payload) > MAX_SIGNATURE_BYTES:
             raise SignatureStorageError("Signature asset exceeds the maximum allowed size")
         digest = hashlib.sha256(payload).hexdigest()
         versions_dir = signature_dir / ".versions"
-        versions_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        if versions_dir.is_symlink() or (versions_dir.exists() and not versions_dir.is_dir()):
+            raise SignatureStorageError("Signature versions directory is unsafe")
+        versions_dir.mkdir(mode=0o700, exist_ok=True)
         self._atomic_write(versions_dir / filename, payload, exclusive=True)
         try:
             self._atomic_write(signature_dir / "signature.html", payload)
@@ -118,7 +125,11 @@ class SignatureFileStore:
 
     def read(self, signature_name: str, version_id: uuid.UUID, expected_sha256: str) -> str:
         filename = self._version_filename(version_id)
-        path = self._signature_dir(signature_name) / ".versions" / filename
+        signature_dir = self._signature_dir(signature_name)
+        versions_dir = signature_dir / ".versions"
+        if signature_dir.is_symlink() or versions_dir.is_symlink():
+            raise SignatureStorageError("Signature directory is unsafe")
+        path = versions_dir / filename
         try:
             descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             try:
