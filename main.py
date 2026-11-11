@@ -1,4 +1,5 @@
 import os
+import logging
 import uuid
 import json
 import hmac
@@ -33,6 +34,7 @@ from rate_limiter import RateLimitMiddleware
 from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider, IdentityProviderUnavailable
 from identity.providers.base import AttributeProvider
+from identity.attributes import IdentityAttributes
 from core.selection_repository import select_and_record_variant
 from core.modes import SignatureMode, resolve_mode
 from core.rules import RuleContext, evaluate_rules
@@ -40,6 +42,8 @@ from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from signature_sanitizer import sanitize_signature_html
+logger = logging.getLogger(__name__)
+
 attribute_provider: AttributeProvider = AuthentikAttributeProvider(
     base_url=os.environ.get("AUTHENTIK_URL", ""),
     api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
@@ -49,7 +53,7 @@ async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes
     """Refresh identity data from Authentik and fall back to the last good DB snapshot."""
     normalized_email = email.strip().casefold()
     try:
-        fresh = await get_identity_attributes(db, normalized_email)
+        fresh = await attribute_provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Authentik returned an unsupported identity result")
         cached = db.get(IdentityCacheDB, normalized_email)
