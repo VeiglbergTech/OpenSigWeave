@@ -232,7 +232,7 @@ local function inject_signature(task)
             until not removed or not signature_marker.cleanup_all
             body = remaining
         else
-            local cleaned, count = body:gsub("<%-%-%-%[[^\\r\\n]*", "")
+            local cleaned, count = body:gsub("<%-%-%-%[[^\r\n]*", "")
             if count > 0 then body = cleaned; changed = true end
         end
         if changed then
@@ -372,7 +372,7 @@ local function inject_signature(task)
                         if a then spliced = string.sub(spliced, 1, a - 1) .. string.sub(spliced, b + 1); removed = true end
                     end
                 else
-                    local cleaned, count = spliced:gsub("<%-%-%-%[[^\\r\\n]*", "")
+                    local cleaned, count = spliced:gsub("<%-%-%-%[[^\r\n]*", "")
                     spliced = cleaned
                     removed = count > 0
                 end
