@@ -16,12 +16,12 @@ window.fetch = (resource, options = {}) => {
 
         // THE SMART LOCK ENGINE
         function toggleLock(lockId, rawId) {
-            const rawVal = document.getElementById(rawId).value.toLowerCase();
+            const rawElement = document.getElementById(rawId);
             const lockEl = document.getElementById(lockId);
-            if (lockEl) {
-                if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
-                else lockEl.classList.add('hidden');
-            }
+            if (!rawElement || !lockEl) return;
+            const rawVal = rawElement.value.toLowerCase();
+            if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
+            else lockEl.classList.add('hidden');
         }
         function checkAllLocks() {
             toggleLock('user-quill-lock', 'raw-html-editor');
@@ -30,22 +30,30 @@ window.fetch = (resource, options = {}) => {
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
-            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
-            quill = new Quill('#quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            domainQuill = new Quill('#domain-quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            
-            quill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('raw-html-editor').value = quill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-            
-            domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('domain-raw-html-editor').value = domainQuill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
+            const userEditor = document.getElementById('quill-editor');
+            const userRawEditor = document.getElementById('raw-html-editor');
+            if (!userEditor || !userRawEditor || !window.Quill) return;
 
-            if (document.body.dataset.canEdit !== "true") { quill.disable(); }
+            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
+            quill = new Quill(userEditor, { theme: 'snow', modules: { toolbar: tb }});
+
+            quill.on('text-change', (d, old, source) => { if (source === 'user') { userRawEditor.value = quill.root.innerHTML; checkAllLocks(); } });
+            userRawEditor.addEventListener('input', function() { quill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
+
+            const domainEditor = document.getElementById('domain-quill-editor');
+            const domainRawEditor = document.getElementById('domain-raw-html-editor');
+            if (domainEditor && domainRawEditor) {
+                domainQuill = new Quill(domainEditor, { theme: 'snow', modules: { toolbar: tb }});
+                domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { domainRawEditor.value = domainQuill.root.innerHTML; checkAllLocks(); } });
+                domainRawEditor.addEventListener('input', function() { domainQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
+            }
+
+            if (document.body.dataset.canEdit !== "true") quill.disable();
 
             const res = await fetch('/api/my-signature');
             if(res.ok) {
                 const data = await res.json();
-                document.getElementById('raw-html-editor').value = data.html_content;
+                userRawEditor.value = data.html_content;
                 quill.clipboard.dangerouslyPasteHTML(data.html_content);
                 checkAllLocks();
             }

@@ -83,7 +83,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("csrf_token", self.source)
         self.assertIn('@app.post("/logout")', self.source)
         self.assertNotIn('@app.get("/logout")', self.source)
-        self.assertIn('fetch("/logout"', portal_js)
+        self.assertIn('fetch("/logout"', (ROOT / "static" / "js" / "logout.js").read_text(encoding="utf-8"))
 
     def test_signature_previews_are_sandboxed_and_js_data_is_serialized(self):
         template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
@@ -218,6 +218,8 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("data-csrf-token", index)
         self.assertIn("x-cloak", index)
         self.assertTrue((ROOT / "static" / "js" / "portal.js").is_file())
+        self.assertIn("/static/js/logout.js", (ROOT / "templates" / "error.html").read_text(encoding="utf-8"))
+        self.assertTrue((ROOT / "static" / "js" / "logout.js").is_file())
         self.assertTrue((ROOT / "static" / "css" / "portal.css").is_file())
 
 
