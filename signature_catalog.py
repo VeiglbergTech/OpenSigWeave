@@ -23,13 +23,14 @@ def _persist_version(
     session: Session,
     store: SignatureFileStore,
     signature_id: str,
+    signature_name: str,
     html_content: str,
     created_by: str | None,
     version_number: int,
 ) -> tuple[SignatureVersionDB, StoredSignature]:
     version_uuid = uuid.uuid4()
     sanitized_html = sanitize_signature_html(html_content)
-    stored = store.write(version_uuid, session.get(SignatureDB, signature_id).name, sanitized_html)
+    stored = store.write(version_uuid, signature_name, sanitized_html)
     version = SignatureVersionDB(
         id=version_uuid.hex,
         signature_id=signature_id,
@@ -77,7 +78,7 @@ def create_signature(
     try:
         session.add(signature)
         version, stored = _persist_version(
-            session, store, signature_id, html_content, created_by, 1
+            session, store, signature_id, name.strip(), html_content, created_by, 1
         )
         variant = SignatureVariantDB(
             id=uuid.uuid4().hex,
@@ -142,6 +143,8 @@ def add_signature_version(
         if stored is not None:
             try:
                 store.delete(signature.name, version_uuid)
+                if latest_version is not None:
+                    store.restore_current(signature.name, uuid.UUID(hex=latest_version.id), latest_version.sha256)
             except Exception:
                 pass
         raise
