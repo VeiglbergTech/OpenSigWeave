@@ -71,3 +71,7 @@ Run these tests in a disposable Mailcow environment before enabling the integrat
 Also verify that the effective Postfix configuration still contains the authenticated sender/login mismatch enforcement after Mailcow updates and custom configuration reloads. Mailcow's current documentation exposes sender verification and per-mailbox send-as permissions through its UI; use those supported controls rather than copying deprecated global Postfix overrides.
 
 **Status:** This is a documented integration prerequisite, not a verified production setting. No Mailcow configuration has been changed and no end-to-end SMTP test has been run.
+
+## Host-header trust boundary
+
+The application now uses Starlette's `TrustedHostMiddleware`. The canonical host is derived from the fixed HTTPS `OIDC_REDIRECT_URI`; explicitly configured reverse-proxy aliases may be added through comma-separated `APP_ALLOWED_HOSTS`. Wildcard hosts are rejected. Reverse proxies must preserve the expected Host value or set a configured alias. A regression test rejects an untrusted Host header and accepts the canonical hostname.
