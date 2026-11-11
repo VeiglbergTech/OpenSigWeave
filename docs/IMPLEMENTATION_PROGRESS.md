@@ -100,7 +100,7 @@ A branch-wide source review identified and addressed the following findings on `
 - Default rate limits are 10 login requests/5 minutes, 20 callback requests/5 minutes and 1,800 engine requests/minute. The engine threshold must be reviewed against measured production mail throughput before rollout. Apply migration 0004 before deploying this code.
 
 
-- Rate-limit bucket identifiers are pseudonymized with a keyed HMAC. The HMAC key is derived with domain separation from the mandatory `SESSION_SECRET`; a database-only disclosure therefore does not make low-entropy client IP addresses directly enumerable. Regression tests verify that stored bucket keys are not plain SHA-256 hashes.
+- Rate-limit bucket identifiers are pseudonymized with a keyed HMAC. The HMAC key is derived with domain separation from the mandatory `SECRET_KEY`; a database-only disclosure therefore does not make low-entropy client IP addresses directly enumerable. Regression tests verify that stored bucket keys are not plain SHA-256 hashes.
 
 ### Rate-limit key configuration correction — 2026-11-11
 
