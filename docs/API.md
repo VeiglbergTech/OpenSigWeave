@@ -149,7 +149,7 @@ If no valid mode header is present, the adapter also checks decoded HTML text pa
 
 1. An administrator-disabled user override returns no signature.
 2. An explicit authenticated message-mode header overrides personal overrides and rules.
-3. Without an explicit mode header, an enabled personal override is used.
+3. Without an explicit mode header, an enabled personal override is used only when the domain allows overrides.
 4. Otherwise, the highest-priority matching persisted rule determines the mode and optional signature target.
 5. If no rule matches, the default mode is `AUTO`; the legacy domain template is used if no catalog variant is available in that pool.
 
