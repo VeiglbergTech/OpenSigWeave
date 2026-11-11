@@ -48,3 +48,26 @@ This file tracks changes made on `architecture/refactor-foundation`. It is not a
 ## Important operational note
 
 The new startup validation means an existing deployment with no valid `SECRET_KEY` will no longer start from this branch. Configure a strong secret before testing the branch. Session cookies are Secure, so access the web UI over HTTPS. This is an intentional fail-safe, not a production migration performed by this project work.
+
+## Security review — 2026-11-11
+
+A branch-wide source review identified and addressed the following findings on `architecture/refactor-foundation`:
+
+- Personal signature API handlers now require membership in `signature-users` or `signature-admins`; authentication alone is insufficient.
+- User override lookups now use literal case-insensitive equality (`lower(column) = normalized_value`) rather than SQL `LIKE` matching. This prevents local-part characters such as `_` and `%` from acting as wildcards while preserving case-insensitive matching of legacy records.
+- Personal overrides, administrator overrides and domain templates are sanitized before storage. Legacy stored HTML is sanitized again before it is returned to the personal editor, administrator editor, web preview and Rspamd engine.
+- Domain names are normalized and validated before creation or administrative domain-override lookup. Domain suffix matching uses an escaped SQLAlchemy `endswith` expression.
+- Authentik attribute lookup now requires exactly one exact case-insensitive email match and an explicitly active account; it no longer trusts the first partial search result.
+- OIDC login now requires a subject, a verified email and a well-formed groups claim, clears any previous session before establishing the authenticated session, and stores only the application-required user claims.
+- Session lifetime is limited to one hour. Standard response hardening headers are added, and rule condition counts and legacy HTML input sizes are bounded.
+- Quill was upgraded from 1.3.6 to 1.3.7 to address the documented reverse-tabnabbing issue. Alpine.js is pinned to the exact 3.17.5 version rather than a floating 3.x alias.
+
+### Security review limitations and follow-up
+
+- The review so far is static code review plus targeted unit/runtime regression tests, not a full dynamic penetration test.
+- Content Security Policy is not yet enforced. The current UI contains inline JavaScript and Alpine expressions; introducing a strict CSP requires a deliberate nonce/hash migration rather than a permissive policy that would create a false sense of protection.
+- Subresource Integrity hashes and local vendoring for third-party browser assets remain outstanding. Versions are pinned, but CDN delivery is still a supply-chain dependency.
+- OIDC provider configuration must expose the standard `email_verified` claim. This is intentionally fail-closed; deployments that do not provide it must correct their provider mapping rather than silently accepting unverified identities.
+- Rate limiting, request-wide body limits, dependency/action SHA pinning, GitHub branch protection, and a complete Git-history secret scan remain outstanding.
+- Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
+- No production Mailcow deployment or configuration was modified.
