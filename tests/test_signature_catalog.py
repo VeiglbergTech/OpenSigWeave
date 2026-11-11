@@ -198,6 +198,20 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertNotIn("<script", stored)
         self.assertNotIn("position", stored)
 
+    def test_new_signature_versions_are_sanitized_too(self):
+        signature, _, _ = create_signature(
+            self.session, self.store, name="Versioned", domain_id=None,
+            mode=SignatureMode.PROFESSIONAL, html_content="<p>Version 1</p>",
+        )
+        version = add_signature_version(
+            self.session, self.store, signature.id,
+            '<div onmouseover="alert(1)">Version 2<script>bad()</script></div>',
+        )
+        stored = self.store.read(uuid.UUID(hex=version.id), version.sha256)
+        self.assertIn("Version 2", stored)
+        self.assertNotIn("onmouseover", stored)
+        self.assertNotIn("<script", stored)
+
 
 if __name__ == "__main__":
     unittest.main()
