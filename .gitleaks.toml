@@ -36,3 +36,13 @@ description = "False positive in the upstream Quill minified distribution"
 paths = [
   '''^static/vendor/quill/1\.3\.7/quill\.min\.js$''',
 ]
+
+# These commits contain a deterministic, non-production CI test key in a curl
+# header. The smoke test now generates its key at runtime; only the two exact
+# historical commits are excluded from this header false-positive rule.
+[[allowlists]]
+description = "Historical CI-only dummy engine key used by Docker smoke test"
+commits = [
+  "659fad98a28c7f8d5a7db7595584dac21d274b69",
+  "731ad71103f3f624a40084e87bc33b34515d77f3",
+]
