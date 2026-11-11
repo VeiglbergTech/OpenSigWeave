@@ -403,6 +403,35 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.create_signature_endpoint(payload, self.user_request, self.db)
         self.assertEqual(raised.exception.status_code, 403)
 
+    def test_identity_attributes_are_cached_and_used_when_authentik_fails(self):
+        fresh = IdentityAttributes(
+            first_name="Alice", last_name="Example", title="Engineer",
+            phone="+49 123", groups=frozenset({"signature-users"}),
+            claims={"email": "user@example.org"},
+            attributes={"department": "IT"},
+        )
+        with patch.object(main.attribute_provider, "get_attributes", new=AsyncMock(return_value=fresh)):
+            first = asyncio.run(main.get_identity_attributes(self.db, "User@Example.org"))
+        self.assertEqual(first, fresh)
+        stored = self.db.get(main.IdentityCacheDB, "user@example.org")
+        self.assertIsNotNone(stored)
+        self.assertEqual(stored.first_name, "Alice")
+
+        with patch.object(
+            main.attribute_provider, "get_attributes",
+            new=AsyncMock(side_effect=main.IdentityProviderUnavailable("offline")),
+        ):
+            fallback = asyncio.run(main.get_identity_attributes(self.db, "user@example.org"))
+        self.assertEqual(fallback, fresh)
+
+    def test_identity_without_prior_cache_returns_empty_attributes_on_provider_failure(self):
+        with patch.object(
+            main.attribute_provider, "get_attributes",
+            new=AsyncMock(side_effect=main.IdentityProviderUnavailable("offline")),
+        ):
+            result = asyncio.run(main.get_identity_attributes(self.db, "new@example.org"))
+        self.assertEqual(result, IdentityAttributes())
+
 
 if __name__ == "__main__":
     unittest.main()
