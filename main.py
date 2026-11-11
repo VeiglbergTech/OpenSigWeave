@@ -634,7 +634,6 @@ async def get_rspamd_signature(
     if override:
         raw_template = override.html_content
     else:
-        identity_attributes = await attribute_provider.get_attributes(normalized_email)
         if x_signature_mode and x_signature_mode.strip():
             try:
                 mode = resolve_mode(x_signature_mode)
