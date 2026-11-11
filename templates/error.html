@@ -8,7 +8,18 @@
     <div class="text-center">
         <h1 class="text-3xl font-bold text-red-500 mb-4">Access Denied</h1>
         <p class="text-gray-400">{{ message }}</p>
-        <a href="/logout" class="mt-6 inline-block text-blue-400 hover:text-blue-300">Try a different account</a>
+        <button id="logout" type="button" class="mt-6 inline-block text-blue-400 hover:text-blue-300">Sign out and use a different account</button>
     </div>
+    <script>
+        document.getElementById("logout").addEventListener("click", async () => {
+            const response = await fetch("/logout", {
+                method: "POST",
+                headers: { "X-CSRF-Token": {{ csrf_token | tojson }} }
+            });
+            if (!response.ok) return;
+            const result = await response.json();
+            if (result.logout_url) window.location.assign(result.logout_url);
+        });
+    </script>
 </body>
 </html>
