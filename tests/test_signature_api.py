@@ -10,6 +10,7 @@ from types import SimpleNamespace
 os.environ.setdefault("SECRET_KEY", "test-secret-key-with-more-than-thirty-two-characters")
 os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thirty-two-characters")
 os.environ.setdefault("OIDC_DISCOVERY_URL", "https://idp.example/application/o/opensigweave/.well-known/openid-configuration")
+os.environ.setdefault("OIDC_REDIRECT_URI", "https://app.example.org/auth")
 os.environ.setdefault("OIDC_CLIENT_ID", "opensigweave-test")
 os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
 
