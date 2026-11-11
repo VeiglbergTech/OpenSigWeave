@@ -119,6 +119,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+        if request.session.get("user") and not request.url.path.startswith(("/static/", "/branding/")):
+            response.headers.setdefault("Cache-Control", "no-store, private")
         return response
 
 
