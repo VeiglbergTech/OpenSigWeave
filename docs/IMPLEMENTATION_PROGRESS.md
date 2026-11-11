@@ -67,9 +67,9 @@ A branch-wide source review identified and addressed the following findings on `
 
 - The review so far is static code review plus targeted unit/runtime regression tests, not a full dynamic penetration test.
 - Content Security Policy remains report-only. Inline scripts, event handlers and style blocks have been externalized; the portal now uses Alpine's CSP-compatible build 3.17.5 and named components for the complex actions. The report-only policy is not yet an enforced security boundary.
-- Subresource Integrity hashes and local vendoring for Alpine remain outstanding. Quill is self-hosted; Alpine's CSP build is pinned to 3.17.5 on jsDelivr and remains a third-party runtime dependency until vendored or protected with a verified SRI hash.
+- Alpine.js 3.17.5 now uses its CSP-compatible build with a verified SHA-384 SRI attribute. CI downloads the exact pinned CDN artifact and recalculates the digest. Alpine remains an external runtime dependency until optionally vendored locally; the policy stays report-only pending browser-level CSP and Quill runtime-style validation.
 - OIDC provider configuration must expose the standard `email_verified` claim. This is intentionally fail-closed; deployments that do not provide it must correct their provider mapping rather than silently accepting unverified identities.
-- GitHub branch protection and a complete Git-history secret scan remain outstanding. GitHub Actions are now pinned to immutable commit SHAs and checkout credential persistence is disabled.
+- GitHub branch protection remains outstanding. CI now scans the complete Git history with a checksum-verified Gitleaks binary; the latest successful scan reported zero unallowlisted findings. Two previously identified historical Rspamd credentials remain explicitly allowlisted because they cannot be made safe by scanning; rotate them wherever deployed. GitHub Actions are pinned to immutable commit SHAs and checkout credential persistence is disabled.
 - Existing database rows are not rewritten by this change. Read paths sanitize legacy HTML, and all new writes sanitize before persistence.
 - No production Mailcow deployment or configuration was modified.
 
@@ -101,6 +101,21 @@ A branch-wide source review identified and addressed the following findings on `
 
 
 - Rate-limit bucket identifiers are pseudonymized with a keyed HMAC. The HMAC key is derived with domain separation from the mandatory `SECRET_KEY`; a database-only disclosure therefore does not make low-entropy client IP addresses directly enumerable. Regression tests verify that stored bucket keys are not plain SHA-256 hashes.
+
+### Frontend CSP and verification — 2026-11-11
+
+Alpine's CSP-compatible build is now protected by a verified SHA-384 SRI digest.
+The digest was calculated from the exact version-pinned jsDelivr artifact in CI;
+the frontend smoke test executes Alpine's CSP evaluator in jsdom. The latest
+successful CI run before the SRI template update passed all 102 regression tests,
+both PostgreSQL and SQLite migration checks, dependency auditing, JavaScript and
+Lua syntax checks, and the full-history Gitleaks scan (zero unallowlisted
+findings). CI is rerunning for the SRI template and documentation commits.
+
+Content Security Policy remains report-only. Do not enforce it until a real
+browser run confirms the complete portal behavior and the report has been checked
+for Quill's dynamic inline-style requirements. No production Mailcow changes
+have been made.
 
 ### Rate-limit key configuration correction — 2026-11-11
 
