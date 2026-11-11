@@ -1,7 +1,9 @@
 """Runtime tests for administrator signature-catalog API handlers."""
+import asyncio
 import os
 import tempfile
 import unittest
+from unittest.mock import AsyncMock, patch
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,11 +15,13 @@ os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from starlette.responses import Response
 
 import main
 from core.modes import SignatureMode
 from database import Base
 from signature_storage import SignatureFileStore
+from identity.attributes import IdentityAttributes
 
 
 class SignatureCatalogApiTests(unittest.TestCase):
@@ -95,6 +99,36 @@ class SignatureCatalogApiTests(unittest.TestCase):
         versions = main.list_signature_versions(created["id"], self.admin_request, self.db)
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
+
+    def test_domain_policy_disables_existing_personal_overrides(self):
+        domain = main.DomainDB(
+            domain_name="example.org",
+            is_active=True,
+            allow_overrides=False,
+            template_html="<p>Domain {{ first_name }}</p>",
+        )
+        self.db.add(domain)
+        self.db.add(main.UserOverrideDB(
+            user_email="user@example.org",
+            html_content="<p>Personal override</p>",
+            is_disabled=False,
+        ))
+        self.db.commit()
+
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                db=self.db,
+            ))
+
+        self.assertIn("Domain Alice", result["html"])
+        self.assertNotIn("Personal override", result["html"])
 
     def test_non_admin_cannot_mutate_signature_catalog(self):
         payload = main.SignatureCreateRequest(
