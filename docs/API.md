@@ -20,18 +20,18 @@ The application recognizes these group names:
 
 The following endpoints require an authenticated administrator unless noted otherwise:
 
-- `GET /api/domains`
-- `POST /api/domains`
-- `PUT /api/domains/{domain_id}`
-- `DELETE /api/domains/{domain_id}`
-- `GET /api/admin/overrides`
+- `GET /domains/`
+- `POST /domains/`
+- `PUT /domains/{domain_id}`
+- `DELETE /domains/{domain_id}`
+- `GET /api/admin/overrides/{domain_name}`
 - `POST /api/admin/overrides`
 - `DELETE /api/admin/overrides/{override_id}`
 
 Personal override endpoints require membership in `signature-users` or `signature-admins`:
 
 - `GET /api/my-signature`
-- `PUT /api/my-signature`
+- `POST /api/my-signature`
 - `DELETE /api/my-signature`
 
 Personal override changes also respect the domain's `allow_overrides` policy. An administrator-disabled override cannot be re-enabled or deleted by the user.
