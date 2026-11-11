@@ -138,7 +138,7 @@ local function find_signature_text_marker(task, is_reply)
                 local current = string.sub(content, 1, quote_start - 1)
                 -- HTML clients may encode angle brackets in text nodes.
                 current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
-                for name, code in string.gmatch(current, "<%-%-%-%-%[(.-)%]%-%-([%w]+)%-%-%->") do
+                for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[([%w]+)%]%-%-%->") do
                     found[#found + 1] = { name = name, code = code }
                 end
             end
@@ -281,8 +281,8 @@ local function inject_signature(task)
             -- A validly-shaped text marker is replaced at its exact position.
             -- The API has already verified its four-character SHA-256 check.
             if signature_marker then
-                local marker_pattern = "<%-%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
-                    .. "%]%-%-" .. signature_marker.code .. "%-%-%->"
+                local marker_pattern = "<%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
+                    .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%->"
                 local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
                 if count > 0 then
                     rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
