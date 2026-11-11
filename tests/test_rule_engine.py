@@ -15,7 +15,7 @@ class SignatureRuleTests(unittest.TestCase):
             domain="example.org",
             groups=frozenset({"Sales", "Employees"}),
             claims={"department": "Sales"},
-            attributes={"title": "Account Manager"},
+            attributes={"title": "Account Manager", "departments": ["Sales", "Operations"]},
         )
 
     def test_higher_priority_rule_wins(self):
@@ -55,6 +55,16 @@ class SignatureRuleTests(unittest.TestCase):
         second = SignatureRule("z-rule", 10, (), "INTERNAL")
         first = SignatureRule("a-rule", 10, (), "PROFESSIONAL")
         self.assertEqual(evaluate_rules([second, first], self.context), first)
+
+
+    def test_list_valued_attributes_match_any_value(self):
+        rule = SignatureRule(
+            "department-list",
+            10,
+            (RuleCondition("attribute_equals", "Sales", key="departments"),),
+            "PROFESSIONAL",
+        )
+        self.assertEqual(evaluate_rules([rule], self.context), rule)
 
     def test_unknown_condition_is_rejected(self):
         invalid = SignatureRule(
