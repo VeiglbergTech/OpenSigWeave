@@ -74,41 +74,52 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         if meta is None or not meta.is_enabled:
             return IdentityAttributes()
         cache_key = f"{provider_id}:{normalized_email}"
-        try:
-            provider = identity_provider_registry.get(provider_id)
-        except Exception as exc:
-            logger.warning("Identity provider %s could not be loaded (%s)", provider_id, type(exc).__name__)
-            provider = None
     else:
-        # Legacy compatibility path for callers without a domain assignment.
-        # New installations with no configured provider have no live provider.
+        # Compatibility path for older callers without a domain assignment.
         provider = attribute_provider
         cache_key = normalized_email
-    if provider is None:
-        return IdentityAttributes()
+        if provider is None:
+            return IdentityAttributes()
     try:
+        if provider_id:
+            provider = identity_provider_registry.get(provider_id)
+            if provider is None:
+                return IdentityAttributes()
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Unsupported identity result")
         cached = db.get(IdentityCacheDB, cache_key)
-        values = {"first_name": fresh.first_name[:256], "last_name": fresh.last_name[:256],
-                  "title": fresh.title[:256], "phone": fresh.phone[:256],
-                  "groups": sorted(fresh.groups), "claims": dict(fresh.claims),
-                  "attributes": dict(fresh.attributes)}
+        values = {
+            "first_name": fresh.first_name[:256],
+            "last_name": fresh.last_name[:256],
+            "title": fresh.title[:256],
+            "phone": fresh.phone[:256],
+            "groups": sorted(fresh.groups),
+            "claims": dict(fresh.claims),
+            "attributes": dict(fresh.attributes),
+        }
         if cached is None:
             db.add(IdentityCacheDB(email=cache_key, **values))
         else:
-            for key, value in values.items(): setattr(cached, key, value)
+            for key, value in values.items():
+                setattr(cached, key, value)
         db.commit()
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id, type(exc).__name__)
+        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id or "legacy", type(exc).__name__)
         cached = db.get(IdentityCacheDB, cache_key)
-        if cached is None: return IdentityAttributes()
-        return IdentityAttributes(first_name=cached.first_name or "", last_name=cached.last_name or "",
-            title=cached.title or "", phone=cached.phone or "", groups=frozenset(cached.groups or []),
-            claims=cached.claims or {}, attributes=cached.attributes or {})
+        if cached is None:
+            return IdentityAttributes()
+        return IdentityAttributes(
+            first_name=cached.first_name or "",
+            last_name=cached.last_name or "",
+            title=cached.title or "",
+            phone=cached.phone or "",
+            groups=frozenset(cached.groups or []),
+            claims=cached.claims or {},
+            attributes=cached.attributes or {},
+        )
 
 signature_file_store = SignatureFileStore(
     os.environ.get("SIGNATURE_STORAGE_PATH", "./signatures")
