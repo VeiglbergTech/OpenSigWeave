@@ -35,7 +35,7 @@ Managed identity-provider configuration is stored outside PostgreSQL under `.idp
 
 The profile provider is used independently by the portal and signature engine. The Authentik API provider and LDAP service-bind provider retrieve active user attributes and selected claims. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
 
-The local administrator account uses a salted scrypt hash and remains independent of external provider availability. New installations default to managed providers; root-level global OIDC is retained only for explicit compatibility mode. Managed OIDC upstream logout is not implemented yet, so logout currently clears the OpenSigWeave session without guaranteeing termination of the upstream IdP session.
+The local administrator account uses a salted scrypt hash and remains independent of external provider availability. New installations default to managed providers; root-level global OIDC is retained only for explicit compatibility mode. Managed OIDC logout uses the provider's discovery-based HTTPS end-session endpoint and an optional post-logout redirect URI. The legacy global OIDC compatibility path still uses its Authentik-specific logout URL.
 
 ### Signature and rule services
 
