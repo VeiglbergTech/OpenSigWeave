@@ -27,7 +27,7 @@ from jinja2 import TemplateError
 load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
-from database import get_db
+from database import get_db, SessionLocal
 from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB
 from rate_limiter import RateLimitMiddleware
 
@@ -161,6 +161,50 @@ class SignatureRuleCreateRequest(BaseModel):
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
+
+@app.on_event("startup")
+def migrate_legacy_identity_provider_configuration():
+    """Move the previous single-provider .env configuration into the managed registry."""
+    with SessionLocal() as db:
+        if db.query(IdentityProviderDB).count():
+            return
+        legacy_type = os.environ.get("IDENTITY_PROVIDER", "authentik" if OIDC_ENABLED else "none").strip().casefold()
+        settings = {}
+        if legacy_type == "authentik":
+            settings = {
+                "AUTHENTIK_URL": os.environ.get("AUTHENTIK_URL", ""),
+                "AUTHENTIK_API_TOKEN": os.environ.get("AUTHENTIK_API_TOKEN", ""),
+                "AUTHENTIK_TIMEOUT": os.environ.get("AUTHENTIK_TIMEOUT", "5"),
+            }
+            if not settings["AUTHENTIK_API_TOKEN"]:
+                return
+        elif legacy_type == "ldap":
+            settings = {
+                "LDAP_URL": os.environ.get("LDAP_URL", ""),
+                "LDAP_BIND_DN": os.environ.get("LDAP_BIND_DN", ""),
+                "LDAP_BIND_PASSWORD": os.environ.get("LDAP_BIND_PASSWORD", ""),
+                "LDAP_BASE_DN": os.environ.get("LDAP_BASE_DN", ""),
+                "LDAP_USER_FILTER": os.environ.get("LDAP_USER_FILTER", "(&(objectCategory=person)(objectClass=user)(mail={email}))"),
+                "LDAP_TIMEOUT": os.environ.get("LDAP_TIMEOUT", "5"),
+                "LDAP_CA_CERT_FILE": os.environ.get("LDAP_CA_CERT_FILE", ""),
+            }
+            if not all(settings[key] for key in ("LDAP_URL", "LDAP_BIND_DN", "LDAP_BIND_PASSWORD", "LDAP_BASE_DN")):
+                return
+        else:
+            return
+        try:
+            item = identity_provider_registry.save("legacy", "Legacy " + legacy_type.title(), legacy_type, settings, True)
+            db.add(IdentityProviderDB(id=item["id"], display_name=item["display_name"], provider_type=item["provider_type"], is_enabled=True))
+            for domain in db.query(DomainDB).filter(DomainDB.identity_provider_id.is_(None)).all():
+                domain.identity_provider_id = item["id"]
+            db.commit()
+            logger.info("Migrated legacy %s attribute provider into .idp/legacy/.env", legacy_type)
+        except Exception:
+            db.rollback()
+            logger.exception("Could not migrate legacy identity provider configuration; administrator setup remains available")
+
+
+
 session_secret = os.environ.get("SECRET_KEY", "")
 if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secure_random_string_here", "fallback-secret", "replace_with_random_secret_at_least_32_characters"}:
     raise RuntimeError("SECRET_KEY must be configured with at least 32 non-placeholder characters")
