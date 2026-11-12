@@ -62,7 +62,7 @@ The identity cache is isolated by provider ID and normalized sender address, so 
 ## Current limitations
 
 - OIDC is enabled by default for backward compatibility. Standalone local-administrator login is available with `OIDC_ENABLED=false`. Login and employee-attribute lookup are independent: configure `IDENTITY_PROVIDER=ldap` or `authentik` to keep profile attributes available, or `none` to disable live lookups.
-- Although OIDC discovery is configurable, employee attributes and logout still use Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
+- Although OIDC discovery is configurable, logout still uses Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
 - The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
 - Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
 - Real-browser testing, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
