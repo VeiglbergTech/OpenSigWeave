@@ -53,6 +53,8 @@ class IdentityProviderRegistry:
         path = self.root / slug
         if path.parent != self.root:
             raise ProviderConfigError("Invalid provider path.")
+        if path.is_symlink():
+            raise ProviderConfigError("Provider directory must not be a symbolic link.")
         return path
 
     def list_configs(self) -> list[dict[str, str]]:
