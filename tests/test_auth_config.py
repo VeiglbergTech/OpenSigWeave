@@ -279,3 +279,78 @@ class ManagedLogoutTests(unittest.TestCase):
             response = asyncio.run(main.logout(request))
         self.assertEqual(response, {"logout_url": "/login"})
         self.assertEqual(request.session, {})
+
+
+class ManagedOIDCLoginButtonTests(unittest.IsolatedAsyncioTestCase):
+    class ProviderQuery:
+        def __init__(self, providers):
+            self.providers = providers
+
+        def filter(self, *args):
+            return self
+
+        def all(self):
+            return self.providers
+
+    class ProviderDatabase:
+        def __init__(self, providers, selected):
+            self.providers = providers
+            self.selected = selected
+
+        def query(self, model):
+            return ManagedOIDCLoginButtonTests.ProviderQuery(self.providers)
+
+        def get(self, model, provider_id):
+            return self.selected
+
+    async def test_login_page_lists_only_enabled_and_fully_configured_oidc_providers(self):
+        providers = [
+            SimpleNamespace(id="auth-main", display_name="Authentik Main"),
+            SimpleNamespace(id="auth-incomplete", display_name="Incomplete Provider"),
+        ]
+        db = self.ProviderDatabase(providers, None)
+        complete = {
+            "OIDC_DISCOVERY_URL": "https://auth.example.org/.well-known/openid-configuration",
+            "OIDC_CLIENT_ID": "client",
+            "OIDC_CLIENT_SECRET": "secret",
+            "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main",
+        }
+        with patch.object(
+            main.identity_provider_registry,
+            "get_config",
+            side_effect=[complete, {"OIDC_DISCOVERY_URL": "https://auth.example.org/.well-known/openid-configuration"}],
+        ):
+            result = main.configured_login_providers(db)
+        self.assertEqual(result, [{"id": "auth-main", "display_name": "Authentik Main"}])
+
+    async def test_oidc_button_starts_provider_flow_without_email_preselection(self):
+        provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
+        db = self.ProviderDatabase([], provider)
+        request = SimpleNamespace(session={})
+        client = SimpleNamespace(authorize_redirect=AsyncMock(return_value=main.RedirectResponse("/auth", status_code=302)))
+        config = {"OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main"}
+        with patch.object(main, "managed_oidc_client", return_value=(client, config)):
+            response = await main.managed_oidc_login("auth-main", request, db)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(request.session["pending_managed_login"], {"provider_id": "auth-main"})
+        client.authorize_redirect.assert_awaited_once()
+
+    async def test_oidc_button_callback_routes_by_verified_email_domain(self):
+        domain = SimpleNamespace(authentication_provider_id="auth-main", is_active=True)
+        provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
+        db = ManagedLoginRoutingTests.FakeDatabase(domain, provider)
+        request = SimpleNamespace(session={
+            "pending_managed_login": {"provider_id": "auth-main"}
+        })
+        token = {"userinfo": {
+            "sub": "user-456",
+            "email": "alice@example.org",
+            "email_verified": True,
+            "groups": ["signature-users"],
+            "name": "Alice Example",
+        }}
+        client = SimpleNamespace(authorize_access_token=AsyncMock(return_value=token))
+        with patch.object(main, "managed_oidc_client", return_value=(client, {})):
+            response = await main.managed_oidc_callback("auth-main", request, db=db)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(request.session["user"]["email"], "alice@example.org")
