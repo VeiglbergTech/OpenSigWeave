@@ -5,7 +5,7 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
 from core.variant_selector import SignatureVariant, select_variant
-from models import SelectionStateDB, SignatureDB, SignatureVariantDB
+from models import SelectionStateDB, SignatureDB, SignatureDomainDB, SignatureVariantDB
 
 
 def select_and_record_variant(
@@ -27,9 +27,15 @@ def select_and_record_variant(
         raise ValueError("sender_email and pool_name are required")
 
     domain_scope = (
-        SignatureDB.domain_id.is_(None)
+        ~select(SignatureDomainDB.signature_id).where(SignatureDomainDB.signature_id == SignatureDB.id).exists()
         if domain_id is None
-        else or_(SignatureDB.domain_id == domain_id, SignatureDB.domain_id.is_(None))
+        else or_(
+            ~select(SignatureDomainDB.signature_id).where(SignatureDomainDB.signature_id == SignatureDB.id).exists(),
+            select(SignatureDomainDB.signature_id).where(
+                SignatureDomainDB.signature_id == SignatureDB.id,
+                SignatureDomainDB.domain_id == domain_id,
+            ).exists(),
+        )
     )
     candidate_query = (
         select(SignatureVariantDB)
