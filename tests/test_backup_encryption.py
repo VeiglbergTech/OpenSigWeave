@@ -24,7 +24,7 @@ class BackupEncryptionTests(unittest.TestCase):
         return archive
 
     def _mock_age(self, arguments, **kwargs):
-        output = Path(arguments[arguments.index("--output") + 1])
+        output = Path(kwargs["output_path"])
         source = Path(arguments[-1])
         shutil.copyfile(source, output)
 
