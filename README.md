@@ -8,8 +8,8 @@ The current preview is a **standalone Docker Compose deployment**. It runs OpenS
 
 ## What is implemented
 
-- FastAPI web application with an OIDC login flow.
-- Authentik API or direct LDAP/Active Directory over LDAPS as selectable employee-attribute providers; the last successful identity attributes are cached in PostgreSQL per normalized sender address and used when a fresh lookup fails.
+- FastAPI web application with email-first, domain-routed authentication through managed Authentik OIDC or LDAP / Active Directory over LDAPS.
+- Independent per-domain login-provider and profile-attribute-provider assignments; successful profile attributes are cached in PostgreSQL per provider and normalized sender address.
 - Group-based portal authorization:
   - `signature-users`: normal portal access.
   - `signature-admins`: administrator access.
@@ -37,9 +37,9 @@ The current Rspamd adapter still leaves all top-level multipart messages unchang
 
 ## Managed identity providers
 
-Employee profile attributes are managed independently from OIDC login in the administrator portal. Multiple Authentik and LDAP / Active Directory providers can be created and assigned separately to each email domain. A domain with no assigned provider uses empty employee attributes.
+Login authentication and employee profile attributes are configured independently. Multiple Authentik and LDAP / Active Directory providers can be created in the administrator portal. Each email domain can select one login provider and a separate profile-attribute provider.
 
-On the first administrator visit, the portal opens the identity-provider setup automatically. Provider settings are stored outside PostgreSQL in a separate private file for each provider:
+On the first administrator visit, the portal opens identity-provider setup automatically when no provider exists. Provider settings are stored outside PostgreSQL in a private file for each provider:
 
 ```text
 /app/.idp/
@@ -51,18 +51,29 @@ On the first administrator visit, the portal opens the identity-provider setup a
 
 The Docker Compose stack persists this directory in the `opensigweave-idp-data` volume. Provider directories use mode `0700`; configuration files use mode `0600`. Secrets are never returned by the management API or stored in the metadata table. Editing a provider while leaving its password/token field empty preserves the existing secret. Provider names are restricted to safe lowercase slugs to prevent path traversal.
 
-Supported provider settings:
-- **Authentik:** HTTPS API URL, read-only API token and request timeout.
-- **LDAP / Active Directory:** LDAPS URL, read-only bind DN and password, Base DN, email search filter, timeout and optional private CA certificate file. Certificate verification is always enabled.
+**Authentik provider settings**
+- HTTPS OIDC discovery URL, client ID, client secret, scopes and exact HTTPS callback URI.
+- Optional HTTPS Authentik API URL and read-only API token for profile-attribute lookup.
+- The provider-specific callback URI must end in `/auth/{provider-id}` and must be registered at the identity provider.
 
-The provider connection test performs a real lookup against the configured service. A successful query with no matching test account still confirms that the connection and credentials worked. Login authentication remains OIDC or local administrator login and is not changed by selecting an employee-attribute provider.
+**LDAP / Active Directory provider settings**
+- LDAPS URL, read-only bind DN and password, Base DN, email search filter, timeout and optional private CA certificate file.
+- Login first searches for an exact email match with the service account, then verifies the supplied password using a separate bind as the user's distinguished name.
+- Certificate verification is always enabled. Disabled Active Directory accounts and ambiguous email matches are rejected.
+
+**Login and profile selection**
+- The login page asks for the email address first. The email domain selects the configured login provider.
+- Authentik uses OIDC Authorization Code; LDAP users enter their directory password.
+- The local administrator can sign in through the same form as an independent emergency path.
+- New installations default to `OIDC_ENABLED=false`; the previous root-level, single-provider OIDC configuration remains available only as an explicit compatibility mode with `OIDC_ENABLED=true`.
+- The selected profile provider independently supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. If no profile provider is assigned, external profile attributes are empty.
 
 The identity cache is isolated by provider ID and normalized sender address, so two directories cannot overwrite each other's profile data. When a provider is unavailable, the last successful cache entry for that same provider is used.
 
 ## Current limitations
 
-- OIDC is enabled by default for backward compatibility. Standalone local-administrator login is available with `OIDC_ENABLED=false`. Login and employee-attribute lookup are independent: configure `IDENTITY_PROVIDER=ldap` or `authentik` to keep profile attributes available, or `none` to disable live lookups.
-- Although OIDC discovery is configurable, logout still uses Authentik-specific endpoints. A generic OIDC-only deployment is not yet a complete supported setup.
+- Live interactive authentication against real Authentik and Active Directory servers still needs an end-to-end test. Managed OIDC upstream logout is not implemented yet; OpenSigWeave clears its own session but may leave the IdP session active.
+- The previous global OIDC configuration is retained for compatibility; new installations should use per-provider `.idp/{provider-id}/.env` files.
 - The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
 - Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
 - Real-browser testing, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
@@ -80,7 +91,7 @@ For the standalone Docker deployment you need:
 - Git.
 - A DNS name for the portal, for example `signature.example.org`.
 - HTTPS termination through a reverse proxy (the session cookie is Secure).
-- Either an Authentik OAuth2/OpenID Provider (`OIDC_ENABLED=true`, the default), or a local administrator email and scrypt password hash (`OIDC_ENABLED=false`).
+- A local administrator email and scrypt password hash for emergency access. Configure Authentik OIDC or LDAP / Active Directory providers in the portal; root-level legacy OIDC is optional (`OIDC_ENABLED=true`).
 
 The application container listens on port `8085`. Compose publishes it on `127.0.0.1:8085` only. PostgreSQL is not published to the host.
 
@@ -132,7 +143,7 @@ The Compose file constructs the internal PostgreSQL `DATABASE_URL` from `POSTGRE
 
 ### 2.3 Run without OIDC (local administrator)
 
-For an isolated standalone test installation, set:
+For a standalone installation using managed providers, set:
 
 ```dotenv
 OIDC_ENABLED="false"
