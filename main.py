@@ -699,6 +699,21 @@ def assign_domain_identity_provider(domain_id: int, payload: dict, request: Requ
     return {"domain_id": domain_id, "identity_provider_id": provider_id}
 
 
+@app.put("/domains/{domain_id}/authentication-provider")
+def assign_domain_authentication_provider(domain_id: int, payload: dict, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    domain = db.get(DomainDB, domain_id)
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    provider_id = payload.get("authentication_provider_id")
+    if provider_id is not None and (not isinstance(provider_id, str) or db.get(IdentityProviderDB, provider_id) is None):
+        raise HTTPException(status_code=422, detail="Authentication provider not found")
+    domain.authentication_provider_id = provider_id
+    db.commit()
+    return {"domain_id": domain_id, "authentication_provider_id": provider_id}
+
+
 @app.get("/api/my-signature")
 def get_my_signature(request: Request, db: Session = Depends(get_db)):
     user = require_signature_user(request)
