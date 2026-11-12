@@ -1159,10 +1159,10 @@ async def get_rspamd_signature(
         except (SignatureStorageError, ValueError, TypeError):
             raise HTTPException(status_code=503, detail="Signature asset unavailable")
     elif override and domain_obj.allow_overrides and not explicit_mode:
-        identity_attributes = await get_identity_attributes(db, normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
         raw_template = override.html_content
     else:
-        identity_attributes = await get_identity_attributes(db, normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
         if explicit_mode:
             try:
                 mode = resolve_mode(x_signature_mode)
