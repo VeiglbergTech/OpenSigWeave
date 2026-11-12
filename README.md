@@ -42,7 +42,7 @@ Employee profile attributes are managed independently from OIDC login in the adm
 On the first administrator visit, the portal opens the identity-provider setup automatically. Provider settings are stored outside PostgreSQL in a separate private file for each provider:
 
 ```text
-/data/idp/
+/app/.idp/
 ├── authentik-main/
 │   └── .env
 └── samba-ad/
