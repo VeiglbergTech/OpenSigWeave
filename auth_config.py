@@ -14,7 +14,7 @@ _EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
 
 
 def oidc_enabled_from_env(value: str | None = None) -> bool:
-    raw = os.environ.get("OIDC_ENABLED", "true") if value is None else value
+    raw = os.environ.get("OIDC_ENABLED", "false") if value is None else value
     normalized = str(raw).strip().casefold()
     if normalized in {"true", "1", "yes", "on"}:
         return True
