@@ -405,22 +405,66 @@ def normalize_domain(value: str) -> str:
     return normalized
 
 # --- Web UI Routes ---
-@app.get("/login")
-async def login(request: Request):
-    if OIDC_ENABLED:
-        return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
+def login_page(request: Request, error: bool = False, status_code: int = 200):
     csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
     return templates.TemplateResponse(request, "login.html", {
         "request": request,
         "csrf_token": csrf_token,
-        "error": request.query_params.get("error") == "invalid_credentials",
-    })
+        "error": error,
+    }, status_code=status_code)
+
+
+def managed_oidc_client(provider_id: str):
+    config = identity_provider_registry.get_config(provider_id)
+    if config.get("IDP_TYPE", "").casefold() != "authentik":
+        raise ProviderConfigError("Selected provider is not an OIDC provider.")
+    required = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
+    if not all(config.get(key) for key in required):
+        raise ProviderConfigError("Managed OIDC provider is not fully configured.")
+    client = OAuth()
+    client.register(
+        name="oidc",
+        server_metadata_url=config["OIDC_DISCOVERY_URL"],
+        client_id=config["OIDC_CLIENT_ID"],
+        client_secret=config["OIDC_CLIENT_SECRET"],
+        client_kwargs={"scope": config.get("OIDC_SCOPES", "openid email profile groups")},
+    )
+    return client.oidc, config
+
+
+def _valid_oidc_identity(user: object, expected_email: str | None = None):
+    if not isinstance(user, dict) or not user.get("sub"):
+        raise ValueError("OIDC userinfo is missing the subject")
+    email = user.get("email")
+    if (
+        not is_valid_email(email)
+        or user.get("email_verified") is not True
+    ):
+        raise ValueError("OIDC account email is missing, invalid or unverified")
+    normalized_email = email.strip().casefold()
+    if expected_email and not hmac.compare_digest(normalized_email, expected_email):
+        raise ValueError("OIDC account does not match the requested email")
+    groups = user.get("groups", [])
+    if (
+        not isinstance(groups, list)
+        or len(groups) > 128
+        or not all(isinstance(group, str) and 0 < len(group) <= 255 for group in groups)
+    ):
+        raise ValueError("OIDC groups claim has an invalid format")
+    if len(str(user["sub"])) > 255:
+        raise ValueError("OIDC subject exceeds the supported length")
+    return normalized_email, groups
+
+
+@app.get("/login")
+async def login(request: Request):
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+    return login_page(request, request.query_params.get("error") in {"invalid_credentials", "authentication_failed"})
 
 
 @app.post("/login")
-async def local_login(request: Request):
-    if OIDC_ENABLED:
-        raise HTTPException(status_code=404, detail="Local authentication is disabled")
+async def login_submit(request: Request, db: Session = Depends(get_db)):
     if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
         raise HTTPException(status_code=415, detail="Login form must be URL encoded")
     try:
@@ -438,59 +482,100 @@ async def local_login(request: Request):
         raise HTTPException(status_code=403, detail="CSRF validation failed")
 
     submitted_email = form.get("email", "")
-    submitted_password = form.get("password", "")
     submitted_email = submitted_email.strip().casefold() if isinstance(submitted_email, str) else ""
-    password_ok = verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH)
-    email_ok = hmac.compare_digest(submitted_email.encode("utf-8"), LOCAL_ADMIN_EMAIL.encode("utf-8"))
-    if not (password_ok and email_ok):
+    submitted_password = form.get("password", "")
+    if not is_valid_email(submitted_email) or not isinstance(submitted_password, str) or len(submitted_password) > 1024:
         request.session.clear()
-        csrf_token = secrets.token_urlsafe(32)
-        request.session["login_csrf"] = csrf_token
-        return templates.TemplateResponse(request, "login.html", {
-            "request": request, "csrf_token": csrf_token, "error": True,
-        }, status_code=401)
+        return login_page(request, True, 401)
+
+    # The local administrator remains available as an independent emergency path.
+    if LOCAL_ADMIN_CONFIGURED and hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL):
+        if not verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH):
+            request.session.clear()
+            return login_page(request, True, 401)
+        request.session.clear()
+        request.session["user"] = {
+            "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
+            "email": LOCAL_ADMIN_EMAIL,
+            "name": LOCAL_ADMIN_EMAIL.split("@", 1)[0],
+            "groups": ["signature-admins", "signature-users"],
+            "attributes": {},
+            "auth_source": "local",
+        }
+        request.session["csrf_token"] = secrets.token_urlsafe(32)
+        return RedirectResponse(url="/", status_code=303)
+
+    email_domain = submitted_email.rsplit("@", 1)[1]
+    domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email_domain).first()
+    provider_id = domain.authentication_provider_id if domain else None
+    if provider_id:
+        provider_meta = db.get(IdentityProviderDB, provider_id)
+        if provider_meta is None or not provider_meta.is_enabled:
+            request.session.clear()
+            return login_page(request, True, 401)
+        if provider_meta.provider_type == "ldap":
+            try:
+                identity = await identity_provider_registry.authenticate(provider_id, submitted_email, submitted_password)
+            except Exception as exc:
+                logger.warning("LDAP sign-in unavailable for provider %s (%s)", provider_id, type(exc).__name__)
+                identity = None
+            if identity is None:
+                request.session.clear()
+                return login_page(request, True, 401)
+            groups = sorted(identity.groups)
+            display_name = " ".join(part for part in (identity.first_name, identity.last_name) if part).strip()
+            claims = identity.claims if isinstance(identity.claims, dict) else {}
+            stable_dn = str(claims.get("distinguishedname") or submitted_email)[:255]
+            request.session.clear()
+            request.session["user"] = {
+                "sub": f"ldap:{provider_id}:{stable_dn}",
+                "email": submitted_email,
+                "email_verified": True,
+                "name": display_name or submitted_email.split("@", 1)[0],
+                "groups": groups,
+                "attributes": {
+                    "phone": identity.phone[:256],
+                    "title": identity.title[:256],
+                },
+                "auth_source": "ldap",
+                "auth_provider_id": provider_id,
+            }
+            request.session["csrf_token"] = secrets.token_urlsafe(32)
+            return RedirectResponse(url="/", status_code=303)
+        if provider_meta.provider_type == "authentik":
+            try:
+                client, config = managed_oidc_client(provider_id)
+                request.session["pending_managed_login"] = {
+                    "email": submitted_email,
+                    "provider_id": provider_id,
+                }
+                return await client.authorize_redirect(request, config["OIDC_REDIRECT_URI"])
+            except Exception as exc:
+                logger.warning("Managed OIDC sign-in could not start for provider %s (%s)", provider_id, type(exc).__name__)
+                request.session.clear()
+                return login_page(request, True, 401)
+        request.session.clear()
+        return login_page(request, True, 401)
+
+    # Compatibility path for installations that still use the original global OIDC client.
+    if OIDC_ENABLED:
+        request.session["pending_legacy_login_email"] = submitted_email
+        return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
 
     request.session.clear()
-    request.session["user"] = {
-        "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
-        "email": LOCAL_ADMIN_EMAIL,
-        "name": LOCAL_ADMIN_EMAIL.split("@", 1)[0],
-        "groups": ["signature-admins", "signature-users"],
-        "attributes": {},
-        "auth_source": "local",
-    }
-    request.session["csrf_token"] = secrets.token_urlsafe(32)
-    return RedirectResponse(url="/", status_code=303)
+    return login_page(request, True, 401)
 
 
-async def auth(request: Request):
+async def auth(request: Request, db: Session = Depends(get_db)):
     try:
         token = await oauth.oidc.authorize_access_token(request)
+        pending_email = request.session.pop("pending_legacy_login_email", None)
+        expected_email = pending_email if isinstance(pending_email, str) else None
         user = token.get("userinfo")
-        if not isinstance(user, dict) or not user.get("sub"):
-            raise ValueError("OIDC userinfo is missing the subject")
-        email = user.get("email")
-        if (
-            not isinstance(email, str)
-            or len(email) > 254
-            or email.count("@") != 1
-            or any(ch.isspace() for ch in email)
-            or user.get("email_verified") is not True
-        ):
-            raise ValueError("OIDC account email is missing, invalid or unverified")
-        local_part, email_domain = email.rsplit("@", 1)
-        if not local_part or "." not in email_domain or not email_domain:
-            raise ValueError("OIDC account email is invalid")
-        groups = user.get("groups", [])
-        if (
-            not isinstance(groups, list)
-            or len(groups) > 128
-            or not all(isinstance(group, str) and 0 < len(group) <= 255 for group in groups)
-        ):
-            raise ValueError("OIDC groups claim has an invalid format")
-        if len(str(user["sub"])) > 255:
-            raise ValueError("OIDC subject exceeds the supported length")
-        request.session.clear()
+        email, groups = _valid_oidc_identity(user, expected_email)
+        domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
+        if domain and domain.authentication_provider_id:
+            raise ValueError("Domain now uses a different authentication provider")
         raw_attributes = user.get("attributes")
         if not isinstance(raw_attributes, dict):
             raw_attributes = {}
@@ -499,16 +584,62 @@ async def auth(request: Request):
             for key in ("phone", "title")
             if isinstance((value := raw_attributes.get(key)), str)
         }
+        request.session.clear()
         request.session["user"] = {
             "sub": str(user["sub"])[:255],
-            "email": email.strip(),
+            "email": email,
             "email_verified": True,
             "name": str(user.get("name") or "")[:256],
             "groups": groups,
             "attributes": safe_attributes,
             "auth_source": "oidc",
         }
-    except Exception:
+    except Exception as exc:
+        logger.warning("Legacy OIDC callback rejected (%s)", type(exc).__name__)
+        request.session.clear()
+        return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
+
+
+async def managed_oidc_callback(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    try:
+        pending = request.session.get("pending_managed_login")
+        if not isinstance(pending, dict) or pending.get("provider_id") != provider_id:
+            raise ValueError("OIDC login state does not match the selected provider")
+        expected_email = pending.get("email")
+        if not isinstance(expected_email, str):
+            raise ValueError("OIDC login state has no email")
+        provider_meta = db.get(IdentityProviderDB, provider_id)
+        if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type != "authentik":
+            raise ValueError("OIDC provider is no longer enabled")
+        client, _config = managed_oidc_client(provider_id)
+        token = await client.authorize_access_token(request)
+        user = token.get("userinfo")
+        email, groups = _valid_oidc_identity(user, expected_email)
+        domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
+        if domain is None or domain.authentication_provider_id != provider_id:
+            raise ValueError("Email domain is no longer assigned to this OIDC provider")
+        raw_attributes = user.get("attributes")
+        if not isinstance(raw_attributes, dict):
+            raw_attributes = {}
+        safe_attributes = {
+            key: value[:256] if isinstance(value, str) else ""
+            for key in ("phone", "title")
+            if isinstance((value := raw_attributes.get(key)), str)
+        }
+        request.session.clear()
+        request.session["user"] = {
+            "sub": f"oidc:{provider_id}:{str(user['sub'])[:220]}",
+            "email": email,
+            "email_verified": True,
+            "name": str(user.get("name") or "")[:256],
+            "groups": groups,
+            "attributes": safe_attributes,
+            "auth_source": "oidc",
+            "auth_provider_id": provider_id,
+        }
+    except Exception as exc:
+        logger.warning("Managed OIDC callback rejected for provider %s (%s)", provider_id, type(exc).__name__)
         request.session.clear()
         return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
     return RedirectResponse(url="/", status_code=303)
@@ -516,6 +647,7 @@ async def auth(request: Request):
 
 if OIDC_ENABLED:
     app.add_api_route("/auth", auth, methods=["GET"], name="oidc_callback")
+app.add_api_route("/auth/{provider_id}", managed_oidc_callback, methods=["GET"], name="managed_oidc_callback")
 
 
 @app.post("/logout")
