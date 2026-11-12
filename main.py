@@ -32,7 +32,8 @@ from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, Sig
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
-from identity.providers.authentik import AuthentikAttributeProvider, IdentityProviderUnavailable
+from identity.providers.authentik import AuthentikAttributeProvider
+from identity.providers.base import IdentityProviderUnavailable
 from identity.providers.ldap import LDAPAttributeProvider
 from identity.providers.base import AttributeProvider
 from identity.attributes import IdentityAttributes
@@ -74,6 +75,7 @@ elif IDENTITY_PROVIDER == "ldap":
             "(&(objectCategory=person)(objectClass=user)(mail={email}))",
         ),
         timeout=float(os.environ.get("LDAP_TIMEOUT", "5")),
+        ca_cert_file=os.environ.get("LDAP_CA_CERT_FILE", ""),
     )
 elif IDENTITY_PROVIDER == "none":
     attribute_provider = None
@@ -88,7 +90,7 @@ async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes
     try:
         fresh = await attribute_provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
-            raise IdentityProviderUnavailable("Authentik returned an unsupported identity result")
+            raise IdentityProviderUnavailable("Identity provider returned an unsupported identity result")
         cached = db.get(IdentityCacheDB, normalized_email)
         values = {
             "first_name": fresh.first_name[:256],
