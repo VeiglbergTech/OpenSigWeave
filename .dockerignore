@@ -19,4 +19,5 @@ signatures
 branding/logo.png
 branding/favicon.ico
 branding/settings.json
-\n.idp/\n
+
+.idp/
