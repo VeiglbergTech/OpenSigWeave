@@ -60,9 +60,9 @@ def _inventory(root: Path) -> list[dict[str, Any]]:
         if not path.is_file():
             raise BackupArchiveError("Backup staging data contains a non-regular file")
         relative = path.relative_to(root).as_posix()
-        _safe_relative_path(relative)
         if relative == MANIFEST_NAME:
             continue
+        _safe_relative_path(relative)
         size = path.stat().st_size
         total += size
         if len(entries) >= MAX_FILES or total > MAX_TOTAL_BYTES:
