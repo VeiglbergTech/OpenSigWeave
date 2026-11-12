@@ -108,7 +108,7 @@ function htmlEditorToggle() { return { showHtml: false }; }
 
 function domainManager() { return {
     domains: [], providers: [],
-    loginProviders() { return this.providers.filter(function(item) { return item.provider_type === "authentik" && item.is_enabled; }); },
+    loginProviders() { return this.providers.filter(function(item) { if (!item.is_enabled || !item.configured) return false; if (item.provider_type === "ldap") return true; return item.provider_type === "authentik" && !!(item.settings && item.settings.OIDC_DISCOVERY_URL && item.settings.OIDC_CLIENT_ID); }); },
     async fetchDomains() {
         const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
         this.domains = domainsResponse.ok ? await domainsResponse.json() : [];
