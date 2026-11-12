@@ -140,7 +140,7 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
     async def test_ldaps_lookup_maps_ad_attributes_and_escapes_email_filter(self):
         from identity.providers.ldap import LDAPAttributeProvider
         entry = self._entry(
-            mail=["alice@example.org"], givenName=["Alice"], sn=["Example"],
+            mail=["alice*)(example.org"], givenName=["Alice"], sn=["Example"],
             title=["Systems Engineer"], telephoneNumber=["+49 123"],
             memberOf=["CN=signature-users,OU=Groups,DC=example,DC=org"],
             sAMAccountName=["alice"], distinguishedName=["CN=Alice,OU=Users,DC=example,DC=org"],
