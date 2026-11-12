@@ -74,7 +74,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0006_sig_domain_map",))
+            self.assertEqual(revision, ("0007_managed_idps",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -84,6 +84,9 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("rate_limit_buckets", tables)
             self.assertIn("identity_attribute_cache", tables)
             self.assertIn("signature_domains", tables)
+            self.assertIn("identity_providers", tables)
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(domains)")}
+            self.assertIn("identity_provider_id", columns)
 
 
 if __name__ == "__main__":
