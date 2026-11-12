@@ -265,3 +265,89 @@ class IdentityProviderRegistryTests(unittest.TestCase):
         registry.save("auth-one", "Auth One", "authentik", {"AUTHENTIK_URL": "https://one.example.org", "AUTHENTIK_API_TOKEN": "token"})
         registry.save("auth-two", "Auth Two", "authentik", {"AUTHENTIK_URL": "https://two.example.org", "AUTHENTIK_API_TOKEN": "token"})
         self.assertEqual({item["id"] for item in registry.list_configs()}, {"auth-one", "auth-two"})
+
+
+class LDAPAuthenticationTests(unittest.IsolatedAsyncioTestCase):
+    def _provider(self):
+        from identity.providers.ldap import LDAPAttributeProvider
+        return LDAPAttributeProvider(
+            "ldaps://dc.example.org:636",
+            "CN=readonly,DC=example,DC=org",
+            "service-secret",
+            "DC=example,DC=org",
+        )
+
+    async def test_authentication_searches_with_service_account_then_binds_as_user(self):
+        from types import SimpleNamespace
+        from identity.providers.ldap import LDAPAttributeProvider
+
+        entry = SimpleNamespace(
+            entry_dn="CN=Alice,OU=Users,DC=example,DC=org",
+            entry_attributes_as_dict={
+                "mail": ["alice@example.org"],
+                "givenName": ["Alice"],
+                "sn": ["Example"],
+                "title": ["Systems Engineer"],
+                "memberOf": ["CN=signature-users,OU=Groups,DC=example,DC=org"],
+                "userAccountControl": ["512"],
+            },
+        )
+        connections = []
+
+        class ConnectionStub:
+            def __init__(self, server, **kwargs):
+                self.server = server
+                self.kwargs = kwargs
+                self.entries = [entry] if len(connections) == 0 else []
+                connections.append(self)
+
+            def search(self, **kwargs):
+                self.search_args = kwargs
+
+            def unbind(self):
+                self.unbound = True
+
+        provider = self._provider()
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", side_effect=ConnectionStub
+        ):
+            result = await provider.authenticate("alice@example.org", "user-password")
+
+        self.assertEqual(len(connections), 2)
+        self.assertEqual(connections[0].kwargs["user"], "CN=readonly,DC=example,DC=org")
+        self.assertEqual(connections[0].kwargs["password"], "service-secret")
+        self.assertEqual(connections[1].kwargs["user"], "CN=Alice,OU=Users,DC=example,DC=org")
+        self.assertEqual(connections[1].kwargs["password"], "user-password")
+        self.assertTrue(connections[0].unbound)
+        self.assertTrue(connections[1].unbound)
+        self.assertEqual(result.first_name, "Alice")
+        self.assertEqual(result.groups, frozenset({"signature-users"}))
+
+    async def test_unknown_or_disabled_ldap_accounts_do_not_attempt_user_bind(self):
+        from types import SimpleNamespace
+
+        provider = self._provider()
+        empty_connection = SimpleNamespace(entries=[], unbind=lambda: None)
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", return_value=empty_connection
+        ) as connection_factory:
+            self.assertIsNone(await provider.authenticate("missing@example.org", "password"))
+        self.assertEqual(connection_factory.call_count, 1)
+
+        disabled_entry = SimpleNamespace(
+            entry_dn="CN=Alice,DC=example,DC=org",
+            entry_attributes_as_dict={
+                "mail": ["alice@example.org"],
+                "userAccountControl": ["514"],
+            },
+        )
+        disabled_connection = SimpleNamespace(
+            entries=[disabled_entry],
+            search=lambda **kwargs: None,
+            unbind=lambda: None,
+        )
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", return_value=disabled_connection
+        ) as connection_factory:
+            self.assertIsNone(await provider.authenticate("alice@example.org", "password"))
+        self.assertEqual(connection_factory.call_count, 1)
