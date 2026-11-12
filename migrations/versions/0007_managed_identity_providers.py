@@ -23,10 +23,12 @@ def upgrade() -> None:
             "fk_domains_identity_provider_id", "identity_providers",
             ["identity_provider_id"], ["id"], ondelete="SET NULL",
         )
+        batch_op.create_index("ix_domains_identity_provider_id", ["identity_provider_id"])
 
 
 def downgrade() -> None:
     with op.batch_alter_table("domains") as batch_op:
+        batch_op.drop_index("ix_domains_identity_provider_id")
         batch_op.drop_constraint("fk_domains_identity_provider_id", type_="foreignkey")
         batch_op.drop_column("identity_provider_id")
     op.drop_table("identity_providers")
