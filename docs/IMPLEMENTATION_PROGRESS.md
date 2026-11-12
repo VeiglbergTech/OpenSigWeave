@@ -62,7 +62,7 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-CI run `43230164876` on commit `b0e876f3bfca64305fd8cc66e096b1e2046aa9b1` passed:
+CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed:
 
 - Full-history Gitleaks scan and Python dependency audit.
 - Python compilation, browser JavaScript syntax and Lua syntax checks.
@@ -101,7 +101,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 ### Operations
 
-- The Compose deployment has persistent volumes, but a tested automated backup/restore procedure is not yet provided.
+- The Compose deployment has persistent volumes, but backup/restore commands and UI are not implemented. The design is specified in [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md); it defines full encrypted cross-host disaster recovery, selective UI exports, integrity verification and safe restore requirements.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
 
@@ -109,7 +109,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 1. Complete a real-browser test of login, permissions, signature editing, rules and logout.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Exercise backup and restore of both PostgreSQL and signature-file volumes.
+3. Implement the versioned encrypted backup/restore workflow from [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md), then complete a cross-host restore drill covering PostgreSQL, signature files, IDP credentials and deployment configuration.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
