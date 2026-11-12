@@ -132,10 +132,6 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result, IdentityAttributes(claims={"email": "alice@example.org", "name": "", "is_active": True}))
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
     def _entry(self, **attributes):
         from types import SimpleNamespace
@@ -212,3 +208,7 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         provider = LDAPAttributeProvider("", "", "", "")
         with self.assertRaises(IdentityProviderUnavailable):
             await provider.get_attributes("alice@example.org")
+
+
+if __name__ == "__main__":
+    unittest.main()
