@@ -88,8 +88,9 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             patch.object(main, "OIDC_ENABLED", False),
             patch.object(main, "LOCAL_ADMIN_EMAIL", "admin@example.org"),
             patch.object(main, "LOCAL_ADMIN_PASSWORD_HASH", password_hash),
+            patch.object(main, "LOCAL_ADMIN_CONFIGURED", True),
         ):
-            response = asyncio.run(main.local_login(request))
+            response = asyncio.run(main.login_submit(request))
         self.assertEqual(response.status_code, 401)
         self.assertNotIn("user", request.session)
         self.assertTrue(request.session.get("login_csrf"))
@@ -106,7 +107,7 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         )
         with patch.object(main, "OIDC_ENABLED", False):
             with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main.local_login(request))
+                asyncio.run(main.login_submit(request))
         self.assertEqual(raised.exception.status_code, 403)
 
     def test_import_without_oidc_configuration_registers_no_oidc_callback(self):
