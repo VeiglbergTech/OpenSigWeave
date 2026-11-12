@@ -137,7 +137,7 @@
                 <div class="grid md:grid-cols-2 gap-4">
                     <label class="text-sm">Folder name / ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                     <label class="text-sm">Display name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                    <label class="text-sm">Provider type<select x-model="form.provider_type" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="ldap">LDAP / Active Directory</option></select></label>
+                    <label class="text-sm">Provider type<select x-model="form.provider_type" @change="changeType()" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="ldap">LDAP / Active Directory</option></select></label>
                     <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled"> Enabled</label>
                 </div>
                 <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
