@@ -540,7 +540,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
     if LOCAL_ADMIN_CONFIGURED and hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL):
         if not verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH):
             request.session.clear()
-            return login_page(request, True, 401)
+            return login_page(request, True, 401, db)
         request.session.clear()
         request.session["user"] = {
             "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
@@ -558,12 +558,12 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
     provider_id = domain.authentication_provider_id if domain else None
     if provider_id and (domain is None or not domain.is_active):
         request.session.clear()
-        return login_page(request, True, 401)
+        return login_page(request, True, 401, db)
     if provider_id:
         provider_meta = db.get(IdentityProviderDB, provider_id)
         if provider_meta is None or not provider_meta.is_enabled:
             request.session.clear()
-            return login_page(request, True, 401)
+            return login_page(request, True, 401, db)
         if provider_meta.provider_type == "ldap":
             try:
                 identity = await identity_provider_registry.authenticate(provider_id, submitted_email, submitted_password)
@@ -572,7 +572,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
                 identity = None
             if identity is None:
                 request.session.clear()
-                return login_page(request, True, 401)
+                return login_page(request, True, 401, db)
             groups = [str(group)[:255] for group in sorted(identity.groups)[:128] if group]
             display_name = " ".join(part for part in (identity.first_name, identity.last_name) if part).strip()
             claims = identity.claims if isinstance(identity.claims, dict) else {}
@@ -604,9 +604,9 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
             except Exception as exc:
                 logger.warning("Managed OIDC sign-in could not start for provider %s (%s)", provider_id, type(exc).__name__)
                 request.session.clear()
-                return login_page(request, True, 401)
+                return login_page(request, True, 401, db)
         request.session.clear()
-        return login_page(request, True, 401)
+        return login_page(request, True, 401, db)
 
     # Compatibility path for installations that still use the original global OIDC client.
     if OIDC_ENABLED:
@@ -614,7 +614,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
 
     request.session.clear()
-    return login_page(request, True, 401)
+    return login_page(request, True, 401, db)
 
 
 async def auth(request: Request, db: Session = Depends(get_db)):
