@@ -9,7 +9,7 @@ The current preview is a **standalone Docker Compose deployment**. It runs OpenS
 ## What is implemented
 
 - FastAPI web application with an OIDC login flow.
-- Authentik as the currently supported employee-attribute provider; the last successful identity attributes are cached in PostgreSQL per normalized sender address and used when a fresh lookup fails.
+- Authentik API or direct LDAP/Active Directory over LDAPS as selectable employee-attribute providers; the last successful identity attributes are cached in PostgreSQL per normalized sender address and used when a fresh lookup fails.
 - Group-based portal authorization:
   - `signature-users`: normal portal access.
   - `signature-admins`: administrator access.
@@ -37,7 +37,13 @@ The current Rspamd adapter still leaves all top-level multipart messages unchang
 
 ## Identity attribute fallback
 
-For each sender, OpenSigWeave requests fresh profile attributes from Authentik on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If Authentik is unavailable or the lookup cannot be trusted (for example, an invalid response or ambiguous account match), the last successfully stored record is used. A successful lookup confirming that the account is missing or inactive clears the cached attributes instead of reusing stale group membership. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
+For each sender, OpenSigWeave requests fresh profile attributes from the configured provider (IDENTITY_PROVIDER=authentik, ldap or none) on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If the provider is unavailable or the lookup cannot be trusted (for example, an invalid response or ambiguous account match), the last successfully stored record is used. A successful lookup confirming that the account is missing or inactive clears the cached attributes instead of reusing stale group membership. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
+
+### Direct LDAP / Active Directory
+
+Set IDENTITY_PROVIDER=ldap to query LDAP independently of the login method. The provider requires LDAPS (ldaps://) with normal certificate validation and a dedicated read-only bind account. Configure LDAP_URL, LDAP_BIND_DN, LDAP_BIND_PASSWORD, LDAP_BASE_DN and LDAP_USER_FILTER in .env. The default Active Directory filter finds an exact mail attribute match. LDAP_USER_FILTER must contain {email}; the email is escaped before it is inserted into the LDAP filter.
+
+The provider maps givenName, sn, title, telephoneNumber and direct memberOf group memberships. It checks the Active Directory userAccountControl disabled bit and clears cached attributes for disabled accounts. Nested group expansion is not currently performed. Ensure the container trusts the domain controller certificate; do not disable certificate verification. Authentik remains available by selecting IDENTITY_PROVIDER=authentik, and IDENTITY_PROVIDER=none disables live lookups.
 
 ## Current limitations
 
