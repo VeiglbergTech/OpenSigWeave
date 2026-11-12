@@ -212,3 +212,56 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+
+class IdentityProviderRegistryTests(unittest.TestCase):
+    def test_provider_config_is_written_private_and_secret_is_not_described(self):
+        import os
+        import tempfile
+        from pathlib import Path
+        from identity.registry import IdentityProviderRegistry
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = IdentityProviderRegistry(Path(tmp) / ".idp")
+            registry.save("samba-ad", "Samba Active Directory", "ldap", {
+                "LDAP_URL": "ldaps://dc.example.org:636",
+                "LDAP_BIND_DN": "CN=reader,DC=example,DC=org",
+                "LDAP_BIND_PASSWORD": "very-secret",
+                "LDAP_BASE_DN": "DC=example,DC=org",
+                "LDAP_USER_FILTER": "(&(objectClass=user)(mail={email}))",
+                "LDAP_TIMEOUT": "5",
+            })
+            config = Path(tmp) / ".idp" / "samba-ad" / ".env"
+            self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(config.parent.stat().st_mode & 0o777, 0o700)
+            safe = registry.describe("samba-ad")
+            self.assertNotIn("LDAP_BIND_PASSWORD", safe["settings"])
+            self.assertTrue(safe["secret_configured"])
+            self.assertNotIn("very-secret", str(safe))
+
+    def test_blank_secret_on_update_preserves_existing_secret(self):
+        import tempfile
+        from pathlib import Path
+        from identity.registry import IdentityProviderRegistry
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = IdentityProviderRegistry(Path(tmp) / ".idp")
+            base = {"AUTHENTIK_URL": "https://auth.example.org", "AUTHENTIK_API_TOKEN": "keep-me"}
+            registry.save("auth-main", "Authentik Main", "authentik", base)
+            registry.save("auth-main", "Authentik Updated", "authentik", {"AUTHENTIK_URL": "https://auth2.example.org", "AUTHENTIK_API_TOKEN": ""})
+            self.assertEqual(registry._configs["auth-main"]["AUTHENTIK_API_TOKEN"], "keep-me")
+            self.assertEqual(registry._configs["auth-main"]["AUTHENTIK_URL"], "https://auth2.example.org")
+
+    def test_provider_slug_rejects_path_traversal(self):
+        import tempfile
+        from identity.registry import IdentityProviderRegistry, ProviderConfigError
+        registry = IdentityProviderRegistry(tempfile.mkdtemp())
+        with self.assertRaises(ProviderConfigError):
+            registry.save("../escape", "Bad", "authentik", {})
+
+    def test_registry_lists_multiple_provider_instances(self):
+        import tempfile
+        from identity.registry import IdentityProviderRegistry
+        registry = IdentityProviderRegistry(tempfile.mkdtemp())
+        registry.save("auth-one", "Auth One", "authentik", {"AUTHENTIK_URL": "https://one.example.org", "AUTHENTIK_API_TOKEN": "token"})
+        registry.save("auth-two", "Auth Two", "authentik", {"AUTHENTIK_URL": "https://two.example.org", "AUTHENTIK_API_TOKEN": "token"})
+        self.assertEqual({item["id"] for item in registry.list_configs()}, {"auth-one", "auth-two"})
