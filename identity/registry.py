@@ -19,7 +19,7 @@ from identity.providers.ldap import LDAPAttributeProvider
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _COMMON = {"IDP_TYPE", "IDP_DISPLAY_NAME", "IDP_ENABLED"}
 _FIELDS = {
-    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT"},
+    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES"},
     "ldap": {"LDAP_URL", "LDAP_BIND_DN", "LDAP_BIND_PASSWORD", "LDAP_BASE_DN",
              "LDAP_USER_FILTER", "LDAP_TIMEOUT", "LDAP_CA_CERT_FILE"},
 }
@@ -93,7 +93,7 @@ class IdentityProviderRegistry:
         kind = values.get("IDP_TYPE", "").casefold()
         if kind not in _FIELDS:
             raise ProviderConfigError("Unsupported identity provider type.")
-        secret_keys = {"AUTHENTIK_API_TOKEN", "LDAP_BIND_PASSWORD"}
+        secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
         return {
             "id": slug, "display_name": values.get("IDP_DISPLAY_NAME", slug),
             "provider_type": kind, "is_enabled": values.get("IDP_ENABLED", "true").casefold() == "true",
@@ -150,7 +150,7 @@ class IdentityProviderRegistry:
             raise ProviderConfigError("Provider configuration must not be a symbolic link.")
         if existing_file.is_file():
             previous = {k: str(v) for k, v in dotenv_values(existing_file).items() if v is not None}
-            secret_keys = {"AUTHENTIK_API_TOKEN", "LDAP_BIND_PASSWORD"}
+            secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
             for key in secret_keys & allowed:
                 if not values.get(key) and previous.get("IDP_TYPE") == kind and previous.get(key):
                     values[key] = previous[key]
