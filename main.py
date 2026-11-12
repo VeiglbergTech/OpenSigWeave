@@ -131,6 +131,7 @@ class DomainCreate(BaseModel):
     domain_name: str = Field(min_length=3, max_length=253)
     is_active: bool = True
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
+    authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
 class DomainUpdate(BaseModel):
     is_active: bool
@@ -140,6 +141,7 @@ class DomainUpdate(BaseModel):
     strip_device_signatures: bool
     template_html: str = Field(max_length=65536)
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
+    authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
 class OverrideUpdate(BaseModel):
     html_content: str = Field(max_length=65536)
@@ -631,6 +633,7 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
             "trim_whitespace": item.trim_whitespace,
             "strip_device_signatures": item.strip_device_signatures,
             "identity_provider_id": item.identity_provider_id,
+            "authentication_provider_id": item.authentication_provider_id,
             "template_html": sanitize_signature_html(item.template_html or ""),
         }
         for item in domains
@@ -641,9 +644,10 @@ def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     normalized_domain = normalize_domain(domain.domain_name)
-    if domain.identity_provider_id and db.get(IdentityProviderDB, domain.identity_provider_id) is None:
-        raise HTTPException(status_code=422, detail="Identity provider not found")
-    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id)
+    for provider_id in (domain.identity_provider_id, domain.authentication_provider_id):
+        if provider_id and db.get(IdentityProviderDB, provider_id) is None:
+            raise HTTPException(status_code=422, detail="Identity provider not found")
+    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id, authentication_provider_id=domain.authentication_provider_id)
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
@@ -665,6 +669,10 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
         if domain_update.identity_provider_id and db.get(IdentityProviderDB, domain_update.identity_provider_id) is None:
             raise HTTPException(status_code=422, detail="Identity provider not found")
         db_domain.identity_provider_id = domain_update.identity_provider_id
+    if "authentication_provider_id" in domain_update.model_fields_set:
+        if domain_update.authentication_provider_id and db.get(IdentityProviderDB, domain_update.authentication_provider_id) is None:
+            raise HTTPException(status_code=422, detail="Authentication provider not found")
+        db_domain.authentication_provider_id = domain_update.authentication_provider_id
     db.commit()
     return {"status": "success"}
 
@@ -838,7 +846,7 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
     row = db.get(IdentityProviderDB, provider_id)
     if row is None: raise HTTPException(status_code=404, detail="Identity provider not found")
-    if db.query(DomainDB).filter(DomainDB.identity_provider_id == provider_id).first():
+    if db.query(DomainDB).filter((DomainDB.identity_provider_id == provider_id) | (DomainDB.authentication_provider_id == provider_id)).first():
         raise HTTPException(status_code=409, detail="Unassign this provider from all domains before deleting it.")
     identity_provider_registry.delete(provider_id)
     db.delete(row); db.commit()
