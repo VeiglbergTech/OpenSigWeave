@@ -30,8 +30,8 @@ def _values(value) -> list[str]:
 
 
 def _group_name(distinguished_name: str) -> str:
-    match = re.search(r"(?:^|,)\\s*CN=([^,]+)", distinguished_name, re.IGNORECASE)
-    return match.group(1).replace(r"\\,", ",") if match else distinguished_name
+    match = re.search(r"(?:^|,)\s*CN=([^,]+)", distinguished_name, re.IGNORECASE)
+    return match.group(1).replace(r"\,", ",") if match else distinguished_name
 
 
 class LDAPAttributeProvider:
