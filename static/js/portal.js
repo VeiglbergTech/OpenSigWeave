@@ -91,6 +91,7 @@ window.fetch = (resource, options = {}) => {
         function portalShell() {
     return {
         tab: "personal",
+        adminTab: "domains",
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
@@ -107,8 +108,17 @@ function domainManager() { return { domains: [], async fetchDomains() { this.dom
         function signatureManager() {
             return {
                 signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
-                form: { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 },
+                form: { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
+                toggleDomain(domainId, checked) {
+                    const id = Number(domainId);
+                    this.form.domain_ids = checked ? [...new Set([...this.form.domain_ids.map(Number), id])] : this.form.domain_ids.filter(item => Number(item) !== id);
+                },
+                domainNames(signature) {
+                    const ids = signature.domain_ids || (signature.domain_id == null ? [] : [signature.domain_id]);
+                    if (!ids.length) return 'Global';
+                    return ids.map(id => { const match = this.domains.find(domain => Number(domain.id) === Number(id)); return match ? match.domain_name : ('Domain #' + id); }).join(', ');
+                },
                 formatSignatureMarker(signature) {
                     return '<---[' + signature.name + ']--[' + signature.marker_code + ']--->';
                 },
@@ -121,27 +131,27 @@ function domainManager() { return { domains: [], async fetchDomains() { this.dom
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
-                    this.form = { id: null, name: '', mode: 'AUTO', domain_id: '', is_active: true, html_content: '', weight: 1 };
+                    this.form = { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 };
                     this.editing = true;
                 },
                 editSignature(signature) {
                     this.form = { id: signature.id, name: signature.name, mode: signature.mode,
-                        domain_id: signature.domain_id == null ? '' : String(signature.domain_id),
+                        domain_ids: Array.isArray(signature.domain_ids) ? signature.domain_ids.map(Number) : (signature.domain_id == null ? [] : [Number(signature.domain_id)]),
                         is_active: signature.is_active, html_content: '', weight: 1 };
                     this.editing = true;
                 },
                 async saveSignature() {
                     if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
-                    const domainId = this.form.domain_id === '' ? null : Number(this.form.domain_id);
+                    const domainIds = [...new Set(this.form.domain_ids.map(Number))];
                     if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
                     let response;
                     if (!this.form.id) {
                         response = await fetch('/api/admin/signatures', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: this.form.name, mode: this.form.mode, domain_id: domainId,
+                            body: JSON.stringify({ name: this.form.name, mode: this.form.mode, domain_ids: domainIds,
                                 is_active: this.form.is_active, html_content: this.form.html_content, weight: this.form.weight }) });
                     } else {
                         response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: this.form.name, domain_id: domainId, is_active: this.form.is_active }) });
+                            body: JSON.stringify({ name: this.form.name, domain_ids: domainIds, is_active: this.form.is_active }) });
                         if (response.ok && this.form.html_content.trim()) {
                             response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
                                 { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
