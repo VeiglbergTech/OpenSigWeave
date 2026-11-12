@@ -548,6 +548,7 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
             "inject_on_replies": item.inject_on_replies,
             "trim_whitespace": item.trim_whitespace,
             "strip_device_signatures": item.strip_device_signatures,
+            "identity_provider_id": item.identity_provider_id,
             "template_html": sanitize_signature_html(item.template_html or ""),
         }
         for item in domains
@@ -558,7 +559,9 @@ def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     normalized_domain = normalize_domain(domain.domain_name)
-    if domain.identity_provider_id and db.get(IdentityProviderDB, domain.identity_provider_id) is None:\n        raise HTTPException(status_code=422, detail="Identity provider not found")\n    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id)
+    if domain.identity_provider_id and db.get(IdentityProviderDB, domain.identity_provider_id) is None:
+        raise HTTPException(status_code=422, detail="Identity provider not found")
+    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id)
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
