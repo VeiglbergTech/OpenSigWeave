@@ -80,9 +80,9 @@ A backup must not silently proceed without the IDP volume or encryption. A delib
 
 Restore is a destructive administrative operation and must be a separate, explicit command:
 
-    opensigweave-backup package --staging <prepared-directory> --output <backup.age> --recipient <age-recipient>
-    opensigweave-backup verify <backup.age> --identity <age-identity-file>
-    opensigweave-backup decrypt <backup.age> --identity <age-identity-file> --output <archive.tar.gz>
+    python backup_cli.py package --staging <prepared-directory> --output <backup.age> --recipient <age-recipient>
+    python backup_cli.py verify <backup.age> --identity <age-identity-file>
+    python backup_cli.py decrypt <backup.age> --identity <age-identity-file> --output <archive.tar.gz>
 
 The current CLI packages an already prepared staging directory. It does not yet snapshot Docker volumes or constitute the complete backup creation workflow.
 
