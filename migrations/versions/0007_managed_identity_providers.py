@@ -17,14 +17,16 @@ def upgrade() -> None:
         sa.Column("is_enabled", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
     )
-    op.add_column("domains", sa.Column("identity_provider_id", sa.String(length=64), nullable=True))
-    op.create_foreign_key(
-        "fk_domains_identity_provider_id", "domains", "identity_providers",
-        ["identity_provider_id"], ["id"], ondelete="SET NULL",
-    )
+    with op.batch_alter_table("domains") as batch_op:
+        batch_op.add_column(sa.Column("identity_provider_id", sa.String(length=64), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_domains_identity_provider_id", "identity_providers",
+            ["identity_provider_id"], ["id"], ondelete="SET NULL",
+        )
 
 
 def downgrade() -> None:
-    op.drop_constraint("fk_domains_identity_provider_id", "domains", type_="foreignkey")
-    op.drop_column("domains", "identity_provider_id")
+    with op.batch_alter_table("domains") as batch_op:
+        batch_op.drop_constraint("fk_domains_identity_provider_id", type_="foreignkey")
+        batch_op.drop_column("identity_provider_id")
     op.drop_table("identity_providers")
