@@ -10,7 +10,7 @@
 <body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6">
     <main class="w-full max-w-md rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
         <h1 class="text-2xl font-semibold mb-2">OpenSigWeave</h1>
-        <p class="text-gray-400 mb-6">Enter your work email to continue. LDAP users also enter their password; OIDC users are redirected to their identity provider.</p>
+        <p class="text-gray-400 mb-6">Use email and password for LDAP or local administrator access. Or sign in with one of the configured Authentik providers below.</p>
         {% if error %}
         <p role="alert" class="mb-4 rounded bg-red-900/40 border border-red-700 p-3 text-sm">Invalid email address or password.</p>
         {% endif %}
@@ -22,8 +22,22 @@
             <label class="block text-sm" for="password">Password
                 <input class="mt-1 w-full rounded border border-gray-600 bg-gray-900 p-3 text-white" id="password" name="password" type="password" autocomplete="current-password" maxlength="1024">
             </label>
-            <button class="w-full rounded bg-blue-600 hover:bg-blue-500 p-3 font-medium" type="submit">Continue</button>
+            <button class="w-full rounded bg-blue-600 hover:bg-blue-500 p-3 font-medium" type="submit">Sign in</button>
         </form>
+        {% if oidc_providers %}
+        <div class="my-6 flex items-center gap-3 text-xs uppercase tracking-wide text-gray-500">
+            <span class="h-px flex-1 bg-gray-700"></span>
+            <span>Or sign in with</span>
+            <span class="h-px flex-1 bg-gray-700"></span>
+        </div>
+        <div class="space-y-3">
+            {% for provider in oidc_providers %}
+            <a class="block w-full rounded-lg border border-gray-600 bg-gray-900 hover:bg-gray-700 p-4 text-center font-medium transition" href="/login/oidc/{{ provider.id }}">
+                Anmelden mit {{ provider.display_name }}
+            </a>
+            {% endfor %}
+        </div>
+        {% endif %}
     </main>
 </body>
 </html>
