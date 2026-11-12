@@ -10,7 +10,7 @@ from ldap3.core.exceptions import LDAPException
 from ldap3.utils.conv import escape_filter_chars
 
 from identity.attributes import IdentityAttributes
-from identity.providers.authentik import IdentityProviderUnavailable
+from identity.providers.base import IdentityProviderUnavailable
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,7 @@ class LDAPAttributeProvider:
         base_dn: str,
         user_filter: str = "(&(objectCategory=person)(objectClass=user)(mail={email}))",
         timeout: float = 5.0,
+        ca_cert_file: str = "",
     ):
         self.url = url.rstrip("/")
         self.bind_dn = bind_dn
@@ -57,6 +58,7 @@ class LDAPAttributeProvider:
         self.base_dn = base_dn
         self.user_filter = user_filter
         self.timeout = timeout
+        self.ca_cert_file = ca_cert_file or None
         parsed = urlsplit(self.url)
         if self.url and (
             parsed.scheme != "ldaps"
@@ -65,6 +67,7 @@ class LDAPAttributeProvider:
             or parsed.password is not None
             or parsed.query
             or parsed.fragment
+            or parsed.path not in ("", "/")
         ):
             raise ValueError("LDAP_URL must be an LDAPS URL without embedded credentials, query or fragment")
         if "{email}" not in self.user_filter:
@@ -82,10 +85,12 @@ class LDAPAttributeProvider:
             raise IdentityProviderUnavailable("LDAP attribute lookup failed") from exc
 
     def _lookup(self, email: str) -> IdentityAttributes:
+        parsed = urlsplit(self.url)
         server = ldap3.Server(
-            self.url,
+            parsed.hostname,
+            port=parsed.port or 636,
             use_ssl=True,
-            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED),
+            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED, ca_certs_file=self.ca_cert_file),
             get_info=ldap3.NONE,
             connect_timeout=self.timeout,
         )
@@ -105,9 +110,9 @@ class LDAPAttributeProvider:
                 search_filter=search_filter,
                 search_scope=ldap3.SUBTREE,
                 attributes=[
-                    "mail", "givenName", "sn", "displayName", "title",
-                    "telephoneNumber", "memberOf", "sAMAccountName",
-                    "distinguishedName", "userAccountControl",
+                    "mail", "givenname", "sn", "displayName", "title",
+                    "telephonenumber", "memberof", "samaccountname",
+                    "distinguishedname", "useraccountcontrol",
                 ],
                 size_limit=3,
             )
@@ -118,11 +123,11 @@ class LDAPAttributeProvider:
                 raise IdentityProviderUnavailable("LDAP returned ambiguous matching accounts")
 
             entry = entries[0]
-            data = entry.entry_attributes_as_dict
+            data = {str(key).casefold(): value for key, value in entry.entry_attributes_as_dict.items()}
             found_email = _first(data.get("mail")).strip().casefold()
             if found_email != email.casefold():
                 raise IdentityProviderUnavailable("LDAP result did not match the requested email")
-            account_control = _first(data.get("userAccountControl"))
+            account_control = _first(data.get("useraccountcontrol"))
             if account_control:
                 try:
                     if int(account_control) & 2:
@@ -131,23 +136,23 @@ class LDAPAttributeProvider:
                     raise IdentityProviderUnavailable("LDAP returned invalid account status") from exc
 
             groups = frozenset(
-                name for name in (_group_name(value) for value in _values(data.get("memberOf"))) if name
+                name for name in (_group_name(value) for value in _values(data.get("memberof"))) if name
             )
             attributes = {
                 key: _values(data.get(key))
-                for key in ("title", "telephoneNumber", "displayName", "sAMAccountName")
+                for key in ("title", "telephonenumber", "displayName", "samaccountname")
                 if data.get(key) is not None
             }
             claims = {
                 key: _first(data.get(key))
-                for key in ("mail", "displayName", "sAMAccountName", "distinguishedName", "userAccountControl")
+                for key in ("mail", "displayName", "samaccountname", "distinguishedname", "useraccountcontrol")
                 if data.get(key) is not None
             }
             return IdentityAttributes(
-                first_name=_first(data.get("givenName")),
+                first_name=_first(data.get("givenname")),
                 last_name=_first(data.get("sn")),
                 title=_first(data.get("title")),
-                phone=_first(data.get("telephoneNumber")),
+                phone=_first(data.get("telephonenumber")),
                 groups=groups,
                 claims=claims,
                 attributes=attributes,
