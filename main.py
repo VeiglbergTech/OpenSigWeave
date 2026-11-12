@@ -232,6 +232,13 @@ def migrate_legacy_identity_provider_configuration():
             db.rollback()
             logger.exception("Could not migrate legacy identity provider configuration; administrator setup remains available")
 
+@app.on_event("startup")
+def disable_legacy_provider_fallback():
+    """After one-time migration, runtime lookups must use domain assignments only."""
+    global attribute_provider
+    attribute_provider = None
+
+
 
 
 session_secret = os.environ.get("SECRET_KEY", "")
