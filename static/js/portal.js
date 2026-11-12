@@ -118,6 +118,12 @@ function domainManager() { return {
         if (!response.ok) { notify('Could not assign identity provider.', 'error'); await this.fetchDomains(); return; }
         domain.identity_provider_id = providerId || null;
         notify('Identity provider assignment saved.');
+    },
+    async setAuthenticationProvider(domain, providerId) {
+        const response = await fetch('/domains/' + domain.id + '/authentication-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({authentication_provider_id: providerId || null})});
+        if (!response.ok) { notify('Could not assign authentication provider.', 'error'); await this.fetchDomains(); return; }
+        domain.authentication_provider_id = providerId || null;
+        notify('Authentication provider assignment saved.');
     }
 } }
 function identityProviderManager() { return {
