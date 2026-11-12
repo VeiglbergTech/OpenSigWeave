@@ -32,6 +32,7 @@ from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, Sig
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
+from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
@@ -56,19 +57,36 @@ LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 
 identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
+# Compatibility handle for older integrations/tests. Domain-assigned providers
+# always take precedence; this handle is not used to select a provider for a domain.
+attribute_provider = (
+    AuthentikAttributeProvider(
+        base_url=os.environ.get("AUTHENTIK_URL", ""),
+        api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
+    ) if OIDC_ENABLED else None
+)
 
-async def get_identity_attributes(db: Session, email: str, provider_id: str | None) -> IdentityAttributes:
-    if not provider_id:
-        return IdentityAttributes()
-    meta = db.get(IdentityProviderDB, provider_id)
-    if meta is None or not meta.is_enabled:
-        return IdentityAttributes()
+
+async def get_identity_attributes(db: Session, email: str, provider_id: str | None = None) -> IdentityAttributes:
     normalized_email = email.strip().casefold()
-    cache_key = f"{provider_id}:{normalized_email}"
-    try:
-        provider = identity_provider_registry.get(provider_id)
-        if provider is None:
+    if provider_id:
+        meta = db.get(IdentityProviderDB, provider_id)
+        if meta is None or not meta.is_enabled:
             return IdentityAttributes()
+        cache_key = f"{provider_id}:{normalized_email}"
+        try:
+            provider = identity_provider_registry.get(provider_id)
+        except Exception as exc:
+            logger.warning("Identity provider %s could not be loaded (%s)", provider_id, type(exc).__name__)
+            provider = None
+    else:
+        # Legacy compatibility path for callers without a domain assignment.
+        # New installations with no configured provider have no live provider.
+        provider = attribute_provider
+        cache_key = normalized_email
+    if provider is None:
+        return IdentityAttributes()
+    try:
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Unsupported identity result")
