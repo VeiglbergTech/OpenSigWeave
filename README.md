@@ -62,9 +62,9 @@ The Docker Compose stack persists this directory in the `opensigweave-idp-data` 
 - Certificate verification is always enabled. Disabled Active Directory accounts and ambiguous email matches are rejected.
 
 **Login and profile selection**
-- The login page asks for the email address first. The email domain selects the configured login provider.
+- LDAP users and the local administrator use the email/password form.
+- Each configured Authentik provider appears as its own sign-in box labelled `Anmelden mit {display_name}`. The callback verifies that the returned email domain is assigned to the selected provider.
 - Authentik uses OIDC Authorization Code; LDAP users enter their directory password.
-- The local administrator can sign in through the same form as an independent emergency path.
 - New installations default to `OIDC_ENABLED=false`; the previous root-level, single-provider OIDC configuration remains available only as an explicit compatibility mode with `OIDC_ENABLED=true`.
 - The selected profile provider independently supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. If no profile provider is assigned, external profile attributes are empty.
 
@@ -320,7 +320,7 @@ After HTTPS is active, open:
 https://signature.example.org/
 ```
 
-You should see the email-first login page. Enter an email address whose domain is assigned to an enabled login provider; Authentik users are then redirected to Authentik, while LDAP users enter their directory password.
+You should see the login page. Choose an `Anmelden mit ...` box for Authentik, or enter an email address and directory password for LDAP. The local administrator uses the same email/password form.
 
 ## 4. First application test
 
