@@ -410,12 +410,34 @@ def normalize_domain(value: str) -> str:
     return normalized
 
 # --- Web UI Routes ---
-def login_page(request: Request, error: bool = False, status_code: int = 200):
+def configured_login_providers(db) -> list[dict[str, str]]:
+    if not hasattr(db, "query"):
+        return []
+    query = db.query(IdentityProviderDB).filter(
+        IdentityProviderDB.is_enabled.is_(True),
+        IdentityProviderDB.provider_type == "authentik",
+    )
+    if not hasattr(query, "all"):
+        return []
+    providers = []
+    for provider in query.all():
+        try:
+            config = identity_provider_registry.get_config(provider.id)
+            required = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
+            if all(config.get(key) for key in required):
+                providers.append({"id": provider.id, "display_name": provider.display_name})
+        except Exception as exc:
+            logger.warning("OIDC login button skipped for provider %s (%s)", provider.id, type(exc).__name__)
+    return providers
+
+
+def login_page(request: Request, error: bool = False, status_code: int = 200, db=None):
     csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
     return templates.TemplateResponse(request, "login.html", {
         "request": request,
         "csrf_token": csrf_token,
         "error": error,
+        "oidc_providers": configured_login_providers(db),
     }, status_code=status_code)
 
 
@@ -462,10 +484,31 @@ def _valid_oidc_identity(user: object, expected_email: str | None = None):
 
 
 @app.get("/login")
-async def login(request: Request):
+async def login(request: Request, db: Session = Depends(get_db)):
     if request.session.get("user"):
         return RedirectResponse(url="/", status_code=303)
-    return login_page(request, request.query_params.get("error") in {"invalid_credentials", "authentication_failed"})
+    return login_page(
+        request,
+        request.query_params.get("error") in {"invalid_credentials", "authentication_failed"},
+        db=db,
+    )
+
+
+@app.get("/login/oidc/{provider_id}")
+async def managed_oidc_login(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    if request.session.get("user"):
+        return RedirectResponse(url="/", status_code=303)
+    provider_meta = db.get(IdentityProviderDB, provider_id)
+    if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type != "authentik":
+        return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
+    try:
+        client, config = managed_oidc_client(provider_id)
+        request.session["pending_managed_login"] = {"provider_id": provider_id}
+        return await client.authorize_redirect(request, config["OIDC_REDIRECT_URI"])
+    except Exception as exc:
+        logger.warning("Managed OIDC sign-in could not start for provider %s (%s)", provider_id, type(exc).__name__)
+        request.session.clear()
+        return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
 
 
 @app.post("/login")
@@ -491,7 +534,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
     submitted_password = form.get("password", "")
     if not is_valid_email(submitted_email) or not isinstance(submitted_password, str) or len(submitted_password) > 1024:
         request.session.clear()
-        return login_page(request, True, 401)
+        return login_page(request, True, 401, db)
 
     # The local administrator remains available as an independent emergency path.
     if LOCAL_ADMIN_CONFIGURED and hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL):
@@ -616,8 +659,8 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
         if not isinstance(pending, dict) or pending.get("provider_id") != provider_id:
             raise ValueError("OIDC login state does not match the selected provider")
         expected_email = pending.get("email")
-        if not isinstance(expected_email, str):
-            raise ValueError("OIDC login state has no email")
+        if expected_email is not None and not isinstance(expected_email, str):
+            raise ValueError("OIDC login state has an invalid email")
         provider_meta = db.get(IdentityProviderDB, provider_id)
         if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type != "authentik":
             raise ValueError("OIDC provider is no longer enabled")
