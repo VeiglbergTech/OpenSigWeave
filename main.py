@@ -513,6 +513,9 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
     email_domain = submitted_email.rsplit("@", 1)[1]
     domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email_domain).first()
     provider_id = domain.authentication_provider_id if domain else None
+    if provider_id and (domain is None or not domain.is_active):
+        request.session.clear()
+        return login_page(request, True, 401)
     if provider_id:
         provider_meta = db.get(IdentityProviderDB, provider_id)
         if provider_meta is None or not provider_meta.is_enabled:
@@ -527,7 +530,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
             if identity is None:
                 request.session.clear()
                 return login_page(request, True, 401)
-            groups = sorted(identity.groups)
+            groups = [str(group)[:255] for group in sorted(identity.groups)[:128] if group]
             display_name = " ".join(part for part in (identity.first_name, identity.last_name) if part).strip()
             claims = identity.claims if isinstance(identity.claims, dict) else {}
             stable_dn = str(claims.get("distinguishedname") or submitted_email)[:255]
@@ -623,7 +626,7 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
         user = token.get("userinfo")
         email, groups = _valid_oidc_identity(user, expected_email)
         domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
-        if domain is None or domain.authentication_provider_id != provider_id:
+        if domain is None or not domain.is_active or domain.authentication_provider_id != provider_id:
             raise ValueError("Email domain is no longer assigned to this OIDC provider")
         raw_attributes = user.get("attributes")
         if not isinstance(raw_attributes, dict):
@@ -672,7 +675,7 @@ async def logout(request: Request):
 
 
 @app.get("/")
-def read_root(request: Request, db: Session = Depends(get_db)):
+async def read_root(request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')
     if not user: return RedirectResponse(url='/login')
     csrf_token = request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
@@ -711,6 +714,12 @@ def read_root(request: Request, db: Session = Depends(get_db)):
     email = email.strip().casefold() if isinstance(email, str) else ""
     domain_part = email.rsplit("@", 1)[-1] if "@" in email else ""
     domain_obj = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_part).first()
+    if domain_obj and domain_obj.identity_provider_id:
+        profile = await get_identity_attributes(db, email, domain_obj.identity_provider_id)
+        first_name = profile.first_name or first_name
+        last_name = profile.last_name or last_name
+        phone = profile.phone or "Not Set"
+        title = profile.title or "Not Set"
     override_obj = db.query(UserOverrideDB).filter(func.lower(UserOverrideDB.user_email) == email).first()
     
     can_edit = False
