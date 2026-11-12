@@ -28,7 +28,7 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
@@ -133,6 +133,7 @@ class AdminOverrideSave(BaseModel):
 class SignatureCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
+    domain_ids: Optional[List[int]] = None
     mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL"] = "AUTO"
     html_content: str = Field(min_length=1, max_length=65536)
     weight: int = Field(default=1, ge=1, le=1000)
@@ -141,6 +142,7 @@ class SignatureCreateRequest(BaseModel):
 class SignatureUpdateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
+    domain_ids: Optional[List[int]] = None
     is_active: bool = True
 
 class SignatureVariantUpdateRequest(BaseModel):
@@ -691,6 +693,7 @@ def list_signatures(request: Request, db: Session = Depends(get_db)):
             "name": item.name,
             "marker_code": hashlib.sha256(item.name.casefold().encode("utf-8")).hexdigest()[:4],
             "domain_id": item.domain_id,
+            "domain_ids": [row.domain_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == item.id).order_by(SignatureDomainDB.domain_id).all()],
             "scope": item.scope,
             "mode": item.mode,
             "is_active": item.is_active,
@@ -720,6 +723,7 @@ def create_signature_endpoint(
             signature_file_store,
             name=payload.name,
             domain_id=payload.domain_id,
+            domain_ids=payload.domain_ids,
             mode=SignatureMode(payload.mode),
             html_content=payload.html_content,
             weight=payload.weight,
@@ -748,14 +752,15 @@ def update_signature_endpoint(
     try:
         signature = update_signature(
             db, signature_file_store, signature_id, name=payload.name,
-            domain_id=payload.domain_id, is_active=payload.is_active,
+            domain_id=payload.domain_id, domain_ids=payload.domain_ids, is_active=payload.is_active,
         )
     except SignatureNotFoundError:
         raise HTTPException(status_code=404, detail="Signature not found")
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
+    domain_ids = [row.domain_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == signature.id).order_by(SignatureDomainDB.domain_id).all()]
     return {"id": signature.id, "name": signature.name, "domain_id": signature.domain_id,
-            "scope": signature.scope, "is_active": signature.is_active}
+            "domain_ids": domain_ids, "scope": signature.scope, "is_active": signature.is_active}
 
 
 @app.get("/api/admin/signatures/{signature_id}/variants")
@@ -1056,7 +1061,7 @@ async def get_rspamd_signature(
             db.query(SignatureDB)
             .filter(
                 SignatureDB.is_active.is_(True),
-                (SignatureDB.domain_id.is_(None) | (SignatureDB.domain_id == domain_obj.id)),
+                (SignatureDB.id.in_(db.query(SignatureDomainDB.signature_id).filter(SignatureDomainDB.domain_id == domain_obj.id)) | ~SignatureDB.id.in_(db.query(SignatureDomainDB.signature_id))),
             )
             .all()
         )
@@ -1064,8 +1069,10 @@ async def get_rspamd_signature(
             item for item in matching_signatures
             if item.name.casefold() == marker_name.casefold()
         ]
-        domain_matches = [item for item in matching_signatures if item.domain_id == domain_obj.id]
-        global_matches = [item for item in matching_signatures if item.domain_id is None]
+        assigned_ids = {row.signature_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.domain_id == domain_obj.id).all()}
+        any_assigned_ids = {row.signature_id for row in db.query(SignatureDomainDB).all()}
+        domain_matches = [item for item in matching_signatures if item.id in assigned_ids]
+        global_matches = [item for item in matching_signatures if item.id not in any_assigned_ids]
         # Prefer one exact-domain signature; otherwise accept exactly one global
         # signature. Duplicate names are ambiguous and must not select arbitrarily.
         candidates = domain_matches if domain_matches else global_matches
