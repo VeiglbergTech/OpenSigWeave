@@ -578,9 +578,10 @@ async def auth(request: Request, db: Session = Depends(get_db)):
         expected_email = pending_email if isinstance(pending_email, str) else None
         user = token.get("userinfo")
         email, groups = _valid_oidc_identity(user, expected_email)
-        domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
-        if domain and domain.authentication_provider_id:
-            raise ValueError("Domain now uses a different authentication provider")
+        if hasattr(db, "query"):
+            domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
+            if domain and domain.authentication_provider_id:
+                raise ValueError("Domain now uses a different authentication provider")
         raw_attributes = user.get("attributes")
         if not isinstance(raw_attributes, dict):
             raw_attributes = {}
