@@ -4,6 +4,10 @@ from typing import Protocol
 from identity.attributes import IdentityAttributes
 
 
+class IdentityProviderUnavailable(RuntimeError):
+    """Raised when a fresh identity lookup cannot be trusted."""
+
+
 class AttributeProvider(Protocol):
     async def get_attributes(self, email: str) -> IdentityAttributes:
         """Return normalized profile attributes for an email address.
