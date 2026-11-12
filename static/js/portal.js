@@ -128,13 +128,15 @@ function identityProviderManager() { return {
         if (response.ok) { this.providers = await response.json(); if (this.providers.length === 0) this.newProvider(); }
         else notify('Could not load identity providers.', 'error');
     },
-    newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5',LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'}}; this.editing=true; },
+    newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5'}}; this.editing=true; },
+    changeType() { this.form.settings = this.form.provider_type === 'ldap' ? {LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'} : {AUTHENTIK_TIMEOUT:'5'}; },
     async editProvider(provider) {
         const response=await fetch('/api/admin/identity-providers');
         if(!response.ok) { notify('Could not load provider settings.','error'); return; }
         const item=(await response.json()).find(x=>x.id===provider.id);
         if(!item) return;
-        this.form={id:item.id,original_id:item.id,display_name:item.display_name,provider_type:item.provider_type,is_enabled:item.is_enabled,settings:{...(item.settings||{}),AUTHENTIK_API_TOKEN:'',LDAP_BIND_PASSWORD:''}};
+        const settings={...(item.settings||{})}; if(item.provider_type==='authentik') settings.AUTHENTIK_API_TOKEN=''; else settings.LDAP_BIND_PASSWORD='';
+        this.form={id:item.id,original_id:item.id,display_name:item.display_name,provider_type:item.provider_type,is_enabled:item.is_enabled,settings};
         this.editing=true;
     },
     async saveProvider() {
