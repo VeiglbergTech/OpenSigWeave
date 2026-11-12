@@ -82,6 +82,23 @@ class IdentityProviderRegistry:
                 continue
         return result
 
+    def describe(self, slug: str) -> dict[str, Any]:
+        directory = self._directory(slug)
+        file_path = directory / ".env"
+        if file_path.is_symlink() or not file_path.is_file():
+            raise ProviderConfigError("Identity provider configuration does not exist.")
+        values = {k: str(v) for k, v in dotenv_values(file_path).items() if v is not None}
+        kind = values.get("IDP_TYPE", "").casefold()
+        if kind not in _FIELDS:
+            raise ProviderConfigError("Unsupported identity provider type.")
+        secret_keys = {"AUTHENTIK_API_TOKEN", "LDAP_BIND_PASSWORD"}
+        return {
+            "id": slug, "display_name": values.get("IDP_DISPLAY_NAME", slug),
+            "provider_type": kind, "is_enabled": values.get("IDP_ENABLED", "true").casefold() == "true",
+            "settings": {key: value for key, value in values.items() if key in _FIELDS[kind] and key not in secret_keys},
+            "secret_configured": any(bool(values.get(key)) for key in secret_keys & _FIELDS[kind]),
+        }
+
     def load(self, slug: str):
         directory = self._directory(slug)
         file_path = directory / ".env"
