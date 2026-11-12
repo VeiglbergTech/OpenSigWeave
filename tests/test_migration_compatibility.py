@@ -75,7 +75,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0007_managed_idps",))
+            self.assertEqual(revision, ("0008_domain_auth_provider",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -87,6 +87,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("signature_domains", tables)
             self.assertIn("identity_providers", tables)
             self.assertIn("identity_provider_id", columns)
+            self.assertIn("authentication_provider_id", columns)
 
 
 if __name__ == "__main__":
