@@ -327,7 +327,7 @@ class LDAPAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         from types import SimpleNamespace
 
         provider = self._provider()
-        empty_connection = SimpleNamespace(entries=[], unbind=lambda: None)
+        empty_connection = SimpleNamespace(entries=[], search=lambda **kwargs: None, unbind=lambda: None)
         with patch("identity.providers.ldap.ldap3.Server"), patch(
             "identity.providers.ldap.ldap3.Connection", return_value=empty_connection
         ) as connection_factory:
