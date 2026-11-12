@@ -10,19 +10,19 @@
 <body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6">
     <main class="w-full max-w-md rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
         <h1 class="text-2xl font-semibold mb-2">OpenSigWeave</h1>
-        <p class="text-gray-400 mb-6">Local administrator sign-in</p>
+        <p class="text-gray-400 mb-6">Enter your work email to continue. LDAP users also enter their password; OIDC users are redirected to their identity provider.</p>
         {% if error %}
         <p role="alert" class="mb-4 rounded bg-red-900/40 border border-red-700 p-3 text-sm">Invalid email address or password.</p>
         {% endif %}
         <form method="post" action="/login" class="space-y-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label class="block text-sm" for="email">Administrator email
+            <label class="block text-sm" for="email">Email address
                 <input class="mt-1 w-full rounded border border-gray-600 bg-gray-900 p-3 text-white" id="email" name="email" type="email" autocomplete="username" required maxlength="254">
             </label>
             <label class="block text-sm" for="password">Password
-                <input class="mt-1 w-full rounded border border-gray-600 bg-gray-900 p-3 text-white" id="password" name="password" type="password" autocomplete="current-password" required maxlength="1024">
+                <input class="mt-1 w-full rounded border border-gray-600 bg-gray-900 p-3 text-white" id="password" name="password" type="password" autocomplete="current-password" maxlength="1024">
             </label>
-            <button class="w-full rounded bg-blue-600 hover:bg-blue-500 p-3 font-medium" type="submit">Sign in</button>
+            <button class="w-full rounded bg-blue-600 hover:bg-blue-500 p-3 font-medium" type="submit">Continue</button>
         </form>
     </main>
 </body>
