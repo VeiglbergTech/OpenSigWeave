@@ -25,3 +25,4 @@ typing_extensions==4.16.0
 uvicorn==0.42.0
 psycopg[binary]==3.3.8
 alembic==1.20.1
+ldap3==2.9.1
