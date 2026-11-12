@@ -698,8 +698,14 @@ def list_identity_providers(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
     disk = {item["id"]: item for item in identity_provider_registry.list_configs()}
     rows = db.query(IdentityProviderDB).order_by(IdentityProviderDB.display_name.asc()).all()
-    return [{"id": row.id, "display_name": row.display_name, "provider_type": row.provider_type,
-             "is_enabled": row.is_enabled, "configured": row.id in disk} for row in rows]
+    result = []
+    for row in rows:
+        safe = identity_provider_registry.describe(row.id) if row.id in disk else {
+            "id": row.id, "display_name": row.display_name, "provider_type": row.provider_type,
+            "is_enabled": row.is_enabled, "settings": {}, "secret_configured": False,
+        }
+        result.append({**safe, "is_enabled": row.is_enabled, "configured": row.id in disk})
+    return result
 
 
 class IdentityProviderCreateRequest(BaseModel):
@@ -728,6 +734,7 @@ def update_identity_provider(provider_id: str, payload: IdentityProviderCreateRe
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
     row = db.get(IdentityProviderDB, provider_id)
     if row is None or payload.id != provider_id: raise HTTPException(status_code=404, detail="Identity provider not found")
+    if payload.provider_type != row.provider_type: raise HTTPException(status_code=422, detail="Provider type cannot be changed; create a new provider instead.")
     try: item = identity_provider_registry.save(provider_id, payload.display_name, payload.provider_type, payload.settings, payload.is_enabled)
     except (ProviderConfigError, ValueError, OSError) as exc: raise HTTPException(status_code=422, detail=str(exc))
     row.display_name, row.provider_type, row.is_enabled = item["display_name"], item["provider_type"], item["is_enabled"]
