@@ -22,7 +22,7 @@ Managed identity providers are the default. New installations use `OIDC_ENABLED=
 
 - FastAPI application served by Uvicorn on TCP port 8085 inside the container.
 - Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
-- Email-first login routing: domain-assigned LDAP/Active Directory providers authenticate with LDAPS; domain-assigned Authentik providers use their own OIDC discovery and callback. The local administrator is an independent emergency path.
+- The login page presents a separate sign-in box for each configured Authentik provider and an email/password form for LDAP and the local administrator. The selected OIDC callback validates the returned email domain against the provider assignment.
 - Browser session authorization based on the `signature-users` and `signature-admins` groups.
 - CSRF protection for state-changing browser requests.
 - Secure session cookies and trusted-host validation.
@@ -72,7 +72,7 @@ The current rewrite path is limited to non-multipart messages. No production mai
 
 ### Browser identity
 
-The browser starts with an email-first form at `/login`. The application maps the email domain to its login provider. LDAP verifies the supplied password over LDAPS; Authentik redirects to the provider-specific HTTPS callback and validates OIDC state, email, groups and the current domain assignment. The local administrator can sign in through the same form and is independent of the selected domain provider. The legacy global OIDC callback at `/auth` is registered only when `OIDC_ENABLED=true`.
+The browser login page lists one sign-in box per configured Authentik OIDC provider. Selecting a box starts that provider's Authorization Code flow; the callback verifies the email and checks that its domain is still assigned to the selected provider. LDAP users and the local administrator use the email/password form. LDAP routing is selected by the email domain. The legacy global OIDC callback at `/auth` is registered only when `OIDC_ENABLED=true`.
 
 When legacy global OIDC is enabled, the canonical hostname is derived from its `OIDC_REDIRECT_URI`. In managed-provider mode, `APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected in both modes.
 
