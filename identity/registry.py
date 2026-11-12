@@ -193,6 +193,16 @@ class IdentityProviderRegistry:
             return None
         return self._providers[slug]
 
+    async def authenticate(self, slug: str, email: str, password: str):
+        """Authenticate against an enabled provider that supports password binds."""
+        provider = self.get(slug)
+        if provider is None:
+            raise ProviderConfigError("Identity provider is disabled or unavailable.")
+        authenticate = getattr(provider, "authenticate", None)
+        if not callable(authenticate):
+            raise ProviderConfigError("This identity provider does not support password authentication.")
+        return await authenticate(email, password)
+
     async def test(self, slug: str, email: str = "opensigweave-provider-test@example.invalid"):
         provider = self.load(slug)
         # A successful query with no matching account is still a valid connection.
