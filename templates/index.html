@@ -143,6 +143,15 @@
                 <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
                     <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                     <label class="text-sm">API token<input type="password" autocomplete="new-password" x-model="form.settings.AUTHENTIK_API_TOKEN" placeholder="Leave empty to keep existing token" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <div class="md:col-span-2 border-t border-gray-700 pt-3 mt-2">
+                        <p class="text-sm font-semibold text-gray-200 mb-2">OIDC sign-in (optional)</p>
+                        <div class="grid md:grid-cols-2 gap-3">
+                            <label class="text-sm">OIDC discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://auth.example.org/application/o/app/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                        </div>
+                    </div>
                     <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                 </div>
                 <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
