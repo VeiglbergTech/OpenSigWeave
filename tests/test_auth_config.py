@@ -64,8 +64,9 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             patch.object(main, "OIDC_ENABLED", False),
             patch.object(main, "LOCAL_ADMIN_EMAIL", "admin@example.org"),
             patch.object(main, "LOCAL_ADMIN_PASSWORD_HASH", password_hash),
+            patch.object(main, "LOCAL_ADMIN_CONFIGURED", True),
         ):
-            response = asyncio.run(main.local_login(request))
+            response = asyncio.run(main.login_submit(request))
         self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers["location"], "/")
         self.assertEqual(request.session["user"]["email"], "admin@example.org")
