@@ -529,7 +529,8 @@ def read_root(request: Request, db: Session = Depends(get_db)):
             if OIDC_ENABLED else None
         ),
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
-        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token
+        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
+        "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0
     })
 
 # --- API Endpoints ---
