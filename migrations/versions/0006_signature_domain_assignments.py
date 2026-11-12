@@ -2,7 +2,7 @@
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0006_signature_domain_assignments"
+revision = "0006_sig_domain_map"
 down_revision = "0005_identity_attribute_cache"
 branch_labels = None
 depends_on = None
