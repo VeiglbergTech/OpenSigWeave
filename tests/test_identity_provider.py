@@ -134,3 +134,81 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
+    def _entry(self, **attributes):
+        from types import SimpleNamespace
+        return SimpleNamespace(entry_attributes_as_dict=attributes)
+
+    async def test_ldaps_lookup_maps_ad_attributes_and_escapes_email_filter(self):
+        from identity.providers.ldap import LDAPAttributeProvider
+        entry = self._entry(
+            mail=["alice@example.org"], givenName=["Alice"], sn=["Example"],
+            title=["Systems Engineer"], telephoneNumber=["+49 123"],
+            memberOf=["CN=signature-users,OU=Groups,DC=example,DC=org"],
+            sAMAccountName=["alice"], distinguishedName=["CN=Alice,OU=Users,DC=example,DC=org"],
+            userAccountControl=["512"],
+        )
+        connection = type("ConnectionStub", (), {
+            "entries": [entry], "search": lambda self, **kwargs: setattr(self, "search_args", kwargs),
+            "unbind": lambda self: None,
+        })()
+        provider = LDAPAttributeProvider(
+            "ldaps://dc.example.org:636", "CN=reader,DC=example,DC=org",
+            "secret", "DC=example,DC=org",
+        )
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", return_value=connection
+        ):
+            result = await provider.get_attributes("alice*)(example.org")
+
+        self.assertEqual(result.first_name, "Alice")
+        self.assertEqual(result.last_name, "Example")
+        self.assertEqual(result.title, "Systems Engineer")
+        self.assertEqual(result.phone, "+49 123")
+        self.assertEqual(result.groups, frozenset({"signature-users"}))
+        self.assertIn(r"alice\\2a\\29\\28example.org", connection.search_args["search_filter"])
+        self.assertEqual(connection.search_args["search_base"], "DC=example,DC=org")
+
+    async def test_no_matching_account_and_disabled_ad_account_clear_attributes(self):
+        from identity.providers.ldap import LDAPAttributeProvider
+        provider = LDAPAttributeProvider(
+            "ldaps://dc.example.org", "reader", "secret", "DC=example,DC=org"
+        )
+        empty_connection = type("ConnectionStub", (), {
+            "entries": [], "search": lambda self, **kwargs: None, "unbind": lambda self: None,
+        })()
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", return_value=empty_connection
+        ):
+            self.assertEqual(await provider.get_attributes("missing@example.org"), IdentityAttributes())
+
+        disabled = self._entry(
+            mail=["alice@example.org"], givenName=["Alice"], sn=["Example"],
+            userAccountControl=["514"],
+        )
+        disabled_connection = type("ConnectionStub", (), {
+            "entries": [disabled], "search": lambda self, **kwargs: None, "unbind": lambda self: None,
+        })()
+        with patch("identity.providers.ldap.ldap3.Server"), patch(
+            "identity.providers.ldap.ldap3.Connection", return_value=disabled_connection
+        ):
+            self.assertEqual(await provider.get_attributes("alice@example.org"), IdentityAttributes())
+
+    async def test_ldap_requires_ldaps_and_email_filter_placeholder(self):
+        from identity.providers.ldap import LDAPAttributeProvider
+        with self.assertRaisesRegex(ValueError, "LDAPS URL"):
+            LDAPAttributeProvider("ldap://dc.example.org", "reader", "secret", "DC=example,DC=org")
+        with self.assertRaisesRegex(ValueError, "placeholder"):
+            LDAPAttributeProvider(
+                "ldaps://dc.example.org", "reader", "secret", "DC=example,DC=org",
+                user_filter="(objectClass=user)",
+            )
+
+    async def test_missing_ldap_configuration_is_reported_as_provider_unavailable(self):
+        from identity.providers.ldap import LDAPAttributeProvider
+        from identity.providers.authentik import IdentityProviderUnavailable
+        provider = LDAPAttributeProvider("", "", "", "")
+        with self.assertRaises(IdentityProviderUnavailable):
+            await provider.get_attributes("alice@example.org")
