@@ -155,7 +155,8 @@ def decrypt_archive(
             temporary = Path(stream.name)
         os.chmod(temporary, 0o600)
         _run_age(
-            ["--decrypt", "--identity", str(identity), "--output", str(temporary), str(source)],
+            ["--decrypt", "--identity", str(identity), str(source)],
+            output_path=temporary,
             timeout=timeout,
             executable=executable,
         )
