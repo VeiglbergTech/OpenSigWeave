@@ -110,7 +110,13 @@
         </div>
 
         {% if is_admin %}
-        <div x-show="tab === 'admin'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
+        <div x-show="tab === 'admin'" x-cloak>
+            <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
+                <button @click="adminTab = 'domains'" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
+                <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+            </div>
+        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
@@ -135,7 +141,7 @@
             </div>
         </div>
 
-        <div x-data="signatureManager" x-init="fetchAll()" class="mt-10 space-y-5">
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="space-y-5">
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-2xl font-semibold">Signature Catalog</h2>
@@ -156,7 +162,7 @@
                                     <div class="text-xs text-gray-500 font-mono mt-1" x-text="formatSignatureMarker(signature)"></div>
                                 </td>
                                 <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
-                                <td class="px-4 py-3 text-sm" x-text="signature.scope === 'GLOBAL' ? 'Global' : 'Domain #' + signature.domain_id"></td>
+                                <td class="px-4 py-3 text-sm" x-text="domainNames(signature)"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="signature.variants"></td>
                                 <td class="px-4 py-3"><span class="text-xs" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Inactive'"></span></td>
@@ -180,12 +186,15 @@
                             <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option>
                         </select>
                     </label>
-                    <label class="text-sm text-gray-300">Domain scope
-                        <select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
-                            <option value="">Global</option>
-                            <template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
-                        </select>
-                    </label>
+                    <div class="text-sm text-gray-300 md:col-span-2">
+                        <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
+                            <template x-for="domain in domains" :key="domain.id">
+                                <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(Number(domain.id))" @change="toggleDomain(domain.id, $event.target.checked)" class="rounded"><span x-text="domain.domain_name"></span></label>
+                            </template>
+                            <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
+                        </div>
+                    </div>
                     <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
                     <label x-show="!form.id" class="text-sm text-gray-300">Initial variant weight<input type="number" min="1" max="1000" x-model.number="form.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                 </div>
@@ -212,7 +221,7 @@
             </div>
         </div>
 
-        <div x-data="ruleManager" x-init="fetchAll()" class="mt-10 space-y-5">
+        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="fetchAll()" class="space-y-5">
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-2xl font-semibold">Signature Rules</h2>
@@ -281,6 +290,7 @@
                     <button @click="saveRule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Rule</button>
                 </div>
             </div>
+        </div>
         </div>
         {% endif %}
 
