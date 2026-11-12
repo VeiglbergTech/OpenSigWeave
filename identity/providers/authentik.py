@@ -5,12 +5,9 @@ from urllib.parse import urlsplit
 import httpx2 as httpx
 
 from identity.attributes import IdentityAttributes
+from identity.providers.base import IdentityProviderUnavailable
 
 logger = logging.getLogger(__name__)
-
-
-class IdentityProviderUnavailable(RuntimeError):
-    """Raised when a fresh identity lookup could not be completed reliably."""
 
 
 def _attribute_value(value) -> str:
