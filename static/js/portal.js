@@ -92,6 +92,7 @@ window.fetch = (resource, options = {}) => {
     return {
         tab: "personal",
         adminTab: "domains",
+        init() { if (document.body.dataset.idpSetupRequired === "true") { this.openAdmin(); this.adminTab = "identity-providers"; } },
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
         openAdmin() { this.tab = "admin"; this.adminTab = "domains"; },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
@@ -124,7 +125,7 @@ function identityProviderManager() { return {
     form: {id:'', original_id:null, display_name:'', provider_type:'authentik', is_enabled:true, settings:{}},
     async fetchAll() {
         const response = await fetch('/api/admin/identity-providers');
-        if (response.ok) this.providers = await response.json();
+        if (response.ok) { this.providers = await response.json(); if (this.providers.length === 0) this.newProvider(); }
         else notify('Could not load identity providers.', 'error');
     },
     newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5',LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'}}; this.editing=true; },
