@@ -91,7 +91,8 @@ For the standalone Docker deployment you need:
 - Git.
 - A DNS name for the portal, for example `signature.example.org`.
 - HTTPS termination through a reverse proxy (the session cookie is Secure).
-- Either an Authentik OAuth2/OpenID Provider (`OIDC_ENABLED=true`, the default), or a local administrator email and scrypt password hash (`OIDC_ENABLED=false`).
+- A local administrator email and scrypt password hash for emergency access.
+- An Authentik OIDC provider or LDAP / Active Directory directory if users should sign in through a managed identity provider.
 
 The application container listens on port `8085`. Compose publishes it on `127.0.0.1:8085` only. PostgreSQL is not published to the host.
 
@@ -141,13 +142,13 @@ All three values must be independent. Use the generated URL-safe values without 
 
 The Compose file constructs the internal PostgreSQL `DATABASE_URL` from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. Keep the example `DATABASE_URL` password synchronized if you inspect or use it outside Compose; Compose overrides it for the application container.
 
-### 2.3 Run without OIDC (local administrator)
+### 2.3 Configure the local administrator emergency account
 
-For an isolated standalone test installation, set:
+New installations use managed identity providers and keep a local administrator account as an independent recovery path. Set:
 
 ```dotenv
 OIDC_ENABLED="false"
-APP_ALLOWED_HOSTS="signature-test.example.org"
+APP_ALLOWED_HOSTS="signature.example.org"
 LOCAL_ADMIN_EMAIL="admin@example.org"
 LOCAL_ADMIN_PASSWORD_HASH='scrypt$...'
 ```
@@ -158,106 +159,86 @@ Generate the password hash interactively from the repository root:
 python scripts/hash_password.py
 ```
 
- characters; do not put the plaintext password in the environment file. Use a password of at least 12 characters and protect `.env` with mode `0600`.
+The utility prompts twice and prints a salted scrypt hash. Put that complete value in `LOCAL_ADMIN_PASSWORD_HASH`, wrapped in single quotes because the hash contains `#` characters. Never put the plaintext password in the environment file. Use a password of at least 12 characters and protect `.env` with mode `0600`.
 
-When OIDC is disabled, OpenSigWeave does not require or initialize OIDC discovery, client credentials, redirect URI, or Authentik API access. The `/auth` callback route is not registered. The `/login` page provides the local administrator login, and the local account receives the `signature-admins` and `signature-users` roles. Local profile attributes (name, title, phone, groups and claims) are empty; signature selection and administration can still be tested, but rules depending on external identity attributes cannot be meaningfully evaluated.
+With `OIDC_ENABLED=false`, the legacy root-level OIDC client is not initialized and the legacy `/auth` callback is not registered. Managed provider callbacks at `/auth/{provider-id}` remain available. The local account receives the `signature-admins` and `signature-users` roles. Configure a separate profile provider on each domain if signatures need directory-backed profile attributes.
 
-The local account is intended for standalone administration and isolated testing. Keep the portal behind HTTPS and restrict access to trusted networks. Do not expose it directly to the internet. Switching `OIDC_ENABLED` changes the authentication mode on restart; it does not migrate or link user identities between local and OIDC accounts.
+### 2.4 Configure a managed Authentik OIDC provider
 
-### 2.4 Configure the OIDC provider in Authentik
-
-Create an OAuth2/OpenID Provider and an application in Authentik.
-
-Configure the provider for the Authorization Code flow and register this exact redirect URI:
+Create an OAuth2/OpenID Provider and an application in Authentik. Choose a stable provider ID in OpenSigWeave, for example `authentik-main`. Register this exact HTTPS redirect URI at Authentik:
 
 ```text
-https://signature.example.org/auth
+https://signature.example.org/auth/authentik-main
 ```
 
-Replace the hostname with the real portal hostname. The URI must match `OIDC_REDIRECT_URI` exactly, including the `/auth` path and scheme.
+Replace the hostname and provider ID with your actual values. In OpenSigWeave, open **Administration → Identity Providers**, create an Authentik provider and enter:
 
-The application expects the OIDC UserInfo response to contain:
+- **OIDC discovery URL:** for example `https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration`.
+- **OIDC client ID** and **OIDC client secret** from the Authentik provider.
+- **OIDC scopes:** normally `openid email profile groups` plus any custom scopes you use.
+- **OIDC callback / redirect URI:** the exact URI registered above.
+- **OIDC post-logout redirect URI:** optional; register it at Authentik if your provider requires an allowlist.
+- **Authentik API URL** and a read-only **API token** only if this provider will also be used for employee profile lookup.
 
+The provider's settings are written to `.idp/authentik-main/.env`. They are not stored in the root `.env` or returned by the management API.
+
+The OIDC UserInfo response must contain:
 - `sub`: stable user subject.
 - `email`: the user's email address.
 - `email_verified`: the JSON boolean `true`.
-- `groups`: a JSON array of group names. Authentik's default `profile` scope mapping includes group membership.
-- `attributes`: an object containing the profile fields `phone` and `title`.
+- `groups`: a JSON array of group names.
 
-**Important for Authentik 2025.10 and newer:** the default `email` scope mapping returns `email_verified: false` unless you explicitly provide a verified value. OpenSigWeave rejects login unless the claim is the JSON boolean `true`. Do not simply hard-code it to true for unverified addresses.
+**Important for Authentik 2025.10 and newer:** the default `email` scope mapping may return `email_verified: false` unless you explicitly provide a verified value. OpenSigWeave rejects login unless the claim is the JSON boolean `true`. Do not simply hard-code it to true for unverified addresses.
 
-Create a custom scope mapping:
+If you use a custom scope mapping, return a verified boolean only after the email address has actually been verified. For example:
 
-1. In Authentik Admin, open **Customization → Property Mappings** and create a **Scope Mapping**.
-2. Name it `OpenSigWeave claims` and set its scope name to `opensigweave`.
-3. Use this expression:
+```python
+return {
+    "email_verified": request.user.attributes.get("email_verified", False),
+}
+```
 
-   ```python
-   return {
-       "email_verified": request.user.attributes.get("email_verified", False),
-       "attributes": {
-           "phone": request.user.attributes.get("phone", ""),
-           "title": request.user.attributes.get("title", ""),
-       },
-   }
-   ```
-
-4. Save the mapping and add it to the OAuth2/OpenID Provider's **Advanced protocol settings → Scopes** (scope mappings).
-5. In each Authentik user record, set the custom `email_verified` attribute to the boolean `true` only after the address has actually been verified. Set `phone` and `title` as user attributes when needed.
-6. Keep the default `profile` and `email` mappings assigned to the provider. Confirm that the UserInfo response contains a `groups` array and the expected custom claims.
-
-The configured scopes in `.env.example` are `openid email profile opensigweave`. A scope name is not enough by itself: the mapping must be assigned to the provider and the client must request that scope.
-
-Official Authentik references: [create an OAuth2/OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/), [OAuth2 provider scopes and email verification](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/), and [provider property mappings](https://docs.goauthentik.io/add-secure-apps/providers/property-mappings/).
-
-Create these groups in Authentik:
+Keep the provider's default group mapping or add a mapping that returns a `groups` array. Create these groups in Authentik:
 
 - `signature-users`
 - `signature-admins`
 
 Add ordinary portal users to `signature-users`. Add administrators to `signature-admins`; administrators can also be members of `signature-users` if they need the normal user view.
 
-Copy the provider's Client ID and Client Secret into `.env`:
-
-- `OIDC_CLIENT_ID`
-- `OIDC_CLIENT_SECRET`
-
-Set the following values to match your Authentik deployment:
-
-- `AUTHENTIK_URL`: base URL only, for example `https://auth.example.org`.
-- `AUTHENTIK_SLUG`: the application slug used in the Authentik provider URL.
-- `OIDC_DISCOVERY_URL`: normally `https://auth.example.org/application/o/opensigweave/.well-known/openid-configuration`.
-- `OIDC_REDIRECT_URI`: the exact HTTPS callback URI registered above.
-
-When OIDC is enabled, the application also uses Authentik's API to retrieve employee profile fields and group/attribute data during signature compilation. Create a dedicated Authentik service account and API token:
+If Authentik is also selected as the domain's **Profile Provider**, create a dedicated service account and API token:
 
 1. Open **Directory → Users → New User** and select **Service Account**.
 2. Create a dedicated role under **Directory → Roles**.
 3. Grant that role the global **Can view User** permission. The current attribute provider queries `/api/v3/core/users/` by email and needs read access to user records; it does not need user write permissions.
 4. Assign the role to the service account.
 5. Open **Directory → Tokens and App passwords → Create**, select the service account and choose **API Token** as the intent.
-6. Copy the token when it is shown and set `AUTHENTIK_API_TOKEN` in `.env`.
+6. Copy the token when shown and enter it in the provider's API token field in OpenSigWeave.
 
 Do not use a personal administrator token. Prefer an expiring token and document its renewal date. See the [Authentik service account documentation](https://docs.goauthentik.io/users-sources/user/account-types/service-accounts/) and [permission management](https://docs.goauthentik.io/users-sources/access-control/manage_permissions/).
 
-The Authentik attribute lookup uses the exact email address and requires exactly one active matching account. If the API token or lookup is technically unavailable, the engine falls back to the last successfully cached identity attributes in PostgreSQL. A confirmed missing or inactive account clears the cached attributes. If no cached record exists yet, the engine proceeds with empty profile attributes; the web login may still work, but signatures relying on those attributes will not render as expected.
+Finally, create or edit the relevant domain in OpenSigWeave and select **Authentik Main** as its Login Provider. Select a profile provider independently; the two assignments do not have to point to the same provider.
+
+Official Authentik references: [create an OAuth2/OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/), [OAuth2 provider scopes and email verification](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/), and [provider property mappings](https://docs.goauthentik.io/add-secure-apps/providers/property-mappings/).
 
 ### 2.5 Review the environment
 
-Always configure these common values:
+Always configure these common values in the root `.env`:
 
 ```dotenv
 POSTGRES_PASSWORD="..."
 SECRET_KEY="..."
 ENGINE_API_KEY="..."
+OIDC_ENABLED="false"
+APP_ALLOWED_HOSTS="signature.example.org"
+LOCAL_ADMIN_EMAIL="admin@example.org"
+LOCAL_ADMIN_PASSWORD_HASH='scrypt$...'
 ```
 
-Then configure only the selected authentication mode:
+The root `.env` contains application and database settings. Managed Authentik and LDAP credentials belong in their respective `.idp/{provider-id}/.env` files, which are created and maintained by the portal.
 
-- **OIDC enabled:** set `OIDC_ENABLED="true"` and configure `OIDC_DISCOVERY_URL`, `OIDC_REDIRECT_URI`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `AUTHENTIK_URL`, `AUTHENTIK_SLUG` and `AUTHENTIK_API_TOKEN`.
-- **Local-only:** set `OIDC_ENABLED="false"`, `APP_ALLOWED_HOSTS` to the exact portal hostname, and configure `LOCAL_ADMIN_EMAIL` plus the generated `LOCAL_ADMIN_PASSWORD_HASH`. OIDC and Authentik values may be empty or omitted.
+Set `OIDC_ENABLED="true"` only when you deliberately need the legacy, single-provider root-level OIDC compatibility flow. In that mode, configure the legacy OIDC variables in the root `.env`. It is not required for managed Authentik or LDAP providers.
 
-When OIDC is enabled, the hostname in `OIDC_REDIRECT_URI` is canonical. In local-only mode, `APP_ALLOWED_HOSTS` must contain at least one explicit hostname. Never use wildcards, schemes, ports or paths in this setting.
+In managed-provider mode, `APP_ALLOWED_HOSTS` must contain at least one explicit portal hostname. Never use wildcards, schemes, ports or paths in this setting.
 
 ### 2.6 Validate and start Docker Compose
 
@@ -314,7 +295,7 @@ Caddy obtains and renews the certificate automatically when DNS and inbound conn
 
 If your reverse proxy runs in a separate Docker bridge network or on another host, `127.0.0.1` will not refer to the OpenSigWeave host from inside that proxy. Do not expose port `8085` publicly. Instead, deliberately publish it on a private interface, restrict access with the host firewall to the proxy address/network, and configure `TRUSTED_PROXY_CIDRS` only for the actual proxy peer networks. Never trust arbitrary client-supplied forwarding headers.
 
-The reverse proxy must preserve the canonical Host header. The application validates it against the hostname in `OIDC_REDIRECT_URI` and any explicit `APP_ALLOWED_HOSTS` entries.
+The reverse proxy must preserve the canonical Host header. In managed-provider mode the application validates it against `APP_ALLOWED_HOSTS`; the legacy global OIDC compatibility mode also derives its canonical hostname from `OIDC_REDIRECT_URI`.
 
 After HTTPS is active, open:
 
@@ -322,7 +303,7 @@ After HTTPS is active, open:
 https://signature.example.org/
 ```
 
-You should be redirected to Authentik. Sign in with a user in one of the configured groups.
+You should see the email-first login page. Enter an email address whose domain is assigned to an enabled login provider; Authentik users are then redirected to Authentik, while LDAP users enter their directory password.
 
 ## 4. First application test
 
@@ -414,15 +395,15 @@ Check that `POSTGRES_PASSWORD` is set and that the Compose-generated `DATABASE_U
 
 ### Browser reports an invalid Host
 
-Use the exact hostname from `OIDC_REDIRECT_URI` in the browser. If a deliberate alias is required, add only that hostname to `APP_ALLOWED_HOSTS` and restart the application.
+Use a hostname listed in `APP_ALLOWED_HOSTS`. In legacy global OIDC mode, the hostname in `OIDC_REDIRECT_URI` is also canonical.
 
 ### OIDC callback fails
 
 Check:
 
-- `OIDC_DISCOVERY_URL` is reachable from the container and uses HTTPS.
-- The Client ID and Client Secret match the Authentik provider.
-- The redirect URI registered in Authentik exactly matches `OIDC_REDIRECT_URI`.
+- The provider is enabled and its discovery URL is reachable from the container over HTTPS.
+- The Client ID and Client Secret match the managed Authentik provider configuration.
+- The redirect URI registered in Authentik exactly matches the provider's `OIDC_REDIRECT_URI` and ends in `/auth/{provider-id}`.
 - The reverse proxy preserves the canonical Host header.
 - UserInfo returns a verified email and a `groups` JSON array containing the expected group names.
 
