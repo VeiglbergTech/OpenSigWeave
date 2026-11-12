@@ -14,6 +14,7 @@ class DomainDB(Base):
     trim_whitespace = Column(Boolean, default=True)
     strip_device_signatures = Column(Boolean, default=False)
     template_html = Column(Text, default="<p>Best Regards,</p><p><br></p><p><strong>{{ first_name }} {{ last_name }}</strong></p><p>{{ title }} | {{ domain_name }}</p>")
+    identity_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
 
 class UserOverrideDB(Base):
     __tablename__ = "user_overrides"
@@ -118,3 +119,13 @@ class IdentityCacheDB(Base):
     claims = Column(JSON, nullable=False, default=dict)
     attributes = Column(JSON, nullable=False, default=dict)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class IdentityProviderDB(Base):
+    """Non-secret metadata for filesystem-backed identity providers."""
+    __tablename__ = "identity_providers"
+    id = Column(String(64), primary_key=True)
+    display_name = Column(String(120), nullable=False)
+    provider_type = Column(String(32), nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
