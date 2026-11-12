@@ -15,6 +15,7 @@ class DomainDB(Base):
     strip_device_signatures = Column(Boolean, default=False)
     template_html = Column(Text, default="<p>Best Regards,</p><p><br></p><p><strong>{{ first_name }} {{ last_name }}</strong></p><p>{{ title }} | {{ domain_name }}</p>")
     identity_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
+    authentication_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
 
 class UserOverrideDB(Base):
     __tablename__ = "user_overrides"
