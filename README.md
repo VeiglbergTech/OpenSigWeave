@@ -72,7 +72,7 @@ The identity cache is isolated by provider ID and normalized sender address, so 
 
 ## Current limitations
 
-- Live interactive authentication against real Authentik and Active Directory servers still needs an end-to-end test. Managed OIDC upstream logout is not implemented yet; OpenSigWeave clears its own session but may leave the IdP session active.
+- Live interactive authentication and discovery-based logout against real Authentik and Active Directory servers still need an end-to-end test. The legacy global OIDC compatibility path retains its Authentik-specific logout behavior.
 - The previous global OIDC configuration is retained for compatibility; new installations should use per-provider `.idp/{provider-id}/.env` files.
 - The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
 - Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
