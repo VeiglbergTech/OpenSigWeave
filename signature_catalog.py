@@ -8,6 +8,7 @@ from core.modes import SignatureMode
 from models import (
     DomainDB,
     SignatureDB,
+    SignatureDomainDB,
     SignatureVariantDB,
     SignatureVersionDB,
 )
@@ -49,7 +50,8 @@ def create_signature(
     store: SignatureFileStore,
     *,
     name: str,
-    domain_id: int | None,
+    domain_id: int | None = None,
+    domain_ids: list[int] | None = None,
     mode: SignatureMode,
     html_content: str,
     weight: int = 1,
@@ -60,8 +62,9 @@ def create_signature(
         raise ValueError("name must not be empty")
     if weight < 1:
         raise ValueError("weight must be positive")
-    if domain_id is not None and session.get(DomainDB, domain_id) is None:
-        raise ValueError("domain_id does not exist")
+    assigned_domain_ids = sorted(set(domain_ids if domain_ids is not None else ([domain_id] if domain_id is not None else [])))
+    if assigned_domain_ids and any(session.get(DomainDB, item) is None for item in assigned_domain_ids):
+        raise ValueError("One or more domain_ids do not exist")
 
     existing_names = session.execute(select(SignatureDB.name)).scalars().all()
     if any(existing.casefold() == name.strip().casefold() for existing in existing_names):
@@ -71,8 +74,8 @@ def create_signature(
     signature = SignatureDB(
         id=signature_id,
         name=name.strip(),
-        domain_id=domain_id,
-        scope="DOMAIN" if domain_id is not None else "GLOBAL",
+        domain_id=assigned_domain_ids[0] if len(assigned_domain_ids) == 1 else None,
+        scope="DOMAIN" if assigned_domain_ids else "GLOBAL",
         mode=mode.value,
         is_active=is_active,
     )
@@ -84,6 +87,9 @@ def create_signature(
         raise ValueError(str(exc)) from exc
     try:
         session.add(signature)
+        session.flush()
+        for assigned_domain_id in assigned_domain_ids:
+            session.add(SignatureDomainDB(signature_id=signature_id, domain_id=assigned_domain_id))
         version, stored = _persist_version(
             session, store, signature_id, name.strip(), html_content, created_by, 1
         )
@@ -200,7 +206,8 @@ def update_signature(
     signature_id: str,
     *,
     name: str,
-    domain_id: int | None,
+    domain_id: int | None = None,
+    domain_ids: list[int] | None = None,
     is_active: bool,
 ) -> SignatureDB:
     """Update mutable catalog metadata without changing a signature's mode."""
@@ -209,8 +216,9 @@ def update_signature(
         raise SignatureNotFoundError(signature_id)
     if not name.strip():
         raise ValueError("name must not be empty")
-    if domain_id is not None and session.get(DomainDB, domain_id) is None:
-        raise ValueError("domain_id does not exist")
+    assigned_domain_ids = sorted(set(domain_ids if domain_ids is not None else ([domain_id] if domain_id is not None else [])))
+    if assigned_domain_ids and any(session.get(DomainDB, item) is None for item in assigned_domain_ids):
+        raise ValueError("One or more domain_ids do not exist")
     old_name = signature.name
     new_name = name.strip()
     existing_names = session.execute(
@@ -232,8 +240,11 @@ def update_signature(
                 f"signatur/{old_name}/", f"signatur/{new_name}/", 1
             )
     signature.name = new_name
-    signature.domain_id = domain_id
-    signature.scope = "DOMAIN" if domain_id is not None else "GLOBAL"
+    signature.domain_id = assigned_domain_ids[0] if len(assigned_domain_ids) == 1 else None
+    signature.scope = "DOMAIN" if assigned_domain_ids else "GLOBAL"
+    session.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == signature_id).delete(synchronize_session=False)
+    for assigned_domain_id in assigned_domain_ids:
+        session.add(SignatureDomainDB(signature_id=signature_id, domain_id=assigned_domain_id))
     signature.is_active = bool(is_active)
     try:
         session.commit()
