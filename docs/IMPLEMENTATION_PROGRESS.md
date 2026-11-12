@@ -30,6 +30,8 @@ This document describes the current branch state. It is not a promise that defer
 - Signature catalog with global/domain scope, active state and immutable HTML versions.
 - Hybrid persistence: PostgreSQL metadata and versioned HTML files with SHA-256 integrity validation.
 - Signature variants with weights and per-sender selection state to avoid immediate repeats.
+- Backup archive primitives with versioned manifests, SHA-256 inventory, bounded archive verification and safe extraction.
+- age-based encryption/decryption helpers and a staging-directory CLI for packaging, verifying and decrypting archives. This is not yet a Docker-volume snapshot or complete disaster-recovery workflow.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -101,7 +103,8 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 ### Operations
 
-- The Compose deployment has persistent volumes, but backup/restore commands and UI are not implemented. The design is specified in [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md); it defines full encrypted cross-host disaster recovery, selective UI exports, integrity verification and safe restore requirements.
+- Docker-aware backup creation, volume snapshot orchestration, full restore, administrator UI exports and cross-host restore drill are not implemented. The archive/encryption foundation and staging-directory CLI are present; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+- CI run `43286877301` passed syntax checks, security scans, migrations and Docker smoke tests but failed in regression tests because the archive inventory incorrectly treated `manifest.json` as a payload file. The bug has been corrected; a fresh CI run is still required to confirm the fix and the new encryption/CLI tests.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
 
@@ -109,7 +112,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 1. Complete a real-browser test of login, permissions, signature editing, rules and logout.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Implement the versioned encrypted backup/restore workflow from [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md), then complete a cross-host restore drill covering PostgreSQL, signature files, IDP credentials and deployment configuration.
+3. Complete Docker-aware snapshot orchestration and safe restore around the implemented archive/encryption foundation, then complete a cross-host restore drill covering PostgreSQL, signature files, IDP credentials and deployment configuration.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
