@@ -5,7 +5,7 @@ import json
 import hmac
 import hashlib
 import secrets
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -661,8 +661,31 @@ app.add_api_route("/auth/{provider_id}", managed_oidc_callback, methods=["GET"],
 
 @app.post("/logout")
 async def logout(request: Request):
+    user = request.session.get("user") or {}
+    auth_source = user.get("auth_source")
+    provider_id = user.get("auth_provider_id")
     request.session.clear()
-    if not OIDC_ENABLED:
+
+    if auth_source == "oidc" and provider_id:
+        try:
+            client, config = managed_oidc_client(provider_id)
+            metadata = await client.load_server_metadata()
+            endpoint = metadata.get("end_session_endpoint") if isinstance(metadata, dict) else None
+            endpoint_parts = urlsplit(str(endpoint or ""))
+            if endpoint_parts.scheme != "https" or not endpoint_parts.hostname:
+                raise ValueError("OIDC provider has no valid HTTPS end-session endpoint")
+            callback_parts = urlsplit(config["OIDC_REDIRECT_URI"])
+            post_logout_uri = config.get("OIDC_POST_LOGOUT_REDIRECT_URI") or urlunsplit((
+                callback_parts.scheme, callback_parts.netloc, "/login", "", "",
+            ))
+            separator = "&" if "?" in endpoint else "?"
+            logout_url = f"{endpoint}{separator}{urlencode({'post_logout_redirect_uri': post_logout_uri})}"
+            return {"logout_url": logout_url}
+        except Exception as exc:
+            logger.warning("Managed OIDC logout could not be prepared for provider %s (%s)", provider_id, type(exc).__name__)
+            return {"logout_url": "/login"}
+
+    if auth_source != "oidc" or not OIDC_ENABLED:
         return {"logout_url": "/login"}
     authentik_url = os.environ.get("AUTHENTIK_URL", "").rstrip("/")
     slug = os.environ.get("AUTHENTIK_SLUG", "")
