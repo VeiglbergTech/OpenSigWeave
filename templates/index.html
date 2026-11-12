@@ -150,6 +150,7 @@
                             <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">OIDC scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm md:col-span-2">OIDC callback / redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/auth-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                         </div>
                     </div>
                     <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
