@@ -1,0 +1,157 @@
+"""LDAP/Active Directory employee attribute provider (LDAPS only)."""
+import asyncio
+import logging
+import re
+import ssl
+from urllib.parse import urlsplit
+
+import ldap3
+from ldap3.core.exceptions import LDAPException
+from ldap3.utils.conv import escape_filter_chars
+
+from identity.attributes import IdentityAttributes
+from identity.providers.authentik import IdentityProviderUnavailable
+
+logger = logging.getLogger(__name__)
+
+
+def _first(value) -> str:
+    if isinstance(value, (list, tuple)):
+        return str(value[0]) if value else ""
+    return "" if value is None else str(value)
+
+
+def _values(value) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item) for item in value if item is not None]
+    return [str(value)]
+
+
+def _group_name(distinguished_name: str) -> str:
+    match = re.search(r"(?:^|,)\\s*CN=([^,]+)", distinguished_name, re.IGNORECASE)
+    return match.group(1).replace(r"\\,", ",") if match else distinguished_name
+
+
+class LDAPAttributeProvider:
+    """Read profile attributes from LDAP using a dedicated read-only bind account.
+
+    LDAPS and certificate validation are mandatory. The default filter targets
+    Active Directory user objects by their mail attribute; deployments can
+    override it while retaining the required {email} substitution.
+    """
+
+    def __init__(
+        self,
+        url: str,
+        bind_dn: str,
+        bind_password: str,
+        base_dn: str,
+        user_filter: str = "(&(objectCategory=person)(objectClass=user)(mail={email}))",
+        timeout: float = 5.0,
+    ):
+        self.url = url.rstrip("/")
+        self.bind_dn = bind_dn
+        self.bind_password = bind_password
+        self.base_dn = base_dn
+        self.user_filter = user_filter
+        self.timeout = timeout
+        parsed = urlsplit(self.url)
+        if self.url and (
+            parsed.scheme != "ldaps"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("LDAP_URL must be an LDAPS URL without embedded credentials, query or fragment")
+        if "{email}" not in self.user_filter:
+            raise ValueError("LDAP_USER_FILTER must contain the {email} placeholder")
+
+    async def get_attributes(self, email: str) -> IdentityAttributes:
+        if not all((self.url, self.bind_dn, self.bind_password, self.base_dn)):
+            raise IdentityProviderUnavailable("LDAP attribute provider is not fully configured")
+        try:
+            return await asyncio.to_thread(self._lookup, email.strip())
+        except IdentityProviderUnavailable:
+            raise
+        except (LDAPException, OSError, ValueError, TypeError) as exc:
+            logger.warning("LDAP attribute lookup failed: %s", type(exc).__name__)
+            raise IdentityProviderUnavailable("LDAP attribute lookup failed") from exc
+
+    def _lookup(self, email: str) -> IdentityAttributes:
+        server = ldap3.Server(
+            self.url,
+            use_ssl=True,
+            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED),
+            get_info=ldap3.NONE,
+            connect_timeout=self.timeout,
+        )
+        connection = None
+        try:
+            connection = ldap3.Connection(
+                server,
+                user=self.bind_dn,
+                password=self.bind_password,
+                auto_bind=True,
+                receive_timeout=self.timeout,
+                raise_exceptions=True,
+            )
+            search_filter = self.user_filter.replace("{email}", escape_filter_chars(email))
+            connection.search(
+                search_base=self.base_dn,
+                search_filter=search_filter,
+                search_scope=ldap3.SUBTREE,
+                attributes=[
+                    "mail", "givenName", "sn", "displayName", "title",
+                    "telephoneNumber", "memberOf", "sAMAccountName",
+                    "distinguishedName", "userAccountControl",
+                ],
+                size_limit=3,
+            )
+            entries = list(connection.entries)
+            if not entries:
+                return IdentityAttributes()
+            if len(entries) != 1:
+                raise IdentityProviderUnavailable("LDAP returned ambiguous matching accounts")
+
+            entry = entries[0]
+            data = entry.entry_attributes_as_dict
+            found_email = _first(data.get("mail")).strip().casefold()
+            if found_email != email.casefold():
+                raise IdentityProviderUnavailable("LDAP result did not match the requested email")
+            account_control = _first(data.get("userAccountControl"))
+            if account_control:
+                try:
+                    if int(account_control) & 2:
+                        return IdentityAttributes()
+                except ValueError as exc:
+                    raise IdentityProviderUnavailable("LDAP returned invalid account status") from exc
+
+            groups = frozenset(
+                name for name in (_group_name(value) for value in _values(data.get("memberOf"))) if name
+            )
+            attributes = {
+                key: _values(data.get(key))
+                for key in ("title", "telephoneNumber", "displayName", "sAMAccountName")
+                if data.get(key) is not None
+            }
+            claims = {
+                key: _first(data.get(key))
+                for key in ("mail", "displayName", "sAMAccountName", "distinguishedName", "userAccountControl")
+                if data.get(key) is not None
+            }
+            return IdentityAttributes(
+                first_name=_first(data.get("givenName")),
+                last_name=_first(data.get("sn")),
+                title=_first(data.get("title")),
+                phone=_first(data.get("telephoneNumber")),
+                groups=groups,
+                claims=claims,
+                attributes=attributes,
+            )
+        finally:
+            if connection is not None:
+                connection.unbind()
