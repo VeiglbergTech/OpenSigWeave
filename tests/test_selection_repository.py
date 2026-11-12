@@ -106,7 +106,7 @@ class SelectionRepositoryTests(unittest.TestCase):
         selected_two = select_and_record_variant(
             self.session, "two@example.org", "AUTO", domain_id=domains[1].id
         )
-        self.assertEqual(selected_two.id, self.one.id)
+        self.assertEqual(selected_two.signature_id, self.one.signature_id)
         self.session.commit()
 
         selected_three = select_and_record_variant(
