@@ -13,7 +13,7 @@ COPY . .
 
 RUN groupadd --gid 10001 opensigweave \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin opensigweave \
-    && mkdir -p /data/signatures \
+    && mkdir -p /data/signatures /data/idp \
     && chown -R 10001:10001 /app /data
 
 USER 10001:10001
