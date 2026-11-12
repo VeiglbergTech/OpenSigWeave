@@ -121,8 +121,10 @@ Current persisted concepts include:
 - Signature rules and typed conditions.
 - Per-sender variant-selection state.
 - Shared database-backed rate-limit buckets.
+- Identity-provider metadata and separate per-domain login/profile-provider associations.
+- Provider-scoped cached identity attributes keyed by normalized email.
 
-An independent audit-log subsystem and a fully generic identity-provider/logout abstraction are not part of the current preview.
+An independent audit-log subsystem, SCIM provisioning and nested LDAP group expansion are not part of the current preview.
 
 ## 6. Security and operational controls
 
@@ -130,10 +132,11 @@ Current implementation includes:
 
 - Strong non-placeholder startup validation for `SECRET_KEY` and `ENGINE_API_KEY`.
 - HTTPS-only OIDC discovery and Authentik API URL validation.
-- TLS certificate verification and bounded Authentik API requests.
+- TLS certificate verification for Authentik API requests and LDAPS connections.
+- Per-provider OIDC callback validation and per-domain login-provider revalidation.
 - Secure, HttpOnly, SameSite session cookies with a one-hour lifetime.
 - Session-bound CSRF checks for state-changing browser requests.
-- Trusted Host validation derived from the configured callback hostname.
+- Trusted Host validation using explicit allowed hostnames; legacy OIDC also validates its configured callback hostname.
 - Security response headers and a global request-body size limit.
 - Server-side HTML sanitization, sandboxed previews and autoescaped template variables.
 - File-store path/symlink checks, atomic writes and SHA-256 integrity validation.
@@ -162,7 +165,7 @@ The current adapter intentionally skips multipart messages. Do not work around t
 The first testable standalone revision should focus on:
 
 - Reliable Docker installation and upgrade instructions.
-- Authentik login and group authorization when OIDC is enabled; local-only mode grants the configured local administrator account the administrator and user roles.
+- Domain-routed Authentik OIDC and LDAP/Active Directory authentication, with an independent local administrator emergency account.
 - Domain, signature, variant and rule workflows.
 - PostgreSQL persistence and signature-file persistence.
 - Browser-level verification and CSP report review.
@@ -172,8 +175,8 @@ Do not start native Mailcow UI integration in this repository. That work belongs
 
 ## 9. Deferred design work
 
-- Generic OIDC logout and non-Authentik attribute providers.
-- LDAP/Active Directory enrichment.
+- Live interactive verification against real Authentik and Active Directory servers.
+- Nested LDAP group expansion and SCIM user/group provisioning.
 - Native Mailcow authentication, user synchronization and UI integration.
 - Parser-backed multipart MIME mutation.
 - Full audit logging and retention policy.
