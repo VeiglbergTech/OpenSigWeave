@@ -5,6 +5,8 @@ import subprocess
 import sys
 import unittest
 from types import SimpleNamespace
+
+from identity.attributes import IdentityAttributes
 from urllib.parse import urlencode
 from unittest.mock import AsyncMock, patch
 
@@ -146,3 +148,106 @@ class AuthenticationConfigurationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ManagedLoginRoutingTests(unittest.IsolatedAsyncioTestCase):
+    class FakeQuery:
+        def __init__(self, result):
+            self.result = result
+
+        def filter(self, *args):
+            return self
+
+        def first(self):
+            return self.result
+
+    class FakeDatabase:
+        def __init__(self, domain, provider):
+            self.domain = domain
+            self.provider = provider
+
+        def query(self, model):
+            return ManagedLoginRoutingTests.FakeQuery(self.domain)
+
+        def get(self, model, provider_id):
+            return self.provider
+
+    def _request(self, email, password=""):
+        return SimpleNamespace(
+            session={"login_csrf": "one-time-token"},
+            headers={"content-type": "application/x-www-form-urlencoded"},
+            body=AsyncMock(return_value=urlencode({
+                "csrf_token": "one-time-token",
+                "email": email,
+                "password": password,
+            }).encode("utf-8")),
+        )
+
+    async def test_login_routes_to_ldap_and_builds_user_session(self):
+        domain = SimpleNamespace(authentication_provider_id="ad-main", is_active=True)
+        provider = SimpleNamespace(is_enabled=True, provider_type="ldap")
+        db = self.FakeDatabase(domain, provider)
+        request = self._request("alice@example.org", "directory-password")
+        identity = IdentityAttributes(
+            first_name="Alice",
+            last_name="Example",
+            title="Systems Engineer",
+            phone="+49 123",
+            groups=frozenset({"signature-users"}),
+            claims={"distinguishedname": "CN=Alice,OU=Users,DC=example,DC=org"},
+        )
+        with (
+            patch.object(main, "LOCAL_ADMIN_CONFIGURED", False),
+            patch.object(main.identity_provider_registry, "authenticate", new=AsyncMock(return_value=identity)) as authenticate,
+        ):
+            response = await main.login_submit(request, db=db)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/")
+        authenticate.assert_awaited_once_with("ad-main", "alice@example.org", "directory-password")
+        self.assertEqual(request.session["user"]["auth_source"], "ldap")
+        self.assertEqual(request.session["user"]["auth_provider_id"], "ad-main")
+        self.assertIn("signature-users", request.session["user"]["groups"])
+
+    async def test_login_starts_domain_assigned_oidc_provider(self):
+        domain = SimpleNamespace(authentication_provider_id="auth-main", is_active=True)
+        provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
+        db = self.FakeDatabase(domain, provider)
+        request = self._request("alice@example.org")
+        client = SimpleNamespace(authorize_redirect=AsyncMock(return_value=main.RedirectResponse("/provider", status_code=302)))
+        config = {"OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main"}
+        with (
+            patch.object(main, "LOCAL_ADMIN_CONFIGURED", False),
+            patch.object(main, "managed_oidc_client", return_value=(client, config)),
+        ):
+            response = await main.login_submit(request, db=db)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            request.session["pending_managed_login"],
+            {"email": "alice@example.org", "provider_id": "auth-main"},
+        )
+        client.authorize_redirect.assert_awaited_once()
+
+    async def test_managed_oidc_callback_rechecks_domain_assignment_and_email(self):
+        domain = SimpleNamespace(authentication_provider_id="auth-main", is_active=True)
+        provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
+        db = self.FakeDatabase(domain, provider)
+        request = SimpleNamespace(session={
+            "pending_managed_login": {"email": "alice@example.org", "provider_id": "auth-main"}
+        })
+        token = {"userinfo": {
+            "sub": "user-123",
+            "email": "alice@example.org",
+            "email_verified": True,
+            "groups": ["signature-users"],
+            "name": "Alice Example",
+        }}
+        client = SimpleNamespace(authorize_access_token=AsyncMock(return_value=token))
+        with patch.object(main, "managed_oidc_client", return_value=(client, {})):
+            response = await main.managed_oidc_callback("auth-main", request, db=db)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(response.headers["location"], "/")
+        self.assertEqual(request.session["user"]["email"], "alice@example.org")
+        self.assertEqual(request.session["user"]["auth_provider_id"], "auth-main")
