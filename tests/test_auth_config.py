@@ -251,3 +251,31 @@ class ManagedLoginRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.headers["location"], "/")
         self.assertEqual(request.session["user"]["email"], "alice@example.org")
         self.assertEqual(request.session["user"]["auth_provider_id"], "auth-main")
+
+
+class ManagedLogoutTests(unittest.TestCase):
+    def test_managed_oidc_logout_uses_discovered_end_session_endpoint(self):
+        request = SimpleNamespace(session={
+            "user": {"auth_source": "oidc", "auth_provider_id": "auth-main"}
+        })
+        client = SimpleNamespace(load_server_metadata=AsyncMock(return_value={
+            "end_session_endpoint": "https://auth.example.org/application/o/app/end-session/"
+        }))
+        config = {
+            "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main",
+            "OIDC_POST_LOGOUT_REDIRECT_URI": "https://signatures.example.org/login",
+        }
+        with patch.object(main, "managed_oidc_client", return_value=(client, config)):
+            response = asyncio.run(main.logout(request))
+        self.assertEqual(response["logout_url"].split("?", 1)[0], "https://auth.example.org/application/o/app/end-session/")
+        self.assertIn("post_logout_redirect_uri=https%3A%2F%2Fsignatures.example.org%2Flogin", response["logout_url"])
+        self.assertEqual(request.session, {})
+
+    def test_local_administrator_logout_does_not_redirect_to_legacy_oidc(self):
+        request = SimpleNamespace(session={
+            "user": {"auth_source": "local", "email": "admin@example.org"}
+        })
+        with patch.object(main, "OIDC_ENABLED", True):
+            response = asyncio.run(main.logout(request))
+        self.assertEqual(response, {"logout_url": "/login"})
+        self.assertEqual(request.session, {})
