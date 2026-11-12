@@ -50,6 +50,38 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.engine.dispose()
         self.tempdir.cleanup()
 
+    def test_signature_api_supports_multiple_domain_assignments(self):
+        first = main.DomainDB(domain_name="first.example", is_active=True)
+        second = main.DomainDB(domain_name="second.example", is_active=True)
+        self.db.add_all([first, second])
+        self.db.commit()
+        created = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Shared signature",
+                domain_ids=[first.id, second.id],
+                mode="AUTO",
+                html_content="<p>Shared</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        listed = main.list_signatures(self.admin_request, self.db)
+        item = next(signature for signature in listed if signature["id"] == created["id"])
+        self.assertEqual(item["domain_ids"], [first.id, second.id])
+        self.assertEqual(item["scope"], "DOMAIN")
+
+        updated = main.update_signature_endpoint(
+            created["id"],
+            main.SignatureUpdateRequest(
+                name="Shared signature",
+                domain_ids=[second.id],
+                is_active=True,
+            ),
+            self.admin_request,
+            self.db,
+        )
+        self.assertEqual(updated["domain_ids"], [second.id])
+
     def test_admin_can_create_update_and_manage_signature_variants(self):
         payload = main.SignatureCreateRequest(
             name="Corporate",
