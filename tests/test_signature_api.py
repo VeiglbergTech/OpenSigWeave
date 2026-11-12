@@ -70,6 +70,20 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(item["domain_ids"], [first.id, second.id])
         self.assertEqual(item["scope"], "DOMAIN")
 
+        second_signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Second shared signature",
+                domain_ids=[first.id],
+                mode="PROFESSIONAL",
+                html_content="<p>Second</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        first_domain_signatures = [entry for entry in main.list_signatures(self.admin_request, self.db)
+                                   if first.id in entry["domain_ids"]]
+        self.assertEqual({entry["id"] for entry in first_domain_signatures}, {created["id"], second_signature["id"]})
+
         updated = main.update_signature_endpoint(
             created["id"],
             main.SignatureUpdateRequest(
