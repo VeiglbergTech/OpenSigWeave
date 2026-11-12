@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Design specification; backup/restore commands and UI are not implemented.
+**Status:** Archive primitives, age encryption helpers and a staging-directory packaging/verification CLI are implemented. Docker snapshot orchestration, full restore and UI exports are not implemented.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -80,9 +80,11 @@ A backup must not silently proceed without the IDP volume or encryption. A delib
 
 Restore is a destructive administrative operation and must be a separate, explicit command:
 
-    opensigweave backup create
-    opensigweave backup verify <backup-file>
-    opensigweave backup restore <backup-file>
+    opensigweave-backup package --staging <prepared-directory> --output <backup.age> --recipient <age-recipient>
+    opensigweave-backup verify <backup.age> --identity <age-identity-file>
+    opensigweave-backup decrypt <backup.age> --identity <age-identity-file> --output <archive.tar.gz>
+
+The current CLI packages an already prepared staging directory. It does not yet snapshot Docker volumes or constitute the complete backup creation workflow.
 
 The restore command must:
 
@@ -138,7 +140,7 @@ A documented restore drill against a clean, disposable host is a release require
 
 ## 9. Delivery order
 
-1. Implement the versioned archive format, full encrypted console backup, and verification.
+1. Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.
 2. Implement safe restore into a fresh deployment, then destructive restore with safety snapshots.
 3. Add automated cross-host restore tests and a documented restore drill.
 4. Add selective administrator UI exports as a separate layer over the same backup components.
