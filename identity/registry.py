@@ -20,7 +20,7 @@ from identity.providers.ldap import LDAPAttributeProvider
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _COMMON = {"IDP_TYPE", "IDP_DISPLAY_NAME", "IDP_ENABLED"}
 _FIELDS = {
-    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES", "OIDC_REDIRECT_URI"},
+    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES", "OIDC_REDIRECT_URI", "OIDC_POST_LOGOUT_REDIRECT_URI"},
     "ldap": {"LDAP_URL", "LDAP_BIND_DN", "LDAP_BIND_PASSWORD", "LDAP_BASE_DN",
              "LDAP_USER_FILTER", "LDAP_TIMEOUT", "LDAP_CA_CERT_FILE"},
 }
@@ -166,6 +166,15 @@ class IdentityProviderRegistry:
                     or redirect.path.rstrip("/") != f"/auth/{slug}"
                 ):
                     raise ProviderConfigError(f"OIDC redirect URI must be HTTPS and end exactly in /auth/{slug}.")
+                post_logout = values.get("OIDC_POST_LOGOUT_REDIRECT_URI", "")
+                if post_logout:
+                    post_logout_parts = urlsplit(post_logout)
+                    if (
+                        post_logout_parts.scheme != "https" or not post_logout_parts.hostname
+                        or post_logout_parts.username is not None or post_logout_parts.password is not None
+                        or post_logout_parts.query or post_logout_parts.fragment
+                    ):
+                        raise ProviderConfigError("OIDC post-logout redirect URI must be HTTPS without embedded credentials, query or fragment.")
         existing_file = self._directory(slug) / ".env"
         if existing_file.is_symlink():
             raise ProviderConfigError("Provider configuration must not be a symbolic link.")
