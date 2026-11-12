@@ -21,7 +21,7 @@ This document describes the current branch state. It is not a promise that defer
 - Portal authorization uses the exact group names `signature-users` and `signature-admins`.
 - The profile provider is independent from the login provider and supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. Successful identity attributes are cached per provider and normalized email.
 - First administrator visit opens identity-provider setup automatically when no provider exists.
-- Managed OIDC currently clears the local application session on logout but does not yet perform a generic upstream end-session flow.
+- Managed OIDC logout discovers the provider's HTTPS end-session endpoint and supports an optional post-logout redirect URI; legacy global OIDC logout remains Authentik-specific.
 
 ### Signature functionality
 
@@ -79,7 +79,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 ### Identity
 
 - Live interactive LDAP and OIDC sign-in still need verification against a real Active Directory and Authentik instance.
-- Managed OIDC upstream logout is not implemented yet; the local application session is cleared, but the upstream identity-provider session may remain active.
+- Managed OIDC logout is implemented through discovery metadata, but the RP-initiated logout flow still needs live verification against Authentik.
 - Authentik UserInfo must provide a verified email and a groups array. The application currently uses `signature-users` and `signature-admins`.
 - The Authentik API service token and LDAP service bind retrieve profile attributes on signature lookup. Technical lookup failures fall back to the last successful PostgreSQL cache; confirmed missing or inactive accounts clear that cache. If no cached record exists, profile attributes are empty.
 
