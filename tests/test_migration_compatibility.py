@@ -70,6 +70,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
                 row[0]
                 for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
             }
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(domains)")}
             connection.close()
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
@@ -85,7 +86,6 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("identity_attribute_cache", tables)
             self.assertIn("signature_domains", tables)
             self.assertIn("identity_providers", tables)
-            columns = {row[1] for row in connection.execute("PRAGMA table_info(domains)")}
             self.assertIn("identity_provider_id", columns)
 
 
