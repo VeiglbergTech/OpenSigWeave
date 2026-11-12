@@ -3,7 +3,7 @@
 **Project:** OpenSigWeave standalone preview  
 **Working branch:** `architecture/refactor-foundation`  
 **Status:** First Docker-testable revision; not a production release  
-**Last documentation review:** 2026-11-11
+**Last documentation review:** 2026-11-12
 
 This document describes the current branch state. It is not a promise that deferred work is complete.
 
@@ -12,11 +12,16 @@ This document describes the current branch state. It is not a promise that defer
 ### Application and identity
 
 - FastAPI application with server-rendered portal and management APIs.
-- Optional OIDC Authorization Code login using a configured discovery URL; local administrator login is available when `OIDC_ENABLED=false`.
-- OIDC callback (registered only when enabled) validates subject, email, boolean `email_verified` and the `groups` array. Local-only mode uses a configured email and salted scrypt password hash.
+- Managed identity providers are stored separately in `.idp/{provider-id}/.env`; secrets are not returned by management APIs.
+- Domains have separate profile-attribute and login-provider assignments. Login is selected by the email domain.
+- Authentik supports per-provider OIDC Authorization Code login with a provider-specific callback at `/auth/{provider-id}`; discovery, client ID, client secret, scopes and redirect URI are stored in that provider's file.
+- LDAP / Active Directory supports LDAPS user authentication: a read-only service bind searches for an exact email match, then a second bind validates the submitted password as the user's DN. TLS certificate validation is mandatory and disabled AD accounts are rejected.
+- The local administrator remains an independent emergency login when configured. New installations default to `OIDC_ENABLED=false`; the previous global OIDC configuration remains an opt-in compatibility path.
+- OIDC callbacks validate subject, email, boolean `email_verified`, groups and the domain's current provider assignment.
 - Portal authorization uses the exact group names `signature-users` and `signature-admins`.
-- Authentik API-backed employee attribute lookup provides profile fields, groups, claims and custom attributes in OIDC mode; local-only mode returns empty external attributes.
-- Authentik-specific logout and attribute lookup remain; a generic OIDC-only provider is not yet fully supported.
+- The profile provider is independent from the login provider and supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. Successful identity attributes are cached per provider and normalized email.
+- First administrator visit opens identity-provider setup automatically when no provider exists.
+- Managed OIDC currently clears the local application session on logout but does not yet perform a generic upstream end-session flow.
 
 ### Signature functionality
 
@@ -56,29 +61,27 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-CI run #520 on commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62` passed:
+CI run `43228588879` on commit `18be0519f19086a8f90317770f18c8d407da70a3` passed:
 
-- Full-history Gitleaks scan.
-- Python dependency audit.
+- Full-history Gitleaks scan and Python dependency audit.
 - Python compilation, browser JavaScript syntax and Lua syntax checks.
 - Alpine CSP evaluator smoke test.
 - PostgreSQL and SQLite Alembic migrations.
-- Docker image build.
-- Compose configuration and stack startup.
-- PostgreSQL readiness and application healthchecks.
-- Alembic migration execution inside the application container.
+- Docker image build, Compose configuration and stack startup.
+- PostgreSQL readiness, application healthchecks and Alembic migration execution.
 - Authenticated signature-engine API request against the running PostgreSQL-backed application.
-- All 102 regression tests.
+- All 141 regression tests, including LDAP bind authentication, managed OIDC discovery validation, domain-based LDAP/OIDC login routing and managed OIDC callback validation.
 
-The CI run proves the container build/startup and database/API smoke path and exercises local-only startup/authentication configuration. It does not prove successful interactive OIDC login, full browser behavior or end-to-end email delivery.
+The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
 ## 3. Current limitations
 
 ### Identity
 
-- OIDC discovery and login are configurable, but the employee-attribute provider and logout URL are still Authentik-specific.
+- Live interactive LDAP and OIDC sign-in still need verification against a real Active Directory and Authentik instance.
+- Managed OIDC upstream logout is not implemented yet; the local application session is cleared, but the upstream identity-provider session may remain active.
 - Authentik UserInfo must provide a verified email and a groups array. The application currently uses `signature-users` and `signature-admins`.
-- The Authentik API service token is used to retrieve active user profile attributes on every signature lookup. Technical lookup failures fall back to the last successful PostgreSQL cache; confirmed missing or inactive accounts clear that cache. If no cached record exists, profile attributes are empty.
+- The Authentik API service token and LDAP service bind retrieve profile attributes on signature lookup. Technical lookup failures fall back to the last successful PostgreSQL cache; confirmed missing or inactive accounts clear that cache. If no cached record exists, profile attributes are empty.
 
 ### Browser and CSP
 
