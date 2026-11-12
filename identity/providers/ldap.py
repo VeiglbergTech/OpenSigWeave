@@ -86,11 +86,14 @@ class LDAPAttributeProvider:
 
     def _lookup(self, email: str) -> IdentityAttributes:
         parsed = urlsplit(self.url)
+        tls_context = ssl.create_default_context()
+        if self.ca_cert_file:
+            tls_context.load_verify_locations(cafile=self.ca_cert_file)
         server = ldap3.Server(
             parsed.hostname,
             port=parsed.port or 636,
             use_ssl=True,
-            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED, ca_certs_file=self.ca_cert_file),
+            tls=ldap3.Tls(ssl_context=tls_context),
             get_info=ldap3.NONE,
             connect_timeout=self.timeout,
         )
