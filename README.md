@@ -220,7 +220,24 @@ Finally, create or edit the relevant domain in OpenSigWeave and select **Authent
 
 Official Authentik references: [create an OAuth2/OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/), [OAuth2 provider scopes and email verification](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/), and [provider property mappings](https://docs.goauthentik.io/add-secure-apps/providers/property-mappings/).
 
-### 2.5 Review the environment
+### 2.5 Configure LDAP / Active Directory
+
+Create a dedicated directory account with read-only access to user objects and group membership. Add an LDAP provider in **Administration → Identity Providers**, for example with the ID `samba-ad`, then enter:
+
+- **LDAPS URL:** `ldaps://dc.example.org:636`.
+- **Bind DN** and **Bind password:** the read-only service account credentials.
+- **Base DN:** for example `DC=example,DC=org`.
+- **User filter:** the default is `(&(objectCategory=person)(objectClass=user)(mail={email}))`. Keep the `{email}` placeholder; the application escapes the supplied address before searching.
+- **Timeout:** normally 5 seconds.
+- **CA certificate file:** optional. If the directory uses a private CA, place the CA certificate in the provider directory and set its full container path, for example `/app/.idp/samba-ad/ca.pem`.
+
+The LDAP provider always uses TLS certificate verification. Do not use `ldap://`, disable certificate validation or bind with a domain administrator account.
+
+Use **Test connection** to verify the service bind and search. A successful search with no matching test user still confirms that the connection works. To enable login, assign this provider as the domain's **Login Provider**. You may independently assign the same or another provider as **Profile Provider**.
+
+For a successful login, the user's `mail` attribute must exactly match the submitted email address. The user must be enabled in Active Directory and belong to a group whose CN maps to `signature-users` or `signature-admins`. The current provider reads direct `memberOf` memberships; nested group expansion is not implemented.
+
+### 2.6 Review the environment
 
 Always configure these common values in the root `.env`:
 
@@ -240,7 +257,7 @@ Set `OIDC_ENABLED="true"` only when you deliberately need the legacy, single-pro
 
 In managed-provider mode, `APP_ALLOWED_HOSTS` must contain at least one explicit portal hostname. Never use wildcards, schemes, ports or paths in this setting.
 
-### 2.6 Validate and start Docker Compose
+### 2.7 Validate and start Docker Compose
 
 From `/opt/opensigweave`:
 
