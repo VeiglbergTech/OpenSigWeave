@@ -21,6 +21,7 @@ This document describes the current branch state. It is not a promise that defer
 - Portal authorization uses the exact group names `signature-users` and `signature-admins`.
 - The profile provider is independent from the login provider and supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. Successful identity attributes are cached per provider and normalized email.
 - First administrator visit opens identity-provider setup automatically when no provider exists.
+- The login page renders a separate “Anmelden mit {display_name}” box for each enabled and fully configured Authentik OIDC provider. LDAP and local administrator access remain on the email/password form.
 - Managed OIDC logout discovers the provider's HTTPS end-session endpoint and supports an optional post-logout redirect URI; legacy global OIDC logout remains Authentik-specific.
 
 ### Signature functionality
@@ -61,7 +62,7 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-CI run `43228588879` on commit `18be0519f19086a8f90317770f18c8d407da70a3` passed:
+CI run `43230164876` on commit `b0e876f3bfca64305fd8cc66e096b1e2046aa9b1` passed:
 
 - Full-history Gitleaks scan and Python dependency audit.
 - Python compilation, browser JavaScript syntax and Lua syntax checks.
@@ -70,9 +71,9 @@ CI run `43228588879` on commit `18be0519f19086a8f90317770f18c8d407da70a3` passed
 - Docker image build, Compose configuration and stack startup.
 - PostgreSQL readiness, application healthchecks and Alembic migration execution.
 - Authenticated signature-engine API request against the running PostgreSQL-backed application.
-- All 141 regression tests, including LDAP bind authentication, managed OIDC discovery validation, domain-based LDAP/OIDC login routing and managed OIDC callback validation.
+- All 146 regression tests, including LDAP bind authentication, managed OIDC discovery validation, domain-based LDAP/OIDC routing, separate OIDC provider buttons, callback validation and managed OIDC logout URL construction.
 
-The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
+The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
 ## 3. Current limitations
 
