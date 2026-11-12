@@ -101,6 +101,7 @@ signature_file_store = SignatureFileStore(
 class DomainCreate(BaseModel):
     domain_name: str = Field(min_length=3, max_length=253)
     is_active: bool = True
+    identity_provider_id: Optional[str] = Field(default=None, max_length=64)
 
 class DomainUpdate(BaseModel):
     is_active: bool
@@ -109,6 +110,7 @@ class DomainUpdate(BaseModel):
     trim_whitespace: bool
     strip_device_signatures: bool
     template_html: str = Field(max_length=65536)
+    identity_provider_id: Optional[str] = Field(default=None, max_length=64)
 
 class OverrideUpdate(BaseModel):
     html_content: str = Field(max_length=65536)
@@ -579,6 +581,10 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
     db_domain.template_html = sanitize_signature_html(domain_update.template_html)
+    if "identity_provider_id" in domain_update.model_fields_set:
+        if domain_update.identity_provider_id and db.get(IdentityProviderDB, domain_update.identity_provider_id) is None:
+            raise HTTPException(status_code=422, detail="Identity provider not found")
+        db_domain.identity_provider_id = domain_update.identity_provider_id
     db.commit()
     return {"status": "success"}
 
