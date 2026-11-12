@@ -32,11 +32,10 @@ from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, Sig
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
-from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
-from identity.providers.ldap import LDAPAttributeProvider
-from identity.providers.base import AttributeProvider
 from identity.attributes import IdentityAttributes
+from identity.registry import IdentityProviderRegistry, ProviderConfigError
+from models import IdentityProviderDB
 from core.selection_repository import select_and_record_variant
 from core.modes import SignatureMode, resolve_mode
 from core.rules import RuleContext, evaluate_rules
@@ -55,75 +54,43 @@ OIDC_ENABLED = oidc_enabled_from_env()
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 
-IDENTITY_PROVIDER = os.environ.get(
-    "IDENTITY_PROVIDER", "authentik" if OIDC_ENABLED else "none"
-).strip().casefold()
+identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
-if IDENTITY_PROVIDER == "authentik":
-    attribute_provider: AttributeProvider | None = AuthentikAttributeProvider(
-        base_url=os.environ.get("AUTHENTIK_URL", ""),
-        api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
-    )
-elif IDENTITY_PROVIDER == "ldap":
-    attribute_provider = LDAPAttributeProvider(
-        url=os.environ.get("LDAP_URL", ""),
-        bind_dn=os.environ.get("LDAP_BIND_DN", ""),
-        bind_password=os.environ.get("LDAP_BIND_PASSWORD", ""),
-        base_dn=os.environ.get("LDAP_BASE_DN", ""),
-        user_filter=os.environ.get(
-            "LDAP_USER_FILTER",
-            "(&(objectCategory=person)(objectClass=user)(mail={email}))",
-        ),
-        timeout=float(os.environ.get("LDAP_TIMEOUT", "5")),
-        ca_cert_file=os.environ.get("LDAP_CA_CERT_FILE", ""),
-    )
-elif IDENTITY_PROVIDER == "none":
-    attribute_provider = None
-else:
-    raise RuntimeError("IDENTITY_PROVIDER must be one of: authentik, ldap, none")
 
-async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes:
-    """Refresh identity data from the configured provider or return empty attributes."""
-    if attribute_provider is None:
+async def get_identity_attributes(db: Session, email: str, provider_id: str | None) -> IdentityAttributes:
+    if not provider_id:
+        return IdentityAttributes()
+    meta = db.get(IdentityProviderDB, provider_id)
+    if meta is None or not meta.is_enabled:
         return IdentityAttributes()
     normalized_email = email.strip().casefold()
+    cache_key = f"{provider_id}:{normalized_email}"
     try:
-        fresh = await attribute_provider.get_attributes(normalized_email)
+        provider = identity_provider_registry.get(provider_id)
+        if provider is None:
+            return IdentityAttributes()
+        fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
-            raise IdentityProviderUnavailable("Identity provider returned an unsupported identity result")
-        cached = db.get(IdentityCacheDB, normalized_email)
-        values = {
-            "first_name": fresh.first_name[:256],
-            "last_name": fresh.last_name[:256],
-            "title": fresh.title[:256],
-            "phone": fresh.phone[:256],
-            "groups": sorted(fresh.groups),
-            "claims": dict(fresh.claims),
-            "attributes": dict(fresh.attributes),
-        }
+            raise IdentityProviderUnavailable("Unsupported identity result")
+        cached = db.get(IdentityCacheDB, cache_key)
+        values = {"first_name": fresh.first_name[:256], "last_name": fresh.last_name[:256],
+                  "title": fresh.title[:256], "phone": fresh.phone[:256],
+                  "groups": sorted(fresh.groups), "claims": dict(fresh.claims),
+                  "attributes": dict(fresh.attributes)}
         if cached is None:
-            cached = IdentityCacheDB(email=normalized_email, **values)
-            db.add(cached)
+            db.add(IdentityCacheDB(email=cache_key, **values))
         else:
-            for key, value in values.items():
-                setattr(cached, key, value)
+            for key, value in values.items(): setattr(cached, key, value)
         db.commit()
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("%s identity refresh unavailable; attempting database fallback (%s)", IDENTITY_PROVIDER, type(exc).__name__)
-        cached = db.get(IdentityCacheDB, normalized_email)
-        if cached is None:
-            return IdentityAttributes()
-        return IdentityAttributes(
-            first_name=cached.first_name or "",
-            last_name=cached.last_name or "",
-            title=cached.title or "",
-            phone=cached.phone or "",
-            groups=frozenset(cached.groups or []),
-            claims=cached.claims or {},
-            attributes=cached.attributes or {},
-        )
+        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id, type(exc).__name__)
+        cached = db.get(IdentityCacheDB, cache_key)
+        if cached is None: return IdentityAttributes()
+        return IdentityAttributes(first_name=cached.first_name or "", last_name=cached.last_name or "",
+            title=cached.title or "", phone=cached.phone or "", groups=frozenset(cached.groups or []),
+            claims=cached.claims or {}, attributes=cached.attributes or {})
 
 signature_file_store = SignatureFileStore(
     os.environ.get("SIGNATURE_STORAGE_PATH", "./signatures")
@@ -590,7 +557,7 @@ def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     normalized_domain = normalize_domain(domain.domain_name)
-    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active)
+    if domain.identity_provider_id and db.get(IdentityProviderDB, domain.identity_provider_id) is None:\n        raise HTTPException(status_code=422, detail="Identity provider not found")\n    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id)
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
@@ -700,6 +667,71 @@ def delete_admin_override(override_id: int, request: Request, db: Session = Depe
     if override:
         db.delete(override)
         db.commit()
+    return {"status": "deleted"}
+
+
+@app.get("/api/admin/identity-providers")
+def list_identity_providers(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
+    disk = {item["id"]: item for item in identity_provider_registry.list_configs()}
+    rows = db.query(IdentityProviderDB).order_by(IdentityProviderDB.display_name.asc()).all()
+    return [{"id": row.id, "display_name": row.display_name, "provider_type": row.provider_type,
+             "is_enabled": row.is_enabled, "configured": row.id in disk} for row in rows]
+
+
+class IdentityProviderCreateRequest(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    display_name: str = Field(min_length=1, max_length=120)
+    provider_type: Literal["authentik", "ldap"]
+    settings: dict = Field(default_factory=dict)
+    is_enabled: bool = True
+
+
+@app.post("/api/admin/identity-providers", status_code=201)
+def create_identity_provider(payload: IdentityProviderCreateRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
+    if db.get(IdentityProviderDB, payload.id): raise HTTPException(status_code=409, detail="Identity provider already exists")
+    try: item = identity_provider_registry.save(payload.id, payload.display_name, payload.provider_type, payload.settings, payload.is_enabled)
+    except (ProviderConfigError, ValueError, OSError) as exc: raise HTTPException(status_code=422, detail=str(exc))
+    db.add(IdentityProviderDB(id=item["id"], display_name=item["display_name"], provider_type=item["provider_type"], is_enabled=item["is_enabled"]))
+    try: db.commit()
+    except Exception:
+        db.rollback(); identity_provider_registry.delete(payload.id); raise
+    return item
+
+
+@app.put("/api/admin/identity-providers/{provider_id}")
+def update_identity_provider(provider_id: str, payload: IdentityProviderCreateRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
+    row = db.get(IdentityProviderDB, provider_id)
+    if row is None or payload.id != provider_id: raise HTTPException(status_code=404, detail="Identity provider not found")
+    try: item = identity_provider_registry.save(provider_id, payload.display_name, payload.provider_type, payload.settings, payload.is_enabled)
+    except (ProviderConfigError, ValueError, OSError) as exc: raise HTTPException(status_code=422, detail=str(exc))
+    row.display_name, row.provider_type, row.is_enabled = item["display_name"], item["provider_type"], item["is_enabled"]
+    db.commit()
+    return item
+
+
+@app.post("/api/admin/identity-providers/{provider_id}/test")
+async def test_identity_provider(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
+    if db.get(IdentityProviderDB, provider_id) is None: raise HTTPException(status_code=404, detail="Identity provider not found")
+    try: await identity_provider_registry.test(provider_id)
+    except Exception as exc:
+        logger.warning("Identity provider test failed for %s (%s)", provider_id, type(exc).__name__)
+        raise HTTPException(status_code=422, detail="Connection test failed. Check settings and application logs.")
+    return {"status": "connected"}
+
+
+@app.delete("/api/admin/identity-providers/{provider_id}")
+def delete_identity_provider(provider_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
+    row = db.get(IdentityProviderDB, provider_id)
+    if row is None: raise HTTPException(status_code=404, detail="Identity provider not found")
+    if db.query(DomainDB).filter(DomainDB.identity_provider_id == provider_id).first():
+        raise HTTPException(status_code=409, detail="Unassign this provider from all domains before deleting it.")
+    identity_provider_registry.delete(provider_id)
+    db.delete(row); db.commit()
     return {"status": "deleted"}
 
 
@@ -1077,7 +1109,7 @@ async def get_rspamd_signature(
         if (not marker_name or len(marker_name) > 255 or len(marker_code) != 4
                 or not hmac.compare_digest(marker_code, expected_code)):
             return empty_response
-        identity_attributes = await get_identity_attributes(db, normalized_email)
+        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
         matching_signatures = (
             db.query(SignatureDB)
             .filter(
