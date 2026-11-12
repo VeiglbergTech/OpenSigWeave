@@ -10,6 +10,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any
 from dotenv import dotenv_values
 
@@ -19,7 +20,7 @@ from identity.providers.ldap import LDAPAttributeProvider
 _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _COMMON = {"IDP_TYPE", "IDP_DISPLAY_NAME", "IDP_ENABLED"}
 _FIELDS = {
-    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES"},
+    "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES", "OIDC_REDIRECT_URI"},
     "ldap": {"LDAP_URL", "LDAP_BIND_DN", "LDAP_BIND_PASSWORD", "LDAP_BASE_DN",
              "LDAP_USER_FILTER", "LDAP_TIMEOUT", "LDAP_CA_CERT_FILE"},
 }
@@ -145,6 +146,26 @@ class IdentityProviderRegistry:
         if set(settings) - allowed:
             raise ProviderConfigError("Unknown settings supplied for this provider type.")
         values = {key: str(value) for key, value in settings.items() if value is not None}
+        if kind == "authentik":
+            oidc_keys = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
+            if any(values.get(key) for key in oidc_keys):
+                if not all(values.get(key) for key in oidc_keys):
+                    raise ProviderConfigError("OIDC discovery URL, client ID, client secret and redirect URI are all required.")
+                discovery = urlsplit(values["OIDC_DISCOVERY_URL"])
+                redirect = urlsplit(values["OIDC_REDIRECT_URI"])
+                if (
+                    discovery.scheme != "https" or not discovery.hostname
+                    or discovery.username is not None or discovery.password is not None
+                    or discovery.query or discovery.fragment
+                ):
+                    raise ProviderConfigError("OIDC discovery URL must be HTTPS without embedded credentials, query or fragment.")
+                if (
+                    redirect.scheme != "https" or not redirect.hostname
+                    or redirect.username is not None or redirect.password is not None
+                    or redirect.query or redirect.fragment
+                    or redirect.path.rstrip("/") != f"/auth/{slug}"
+                ):
+                    raise ProviderConfigError(f"OIDC redirect URI must be HTTPS and end exactly in /auth/{slug}.")
         existing_file = self._directory(slug) / ".env"
         if existing_file.is_symlink():
             raise ProviderConfigError("Provider configuration must not be a symbolic link.")
@@ -185,6 +206,12 @@ class IdentityProviderRegistry:
         self.load(slug)
         return {"id": slug, "display_name": values["IDP_DISPLAY_NAME"], "provider_type": kind, "is_enabled": enabled}
 
+    def get_config(self, slug: str) -> dict[str, str]:
+        """Return raw provider settings for trusted internal authentication code only."""
+        if slug not in self._configs:
+            self.load(slug)
+        return dict(self._configs[slug])
+
     def get(self, slug: str):
         if slug not in self._providers:
             self.load(slug)
@@ -205,7 +232,39 @@ class IdentityProviderRegistry:
 
     async def test(self, slug: str, email: str = "opensigweave-provider-test@example.invalid"):
         provider = self.load(slug)
-        # A successful query with no matching account is still a valid connection.
+        values = self._configs[slug]
+        if values.get("IDP_TYPE", "").casefold() == "authentik":
+            tested = False
+            discovery_url = values.get("OIDC_DISCOVERY_URL", "")
+            if discovery_url:
+                from identity.providers.authentik import httpx
+                try:
+                    async with httpx.AsyncClient(
+                        verify=True,
+                        timeout=httpx.Timeout(float(values.get("AUTHENTIK_TIMEOUT", "5"))),
+                    ) as client:
+                        response = await client.get(discovery_url)
+                    if response.status_code != 200:
+                        raise ProviderConfigError(f"OIDC discovery returned HTTP {response.status_code}.")
+                    metadata = response.json()
+                    if not isinstance(metadata, dict):
+                        raise ProviderConfigError("OIDC discovery returned invalid metadata.")
+                    for key in ("issuer", "authorization_endpoint", "token_endpoint", "jwks_uri"):
+                        endpoint = urlsplit(str(metadata.get(key, "")))
+                        if endpoint.scheme != "https" or not endpoint.hostname:
+                            raise ProviderConfigError("OIDC discovery metadata contains an invalid HTTPS endpoint.")
+                except ProviderConfigError:
+                    raise
+                except Exception as exc:
+                    raise ProviderConfigError("OIDC discovery connection failed.") from exc
+                tested = True
+            if values.get("AUTHENTIK_URL") and values.get("AUTHENTIK_API_TOKEN"):
+                await provider.get_attributes(email)
+                tested = True
+            if not tested:
+                raise ProviderConfigError("Configure OIDC discovery or Authentik API credentials before testing.")
+            return True
+        # A successful LDAP query with no matching test account is still a valid connection.
         await provider.get_attributes(email)
         return True
 
