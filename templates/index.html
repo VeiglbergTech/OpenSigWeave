@@ -31,7 +31,7 @@
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
                 <button @click="tab = 'personal'" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
-                {% if is_admin %}<button @click="tab = 'admin'; adminTab = 'domains'" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
+                {% if is_admin %}<button @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <div class="h-6 w-px bg-gray-600"></div>
             <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" id="logout-button" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</button></div>
