@@ -19,15 +19,25 @@ class BackupEncryptionError(Exception):
     """Raised when age encryption or decryption fails."""
 
 
-def _run_age(arguments: list[str], *, timeout: int, executable: str) -> None:
+def _run_age(
+    arguments: list[str],
+    *,
+    output_path: Path,
+    timeout: int,
+    executable: str,
+) -> None:
     try:
-        result = subprocess.run(
-            [executable, *arguments],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-        )
+        # Stream binary output to a pre-created 0600 temporary file. Using
+        # age's --output with an existing tempfile can trigger no-overwrite.
+        with output_path.open("wb") as output:
+            result = subprocess.run(
+                [executable, *arguments],
+                check=False,
+                stdout=output,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=timeout,
+            )
     except FileNotFoundError as exc:
         raise BackupEncryptionError("The age executable is not installed or not in PATH") from exc
     except subprocess.TimeoutExpired as exc:
@@ -67,7 +77,8 @@ def encrypt_archive(
             temporary = Path(stream.name)
         os.chmod(temporary, 0o600)
         _run_age(
-            ["--encrypt", "--recipient", recipient, "--output", str(temporary), str(source)],
+            ["--encrypt", "--recipient", recipient, str(source)],
+            output_path=temporary,
             timeout=timeout,
             executable=executable,
         )
@@ -103,7 +114,8 @@ def decrypt_and_verify_archive(
             temporary = Path(stream.name)
         os.chmod(temporary, 0o600)
         _run_age(
-            ["--decrypt", "--identity", str(identity), "--output", str(temporary), str(source)],
+            ["--decrypt", "--identity", str(identity), str(source)],
+            output_path=temporary,
             timeout=timeout,
             executable=executable,
         )
