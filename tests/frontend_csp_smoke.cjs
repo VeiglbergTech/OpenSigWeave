@@ -116,6 +116,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(document.getElementById("toggle-content").hasAttribute("x-cloak"), false);
 
   const template = fs.readFileSync("templates/index.html", "utf8");
+  const portalJs = fs.readFileSync("static/js/portal.js", "utf8");
+  assert.match(portalJs, /Alpine\.data\("identityProviderManager", identityProviderManager\)/, "Identity provider Alpine component must be registered");
   assert.match(template, /@alpinejs\/csp@3\.17\.5/);
   assert.doesNotMatch(template, /alpinejs@3\.17\.5\/dist\/cdn\.min\.js/);
   assert.doesNotMatch(template, /x-data="\{ showHtml: false \}"/);
