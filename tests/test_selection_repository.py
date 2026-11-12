@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from core.selection_repository import select_and_record_variant
 from database import Base
-from models import SelectionStateDB, SignatureDB, SignatureVariantDB
+from models import DomainDB, SelectionStateDB, SignatureDB, SignatureDomainDB, SignatureVariantDB
 
 
 class SelectionRepositoryTests(unittest.TestCase):
@@ -82,6 +82,37 @@ class SelectionRepositoryTests(unittest.TestCase):
     def test_empty_candidate_pool_returns_none(self):
         self.assertIsNone(select_and_record_variant(self.session, "alice@example.org", "INTERNAL"))
         self.assertEqual(self.session.execute(select(SelectionStateDB)).scalars().all(), [])
+
+    def test_signature_can_be_assigned_to_multiple_domains(self):
+        domains = [
+            DomainDB(domain_name="one.example", is_active=True),
+            DomainDB(domain_name="two.example", is_active=True),
+            DomainDB(domain_name="three.example", is_active=True),
+        ]
+        self.session.add_all(domains)
+        self.session.flush()
+        self.session.add_all([
+            SignatureDomainDB(signature_id=self.one.signature_id, domain_id=domains[0].id),
+            SignatureDomainDB(signature_id=self.one.signature_id, domain_id=domains[1].id),
+        ])
+        self.session.commit()
+
+        selected_one = select_and_record_variant(
+            self.session, "one@example.org", "AUTO", domain_id=domains[0].id
+        )
+        self.assertEqual(selected_one.id, self.one.id)
+        self.session.commit()
+
+        selected_two = select_and_record_variant(
+            self.session, "two@example.org", "AUTO", domain_id=domains[1].id
+        )
+        self.assertEqual(selected_two.id, self.one.id)
+        self.session.commit()
+
+        selected_three = select_and_record_variant(
+            self.session, "three@example.org", "AUTO", domain_id=domains[2].id
+        )
+        self.assertIsNone(selected_three)
 
     def test_rule_target_limits_selection_to_signature(self):
         targeted_signature = SignatureDB(
