@@ -108,6 +108,7 @@ function htmlEditorToggle() { return { showHtml: false }; }
 
 function domainManager() { return {
     domains: [], providers: [],
+    loginProviders() { return this.providers.filter(function(item) { return item.provider_type === "authentik" && item.is_enabled; }); },
     async fetchDomains() {
         const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
         this.domains = domainsResponse.ok ? await domainsResponse.json() : [];
