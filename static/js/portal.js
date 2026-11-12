@@ -105,7 +105,58 @@ window.fetch = (resource, options = {}) => {
 }
 function htmlEditorToggle() { return { showHtml: false }; }
 
-function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
+function domainManager() { return {
+    domains: [], providers: [],
+    async fetchDomains() {
+        const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
+        this.domains = domainsResponse.ok ? await domainsResponse.json() : [];
+        this.providers = providersResponse.ok ? await providersResponse.json() : [];
+    },
+    async setProvider(domain, providerId) {
+        const response = await fetch('/domains/' + domain.id + '/identity-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({identity_provider_id: providerId || null})});
+        if (!response.ok) { notify('Could not assign identity provider.', 'error'); await this.fetchDomains(); return; }
+        domain.identity_provider_id = providerId || null;
+        notify('Identity provider assignment saved.');
+    }
+} }
+function identityProviderManager() { return {
+    providers: [], editing: false,
+    form: {id:'', original_id:null, display_name:'', provider_type:'authentik', is_enabled:true, settings:{}},
+    async fetchAll() {
+        const response = await fetch('/api/admin/identity-providers');
+        if (response.ok) this.providers = await response.json();
+        else notify('Could not load identity providers.', 'error');
+    },
+    newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5',LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'}}; this.editing=true; },
+    async editProvider(provider) {
+        const response=await fetch('/api/admin/identity-providers');
+        if(!response.ok) { notify('Could not load provider settings.','error'); return; }
+        const item=(await response.json()).find(x=>x.id===provider.id);
+        if(!item) return;
+        this.form={id:item.id,original_id:item.id,display_name:item.display_name,provider_type:item.provider_type,is_enabled:item.is_enabled,settings:{...(item.settings||{}),AUTHENTIK_API_TOKEN:'',LDAP_BIND_PASSWORD:''}};
+        this.editing=true;
+    },
+    async saveProvider() {
+        if(!this.form.id.trim() || !this.form.display_name.trim()) { notify('Provider ID and display name are required.','error'); return; }
+        const payload={id:this.form.id,display_name:this.form.display_name,provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,settings:this.form.settings};
+        const url=this.form.original_id ? '/api/admin/identity-providers/'+encodeURIComponent(this.form.original_id) : '/api/admin/identity-providers';
+        const response=await fetch(url,{method:this.form.original_id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+        if(!response.ok) { notify('Could not save provider: '+(await response.text()),'error'); return; }
+        notify('Identity provider saved.');
+        this.editing=false; await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
+    },
+    async testProvider(provider) {
+        const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id)+'/test',{method:'POST'});
+        if(response.ok) notify('Identity provider connection successful.');
+        else notify('Connection test failed. Check the configuration and application logs.','error');
+    },
+    async deleteProvider(provider) {
+        if(!confirm('Delete identity provider '+provider.display_name+'? Unassign it from all domains first.')) return;
+        const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id),{method:'DELETE'});
+        if(!response.ok) { notify('Could not delete provider: '+(await response.text()),'error'); return; }
+        notify('Identity provider deleted.'); await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
+    }
+} }
         function signatureManager() {
             return {
                 signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
