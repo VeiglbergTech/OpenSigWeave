@@ -93,6 +93,7 @@ window.fetch = (resource, options = {}) => {
         tab: "personal",
         adminTab: "domains",
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
+        openAdmin() { this.tab = "admin"; this.adminTab = "domains"; },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
         confirmDomainDelete(domain) { this.emit("open-confirm", { domain, action: "delete" }); },
