@@ -16,4 +16,6 @@ branding/settings.json
 *.p12
 *.pfx
 secrets/
-\n# Identity provider credentials (never commit)\n.idp/\n
+
+# Identity provider credentials (never commit)
+.idp/
