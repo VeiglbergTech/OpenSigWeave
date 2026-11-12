@@ -501,6 +501,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("portalShell", portalShell);
     Alpine.data("htmlEditorToggle", htmlEditorToggle);
     Alpine.data("domainManager", domainManager);
+    Alpine.data("identityProviderManager", identityProviderManager);
     Alpine.data("domainSettingsModal", domainSettingsModal);
     Alpine.data("signatureManager", signatureManager);
     Alpine.data("ruleManager", ruleManager);
