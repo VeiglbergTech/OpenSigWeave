@@ -112,10 +112,53 @@
         {% if is_admin %}
         <div x-show="tab === 'admin'" x-cloak>
             <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
+                <button @click="adminTab = 'identity-providers'" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
                 <button @click="adminTab = 'domains'" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
                 <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
                 <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
             </div>
+        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
+            <div class="flex justify-between items-center gap-3 mb-6">
+                <div><h1 class="text-2xl font-semibold">Identity Providers</h1><p class="text-sm text-gray-400 mt-1">Profile attributes for signatures. Login authentication remains independent.</p></div>
+                <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mb-6">
+                <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
+                        <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
+                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : 'Authentik'"></td>
+                        <td class="px-4 py-3 text-sm" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Enabled' : 'Disabled')"></td>
+                        <td class="px-4 py-3 text-right space-x-3"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
+                    </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
+                </table>
+            </div>
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <h2 class="text-lg font-semibold" x-text="form.original_id ? 'Edit Identity Provider' : 'Add Identity Provider'"></h2>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">Folder name / ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Display name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Provider type<select x-model="form.provider_type" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="ldap">LDAP / Active Directory</option></select></label>
+                    <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled"> Enabled</label>
+                </div>
+                <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">API token<input type="password" autocomplete="new-password" x-model="form.settings.AUTHENTIK_API_TOKEN" placeholder="Leave empty to keep existing token" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Bind password<input type="password" autocomplete="new-password" x-model="form.settings.LDAP_BIND_PASSWORD" placeholder="Leave empty to keep existing password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">User filter<input x-model="form.settings.LDAP_USER_FILTER" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">CA certificate file<input x-model="form.settings.LDAP_CA_CERT_FILE" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.LDAP_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div class="flex gap-3"><button @click="saveProvider()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">Save</button><button @click="editing=false" class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button></div>
+                <p class="text-xs text-gray-500">Credentials are stored only in .idp/&lt;name&gt;/.env with restricted permissions. Secret fields are never returned to the browser.</p>
+            </div>
+        </div>
+
         <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
@@ -123,19 +166,20 @@
             </div>
             <div class="bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-700">
                 <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
+                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Identity Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="domain in domains" :key="domain.id">
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
                                 <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" :value="domain.identity_provider_id || ''" @change="setProvider(domain, $event.target.value)"><option value="">No provider</option><template x-for="provider in providers" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td>
                                 <td class="px-6 py-4 text-right space-x-3">
                                     <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Settings & Users</button>
                                     <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="domains.length === 0"><td colspan="3" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
+                        <tr x-show="domains.length === 0"><td colspan="4" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
                     </tbody>
                 </table>
             </div>
