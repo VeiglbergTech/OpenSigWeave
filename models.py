@@ -33,6 +33,13 @@ class SignatureDB(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class SignatureDomainDB(Base):
+    """Many-to-many assignment between reusable signatures and domains."""
+    __tablename__ = "signature_domains"
+    signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="CASCADE"), primary_key=True)
+    domain_id = Column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), primary_key=True)
+
+
 class SignatureVersionDB(Base):
     __tablename__ = "signature_versions"
     id = Column(String(32), primary_key=True)
