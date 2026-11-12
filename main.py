@@ -54,6 +54,7 @@ oauth = OAuth()
 OIDC_ENABLED = oidc_enabled_from_env()
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
+LOCAL_ADMIN_CONFIGURED = bool(LOCAL_ADMIN_EMAIL or LOCAL_ADMIN_PASSWORD_HASH)
 
 identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
@@ -345,11 +346,15 @@ if OIDC_ENABLED:
         client_kwargs={"scope": os.environ.get("OIDC_SCOPES", "openid email profile groups")}
     )
 else:
-    if not is_valid_email(LOCAL_ADMIN_EMAIL):
-        raise RuntimeError("LOCAL_ADMIN_EMAIL must be a valid email address when OIDC_ENABLED=false")
-    if not is_valid_password_hash(LOCAL_ADMIN_PASSWORD_HASH):
-        raise RuntimeError("LOCAL_ADMIN_PASSWORD_HASH must be a valid scrypt hash when OIDC_ENABLED=false")
     redirect_parts = urlsplit("")
+
+if LOCAL_ADMIN_CONFIGURED:
+    if not is_valid_email(LOCAL_ADMIN_EMAIL):
+        raise RuntimeError("LOCAL_ADMIN_EMAIL must be a valid email address when local administrator access is configured")
+    if not is_valid_password_hash(LOCAL_ADMIN_PASSWORD_HASH):
+        raise RuntimeError("LOCAL_ADMIN_PASSWORD_HASH must be a valid scrypt hash when local administrator access is configured")
+elif not OIDC_ENABLED:
+    raise RuntimeError("Configure local administrator credentials when OIDC_ENABLED=false")
 
 # Host validation runs before rate limiting so invalid Host requests cannot consume buckets.
 app.add_middleware(RateLimitMiddleware)
