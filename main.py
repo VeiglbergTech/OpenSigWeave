@@ -33,6 +33,7 @@ from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider, IdentityProviderUnavailable
+from identity.providers.ldap import LDAPAttributeProvider
 from identity.providers.base import AttributeProvider
 from identity.attributes import IdentityAttributes
 from core.selection_repository import select_and_record_variant
@@ -53,16 +54,34 @@ OIDC_ENABLED = oidc_enabled_from_env()
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 
-attribute_provider: AttributeProvider | None = (
-    AuthentikAttributeProvider(
+IDENTITY_PROVIDER = os.environ.get(
+    "IDENTITY_PROVIDER", "authentik" if OIDC_ENABLED else "none"
+).strip().casefold()
+
+if IDENTITY_PROVIDER == "authentik":
+    attribute_provider: AttributeProvider | None = AuthentikAttributeProvider(
         base_url=os.environ.get("AUTHENTIK_URL", ""),
         api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
     )
-    if OIDC_ENABLED else None
-)
+elif IDENTITY_PROVIDER == "ldap":
+    attribute_provider = LDAPAttributeProvider(
+        url=os.environ.get("LDAP_URL", ""),
+        bind_dn=os.environ.get("LDAP_BIND_DN", ""),
+        bind_password=os.environ.get("LDAP_BIND_PASSWORD", ""),
+        base_dn=os.environ.get("LDAP_BASE_DN", ""),
+        user_filter=os.environ.get(
+            "LDAP_USER_FILTER",
+            "(&(objectCategory=person)(objectClass=user)(mail={email}))",
+        ),
+        timeout=float(os.environ.get("LDAP_TIMEOUT", "5")),
+    )
+elif IDENTITY_PROVIDER == "none":
+    attribute_provider = None
+else:
+    raise RuntimeError("IDENTITY_PROVIDER must be one of: authentik, ldap, none")
 
 async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes:
-    """Refresh identity data from Authentik or return empty attributes in local-only mode."""
+    """Refresh identity data from the configured provider or return empty attributes."""
     if attribute_provider is None:
         return IdentityAttributes()
     normalized_email = email.strip().casefold()
@@ -90,7 +109,7 @@ async def get_identity_attributes(db: Session, email: str) -> IdentityAttributes
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("Authentik identity refresh unavailable; attempting database fallback (%s)", type(exc).__name__)
+        logger.warning("%s identity refresh unavailable; attempting database fallback (%s)", IDENTITY_PROVIDER, type(exc).__name__)
         cached = db.get(IdentityCacheDB, normalized_email)
         if cached is None:
             return IdentityAttributes()
