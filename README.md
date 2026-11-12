@@ -35,15 +35,29 @@ Replace the illustrative code with the code displayed beside the signature in th
 
 The current Rspamd adapter still leaves all top-level multipart messages unchanged. Therefore body-marker replacement currently applies only to non-multipart messages handled by the adapter. Multipart MIME support and full client interoperability remain separate integration work.
 
-## Identity attribute fallback
+## Managed identity providers
 
-For each sender, OpenSigWeave requests fresh profile attributes from the configured provider (IDENTITY_PROVIDER=authentik, ldap or none) on every signature lookup. A successful response, including a valid response with empty attributes, replaces that sender's cached record in PostgreSQL. If the provider is unavailable or the lookup cannot be trusted (for example, an invalid response or ambiguous account match), the last successfully stored record is used. A successful lookup confirming that the account is missing or inactive clears the cached attributes instead of reusing stale group membership. If no successful record exists yet, the engine proceeds with empty profile attributes. The cache includes names, title, phone, groups, claims and custom attributes used by signature rules.
+Employee profile attributes are managed independently from OIDC login in the administrator portal. Multiple Authentik and LDAP / Active Directory providers can be created and assigned separately to each email domain. A domain with no assigned provider uses empty employee attributes.
 
-### Direct LDAP / Active Directory
+On the first administrator visit, the portal opens the identity-provider setup automatically. Provider settings are stored outside PostgreSQL in a separate private file for each provider:
 
-Set IDENTITY_PROVIDER=ldap to query LDAP independently of the login method. The provider requires LDAPS (ldaps://) with normal certificate validation and a dedicated read-only bind account. Configure LDAP_URL, LDAP_BIND_DN, LDAP_BIND_PASSWORD, LDAP_BASE_DN and LDAP_USER_FILTER in .env. The default Active Directory filter finds an exact mail attribute match. LDAP_USER_FILTER must contain {email}; the email is escaped before it is inserted into the LDAP filter.
+```text
+/data/idp/
+├── authentik-main/
+│   └── .env
+└── samba-ad/
+    └── .env
+```
 
-The provider maps givenName, sn, title, telephoneNumber and direct memberOf group memberships. It checks the Active Directory userAccountControl disabled bit and clears cached attributes for disabled accounts. Nested group expansion is not currently performed. Ensure the container trusts the domain controller certificate; do not disable certificate verification. Authentik remains available by selecting IDENTITY_PROVIDER=authentik, and IDENTITY_PROVIDER=none disables live lookups.
+The Docker Compose stack persists this directory in the `opensigweave-idp-data` volume. Provider directories use mode `0700`; configuration files use mode `0600`. Secrets are never returned by the management API or stored in the metadata table. Editing a provider while leaving its password/token field empty preserves the existing secret. Provider names are restricted to safe lowercase slugs to prevent path traversal.
+
+Supported provider settings:
+- **Authentik:** HTTPS API URL, read-only API token and request timeout.
+- **LDAP / Active Directory:** LDAPS URL, read-only bind DN and password, Base DN, email search filter, timeout and optional private CA certificate file. Certificate verification is always enabled.
+
+The provider connection test performs a real lookup against the configured service. A successful query with no matching test account still confirms that the connection and credentials worked. Login authentication remains OIDC or local administrator login and is not changed by selecting an employee-attribute provider.
+
+The identity cache is isolated by provider ID and normalized sender address, so two directories cannot overwrite each other's profile data. When a provider is unavailable, the last successful cache entry for that same provider is used.
 
 ## Current limitations
 
