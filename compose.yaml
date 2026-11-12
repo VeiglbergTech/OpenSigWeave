@@ -25,7 +25,8 @@ services:
       - .env
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opensigweave}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-opensigweave}
-      SIGNATURE_STORAGE_PATH: /data/signatures\n      IDP_CONFIG_DIR: /data/idp
+      SIGNATURE_STORAGE_PATH: /data/signatures
+      IDP_CONFIG_DIR: /data/idp
     depends_on:
       postgres:
         condition: service_healthy
@@ -38,7 +39,8 @@ services:
       retries: 3
       start_period: 30s
     volumes:
-      - opensigweave-signatures:/data/signatures\n      - opensigweave-idp-data:/data/idp
+      - opensigweave-signatures:/data/signatures
+      - opensigweave-idp-data:/data/idp
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -50,3 +52,4 @@ services:
 volumes:
   opensigweave-postgres-data:
   opensigweave-signatures:
+  opensigweave-idp-data:
