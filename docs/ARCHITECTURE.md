@@ -2,7 +2,7 @@
 
 **Document status:** Current preview architecture with explicit future boundaries  
 **Branch:** `architecture/refactor-foundation`  
-**Last reviewed:** 2026-11-11
+**Last reviewed:** 2026-11-12
 
 ## 1. Product boundary
 
@@ -14,7 +14,7 @@ The intended long-term product boundary is:
 - **Mail adapters:** separate integrations such as Rspamd. They consume a stable engine API and must not make the core depend on a particular mail server.
 - **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
 
-OIDC is enabled by default and retains the Authentik login flow. For standalone installations, `OIDC_ENABLED=false` disables OIDC initialization and the `/auth` callback route and enables a local administrator account configured with a scrypt password hash. Local-only mode does not call Authentik and supplies empty profile attributes. The external identity-provider path remains Authentik-specific.
+Managed identity providers are the default. New installations use `OIDC_ENABLED=false`, configure an independent local administrator emergency account and create providers in the portal. Each provider's settings and secrets live in `.idp/{provider-id}/.env`. Domains select a login provider and a profile-attribute provider independently. The previous root-level OIDC configuration remains available only as an opt-in compatibility path with `OIDC_ENABLED=true`.
 
 ## 2. Current runtime components
 
@@ -22,18 +22,20 @@ OIDC is enabled by default and retains the Authentik login flow. For standalone 
 
 - FastAPI application served by Uvicorn on TCP port 8085 inside the container.
 - Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
-- Optional OIDC Authorization Code login using the configured discovery document (`OIDC_ENABLED=true`, default), or local administrator login (`OIDC_ENABLED=false`).
+- Email-first login routing: domain-assigned LDAP/Active Directory providers authenticate with LDAPS; domain-assigned Authentik providers use their own OIDC discovery and callback. The local administrator is an independent emergency path.
 - Browser session authorization based on the `signature-users` and `signature-admins` groups.
 - CSRF protection for state-changing browser requests.
 - Secure session cookies and trusted-host validation.
 
 ### Identity and attributes
 
-OIDC UserInfo is expected to provide a stable subject, a verified email and a groups array. The current code requires `email_verified` to be the JSON boolean `true`.
+Managed identity-provider configuration is stored outside PostgreSQL under `.idp/{provider-id}/.env`; database rows contain provider metadata and per-domain assignments only. Provider secrets are not returned by the management API.
 
-The current `AuthentikAttributeProvider` uses Authentik's API to retrieve active user records and custom attributes by exact email match. It supplies name, phone, title, groups and selected claims to the rule engine and renderer. A confirmed missing or inactive account is an authoritative empty result and clears the cached attributes. Technical lookup failures, invalid responses and ambiguous matches fall back to the last successfully cached identity record in PostgreSQL; if no cache exists, the engine uses empty profile attributes.
+**Login provider and profile provider are separate domain settings.** The login route extracts the email domain and selects its assigned provider. LDAP / Active Directory performs an exact email search with a read-only service bind, then verifies the password with a user-DN bind over LDAPS. Authentik uses OIDC Authorization Code with its own discovery URL, client credentials, scopes and exact callback URI `/auth/{provider-id}`. OIDC callbacks require a stable subject, a verified email (email_verified must be the JSON boolean true) and a groups array, then re-check the domain's current provider assignment.
 
-The logout endpoint also constructs an Authentik-specific end-session URL. A future generic provider interface must cover logout and attribute retrieval before another OIDC provider can be described as fully supported.
+The profile provider is used independently by the portal and signature engine. The Authentik API provider and LDAP service-bind provider retrieve active user attributes and selected claims. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
+
+The local administrator account uses a salted scrypt hash and remains independent of external provider availability. New installations default to managed providers; root-level global OIDC is retained only for explicit compatibility mode. Managed OIDC upstream logout is not implemented yet, so logout currently clears the OpenSigWeave session without guaranteeing termination of the upstream IdP session.
 
 ### Signature and rule services
 
@@ -70,9 +72,9 @@ The current rewrite path is limited to non-multipart messages. No production mai
 
 ### Browser identity
 
-With OIDC enabled, the browser starts the Authorization Code flow at `/login` and returns to the fixed HTTPS callback `OIDC_REDIRECT_URI`, ending in `/auth`. The callback validates the subject, email, boolean email verification and groups claim, clears the old session, and stores only the claims required by the application. With OIDC disabled, `/login` serves a local administrator form; the password is verified against a salted scrypt hash, and `/auth` is not registered.
+The browser starts with an email-first form at `/login`. The application maps the email domain to its login provider. LDAP verifies the supplied password over LDAPS; Authentik redirects to the provider-specific HTTPS callback and validates OIDC state, email, groups and the current domain assignment. The local administrator can sign in through the same form and is independent of the selected domain provider. The legacy global OIDC callback at `/auth` is registered only when `OIDC_ENABLED=true`.
 
-With OIDC enabled, the canonical hostname is derived from `OIDC_REDIRECT_URI`. With OIDC disabled, `APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected in both modes.
+When legacy global OIDC is enabled, the canonical hostname is derived from its `OIDC_REDIRECT_URI`. In managed-provider mode, `APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected in both modes.
 
 ### Portal permissions
 
