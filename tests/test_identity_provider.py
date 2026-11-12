@@ -351,3 +351,60 @@ class LDAPAuthenticationTests(unittest.IsolatedAsyncioTestCase):
         ) as connection_factory:
             self.assertIsNone(await provider.authenticate("alice@example.org", "password"))
         self.assertEqual(connection_factory.call_count, 1)
+
+
+class ManagedOIDCProviderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_oidc_only_authentik_provider_connection_test_uses_discovery(self):
+        import tempfile
+        from identity.registry import IdentityProviderRegistry
+
+        class DiscoveryResponse:
+            status_code = 200
+
+            def json(self):
+                return {
+                    "issuer": "https://auth.example.org/application/o/app/",
+                    "authorization_endpoint": "https://auth.example.org/application/o/authorize/",
+                    "token_endpoint": "https://auth.example.org/application/o/token/",
+                    "jwks_uri": "https://auth.example.org/application/o/app/jwks/",
+                }
+
+        class DiscoveryClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+            async def get(self, url):
+                self.url = url
+                return DiscoveryResponse()
+
+        client = DiscoveryClient()
+        registry = IdentityProviderRegistry(tempfile.mkdtemp())
+        registry.save("auth-main", "Authentik Main", "authentik", {
+            "OIDC_DISCOVERY_URL": "https://auth.example.org/application/o/app/.well-known/openid-configuration",
+            "OIDC_CLIENT_ID": "client-id",
+            "OIDC_CLIENT_SECRET": "client-secret",
+            "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main",
+        })
+        with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
+            self.assertTrue(await registry.test("auth-main"))
+        self.assertEqual(
+            registry.get_config("auth-main")["OIDC_CLIENT_SECRET"],
+            "client-secret",
+        )
+        self.assertNotIn("OIDC_CLIENT_SECRET", registry.describe("auth-main")["settings"])
+
+    async def test_managed_oidc_requires_complete_secure_configuration(self):
+        import tempfile
+        from identity.registry import IdentityProviderRegistry, ProviderConfigError
+
+        registry = IdentityProviderRegistry(tempfile.mkdtemp())
+        with self.assertRaises(ProviderConfigError):
+            registry.save("auth-main", "Authentik Main", "authentik", {
+                "OIDC_DISCOVERY_URL": "http://auth.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "client-id",
+                "OIDC_CLIENT_SECRET": "client-secret",
+                "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/auth-main",
+            })
