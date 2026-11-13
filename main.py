@@ -34,7 +34,7 @@ from database import get_db, SessionLocal
 from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB
 from rate_limiter import RateLimitMiddleware
 
-from signature_renderer import render_signature_template
+from signature_renderer import render_signature_template, prepare_group_placeholders, strip_group_placeholders
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
@@ -1764,9 +1764,9 @@ async def get_rspamd_signature(
     }
     try:
         raw_template = sanitize_signature_html(raw_template)
+        raw_template, group_slots = prepare_group_placeholders(raw_template)
         group_values = {}
-        group_tags = sorted(set(re.findall(r"{{\s*group:([a-z0-9-]{1,64})\s*}}", raw_template)))
-        for slug in group_tags:
+        for slug, template_key in group_slots.items():
             group = db.query(SignatureGroupDB).filter(
                 SignatureGroupDB.slug == slug,
                 SignatureGroupDB.is_active.is_(True),
@@ -1785,7 +1785,7 @@ async def get_rspamd_signature(
                     if selected is not None:
                         selected_from_group = True
             if selected is None:
-                group_values[f"group__{slug}"] = Markup("")
+                group_values[template_key] = Markup("")
                 continue
             nested_version = (
                 db.query(SignatureVersionDB)
@@ -1801,17 +1801,11 @@ async def get_rspamd_signature(
                 )
                 nested_html = sanitize_signature_html(nested_html)
                 # Group nesting is intentionally one level deep to prevent recursive templates.
-                nested_html = re.sub(r"{{\s*group:[a-z0-9-]{1,64}\s*}}", "", nested_html)
+                nested_html = strip_group_placeholders(nested_html)
                 rendered_group = render_signature_template(nested_html, profile_values)
-                group_values[f"group__{slug}"] = Markup(rendered_group)
+                group_values[template_key] = Markup(rendered_group)
             except (SignatureStorageError, ValueError, TypeError):
                 raise HTTPException(status_code=503, detail="Group signature asset unavailable")
-        for slug in group_tags:
-            raw_template = re.sub(
-                r"{{\s*group:" + re.escape(slug) + r"\s*}}",
-                "{{ group__" + slug + " }}",
-                raw_template,
-            )
         parsed = render_signature_template(raw_template, {**profile_values, **group_values})
     except TemplateError:
         raise HTTPException(status_code=422, detail="Invalid signature template")
