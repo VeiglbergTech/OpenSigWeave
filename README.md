@@ -509,6 +509,7 @@ The Compose port is bound to host loopback. A proxy running in a separate bridge
 - [Implementation progress and verification](docs/IMPLEMENTATION_PROGRESS.md)
 - [Repository audit](docs/REPOSITORY_AUDIT.md)
 - [Web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md)
+- [Rich-text editor licensing and evaluation](docs/EDITOR_DECISION.md)
 
 The current development work is on `architecture/refactor-foundation`. The pull request is a draft and is not a production release. The standalone product is being completed first; a native Mailcow UI/integration is planned as a separate future project.
 
