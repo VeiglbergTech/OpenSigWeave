@@ -172,6 +172,7 @@ or an element with `data-opensigweave-mode="PROFESSIONAL"`. Markers found only a
 Administrator-only endpoints:
 
 - `GET /api/admin/signature-groups` — list groups, domain scopes and members.
+- `GET /api/admin/signature-groups/{group_id}/preview?domain_id={id}` — render a deterministic preview using the first eligible signature ID. Requires administrator access and never reads or changes per-user rotation state.
 - `POST /api/admin/signature-groups` — create a group. Body: `{"name":"Corporate","slug":"corporate","domain_ids":[],"is_active":true}`. Omit slug to derive it from the name. An empty domain list means all domains.
 - `PUT /api/admin/signature-groups/{group_id}` — update group metadata and domain scope.
 - `DELETE /api/admin/signature-groups/{group_id}` — delete an unreferenced group. Rules referencing it must be updated first.
