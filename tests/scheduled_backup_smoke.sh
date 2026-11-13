@@ -71,6 +71,17 @@ if BACKUP_FS_TYPE=ext4 bash "$SCRIPT" >/dev/null 2>&1; then
 fi
 [[ ! -s "$CALL_LOG" ]] || { echo "Backup CLI ran on a disallowed filesystem" >&2; exit 1; }
 
+# A symlink lock file must be refused without touching its target.
+LOCK_TARGET="$WORK/lock-target"
+printf 'do-not-truncate' > "$LOCK_TARGET"
+ln -s "$LOCK_TARGET" "$WORK/unsafe.lock"
+if LOCK_FILE="$WORK/unsafe.lock" bash "$SCRIPT" >/dev/null 2>&1; then
+  echo "Expected a symlink lock file to be rejected" >&2
+  exit 1
+fi
+[[ "$(cat "$LOCK_TARGET")" == "do-not-truncate" ]] || { echo "Unsafe lock target was modified" >&2; exit 1; }
+[[ ! -s "$CALL_LOG" ]] || { echo "Backup CLI ran with an unsafe lock file" >&2; exit 1; }
+
 # An approved remote filesystem runs create first and verified prune second.
 BACKUP_FS_TYPE=nfs4 bash "$SCRIPT"
 [[ "$(wc -l < "$CALL_LOG")" -eq 2 ]] || { echo "Expected create and prune invocations" >&2; exit 1; }
