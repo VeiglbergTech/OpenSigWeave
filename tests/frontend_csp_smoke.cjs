@@ -133,8 +133,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   signatureEditor.form.html_content = "<p>Hello selected world!</p>";
   const editor = {
     value: signatureEditor.form.html_content,
-    selectionStart: 10,
-    selectionEnd: 18,
+    selectionStart: 9,
+    selectionEnd: 17,
     focused: false,
     cursor: null,
     focus() { this.focused = true; },
@@ -151,7 +151,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(editor.focused, true, "The editor must regain focus after insertion");
   assert.deepEqual(
     editor.cursor,
-    [10 + groupToken.length, 10 + groupToken.length],
+    [9 + groupToken.length, 9 + groupToken.length],
     "The cursor must be placed immediately after the inserted token",
   );
 
