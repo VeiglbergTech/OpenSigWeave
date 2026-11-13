@@ -115,7 +115,7 @@ The latest full CI runs `43442572622` (push) and `43442582940` (pull request) bo
 
 ### Operations
 
-- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. A real cross-host restore drill, destructive in-place restore, administrator UI exports and real NFS/SMB validation remain outstanding; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. A real cross-host restore drill, destructive in-place restore and real NFS/SMB validation remain outstanding; selective administrator exports are implemented. See [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
 - Historical CI failures involving archive inventory and migration compatibility have been corrected and superseded by the successful current full CI runs listed above.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
@@ -124,7 +124,7 @@ The latest full CI runs `43442572622` (push) and `43442582940` (pull request) bo
 
 1. Complete a real-browser test of login, permissions, signature editing, rules and logout.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage. Only after that consider destructive in-place restore and UI exports.
+3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage. Only after that consider destructive in-place restore. Selective administrator exports are already implemented.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
