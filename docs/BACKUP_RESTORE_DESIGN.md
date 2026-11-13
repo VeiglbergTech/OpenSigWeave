@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention and a systemd-based scheduled backup to an explicitly mounted remote filesystem are implemented. Cross-host restore testing, destructive restore, administrator UI exports and testing against a real NFS/SMB target remain outstanding.
+**Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention, guarded scheduled remote-filesystem backups and selective administrator component exports are implemented. Cross-host restore testing, destructive restore and validation against a real NFS/SMB target remain outstanding.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -140,7 +140,7 @@ The feature is not complete until automated tests cover:
 - Restore to a fresh Compose project on a different host reproduces database records, signature versions and hashes, IDP provider files and application configuration.
 - Restore compares the recorded and restored Alembic revision and independently validates the signature and IDP volume SHA-256 inventories.
 - Existing deployment directories, Compose projects and expected named volumes are refused without modification.
-- UI component selection produces an accurate manifest and never claims a partial export is a full backup.
+- ~~UI component selection produces an accurate manifest and never claims a partial export is a full backup.~~ Selective administrator ZIP export is implemented with component manifests, HTML asset checksums, size limits, administrator authorization, no-store responses and explicit secret/PII exclusions.
 - No secret values appear in logs, API responses, manifests, or test failure output.
 
 A documented restore drill against a clean, disposable host is a release requirement. Merely testing that an archive can be created is insufficient.
@@ -150,7 +150,7 @@ A documented restore drill against a clean, disposable host is a release require
 1. ~~Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.~~
 2. ~~Implement safe restore into a fresh deployment.~~ Add cross-host restore drills, deeper post-restore validation and, only later, destructive restore with safety snapshots.
 3. Add automated cross-host restore tests and a documented restore drill.
-4. Add selective administrator UI exports as a separate layer over the same backup components.
+4. ~~Add selective administrator UI exports as a separate layer over the same backup components.~~
 5. ~~Add verified retention and scheduled off-host destination support.~~ Validate the scheduled workflow against a real NFS/SMB target and document operational recovery.
 
 Until these steps are complete, the Compose volumes are persistent storage, not a backup solution.
