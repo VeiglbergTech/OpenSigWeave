@@ -1006,7 +1006,7 @@ def get_domain_overrides(domain_name: str, request: Request, db: Session = Depen
         {
             "id": item.id,
             "user_email": item.user_email,
-            "html_content": item.html_content_source if item.html_content_source is not None else item.html_content,
+            "html_content": item.html_content_source if item.html_content_source is not None else sanitize_signature_html(item.html_content),
             "is_disabled": item.is_disabled,
         }
         for item in overrides
