@@ -872,7 +872,7 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
             "strip_device_signatures": item.strip_device_signatures,
             "identity_provider_id": item.identity_provider_id,
             "authentication_provider_id": item.authentication_provider_id,
-            "template_html": sanitize_signature_html(item.template_html or ""),
+            "template_html": item.template_html_source if item.template_html_source is not None else (item.template_html or ""),
         }
         for item in domains
     ]
@@ -902,6 +902,7 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
+    db_domain.template_html_source = domain_update.template_html
     db_domain.template_html = sanitize_signature_html(domain_update.template_html)
     if "identity_provider_id" in domain_update.model_fields_set:
         if domain_update.identity_provider_id and db.get(IdentityProviderDB, domain_update.identity_provider_id) is None:
@@ -957,7 +958,7 @@ def get_my_signature(request: Request, db: Session = Depends(get_db)):
     user = require_signature_user(request)
     email = normalized_user_email(user)
     override = db.query(UserOverrideDB).filter(func.lower(UserOverrideDB.user_email) == email).first()
-    return {"html_content": sanitize_signature_html(override.html_content) if override else ""}
+    return {"html_content": (override.html_content_source if override.html_content_source is not None else sanitize_signature_html(override.html_content)) if override else ""}
 
 @app.post("/api/my-signature")
 def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
@@ -971,8 +972,11 @@ def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depen
     if override and override.is_disabled:
         raise HTTPException(status_code=403, detail="Your personal signature has been disabled by an administrator")
     safe_html = sanitize_signature_html(req.html_content)
-    if override: override.html_content = safe_html
-    else: db.add(UserOverrideDB(user_email=email, html_content=safe_html))
+    if override:
+        override.html_content_source = req.html_content
+        override.html_content = safe_html
+    else:
+        db.add(UserOverrideDB(user_email=email, html_content=safe_html, html_content_source=req.html_content))
     db.commit()
     return {"status": "success"}
 
@@ -1002,7 +1006,7 @@ def get_domain_overrides(domain_name: str, request: Request, db: Session = Depen
         {
             "id": item.id,
             "user_email": item.user_email,
-            "html_content": sanitize_signature_html(item.html_content),
+            "html_content": item.html_content_source if item.html_content_source is not None else item.html_content,
             "is_disabled": item.is_disabled,
         }
         for item in overrides
@@ -1016,11 +1020,12 @@ def save_admin_override(req: AdminOverrideSave, request: Request, db: Session = 
         raise HTTPException(status_code=422, detail="Invalid email address")
     safe_html = sanitize_signature_html(req.html_content)
     override = db.query(UserOverrideDB).filter(func.lower(UserOverrideDB.user_email) == normalized_email).first()
-    if override: 
+    if override:
+        override.html_content_source = req.html_content
         override.html_content = safe_html
         override.is_disabled = req.is_disabled
     else: 
-        db.add(UserOverrideDB(user_email=normalized_email, html_content=safe_html, is_disabled=req.is_disabled))
+        db.add(UserOverrideDB(user_email=normalized_email, html_content=safe_html, html_content_source=req.html_content, is_disabled=req.is_disabled))
     db.commit()
     return {"status": "success"}
 
