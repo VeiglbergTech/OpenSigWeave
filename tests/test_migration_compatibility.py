@@ -77,7 +77,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0010_group_selection_state",))
+            self.assertEqual(revision, ("0011_legacy_signature_groups",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -99,6 +99,8 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("group_id", rule_columns)
             cache_columns = {row[1] for row in connection.execute("PRAGMA table_info(identity_attribute_cache)")}
             self.assertIn("principal_id", cache_columns)
+            legacy_groups = connection.execute("SELECT slug FROM signature_groups ORDER BY slug").fetchall()
+            self.assertEqual(legacy_groups, [("legacy-auto",), ("legacy-internal",), ("legacy-professional",)])
 
 
 if __name__ == "__main__":
