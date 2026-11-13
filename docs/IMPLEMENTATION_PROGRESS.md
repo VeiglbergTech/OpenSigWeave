@@ -32,8 +32,10 @@ This document describes the current branch state. It is not a promise that defer
 - Signature variants with weights and per-sender selection state to avoid immediate repeats.
 - Backup archive primitives with versioned manifests, SHA-256 inventory, bounded archive verification and safe extraction.
 - age-based encryption/decryption for archives and standalone secret files.
-- Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, signature and IDP volume snapshots, encrypted host `.env`, archive encryption and decrypt-and-verify. The age identity is supplied for the duration of verification and should be stored off-host.
-- Staging-directory packaging, encrypted archive verification and decryption CLI commands. Safe restore, cross-host restore drill and UI exports remain unimplemented.
+- Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, recorded Alembic revision, signature and IDP volume snapshots, encrypted host `.env`, exact application/PostgreSQL image export, archive encryption and decrypt-and-verify.
+- Staging-directory packaging, encrypted archive verification and decryption CLI commands.
+- Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
+- Cross-host restore drill, destructive in-place restore, backup retention/off-host automation and administrator UI exports remain outstanding.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -105,7 +107,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 ### Operations
 
-- Docker-aware backup creation, volume snapshot orchestration, full restore, administrator UI exports and cross-host restore drill are not implemented. The archive/encryption foundation and staging-directory CLI are present; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. A real cross-host restore drill, destructive in-place restore, retention/off-host automation and administrator UI exports remain outstanding; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
 - CI run `43286877301` passed syntax checks, security scans, migrations and Docker smoke tests but failed in regression tests because the archive inventory incorrectly treated `manifest.json` as a payload file. The bug has been corrected; a fresh CI run is still required to confirm the fix and the new encryption/CLI tests.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
@@ -114,7 +116,7 @@ The CI run validates the code paths with test doubles and a local-only Docker st
 
 1. Complete a real-browser test of login, permissions, signature editing, rules and logout.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Complete Docker-aware snapshot orchestration and safe restore around the implemented archive/encryption foundation, then complete a cross-host restore drill covering PostgreSQL, signature files, IDP credentials and deployment configuration.
+3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Only after that consider destructive in-place restore, retention and UI exports.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
