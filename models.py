@@ -87,6 +87,15 @@ class SignatureGroupMemberDB(Base):
     )
 
 
+class GroupSelectionStateDB(Base):
+    """Last selected signature per immutable identity principal and group."""
+    __tablename__ = "group_selection_state"
+    principal_id = Column(String(320), primary_key=True)
+    group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="CASCADE"), primary_key=True)
+    last_signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+
 class SignatureVariantDB(Base):
     __tablename__ = "signature_variants"
     id = Column(String(32), primary_key=True)
@@ -150,6 +159,7 @@ class IdentityCacheDB(Base):
     groups = Column(JSON, nullable=False, default=list)
     claims = Column(JSON, nullable=False, default=dict)
     attributes = Column(JSON, nullable=False, default=dict)
+    principal_id = Column(String(256), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
