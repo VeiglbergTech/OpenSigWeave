@@ -136,6 +136,8 @@ def _policy_for_path(path: str):
         # Managed OIDC callbacks use /auth/{provider_id}; protect them just
         # like the legacy /auth callback against repeated state/token probes.
         return ("auth-callback", int(os.environ.get("AUTH_CALLBACK_RATE_LIMIT", "20")), 300)
+    if path == "/api/admin/exports":
+        return ("admin-export", int(os.environ.get("ADMIN_EXPORT_RATE_LIMIT", "5")), 60)
     if path.startswith("/api/signature/"):
         return ("engine", int(os.environ.get("ENGINE_RATE_LIMIT", "1800")), 60)
     return None
