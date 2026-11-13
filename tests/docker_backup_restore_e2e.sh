@@ -40,7 +40,13 @@ RECIPIENT="$(age-keygen -y "$IDENTITY")"
 docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" up -d --build --wait --wait-timeout 180
 
 docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T postgres sh -c \
-  'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "CREATE TABLE backup_restore_probe (id integer PRIMARY KEY, payload text NOT NULL)" -c "INSERT INTO backup_restore_probe (id, payload) VALUES (1, '''roundtrip-ok''')"' 
+  'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
+CREATE TABLE backup_restore_probe (
+  id integer PRIMARY KEY,
+  payload text NOT NULL
+);
+INSERT INTO backup_restore_probe (id, payload) VALUES (1, 'roundtrip-ok');
+SQL
 
 docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T opensigweave sh -c \
   'mkdir -p /data/signatures /app/.idp && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt'
