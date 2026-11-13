@@ -1,6 +1,6 @@
 # Signature groups: target design
 
-**Status:** Design baseline for implementation. The existing AUTO / PROFESSIONAL / INTERNAL / NONE engine remains active until the group migration and end-to-end tests are complete. This document does not claim that signature groups are implemented.
+**Status:** Backend, administrator API/UI, rule selection, stable-principal rotation and group placeholders are implemented on the development branch. Existing AUTO / PROFESSIONAL / INTERNAL / NONE behavior remains available for compatibility. The migrations create reusable legacy groups from existing variants without rewriting existing rules.
 
 ## 1. Why groups
 
@@ -71,7 +71,7 @@ Proposed syntax: {{ group:unternehmen }} where unternehmen is the normalized gro
 
 The renderer must not interpret arbitrary unknown group names as profile attributes. Unknown, inactive or unauthorized groups resolve safely to an empty string and are logged without message content or secrets.
 
-The final public tag syntax must be kept consistent across the editor's tag picker, preview and Rspamd adapter before release.
+The tag syntax is currently documented for manual use in signature HTML. A dynamic editor tag picker and deterministic preview remain follow-up work.
 
 ## 6. Preview behavior
 
@@ -91,7 +91,7 @@ The migration must be additive and preserve existing IDs, HTML files, versions, 
 8. Run old and new selection in isolated tests, then switch the engine to group selection behind an explicit feature flag.
 9. Remove legacy mode storage only in a later migration after compatibility and rollback windows have passed.
 
-The migration must be tested against both PostgreSQL and SQLite, including a fixture containing all four modes, weighted variants, domain assignments, disabled signatures and rules.
+Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `0011` creates `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing weighted variants while leaving existing rules and signature assets untouched. A richer populated legacy fixture with all mode/domain/disabled combinations remains a follow-up test.
 
 ## 8. Acceptance criteria
 
@@ -104,4 +104,4 @@ The migration must be tested against both PostgreSQL and SQLite, including a fix
 - Concurrent messages cannot race rotation state.
 - Preview does not mutate production rotation state.
 - Existing signature HTML, versions, IDs and current production behavior survive migration.
-- The complete flow is covered by API, repository, migration, renderer and engine tests before the feature flag is enabled by default.
+- Group CRUD, membership, group rules, weighted no-repeat selection, stable principal validation, repeated group placeholders and the Rspamd engine path are covered by API/repository tests. PostgreSQL concurrency stress and full UI browser tests remain outstanding.
