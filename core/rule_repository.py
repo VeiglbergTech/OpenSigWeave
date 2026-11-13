@@ -50,6 +50,7 @@ def load_signature_rules(session: Session) -> tuple[SignatureRule, ...]:
             action=row.action_mode,
             enabled=row.is_enabled,
             signature_id=row.signature_id,
+            group_id=row.group_id,
         )
         for row in rows
     )
