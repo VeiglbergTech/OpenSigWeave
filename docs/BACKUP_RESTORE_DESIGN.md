@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification and initial fresh-deployment restore are implemented. Cross-host restore testing, destructive restore and UI exports are not implemented.
+**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification and initial fresh-deployment restore are implemented. Verified backup retention with a dry-run-first CLI is implemented. Cross-host restore testing, destructive restore, off-host scheduling/replication and administrator UI exports are not implemented.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -154,3 +154,15 @@ A documented restore drill against a clean, disposable host is a release require
 5. Add retention and off-host destination support after the basic restore path is proven.
 
 Until these steps are complete, the Compose volumes are persistent storage, not a backup solution.
+
+
+## 8. Verified retention CLI
+
+The console supports a retention preview and an explicit deletion mode:
+
+    python backup_cli.py prune --directory /backup/opensigweave --identity /media/offline/age-identity.txt --keep 7
+    python backup_cli.py prune --directory /backup/opensigweave --identity /media/offline/age-identity.txt --keep 7 --apply
+
+The command considers only direct regular .age files in the selected directory. It sorts them newest first, decrypts and verifies every candidate using the supplied age identity, and retains the newest requested number. Any invalid archive aborts the operation before deletion. The default is a dry run; deletion requires --apply. Symlinks and files changed during inspection are refused.
+
+Retention is not off-host protection. The backup directory should still be replicated to a separate system or object-storage target, with access controls and encryption retained. Automated scheduling and remote replication are deferred until their target and credentials can be configured safely.
