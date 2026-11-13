@@ -20,7 +20,7 @@ def render_signature_template(template_html: str, values: Mapping[str, Any]) -> 
 
 import re
 
-_GROUP_PLACEHOLDER = re.compile(r"{{\\s*group:([a-z0-9-]{1,64})\\s*}}")
+_GROUP_PLACEHOLDER = re.compile(r"{{\s*group:([a-z0-9-]{1,64})\s*}}")
 
 
 def prepare_group_placeholders(template_html: str) -> tuple[str, dict[str, str]]:
