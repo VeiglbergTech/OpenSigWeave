@@ -226,12 +226,26 @@ def restore_fresh_deployment(
             if not {"postgres", "opensigweave"}.issubset(set(services)):
                 raise BackupRestoreError("Restored Compose definition is missing required services")
 
-            # Create only new, project-scoped volumes. Never reuse or delete old ones.
-            for volume in (
+            # Refuse any existing volume name: "docker volume create" would
+            # otherwise return an existing volume and could overwrite user data.
+            volume_names = {
                 f"{project_name}_opensigweave-postgres-data",
                 f"{project_name}_opensigweave-signatures",
                 f"{project_name}_opensigweave-idp-data",
-            ):
+            }
+            existing_volumes = set(
+                _run(
+                    [docker_binary, "volume", "ls", "--format", "{{.Name}}"],
+                    cwd=target,
+                ).stdout.splitlines()
+            )
+            collisions = volume_names & existing_volumes
+            if collisions:
+                raise BackupRestoreError(
+                    "Restore refused because target volume names already exist: "
+                    + ", ".join(sorted(collisions))
+                )
+            for volume in sorted(volume_names):
                 _run([docker_binary, "volume", "create", volume], cwd=target)
 
             _restore_volume(
