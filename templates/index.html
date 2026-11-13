@@ -115,6 +115,7 @@
                 <button @click="adminTab = 'identity-providers'" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
                 <button @click="adminTab = 'domains'" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
                 <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button @click="adminTab = 'signature-groups'" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
                 <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
@@ -276,6 +277,58 @@
             </div>
         </div>
 
+
+        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="space-y-5">
+            <div class="flex items-center justify-between">
+                <div><h2 class="text-2xl font-semibold">Signature Groups</h2><p class="text-sm text-gray-400 mt-1">Reusable signature pools. Each membership has its own weight and enabled state.</p></div>
+                <button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button>
+            </div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <template x-for="group in groups" :key="group.id">
+                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                        <div class="flex items-start justify-between">
+                            <div><h3 class="font-semibold" x-text="group.name"></h3><p class="text-xs text-gray-500 font-mono" x-text="group.slug"></p></div>
+                            <span class="text-xs" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span>
+                        </div>
+                        <p class="text-xs text-gray-400" x-text="group.domain_ids.length ? 'Domain-scoped group' : 'Available to all domains'"></p>
+                        <div class="border-t border-gray-700 pt-3 space-y-2">
+                            <template x-for="member in group.members" :key="member.signature_id">
+                                <div class="flex items-center gap-2 text-sm">
+                                    <span class="flex-1 truncate" x-text="signatureName(member.signature_id)"></span>
+                                    <label class="text-xs text-gray-400">Weight <input type="number" min="1" max="1000" class="w-16 bg-gray-900 border border-gray-600 rounded px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)"></label>
+                                    <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)">Active</label>
+                                    <button @click="removeMember(group, member)" class="text-red-400 text-xs">Remove</button>
+                                </div>
+                            </template>
+                            <p x-show="group.members.length === 0" class="text-xs text-gray-500">No signatures assigned.</p>
+                        </div>
+                        <div class="flex justify-end gap-3 border-t border-gray-700 pt-3">
+                            <button @click="editGroup(group)" class="text-blue-400 text-sm">Edit</button>
+                            <button @click="deleteGroup(group)" class="text-red-400 text-sm">Delete</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex justify-between items-center"><h3 class="font-semibold" x-text="form.id ? 'Edit Group' : 'Create Group'"></h3><button @click="editing=false" class="text-gray-400">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label class="text-sm">Name<input x-model="form.name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                    <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                </div>
+                <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active">Group enabled</label>
+                <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(Number(domain.id))" @change="toggleDomain(domain.id, $event.target.checked)"><span x-text="domain.domain_name"></span></label></template></div></div>
+                <div class="flex justify-end gap-2"><button @click="editing=false" class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                <h3 class="font-semibold">Add Signature to Group</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <select x-model="memberForm.group_id" class="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select>
+                    <select x-model="memberForm.signature_id" class="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><option value="">Select signature</option><template x-for="signature in signatures" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select>
+                    <div class="flex gap-2"><input type="number" min="1" max="1000" x-model.number="memberForm.weight" class="w-24 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><button @click="addMember()" class="flex-1 bg-blue-600 rounded px-3 py-2 text-sm">Add</button></div>
+                </div>
+            </div>
+        </div>
+
         <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="fetchAll()" class="space-y-5">
             <div class="flex items-center justify-between">
                 <div>
@@ -315,13 +368,18 @@
                     <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="text-sm text-gray-300">Action
                         <select x-model="form.action_mode" @change="form.signature_id = ''" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
-                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>NONE</option>
+                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>GROUP</option><option>NONE</option>
                         </select>
                     </label>
-                    <label class="text-sm text-gray-300">Specific Signature (optional)
+                    <label class="text-sm text-gray-300" x-show="form.action_mode !== 'GROUP'">Specific Signature (optional)
                         <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
                             <option value="">Any signature in selected mode</option>
                             <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-300" x-show="form.action_mode === 'GROUP'">Signature Group
+                        <select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template>
                         </select>
                     </label>
                 </div>
