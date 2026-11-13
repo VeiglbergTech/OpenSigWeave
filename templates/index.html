@@ -261,7 +261,7 @@
                             <select x-model="selectedGroupSlug" class="mt-1 block bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm">
                                 <option value="">Select active group</option>
                                 <template x-for="group in availableGroups" :key="group.id">
-                                    <option :value="group.slug" x-text="group.name + ' ({{ group:' + group.slug + ' }})'"></option>
+                                    <option :value="group.slug" x-text="group.name + ' (' + String.fromCharCode(123, 123) + ' group:' + group.slug + ' ' + String.fromCharCode(125, 125) + ')'"></option>
                                 </template>
                             </select>
                         </label>
