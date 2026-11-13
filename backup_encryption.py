@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-import shutil
 import subprocess
 import tempfile
 
@@ -169,6 +168,49 @@ def decrypt_archive(
         return target
     except OSError as exc:
         raise BackupEncryptionError("Unable to publish decrypted backup") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def encrypt_file(
+    source_path: str | Path,
+    encrypted_path: str | Path,
+    recipient: str,
+    *,
+    executable: str = "age",
+    timeout: int = 900,
+) -> Path:
+    """Encrypt one regular file without placing plaintext in a backup staging tree."""
+    source = Path(source_path)
+    destination = Path(encrypted_path).expanduser().absolute()
+    if not recipient or not recipient.strip():
+        raise BackupEncryptionError("An age recipient is required")
+    if source.is_symlink() or not source.is_file():
+        raise BackupEncryptionError("Encryption source must be a regular file")
+    if destination.exists() or destination.is_symlink():
+        raise BackupEncryptionError("Encrypted file destination already exists")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=destination.parent, prefix=".opensigweave-age-", suffix=".tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+        os.chmod(temporary, 0o600)
+        _run_age(
+            ["--encrypt", "--recipient", recipient, str(source)],
+            output_path=temporary,
+            timeout=timeout,
+            executable=executable,
+        )
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            raise BackupEncryptionError("age did not produce encrypted output")
+        os.replace(temporary, destination)
+        os.chmod(destination, 0o600)
+        return destination
+    except OSError as exc:
+        raise BackupEncryptionError("Unable to publish encrypted file") from exc
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
