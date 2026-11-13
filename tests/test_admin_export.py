@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import unittest
 import uuid
@@ -25,6 +26,16 @@ from models import (
 from signature_catalog import add_signature_version, create_signature
 from signature_storage import SignatureFileStore
 
+os.environ.setdefault("SECRET_KEY", "test-secret-key-with-more-than-thirty-two-characters")
+os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thirty-two-characters")
+os.environ.setdefault("OIDC_DISCOVERY_URL", "https://idp.example/application/o/opensigweave/.well-known/openid-configuration")
+os.environ.setdefault("OIDC_REDIRECT_URI", "https://app.example.org/auth")
+os.environ.setdefault("OIDC_CLIENT_ID", "opensigweave-test")
+os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
+
+import main
+from fastapi import HTTPException
+
 
 class AdminExportTests(unittest.TestCase):
     def setUp(self):
@@ -34,6 +45,8 @@ class AdminExportTests(unittest.TestCase):
         self.db = self.Session()
         self.tempdir = tempfile.TemporaryDirectory()
         self.store = SignatureFileStore(self.tempdir.name)
+        self.admin_request = SimpleNamespace(session={"user": {"groups": ["signature-admins"]}})
+        self.user_request = SimpleNamespace(session={"user": {"groups": ["signature-users"]}})
 
     def tearDown(self):
         self.db.close()
@@ -129,6 +142,27 @@ class AdminExportTests(unittest.TestCase):
             self.assertFalse(provider_item["credentials_included"])
             self.assertTrue(any("credential files" in item for item in manifest["exclusions"]))
             self.assertFalse(any(".env" in name for name in archive.namelist()))
+
+    def test_admin_api_returns_private_zip_and_rejects_non_admins(self):
+        self._populate()
+        previous_store = main.signature_file_store
+        main.signature_file_store = self.store
+        try:
+            response = main.export_admin_components(
+                self.admin_request, "signatures,domains", self.db
+            )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.media_type, "application/zip")
+            self.assertIn("attachment;", response.headers["content-disposition"])
+            self.assertEqual(response.headers["cache-control"], "no-store, private")
+            with zipfile.ZipFile(BytesIO(response.body)) as archive:
+                manifest = json.loads(archive.read("manifest.json"))
+                self.assertEqual(set(manifest["components"]), {"domains", "signatures"})
+            with self.assertRaises(HTTPException) as denied:
+                main.export_admin_components(self.user_request, "signatures", self.db)
+            self.assertEqual(denied.exception.status_code, 403)
+        finally:
+            main.signature_file_store = previous_store
 
     def test_export_rejects_empty_and_unknown_component_selection(self):
         self._populate()
