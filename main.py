@@ -43,6 +43,7 @@ from models import IdentityProviderDB
 from core.selection_repository import select_and_record_variant
 from core.group_selection_repository import select_and_record_group_signature
 from core.modes import SignatureMode, resolve_mode
+from core.slug import slugify
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
@@ -1312,7 +1313,7 @@ def list_signature_groups(request: Request, db: Session = Depends(get_db)):
 def create_signature_group(payload: SignatureGroupCreateRequest, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    slug = (payload.slug or re.sub(r"[^a-z0-9]+", "-", payload.name.casefold()).strip("-"))[:64]
+    slug = (payload.slug or slugify(payload.name))[:64]
     if not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
         raise HTTPException(status_code=422, detail="Invalid group slug")
     if db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug).first():
@@ -1339,7 +1340,7 @@ def update_signature_group(group_id: str, payload: SignatureGroupCreateRequest, 
     group = db.get(SignatureGroupDB, group_id)
     if group is None:
         raise HTTPException(status_code=404, detail="Group not found")
-    slug = (payload.slug or re.sub(r"[^a-z0-9]+", "-", payload.name.casefold()).strip("-"))[:64]
+    slug = (payload.slug or slugify(payload.name))[:64]
     if not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
         raise HTTPException(status_code=422, detail="Invalid group slug")
     if db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug, SignatureGroupDB.id != group_id).first():
