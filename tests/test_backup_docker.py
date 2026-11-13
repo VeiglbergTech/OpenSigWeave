@@ -19,6 +19,7 @@ class DockerBackupTests(unittest.TestCase):
         (project / ".env").write_text("POSTGRES_PASSWORD=secret\nSECRET_KEY=secret2\n", encoding="utf-8")
         identity = root / "age.identity"
         identity.write_text("AGE-SECRET-KEY-1TEST", encoding="utf-8")
+        identity.chmod(0o600)
         return project, identity
 
     def test_full_backup_snapshots_components_and_restarts_app(self):
