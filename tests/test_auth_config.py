@@ -429,6 +429,22 @@ class GenericOIDCProfileCacheTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(profile.attributes, {"office": "Munich"})
         self.assertTrue(profile.principal_id.startswith("oidc-main:oidc:"))
 
+    async def test_generic_oidc_profile_cache_expires_after_24_hours(self):
+        from datetime import datetime, timedelta, timezone
+        cached = IdentityCacheDB(
+            email="oidc-main:alice@example.org",
+            principal_id="oidc-main:oidc:stable",
+            first_name="Alice",
+            groups=["signature-admins"],
+            updated_at=datetime.now(timezone.utc) - timedelta(hours=25),
+        )
+        self.db.add(cached)
+        self.db.commit()
+        profile = await main.get_identity_attributes(
+            self.db, "alice@example.org", "oidc-main"
+        )
+        self.assertEqual(profile, IdentityAttributes())
+
     async def test_generic_oidc_profile_returns_empty_when_no_verified_login_cache_exists(self):
         profile = await main.get_identity_attributes(
             self.db, "alice@example.org", "oidc-main"
