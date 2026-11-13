@@ -45,6 +45,11 @@ class RateLimiterTests(unittest.TestCase):
             self.assertEqual(_policy_for_path("/auth/another-provider"), expected)
             self.assertIsNone(_policy_for_path("/authentic"))
 
+    def test_admin_component_exports_have_a_separate_rate_limit(self):
+        with patch.dict("os.environ", {"ADMIN_EXPORT_RATE_LIMIT": "3"}, clear=False):
+            self.assertEqual(_policy_for_path("/api/admin/exports"), ("admin-export", 3, 60))
+            self.assertIsNone(_policy_for_path("/api/admin/exports/extra"))
+
     def test_rate_limit_hash_key_uses_configured_session_secret(self):
         with patch.dict("os.environ", {"SECRET_KEY": "s" * 48}, clear=False):
             first = _rate_limit_hash_key()
