@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Archive primitives, age encryption helpers and a staging-directory packaging/verification CLI are implemented. Docker snapshot orchestration, full restore and UI exports are not implemented.
+**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation, and encrypted archive verification are implemented. Safe restore, cross-host restore testing and UI exports are not implemented.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -80,11 +80,14 @@ A backup must not silently proceed without the IDP volume or encryption. A delib
 
 Restore is a destructive administrative operation and must be a separate, explicit command:
 
-    python backup_cli.py package --staging <prepared-directory> --output <backup.age> --recipient <age-recipient>
-    python backup_cli.py verify <backup.age> --identity <age-identity-file>
-    python backup_cli.py decrypt <backup.age> --identity <age-identity-file> --output <archive.tar.gz>
+    python backup_cli.py create --project-dir /opt/opensigweave --output /backup/opensigweave-<timestamp>.age --recipient <age-recipient> --identity /media/offline/age-identity.txt
+    python backup_cli.py verify /backup/opensigweave-<timestamp>.age --identity /media/offline/age-identity.txt
+    python backup_cli.py decrypt /backup/opensigweave-<timestamp>.age --identity /media/offline/age-identity.txt --output /tmp/opensigweave.tar.gz
 
-The current CLI packages an already prepared staging directory. It does not yet snapshot Docker volumes or constitute the complete backup creation workflow.
+    # Lower-level packaging of an already prepared staging directory:
+    python backup_cli.py package --staging <prepared-directory> --output <backup.age> --recipient <age-recipient>
+
+The `create` command validates the Compose project, stops the application service, exports PostgreSQL, copies the signature and IDP volumes from the stopped application container, encrypts the host `.env` as a separate payload, creates the archive, and decrypt-verifies the encrypted result. The age identity is required for that final verification and should be supplied from removable/off-host storage. The lower-level `package` command remains available for an already prepared staging directory.
 
 The restore command must:
 
@@ -127,7 +130,9 @@ The UI must enforce administrator authorization, CSRF protection, rate/size limi
 
 The feature is not complete until automated tests cover:
 
-- Full backup includes database, signatures, IDP credentials, environment and deployment metadata.
+- Full backup includes database, signatures, IDP credentials, encrypted environment and deployment metadata.
+- Docker Compose preflight rejects missing services, stopped containers and missing signature/IDP volume mounts.
+- The application service is restarted after successful and failed snapshot attempts, and a restart failure is reported distinctly.
 - Missing volume, invalid recipient, insufficient disk space, failed dump, failed archive, failed encryption and failed verification all fail closed.
 - Application service is restarted after both successful and failed backup attempts.
 - Archive traversal, symlinks, unexpected file types, unsupported versions and tampered checksums are rejected before restore.
@@ -140,7 +145,7 @@ A documented restore drill against a clean, disposable host is a release require
 
 ## 9. Delivery order
 
-1. Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.
+1. ~~Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.~~
 2. Implement safe restore into a fresh deployment, then destructive restore with safety snapshots.
 3. Add automated cross-host restore tests and a documented restore drill.
 4. Add selective administrator UI exports as a separate layer over the same backup components.
