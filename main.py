@@ -6,6 +6,7 @@ import hmac
 import hashlib
 import secrets
 import re
+from datetime import datetime, timezone
 from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
@@ -83,7 +84,14 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         cache_key = f"{provider_id}:{normalized_email}"
         if meta.provider_type == "oidc":
             cached = db.get(IdentityCacheDB, cache_key)
-            if cached is None:
+            if cached is None or cached.updated_at is None:
+                return IdentityAttributes()
+            cache_updated = cached.updated_at
+            if cache_updated.tzinfo is None:
+                cache_updated = cache_updated.replace(tzinfo=timezone.utc)
+            # Generic OIDC providers do not expose a portable account-status API.
+            # Expire cached claims after 24 hours so removed memberships do not live forever.
+            if (datetime.now(timezone.utc) - cache_updated).total_seconds() > 86400:
                 return IdentityAttributes()
             return IdentityAttributes(
                 principal_id=cached.principal_id or "",
@@ -714,6 +722,7 @@ async def auth(request: Request, db: Session = Depends(get_db)):
             cached.groups = groups
             cached.claims = safe_claims
             cached.attributes = safe_custom_attributes
+            cached.updated_at = datetime.now(timezone.utc)
             db.commit()
             safe_attributes = {"phone": phone, "title": title}
         request.session.clear()
