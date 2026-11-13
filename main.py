@@ -742,7 +742,7 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
         if expected_email is not None and not isinstance(expected_email, str):
             raise ValueError("OIDC login state has an invalid email")
         provider_meta = db.get(IdentityProviderDB, provider_id)
-        if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type != "authentik":
+        if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type not in {"authentik", "oidc"}:
             raise ValueError("OIDC provider is no longer enabled")
         client, _config = managed_oidc_client(provider_id)
         token = await client.authorize_access_token(request)
@@ -1112,7 +1112,7 @@ def list_identity_providers(request: Request, db: Session = Depends(get_db)):
 class IdentityProviderCreateRequest(BaseModel):
     id: str = Field(min_length=1, max_length=64)
     display_name: str = Field(min_length=1, max_length=120)
-    provider_type: Literal["authentik", "ldap"]
+    provider_type: Literal["authentik", "oidc", "ldap"]
     settings: dict = Field(default_factory=dict)
     is_enabled: bool = True
 
