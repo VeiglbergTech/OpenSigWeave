@@ -367,7 +367,7 @@
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="text-sm text-gray-300">Action
-                        <select x-model="form.action_mode" @change="form.signature_id = ''; form.group_id = ''" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                        <select x-model="form.action_mode" @change="changeAction()" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
                             <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>GROUP</option><option>NONE</option>
                         </select>
                     </label>
