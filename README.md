@@ -350,14 +350,40 @@ The first Docker CI smoke test exercises the authenticated engine endpoint again
 
 ## 5. Persistent data and backups
 
-Compose creates two named volumes:
+Compose creates three named volumes:
 
 - `opensigweave-postgres-data`: PostgreSQL database.
 - `opensigweave-signatures`: versioned HTML signature files.
+- `opensigweave-idp-data`: managed identity-provider credentials under `/app/.idp`.
 
-The database stores metadata and hashes for the signature files. Back up both volumes as one consistent backup set. Restoring only one of them can leave database references without their corresponding files, or files without matching metadata.
+The host `.env` is not stored in a Docker volume. A complete disaster-recovery backup must include all three volumes, the Compose definition and an encrypted copy of `.env`. Do not delete any volume when upgrading or recreating containers.
 
-Do not delete either volume when upgrading or recreating containers.
+### Create a complete encrypted backup
+
+Install Docker Compose v2 and the age command-line utility on the host. Create an age recipient and keep its matching private identity separately (preferably offline or on removable storage). The private identity must be available temporarily to verify a newly created backup.
+
+Run from the host:
+
+```bash
+python3 backup_cli.py create \
+  --project-dir /opt/opensigweave \
+  --output /backup/opensigweave-$(date -u +%Y%m%dT%H%M%SZ).age \
+  --recipient age1... \
+  --identity /media/offline/age-identity.txt
+```
+
+The command validates the Compose project and required volumes, stops only the application service, keeps PostgreSQL running for a native custom-format dump, snapshots signature and IDP files, encrypts `.env` separately, and verifies the finished encrypted archive by decrypting it to a private temporary file. The application service is restarted after success or failure. If restart recovery fails, the command reports this explicitly.
+
+Store the resulting `.age` file off-host. Never store the only backup on the same Docker host. The age private identity is not included in the archive and must be retained separately; without it, backups cannot be restored.
+
+To verify an existing backup later:
+
+```bash
+python3 backup_cli.py verify /backup/opensigweave-backup.age \
+  --identity /media/offline/age-identity.txt
+```
+
+The restore workflow is not implemented yet. Do not treat successful backup verification as proof that a cross-host restore has been tested.
 
 ## 6. Update the preview
 
