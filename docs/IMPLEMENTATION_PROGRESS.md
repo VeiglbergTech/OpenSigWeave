@@ -37,7 +37,7 @@ This document describes the current branch state. It is not a promise that defer
 - Verified retention CLI: newest N encrypted backups are retained; every candidate is decrypted and integrity-checked before any deletion; dry-run is the default and deletion requires `--apply`.
 - Scheduled backup automation: systemd service and daily timer create full encrypted backups on a separately mounted remote filesystem, enforce a remote-filesystem allowlist, prevent overlapping runs and apply verified retention.
 - Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
-- Cross-host restore drill, destructive in-place restore and administrator UI exports remain outstanding. The scheduled remote-mount workflow still needs a real NFS/SMB host test; CI does not prove network storage or systemd behavior.
+- Cross-host restore drill, destructive in-place restore and administrator UI exports remain outstanding. Scheduled remote-mount backup, verified retention, systemd service/timer, mountpoint enforcement and filesystem allowlisting are implemented; a real NFS/SMB host test is still required.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -83,7 +83,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest backup/restore CI runs `43378727333` (push) and `43378733211` (pull request) passed on commit `3e25692ed4b4067ad452dddad51a30a693e21c4b`. They include a full encrypted Docker backup and fresh restore with PostgreSQL data, Alembic revision, signature and IDP volume integrity, and application health checks. This is a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest backup/restore/retention CI runs `43380058709` (push) and `43380067095` (pull request) passed on commit `588b796ab15281faf4c8509c38bc79e76bf66949`. They include a full encrypted Docker backup and fresh restore with PostgreSQL data, Alembic revision, signature and IDP volume integrity, application health checks, plus age-verified retention dry-run and deletion. This is a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
@@ -111,7 +111,7 @@ The latest backup/restore CI runs `43378727333` (push) and `43378733211` (pull r
 
 ### Operations
 
-- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. A real cross-host restore drill, destructive in-place restore, retention/off-host automation and administrator UI exports remain outstanding; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. A real cross-host restore drill, destructive in-place restore, administrator UI exports and real NFS/SMB validation remain outstanding; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
 - CI run `43286877301` passed syntax checks, security scans, migrations and Docker smoke tests but failed in regression tests because the archive inventory incorrectly treated `manifest.json` as a payload file. The bug has been corrected; a fresh CI run is still required to confirm the fix and the new encryption/CLI tests.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
@@ -120,7 +120,7 @@ The latest backup/restore CI runs `43378727333` (push) and `43378733211` (pull r
 
 1. Complete a real-browser test of login, permissions, signature editing, rules and logout.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Only after that consider destructive in-place restore, retention and UI exports.
+3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage. Only after that consider destructive in-place restore and UI exports.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
