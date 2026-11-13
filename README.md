@@ -373,7 +373,7 @@ python3 backup_cli.py create \
   --identity /media/offline/age-identity.txt
 ```
 
-The command validates the Compose project and required volumes, stops only the application service, keeps PostgreSQL running for a native custom-format dump, snapshots signature and IDP files, encrypts `.env` separately, and verifies the finished encrypted archive by decrypting it to a private temporary file. The application service is restarted after success or failure. If restart recovery fails, the command reports this explicitly.
+The command validates the Compose project and required volumes, stops only the application service, keeps PostgreSQL running for a native custom-format dump, snapshots signature and IDP files, saves the exact application and PostgreSQL container images, encrypts `.env` separately, and verifies the finished encrypted archive by decrypting it to a private temporary file. The application service is restarted after success or failure. If restart recovery fails, the command reports this explicitly.
 
 Store the resulting `.age` file off-host. Never store the only backup on the same Docker host. The age private identity is not included in the archive and must be retained separately; without it, backups cannot be restored.
 
@@ -384,7 +384,22 @@ python3 backup_cli.py verify /backup/opensigweave-backup.age \
   --identity /media/offline/age-identity.txt
 ```
 
-The restore workflow is not implemented yet. Do not treat successful backup verification as proof that a cross-host restore has been tested.
+### Restore to a fresh Docker host
+
+The restore command refuses an existing target directory and refuses to reuse any existing Docker volume. Choose a new target directory and a unique Compose project name:
+
+```bash
+python3 backup_cli.py restore /backup/opensigweave-backup.age \
+  --identity /media/offline/age-identity.txt \
+  --target-dir /opt/opensigweave-restored \
+  --project-name opensigweave-dr
+```
+
+The command verifies the encrypted archive before creating target data, restores the saved container images, decrypts the environment file with mode 0600, creates new project-scoped volumes, restores signatures and IDP credentials, imports the PostgreSQL dump, starts the application and waits for both services to become healthy. It uses the exact application image from the backup, not a fresh build from the current Git branch.
+
+A failed restore deliberately retains any newly created target directory and volumes for inspection. It does not delete them automatically. The restore command does not modify DNS, reverse-proxy routing, or the original Compose project. After a successful restore, review the new deployment and test login, signature files and engine behavior before changing traffic.
+
+This is an initial fresh-deployment restore implementation. A real cross-host restore drill and destructive in-place restore are not yet complete; do not use it as the only recovery plan until that drill has passed.
 
 ## 6. Update the preview
 
