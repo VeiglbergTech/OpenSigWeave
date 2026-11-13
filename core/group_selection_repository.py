@@ -96,3 +96,51 @@ def select_and_record_group_signature(
     state.last_signature_id = selected.id
     session.flush()
     return selected.payload
+
+
+def get_group_preview_signature(
+    session: Session, group_id: str, domain_id: int
+) -> SignatureDB | None:
+    """Return a stable preview member without reading or writing rotation state.
+
+    Preview deliberately uses the first eligible signature ID. It is not a
+    production selection and never creates/updates GroupSelectionStateDB rows.
+    """
+    group = session.get(SignatureGroupDB, group_id)
+    domain = session.get(DomainDB, domain_id)
+    if group is None or not group.is_active or domain is None or not domain.is_active:
+        return None
+
+    group_has_domains = select(SignatureGroupDomainDB.group_id).where(
+        SignatureGroupDomainDB.group_id == group_id
+    )
+    group_scope = or_(
+        ~group_has_domains.exists(),
+        select(SignatureGroupDomainDB.group_id).where(
+            SignatureGroupDomainDB.group_id == group_id,
+            SignatureGroupDomainDB.domain_id == domain_id,
+        ).exists(),
+    )
+    signature_scope = or_(
+        ~select(SignatureDomainDB.signature_id).where(
+            SignatureDomainDB.signature_id == SignatureDB.id
+        ).exists(),
+        select(SignatureDomainDB.signature_id).where(
+            SignatureDomainDB.signature_id == SignatureDB.id,
+            SignatureDomainDB.domain_id == domain_id,
+        ).exists(),
+    )
+    return session.execute(
+        select(SignatureDB)
+        .join(SignatureGroupMemberDB, SignatureGroupMemberDB.signature_id == SignatureDB.id)
+        .where(
+            SignatureGroupMemberDB.group_id == group_id,
+            SignatureGroupMemberDB.is_enabled.is_(True),
+            SignatureGroupMemberDB.weight > 0,
+            SignatureDB.is_active.is_(True),
+            group_scope,
+            signature_scope,
+        )
+        .order_by(SignatureDB.id)
+        .limit(1)
+    ).scalar_one_or_none()
