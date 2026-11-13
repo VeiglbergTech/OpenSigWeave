@@ -145,7 +145,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const groupToken = "{{ group:sales }}";
   assert.equal(
     signatureEditor.form.html_content,
-    "<p>Hello " + groupToken + "!</p>",
+    "<p>Hello " + groupToken + " world!</p>",
     "Selecting text must replace it with the group token",
   );
   assert.equal(editor.focused, true, "The editor must regain focus after insertion");
