@@ -21,6 +21,7 @@ _SLUG = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 _COMMON = {"IDP_TYPE", "IDP_DISPLAY_NAME", "IDP_ENABLED"}
 _FIELDS = {
     "authentik": {"AUTHENTIK_URL", "AUTHENTIK_API_TOKEN", "AUTHENTIK_TIMEOUT", "OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES", "OIDC_REDIRECT_URI", "OIDC_POST_LOGOUT_REDIRECT_URI"},
+    "oidc": {"OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_SCOPES", "OIDC_REDIRECT_URI", "OIDC_POST_LOGOUT_REDIRECT_URI"},
     "ldap": {"LDAP_URL", "LDAP_BIND_DN", "LDAP_BIND_PASSWORD", "LDAP_BASE_DN",
              "LDAP_USER_FILTER", "LDAP_TIMEOUT", "LDAP_CA_CERT_FILE"},
 }
@@ -117,6 +118,9 @@ class IdentityProviderRegistry:
         return provider
 
     def _build(self, kind: str, values: dict[str, str]):
+        if kind == "oidc":
+            # Generic OIDC profile claims are cached from the verified login callback.
+            return None
         if kind == "authentik":
             return AuthentikAttributeProvider(
                 base_url=values.get("AUTHENTIK_URL", ""),
@@ -137,7 +141,7 @@ class IdentityProviderRegistry:
         slug = self.validate_slug(slug)
         kind = str(kind).casefold()
         if kind not in _FIELDS:
-            raise ProviderConfigError("Provider type must be authentik or ldap.")
+            raise ProviderConfigError("Provider type must be authentik, oidc or ldap.")
         if not isinstance(display_name, str) or not display_name.strip() or len(display_name) > 120:
             raise ProviderConfigError("A display name of 1–120 characters is required.")
         if not isinstance(settings, dict):
@@ -146,9 +150,9 @@ class IdentityProviderRegistry:
         if set(settings) - allowed:
             raise ProviderConfigError("Unknown settings supplied for this provider type.")
         values = {key: str(value) for key, value in settings.items() if value is not None}
-        if kind == "authentik":
+        if kind in {"authentik", "oidc"}:
             oidc_keys = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
-            if any(values.get(key) for key in oidc_keys):
+            if kind == "oidc" or any(values.get(key) for key in oidc_keys):
                 if not all(values.get(key) for key in oidc_keys):
                     raise ProviderConfigError("OIDC discovery URL, client ID, client secret and redirect URI are all required.")
                 discovery = urlsplit(values["OIDC_DISCOVERY_URL"])
@@ -242,7 +246,7 @@ class IdentityProviderRegistry:
     async def test(self, slug: str, email: str = "opensigweave-provider-test@example.invalid"):
         provider = self.load(slug)
         values = self._configs[slug]
-        if values.get("IDP_TYPE", "").casefold() == "authentik":
+        if values.get("IDP_TYPE", "").casefold() in {"authentik", "oidc"}:
             tested = False
             discovery_url = values.get("OIDC_DISCOVERY_URL", "")
             if discovery_url:
@@ -267,7 +271,7 @@ class IdentityProviderRegistry:
                 except Exception as exc:
                     raise ProviderConfigError("OIDC discovery connection failed.") from exc
                 tested = True
-            if values.get("AUTHENTIK_URL") and values.get("AUTHENTIK_API_TOKEN"):
+            if values.get("IDP_TYPE", "").casefold() == "authentik" and values.get("AUTHENTIK_URL") and values.get("AUTHENTIK_API_TOKEN"):
                 await provider.get_attributes(email)
                 tested = True
             if not tested:
