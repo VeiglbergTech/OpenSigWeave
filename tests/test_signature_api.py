@@ -467,37 +467,44 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 403)
         self.assertEqual(self.db.query(main.UserOverrideDB).count(), 1)
 
-    def test_personal_override_html_is_sanitized_before_database_storage(self):
+    def test_personal_override_preserves_source_and_stores_sanitized_delivery_html(self):
         self.db.add(main.DomainDB(
             domain_name="example.org", is_active=True, allow_overrides=True,
         ))
         self.db.commit()
+        source = '<!--[if mso]><v:rect>Outlook</v:rect><![endif]--><p onclick="alert(1)">Safe<script>bad()</script></p>'
         main.save_my_signature(
-            main.OverrideUpdate(html_content='<p onclick="alert(1)">Safe<script>bad()</script></p>'),
+            main.OverrideUpdate(html_content=source),
             self.user_request,
             self.db,
         )
-        stored = self.db.query(main.UserOverrideDB).one().html_content
-        self.assertIn("Safe", stored)
-        self.assertNotIn("onclick", stored)
-        self.assertNotIn("<script", stored)
+        stored = self.db.query(main.UserOverrideDB).one()
+        self.assertEqual(stored.html_content_source, source)
+        self.assertIn("Safe", stored.html_content)
+        self.assertNotIn("<!--[if mso]", stored.html_content)
+        self.assertNotIn("onclick", stored.html_content)
+        self.assertNotIn("<script", stored.html_content)
+        self.assertEqual(main.get_my_signature(self.user_request, self.db)["html_content"], source)
 
-    def test_domain_template_is_sanitized_before_storage(self):
+    def test_domain_template_preserves_source_and_stores_sanitized_delivery_html(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         self.db.commit()
+        source = '<!--[if mso]><v:rect>Outlook</v:rect><![endif]--><div onmouseover="bad()">Domain<script>bad()</script></div>'
         main.update_domain(
             domain.id,
             main.DomainUpdate(
                 is_active=True, allow_overrides=True, inject_on_replies=False,
                 trim_whitespace=True, strip_device_signatures=False,
-                template_html='<div onmouseover="bad()">Domain<script>bad()</script></div>',
+                template_html=source,
             ),
             self.admin_request,
             self.db,
         )
         self.db.refresh(domain)
+        self.assertEqual(domain.template_html_source, source)
         self.assertIn("Domain", domain.template_html)
+        self.assertNotIn("<!--[if mso]", domain.template_html)
         self.assertNotIn("onmouseover", domain.template_html)
         self.assertNotIn("<script", domain.template_html)
 
