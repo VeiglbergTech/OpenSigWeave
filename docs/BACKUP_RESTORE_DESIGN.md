@@ -170,7 +170,7 @@ Retention is not off-host protection. The backup directory should still be repli
 
 ## 9. Scheduled off-host backup
 
-A systemd service and daily timer are provided for deployments that mount remote storage (for example NFS or SMB) at /mnt/opensigweave-backups. The script refuses to run unless that exact directory is a mount point, preventing a disconnected share from silently filling the local root filesystem. It creates a full encrypted backup, then applies verified retention.
+A systemd service and daily timer are provided for deployments that mount remote storage (for example NFS or SMB) at /mnt/opensigweave-backups. The script refuses to run unless that exact directory is a mount point on an approved remote filesystem type (NFS, SMB/CIFS or supported FUSE remote mounts), preventing a disconnected share or a local disk from silently being treated as off-host protection. It creates a full encrypted backup, then applies verified retention.
 
 Deployment outline:
 
@@ -182,4 +182,4 @@ Deployment outline:
 
 The service runs with root privileges because it needs the Docker socket. Its systemd unit uses a read-only system view except for the backup mount and lock directory. Review and adapt the fixed installation paths if the deployment differs. The age identity must remain outside the backup share; compromise of the scheduled host can still expose it, so this is not a substitute for offline key custody.
 
-This automation has not yet been exercised against a real NFS/SMB server or a second physical host. CI validates shell syntax and the underlying backup/restore CLI, not remote-storage availability, network interruption recovery or the host's systemd configuration.
+The Docker end-to-end test now also exercises age-verified retention in both dry-run and deletion modes. The scheduled automation has not yet been exercised against a real NFS/SMB server or a second physical host. CI validates shell syntax and the underlying backup/restore CLI, not remote-storage availability, network interruption recovery or the host's systemd configuration.
