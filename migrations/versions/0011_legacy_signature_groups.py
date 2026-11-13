@@ -33,7 +33,7 @@ def upgrade() -> None:
 
     rows = connection.execute(
         sa.text(
-            "SELECT signature_id, pool_name, MAX(weight) AS weight, "
+            "SELECT signature_id, pool_name, SUM(CASE WHEN is_enabled THEN weight ELSE 0 END) AS weight, "
             "MAX(CASE WHEN is_enabled THEN 1 ELSE 0 END) AS enabled "
             "FROM signature_variants "
             "WHERE pool_name IN ('AUTO', 'PROFESSIONAL', 'INTERNAL') "
