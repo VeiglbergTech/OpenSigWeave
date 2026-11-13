@@ -38,6 +38,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | Request size | Global request-body limit and bounded signature HTML storage. | Validate operational limits with representative usage. |
 | Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
 | File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Real cross-host restore and remote filesystem failure scenarios remain. |
+| Administrator exports | Selective versioned ZIP exports for signatures, domains, groups, rules and IDP metadata; HTML asset checksums, 20 MiB bound, admin authorization and separate rate limit. | Import/reconciliation is not included; review rule conditions for operator-entered identifiers before sharing. |
 | Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
 | Rspamd MIME rewrite | Multipart messages are left unchanged. | Only non-multipart rewrite path is currently supported; no full MIME or DKIM integration proof. |
 | CSP | Restrictive policy is report-only; Alpine CSP build and SRI are used. | Real-browser CSP report review before enforcement. |
@@ -71,7 +72,7 @@ These findings drove the work on the current branch. The current status is in th
 
 ## 6. CI evidence
 
-The latest CI runs `43432993185` (push) and `43432999997` (pull request) on commit `738c98f6f4bc5a1eec411cc8f0ca4aab5572a391` both passed:
+The latest CI runs `43442572622` (push) and `43442582940` (pull request) on commit `30c3b0cb8b707ffc799fddd83bac829da7de3e35` both passed:
 
 - Full-history Gitleaks scan.
 - Python dependency audit.
@@ -81,9 +82,10 @@ The latest CI runs `43432993185` (push) and `43432999997` (pull request) on comm
 - Docker image build and Compose startup.
 - Container healthchecks and Alembic migration in the application container.
 - Authenticated engine API smoke request against PostgreSQL.
-- 197 regression tests.
+- 202 regression tests.
 - Scheduled remote-filesystem guard tests, including symlinked lock-file rejection.
 - Encrypted Docker full-backup and fresh-deployment restore integration, including verified retention.
+- Selective administrator export archive, authorization, asset-integrity and rate-limit tests.
 
 This evidence covers automated checks and a container/API smoke test. It does not constitute a dynamic penetration test, browser acceptance test, SMTP integration test or production certification.
 
