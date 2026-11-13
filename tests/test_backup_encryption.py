@@ -10,6 +10,7 @@ from backup_encryption import (
     decrypt_and_verify_archive,
     decrypt_archive,
     encrypt_archive,
+    encrypt_file,
 )
 
 
@@ -61,6 +62,16 @@ class BackupEncryptionTests(unittest.TestCase):
                 decrypt_archive(encrypted, identity, output)
             self.assertTrue(output.exists())
             self.assertEqual(output.read_bytes(), archive.read_bytes())
+
+    def test_encrypt_file_publishes_only_ciphertext_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / ".env"
+            source.write_text("SECRET=value", encoding="utf-8")
+            encrypted = root / "env.enc"
+            with patch("backup_encryption.subprocess.run", side_effect=self._mock_age):
+                encrypt_file(source, encrypted, "age1example")
+            self.assertEqual(encrypted.read_text(encoding="utf-8"), "SECRET=value")
 
     def test_missing_recipient_is_rejected(self):
         with tempfile.TemporaryDirectory() as temporary:
