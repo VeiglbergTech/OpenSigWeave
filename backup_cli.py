@@ -18,6 +18,7 @@ from backup_encryption import (
     encrypt_archive,
 )
 from backup_docker import BackupDockerError, create_docker_backup
+from backup_restore import BackupRestoreError, restore_fresh_deployment
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -31,6 +32,15 @@ def build_parser() -> argparse.ArgumentParser:
     create.add_argument("--identity", required=True, type=Path)
     create.add_argument("--docker-binary", default="docker")
     create.add_argument("--age-binary", default="age")
+
+    restore = commands.add_parser("restore", help="Restore a complete backup into a fresh Compose deployment")
+    restore.add_argument("backup", type=Path)
+    restore.add_argument("--identity", required=True, type=Path)
+    restore.add_argument("--target-dir", required=True, type=Path)
+    restore.add_argument("--project-name", required=True)
+    restore.add_argument("--docker-binary", default="docker")
+    restore.add_argument("--age-binary", default="age")
+    restore.add_argument("--health-timeout", type=int, default=180)
 
     package = commands.add_parser("package", help="Create and encrypt an archive from a prepared staging directory")
     package.add_argument("--staging", required=True, type=Path)
@@ -64,6 +74,20 @@ def main(argv: list[str] | None = None) -> int:
                 age_binary=args.age_binary,
             )
             print(f"Full encrypted backup created and verified: {result}")
+            return 0
+
+        if args.command == "restore":
+            result = restore_fresh_deployment(
+                args.backup,
+                args.identity,
+                args.target_dir,
+                project_name=args.project_name,
+                docker_binary=args.docker_binary,
+                age_binary=args.age_binary,
+                health_timeout=args.health_timeout,
+            )
+            print(f"Restore completed and services are healthy: {result}")
+            print("Review the restored deployment before changing DNS or reverse-proxy routing.")
             return 0
 
         if args.command == "package":
@@ -101,7 +125,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Verified archive decrypted: {args.output}")
             return 0
-    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, OSError) as exc:
+    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, BackupRestoreError, OSError) as exc:
         print(f"Backup operation failed: {exc}", file=sys.stderr)
         return 2
     return 2
