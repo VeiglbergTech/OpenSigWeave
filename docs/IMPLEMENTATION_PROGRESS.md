@@ -31,7 +31,9 @@ This document describes the current branch state. It is not a promise that defer
 - Hybrid persistence: PostgreSQL metadata and versioned HTML files with SHA-256 integrity validation.
 - Signature variants with weights and per-sender selection state to avoid immediate repeats.
 - Backup archive primitives with versioned manifests, SHA-256 inventory, bounded archive verification and safe extraction.
-- age-based encryption/decryption helpers and a staging-directory CLI for packaging, verifying and decrypting archives. This is not yet a Docker-volume snapshot or complete disaster-recovery workflow.
+- age-based encryption/decryption for archives and standalone secret files.
+- Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, signature and IDP volume snapshots, encrypted host `.env`, archive encryption and decrypt-and-verify. The age identity is supplied for the duration of verification and should be stored off-host.
+- Staging-directory packaging, encrypted archive verification and decryption CLI commands. Safe restore, cross-host restore drill and UI exports remain unimplemented.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -56,7 +58,7 @@ This document describes the current branch state. It is not a promise that defer
 - Non-root application UID/GID 10001.
 - Read-only application container filesystem, bounded temporary filesystem, dropped Linux capabilities and `no-new-privileges`.
 - PostgreSQL 17 Alpine service with healthcheck.
-- Persistent named volumes for PostgreSQL and signature HTML.
+- Persistent named volumes for PostgreSQL, signature HTML and managed identity-provider credentials.
 - Application port bound to host loopback at `127.0.0.1:8085`.
 - Startup waits for PostgreSQL, applies Alembic migrations and then starts Uvicorn.
 - Application process healthcheck.
