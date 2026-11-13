@@ -31,8 +31,11 @@ command -v "$PYTHON_BINARY" >/dev/null 2>&1 || { echo "Python executable not fou
 command -v "$DOCKER_BINARY" >/dev/null 2>&1 || { echo "Docker executable not found: $DOCKER_BINARY" >&2; exit 2; }
 command -v "$AGE_BINARY" >/dev/null 2>&1 || { echo "age executable not found: $AGE_BINARY" >&2; exit 2; }
 
-LOCK_FILE="${LOCK_FILE:-/run/lock/opensigweave-backup.lock}"
-exec 9>"$LOCK_FILE"
+LOCK_FILE="${LOCK_FILE:-/run/opensigweave/backup.lock}"
+LOCK_DIRECTORY="$(dirname -- "$LOCK_FILE")"
+[[ -d "$LOCK_DIRECTORY" && ! -L "$LOCK_DIRECTORY" ]] || { echo "Backup lock directory is missing or unsafe" >&2; exit 2; }
+[[ ! -L "$LOCK_FILE" ]] || { echo "Backup lock file must not be a symbolic link" >&2; exit 2; }
+exec 9>>"$LOCK_FILE"
 flock -n 9 || { echo "Another OpenSigWeave backup is already running" >&2; exit 0; }
 
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
