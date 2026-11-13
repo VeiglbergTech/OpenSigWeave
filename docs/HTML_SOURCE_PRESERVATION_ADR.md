@@ -1,8 +1,25 @@
 # HTML source preservation and safe signature rendering
 
-- **Status:** Accepted design; implementation pending
+- **Status:** Implemented on `architecture/refactor-foundation`; automated CI validation passed
 - **Scope:** Personal overrides, domain templates, administrator overrides, versioned signatures
 - **Related:** `signature_sanitizer.py`, `signature_renderer.py`, `signature_catalog.py`, `signature_storage.py`
+
+
+## Implementation status
+
+Implemented on the working branch:
+
+- Added nullable `domains.template_html_source` and `user_overrides.html_content_source` columns through migration `0012_html_source`; existing sanitized values are backfilled without claiming that previously removed markup can be recovered.
+- Domain, personal override and administrator override write paths retain submitted source separately while continuing to store sanitized snapshots in the legacy delivery columns.
+- Editor-facing reads return source with a safe legacy fallback; legacy administrator content is sanitized when no source snapshot exists.
+- Reusable signature version files retain original source bytes and their SHA-256 integrity hashes cover those exact bytes.
+- The signature renderer sanitizes source before preview and mail output; raw source is not the delivery representation.
+- All three raw-HTML editors display an Outlook-markup warning explaining that conditional comments and VML are preserved in source but removed from sanitized output.
+- Automated tests cover source round-trips, sanitizer behavior, API delivery paths and migration compatibility.
+
+CI evidence: push run [43422505731](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43422505731) and pull-request run [43422512796](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43422512796) both passed on commit `8ea29837b67b5d38333485d54a87fd6d0d6c68c2`, including PostgreSQL/SQLite migrations, Docker smoke tests, encrypted backup/fresh restore and regression tests.
+
+Remaining acceptance work is real-browser testing of all three editors and verification of actual email-client rendering. This implementation does not make Outlook VML available in delivered signatures.
 
 ## Context
 
