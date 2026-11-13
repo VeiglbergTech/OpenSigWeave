@@ -29,7 +29,7 @@ window.fetch = (resource, options = {}) => {
                 ['domain-raw-html-editor', 'domain-outlook-markup-warning'],
                 ['admin-raw-html-editor', 'admin-outlook-markup-warning']
             ];
-            const outlookMarkup = /<!--[\\s]*\\[if\\s+mso\\b|<\\s*v:[a-z][\\w-]*/i;
+            const outlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i;
             editors.forEach(([editorId, warningId]) => {
                 const editor = document.getElementById(editorId);
                 const warning = document.getElementById(warningId);
