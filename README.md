@@ -365,6 +365,7 @@ Install Docker Compose v2 and the age command-line utility on the host. Create a
 Run from the host:
 
 ```bash
+cd /opt/opensigweave
 python3 backup_cli.py create \
   --project-dir /opt/opensigweave \
   --output /backup/opensigweave-$(date -u +%Y%m%dT%H%M%SZ).age \
