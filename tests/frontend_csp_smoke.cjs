@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const vm = require("node:vm");
 const { JSDOM } = require("jsdom");
 
 const dom = new JSDOM(`<!doctype html>
@@ -117,6 +118,52 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   const template = fs.readFileSync("templates/index.html", "utf8");
   const portalJs = fs.readFileSync("static/js/portal.js", "utf8");
+
+  const notifications = [];
+  const signatureContext = {
+    window,
+    document,
+    notify: (message, type) => notifications.push({ message, type }),
+    Alpine: { data() {} },
+    userData: {},
+  };
+  vm.runInNewContext(portalJs, signatureContext, { filename: "portal.js" });
+  const signatureEditor = vm.runInNewContext("signatureManager()", signatureContext);
+  signatureEditor.form.html_content = "<p>Hello selected world!</p>";
+  const editor = {
+    value: signatureEditor.form.html_content,
+    selectionStart: 10,
+    selectionEnd: 18,
+    focused: false,
+    cursor: null,
+    focus() { this.focused = true; },
+    setSelectionRange(start, end) { this.cursor = [start, end]; },
+  };
+  signatureEditor.$nextTick = callback => callback();
+  signatureEditor.insertGroupTag("sales", editor);
+  const groupToken = "{{ group:sales }}";
+  assert.equal(
+    signatureEditor.form.html_content,
+    "<p>Hello " + groupToken + "!</p>",
+    "Selecting text must replace it with the group token",
+  );
+  assert.equal(editor.focused, true, "The editor must regain focus after insertion");
+  assert.deepEqual(
+    editor.cursor,
+    [10 + groupToken.length, 10 + groupToken.length],
+    "The cursor must be placed immediately after the inserted token",
+  );
+
+  signatureEditor.form.html_content = "<p>Footer</p>";
+  signatureEditor.insertGroupTag("legal", null);
+  assert.equal(
+    signatureEditor.form.html_content,
+    "<p>Footer</p>{{ group:legal }}",
+    "Insertion without an editor reference must append the token",
+  );
+  signatureEditor.insertGroupTag("", editor);
+  assert.equal(notifications.at(-1).message, "Select a signature group first.", "An empty group selection must be rejected");
+  assert.equal(notifications.at(-1).type, "error");
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.match(template, /insertGroupTag\(selectedGroupSlug, \$refs\.signatureHtmlTemplate\)/, "Group picker must insert into the signature HTML editor");
