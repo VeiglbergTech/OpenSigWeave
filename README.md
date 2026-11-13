@@ -384,6 +384,30 @@ python3 backup_cli.py verify /backup/opensigweave-backup.age \
   --identity /media/offline/age-identity.txt
 ```
 
+### Automated off-host backups and retention
+
+The repository includes an optional systemd service and daily timer. It writes full encrypted backups to a separately mounted remote filesystem (NFS, SMB/CIFS or an explicitly allowlisted remote FUSE filesystem) and applies verified retention after a successful backup.
+
+1. Mount a dedicated remote share at `/mnt/opensigweave-backups` using the host's normal mount configuration.
+2. Copy `scripts/backup.env.example` to `/etc/opensigweave/backup.env` and configure the project path, mount path, age recipient, private identity path and retention count.
+3. Store the age identity outside the backup share, owned by root with mode `0600`; keep a separate offline recovery copy.
+4. Install `scripts/systemd/opensigweave-backup.service` and `scripts/systemd/opensigweave-backup.timer` into `/etc/systemd/system/`, then run:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now opensigweave-backup.timer
+sudo systemctl start opensigweave-backup.service
+sudo systemctl status opensigweave-backup.service
+```
+
+The first service run should be inspected manually before relying on the timer. The script refuses to write if the remote mount is absent or its filesystem type is not allowlisted, and a lock prevents overlapping runs. Retention keeps the newest configured number of archives; every archive is decrypted and integrity-checked before any deletion. The CLI defaults to a dry run:
+
+```bash
+python3 backup_cli.py prune --directory /mnt/opensigweave-backups --identity /etc/opensigweave/age-identity.txt --keep 14
+```
+
+Add `--apply` only when you intend to delete older verified archives. CI covers the encrypted Docker backup/restore/retention path and shell syntax, but a real NFS/SMB host test and a cross-host restore drill are still required. See [the backup design](docs/BACKUP_RESTORE_DESIGN.md) for operational details.
+
 ### Restore to a fresh Docker host
 
 The restore command refuses an existing target directory and refuses to reuse any existing Docker volume. Choose a new target directory and a unique Compose project name:
