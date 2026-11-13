@@ -169,7 +169,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', variants: [], editing: false, variantEditor: false, variantSignature: null,
                 form: { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
@@ -202,6 +202,9 @@ function identityProviderManager() { return {
                         [this.signatures, this.domains, this.groups] = await Promise.all([
                             signaturesResponse.json(), domainsResponse.json(), groupsResponse.json()
                         ]);
+                        if (!this.availableGroups.some(group => group.slug === this.selectedGroupSlug)) {
+                            this.selectedGroupSlug = this.availableGroups[0]?.slug || '';
+                        }
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
