@@ -48,6 +48,8 @@ class DockerBackupTests(unittest.TestCase):
                         result_stdout = "sha256:app-image"
                 elif command[1:3] == ["compose", "exec"]:
                     stdout.write(b"postgres custom dump")
+                elif command[1:4] == ["image", "save", "--output"]:
+                    Path(command[4]).write_bytes(b"saved docker images")
                 elif command[1:3] == ["cp", "app-container:/data/signatures/."]:
                     Path(command[-1], "signature.html").write_text("<p>signature</p>", encoding="utf-8")
                 elif command[1:3] == ["cp", "app-container:/app/.idp/."]:
