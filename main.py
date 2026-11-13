@@ -1597,6 +1597,7 @@ async def get_rspamd_signature(
         return empty_response
 
     selected_from_variant = False
+    selected_from_group = False
     signature_id = None
     marker_requested = isinstance(x_signature_name, str) or isinstance(x_signature_code, str)
     mode_candidate = x_signature_mode.strip().upper() if isinstance(x_signature_mode, str) else ""
@@ -1652,6 +1653,7 @@ async def get_rspamd_signature(
         raw_template = override.html_content
     else:
         identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
+        mode = None
         if explicit_mode:
             try:
                 mode = resolve_mode(x_signature_mode)
@@ -1666,48 +1668,78 @@ async def get_rspamd_signature(
                 attributes=identity_attributes.attributes,
             )
             matched_rule = evaluate_rules(load_signature_rules(db), context)
-            try:
-                mode = resolve_mode(matched_rule.action if matched_rule else None)
-            except ValueError as exc:
-                raise HTTPException(status_code=500, detail="A stored signature rule has an invalid action")
-            signature_id = matched_rule.signature_id if matched_rule else None
-
-        if mode == SignatureMode.NONE:
-            return empty_response
-
-        selected_variant = select_and_record_variant(
-            db,
-            sender_email=normalized_email,
-            pool_name=mode.value,
-            domain_id=domain_obj.id,
-            signature_id=signature_id,
-        )
-        if selected_variant:
-            latest_version = (
-                db.query(SignatureVersionDB)
-                .filter(SignatureVersionDB.signature_id == selected_variant.signature_id)
-                .order_by(SignatureVersionDB.version_number.desc())
-                .first()
-            )
-            if latest_version:
-                selected_signature = db.get(SignatureDB, selected_variant.signature_id)
+            if matched_rule and matched_rule.action == "GROUP":
+                if not matched_rule.group_id or not identity_attributes.principal_id:
+                    return empty_response
+                selected_signature = select_and_record_group_signature(
+                    db,
+                    principal_id=identity_attributes.principal_id,
+                    group_id=matched_rule.group_id,
+                    domain_id=domain_obj.id,
+                )
                 if selected_signature is None:
-                    raise HTTPException(status_code=503, detail="Selected signature metadata is missing")
+                    return empty_response
+                latest_version = (
+                    db.query(SignatureVersionDB)
+                    .filter(SignatureVersionDB.signature_id == selected_signature.id)
+                    .order_by(SignatureVersionDB.version_number.desc())
+                    .first()
+                )
+                if latest_version is None:
+                    raise HTTPException(status_code=503, detail="Signature version metadata is missing")
                 try:
                     raw_template = signature_file_store.read(
                         selected_signature.name,
                         uuid.UUID(hex=latest_version.id),
                         latest_version.sha256,
                     )
-                    selected_from_variant = True
+                    selected_from_group = True
                 except (SignatureStorageError, ValueError, TypeError):
                     raise HTTPException(status_code=503, detail="Signature asset unavailable")
             else:
-                raise HTTPException(status_code=503, detail="Signature version metadata is missing")
-        elif mode == SignatureMode.AUTO and signature_id is None:
-            raw_template = domain_obj.template_html
-        else:
+                try:
+                    mode = resolve_mode(matched_rule.action if matched_rule else None)
+                except ValueError as exc:
+                    raise HTTPException(status_code=500, detail="A stored signature rule has an invalid action")
+                signature_id = matched_rule.signature_id if matched_rule else None
+
+        if mode == SignatureMode.NONE:
             return empty_response
+
+        if mode is not None:
+            selected_variant = select_and_record_variant(
+                db,
+                sender_email=normalized_email,
+                pool_name=mode.value,
+                domain_id=domain_obj.id,
+                signature_id=signature_id,
+            )
+            if selected_variant:
+                latest_version = (
+                    db.query(SignatureVersionDB)
+                    .filter(SignatureVersionDB.signature_id == selected_variant.signature_id)
+                    .order_by(SignatureVersionDB.version_number.desc())
+                    .first()
+                )
+                if latest_version:
+                    selected_signature = db.get(SignatureDB, selected_variant.signature_id)
+                    if selected_signature is None:
+                        raise HTTPException(status_code=503, detail="Selected signature metadata is missing")
+                    try:
+                        raw_template = signature_file_store.read(
+                            selected_signature.name,
+                            uuid.UUID(hex=latest_version.id),
+                            latest_version.sha256,
+                        )
+                        selected_from_variant = True
+                    except (SignatureStorageError, ValueError, TypeError):
+                        raise HTTPException(status_code=503, detail="Signature asset unavailable")
+                else:
+                    raise HTTPException(status_code=503, detail="Signature version metadata is missing")
+            elif mode == SignatureMode.AUTO and signature_id is None:
+                raw_template = domain_obj.template_html
+            else:
+                return empty_response
 
     if not raw_template:
         return empty_response
@@ -1730,7 +1762,7 @@ async def get_rspamd_signature(
     except TemplateError:
         raise HTTPException(status_code=422, detail="Invalid signature template")
 
-    if selected_from_variant:
+    if selected_from_variant or selected_from_group:
         db.commit()
 
     return {
