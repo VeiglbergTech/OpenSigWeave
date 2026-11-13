@@ -254,6 +254,45 @@ class IdentityProviderRegistryTests(unittest.TestCase):
             self.assertEqual(registry._configs["auth-main"]["AUTHENTIK_API_TOKEN"], "keep-me")
             self.assertEqual(registry._configs["auth-main"]["AUTHENTIK_URL"], "https://auth2.example.org")
 
+    def test_generic_oidc_provider_stores_client_secret_privately_and_describes_safe_settings(self):
+        import tempfile
+        from pathlib import Path
+        from identity.registry import IdentityProviderRegistry
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = IdentityProviderRegistry(Path(tmp) / ".idp")
+            settings = {
+                "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "opensigweave",
+                "OIDC_CLIENT_SECRET": "generic-oidc-secret",
+                "OIDC_SCOPES": "openid email profile groups",
+                "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main",
+            }
+            registry.save("oidc-main", "Company OIDC", "oidc", settings)
+            safe = registry.describe("oidc-main")
+            self.assertEqual(safe["provider_type"], "oidc")
+            self.assertNotIn("OIDC_CLIENT_SECRET", safe["settings"])
+            self.assertTrue(safe["secret_configured"])
+            self.assertNotIn("generic-oidc-secret", str(safe))
+            self.assertEqual(registry.get_config("oidc-main")["OIDC_CLIENT_SECRET"], "generic-oidc-secret")
+            self.assertIsNone(registry.get("oidc-main"))
+
+    def test_generic_oidc_provider_requires_complete_https_configuration(self):
+        import tempfile
+        from identity.registry import IdentityProviderRegistry, ProviderConfigError
+        registry = IdentityProviderRegistry(tempfile.mkdtemp())
+        with self.assertRaises(ProviderConfigError):
+            registry.save("oidc-bad", "Incomplete OIDC", "oidc", {
+                "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "client",
+            })
+        with self.assertRaises(ProviderConfigError):
+            registry.save("oidc-http", "HTTP OIDC", "oidc", {
+                "OIDC_DISCOVERY_URL": "http://idp.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "client",
+                "OIDC_CLIENT_SECRET": "secret",
+                "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-http",
+            })
+
     def test_provider_slug_rejects_path_traversal(self):
         import tempfile
         from identity.registry import IdentityProviderRegistry, ProviderConfigError
