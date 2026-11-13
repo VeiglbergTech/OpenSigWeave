@@ -120,6 +120,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const portalJs = fs.readFileSync("static/js/portal.js", "utf8");
 
   const notifications = [];
+  window.fetch = async () => ({ ok: true, json: async () => [] });
   const signatureContext = {
     window,
     document,
