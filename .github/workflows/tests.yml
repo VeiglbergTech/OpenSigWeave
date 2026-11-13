@@ -126,6 +126,12 @@ jobs:
           engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
           response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
+      - name: Install age for backup integration
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+      - name: Test full encrypted Docker backup and fresh restore
+        run: bash tests/docker_backup_restore_e2e.sh
       - name: Run regression tests
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
