@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import tempfile
@@ -129,8 +130,11 @@ class AdminExportTests(unittest.TestCase):
             signature_item = manifest["data"]["signatures"][0]
             self.assertEqual(signature_item["id"], signature.id)
             self.assertEqual(len(signature_item["versions"]), 2)
-            original = archive.read(signature_item["versions"][0]["asset"]).decode()
+            original_bytes = archive.read(signature_item["versions"][0]["asset"])
+            original = original_bytes.decode()
             self.assertIn("<!--[if mso]>", original)
+            asset = next(item for item in manifest["assets"] if item["path"] == signature_item["versions"][0]["asset"])
+            self.assertEqual(asset["sha256"], hashlib.sha256(original_bytes).hexdigest())
             self.assertEqual(
                 manifest["data"]["domains"][0]["template_html"],
                 domain.template_html_source,
