@@ -624,6 +624,44 @@ function confirmModal() {
     };
 }
 
+function adminExportManager() {
+    return {
+        selected: ["signatures", "domains", "rules", "groups", "identity_providers"],
+        busy: false,
+        error: "",
+        async download() {
+            if (this.busy || this.selected.length === 0) return;
+            this.busy = true;
+            this.error = "";
+            try {
+                const query = new URLSearchParams({ components: this.selected.join(",") });
+                const response = await fetch("/api/admin/exports?" + query.toString(), {
+                    headers: { "Accept": "application/zip" },
+                    credentials: "same-origin"
+                });
+                if (!response.ok) {
+                    const problem = await response.json().catch(() => ({}));
+                    throw new Error(problem.detail || "Export could not be generated.");
+                }
+                const blob = await response.blob();
+                const objectUrl = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.href = objectUrl;
+                link.download = "opensigweave-component-export.zip";
+                link.hidden = true;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                URL.revokeObjectURL(objectUrl);
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : "Export failed.";
+            } finally {
+                this.busy = false;
+            }
+        }
+    };
+}
+
 document.addEventListener("alpine:init", () => {
     Alpine.data("portalShell", portalShell);
     Alpine.data("htmlEditorToggle", htmlEditorToggle);
@@ -632,6 +670,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("domainSettingsModal", domainSettingsModal);
     Alpine.data("signatureManager", signatureManager);
     Alpine.data("ruleManager", ruleManager);
+    Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("toastManager", toastManager);
     Alpine.data("sanitizerModal", sanitizerModal);
     Alpine.data("previewModal", previewModal);
