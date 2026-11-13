@@ -142,9 +142,11 @@ def main(argv: list[str] | None = None) -> int:
                 apply=args.apply,
                 age_binary=args.age_binary,
             )
-            print(f"Verified and retained: {len(result["retained"])}")
+            retained_count = len(result["retained"])
+            deleted_count = len(result["deleted"])
+            print(f"Verified and retained: {retained_count}")
             if args.apply:
-                print(f"Deleted: {len(result["deleted"])}")
+                print(f"Deleted: {deleted_count}")
             else:
                 print("Dry run; no files were deleted.")
                 for path in result["would_delete"]:
