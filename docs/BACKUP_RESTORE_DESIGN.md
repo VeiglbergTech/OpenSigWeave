@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification and initial fresh-deployment restore are implemented. Verified backup retention with a dry-run-first CLI is implemented. Cross-host restore testing, destructive restore, off-host scheduling/replication and administrator UI exports are not implemented.
+**Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention and a systemd-based scheduled backup to an explicitly mounted remote filesystem are implemented. Cross-host restore testing, destructive restore, administrator UI exports and testing against a real NFS/SMB target remain outstanding.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -151,7 +151,7 @@ A documented restore drill against a clean, disposable host is a release require
 2. ~~Implement safe restore into a fresh deployment.~~ Add cross-host restore drills, deeper post-restore validation and, only later, destructive restore with safety snapshots.
 3. Add automated cross-host restore tests and a documented restore drill.
 4. Add selective administrator UI exports as a separate layer over the same backup components.
-5. Add retention and off-host destination support after the basic restore path is proven.
+5. ~~Add verified retention and scheduled off-host destination support.~~ Validate the scheduled workflow against a real NFS/SMB target and document operational recovery.
 
 Until these steps are complete, the Compose volumes are persistent storage, not a backup solution.
 
@@ -165,7 +165,7 @@ The console supports a retention preview and an explicit deletion mode:
 
 The command considers only direct regular .age files in the selected directory. It sorts them newest first, decrypts and verifies every candidate using the supplied age identity, and retains the newest requested number. Any invalid archive aborts the operation before deletion. The default is a dry run; deletion requires --apply. Symlinks and files changed during inspection are refused.
 
-Retention is not off-host protection. The backup directory should still be replicated to a separate system or object-storage target, with access controls and encryption retained. Automated scheduling and remote replication are deferred until their target and credentials can be configured safely.
+Retention is not, by itself, off-host protection. The repository now includes a systemd service/timer that writes to a dedicated mounted remote filesystem and applies verified retention. The mount must be configured by the operator; the script refuses to write when the target is not mounted or its filesystem type is not allowlisted. Replication to object storage is not implemented.
 
 
 ## 9. Scheduled off-host backup
@@ -182,4 +182,4 @@ Deployment outline:
 
 The service runs with root privileges because it needs the Docker socket. Its systemd unit uses a read-only system view except for the backup mount and lock directory. Review and adapt the fixed installation paths if the deployment differs. The age identity must remain outside the backup share; compromise of the scheduled host can still expose it, so this is not a substitute for offline key custody.
 
-The Docker end-to-end test now also exercises age-verified retention in both dry-run and deletion modes. The scheduled automation has not yet been exercised against a real NFS/SMB server or a second physical host. CI validates shell syntax and the underlying backup/restore CLI, not remote-storage availability, network interruption recovery or the host's systemd configuration.
+The Docker end-to-end test now also exercises age-verified retention in both dry-run and deletion modes. The scheduled automation has not yet been exercised against a real NFS/SMB server or a second physical host. CI validates shell syntax and the underlying backup/restore/retention CLI, not remote-storage availability, network interruption recovery or the host's systemd configuration. Latest push and pull-request CI runs for commit `588b796ab15281faf4c8509c38bc79e76bf66949` both passed, including the Docker backup/restore/retention integration test.
