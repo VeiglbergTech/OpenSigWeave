@@ -19,7 +19,7 @@ class SlugifyTests(unittest.TestCase):
         self.assertEqual(slugify("東京"), "")
 
     def test_casefolds_before_normalization(self):
-        self.assertEqual(slugify("STRAẞE"), "stra-e")
+        self.assertEqual(slugify("STRAẞE"), "strasse")
 
 
 if __name__ == "__main__":
