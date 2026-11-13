@@ -748,6 +748,59 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 403)
 
 
+    def test_admin_override_preserves_source_and_returns_it_to_editor(self):
+        self.db.add(main.DomainDB(domain_name="example.org", is_active=True))
+        self.db.commit()
+        source = '<!--[if mso]><v:rect>Outlook</v:rect><![endif]--><p onclick="bad()">Managed<script>bad()</script></p>'
+        main.save_admin_override(
+            main.AdminOverrideSave(
+                user_email="managed@example.org",
+                html_content=source,
+                is_disabled=False,
+            ),
+            self.admin_request,
+            self.db,
+        )
+        stored = self.db.query(main.UserOverrideDB).filter_by(
+            user_email="managed@example.org"
+        ).one()
+        self.assertEqual(stored.html_content_source, source)
+        self.assertNotIn("<!--[if mso]", stored.html_content)
+        listed = main.get_domain_overrides("example.org", self.admin_request, self.db)
+        self.assertEqual(listed[0]["html_content"], source)
+
+    def test_raw_signature_version_is_sanitized_before_mail_rendering(self):
+        self.db.add(main.DomainDB(domain_name="example.org", is_active=True))
+        self.db.commit()
+        source = '<!--[if mso]><v:rect>Outlook</v:rect><![endif]--><p onclick="bad()">Safe<script>bad()</script></p>'
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Source-preserved signature",
+                mode="PROFESSIONAL",
+                html_content=source,
+            ),
+            self.admin_request,
+            self.db,
+        )
+        with patch.object(
+            main.attribute_provider,
+            "get_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "user@example.org",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_mode="PROFESSIONAL",
+                db=self.db,
+            ))
+        self.assertIn("Safe", result["html"])
+        self.assertNotIn("<!--[if mso]", result["html"])
+        self.assertNotIn("<v:rect", result["html"])
+        self.assertNotIn("onclick", result["html"])
+        self.assertNotIn("<script", result["html"])
+
+
 
 if __name__ == "__main__":
     unittest.main()
