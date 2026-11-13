@@ -17,7 +17,7 @@
 - State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
 - Legacy `/auth` and managed `/auth/{provider_id}` OIDC callbacks share the database-backed callback rate-limit policy.
 
-**Known provider limitation:** In OIDC mode, the attribute provider and logout URL still use Authentik-specific APIs/paths. Authentik is the currently supported complete external provider configuration. A generic OIDC provider cannot yet be assumed to provide all application behavior. Local-only mode bypasses the external provider entirely and returns empty identity attributes.
+**Provider distinctions:** Authentik remains the provider with dedicated account lookup through its API. Generic OIDC login and logout use standard discovery metadata; the verified callback claims are cached for profile use (currently up to 24 hours) because generic OIDC does not define a portable account-status or profile-management API. Consequently, group or account changes at a generic provider may not take effect until cache expiry. Do not describe generic OIDC as providing immediate account revocation. Local-only mode bypasses external providers and returns empty external identity attributes.
 
 ### Session and HTTP controls
 
@@ -112,6 +112,6 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest push and pull-request CI runs `43442572622` and `43442582940` on commit `30c3b0cb8b707ffc799fddd83bac829da7de3e35` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention, selective administrator export checks and 202 regression tests.
+The latest verified push and pull-request CI runs `43446006059` and `43446015519` on commit `d5e56271919a3ce25b20ce086f58bf42d6c0f791` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention, selective administrator export checks and the generic OIDC regression coverage. These runs validate automated code paths and mocks, not live-provider integration.
 
 This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
