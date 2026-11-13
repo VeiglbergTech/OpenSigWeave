@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
 from pathlib import Path
@@ -49,6 +50,28 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
         self.tempdir.cleanup()
+
+    def test_admin_component_export_requires_admin_and_returns_private_zip(self):
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Exported signature",
+                mode="AUTO",
+                html_content="<p>Export payload</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        response = main.export_admin_components(
+            self.admin_request, "signatures,domains", self.db
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.media_type, "application/zip")
+        self.assertTrue(response.body.startswith(b"PK"))
+        self.assertIn("attachment;", response.headers["content-disposition"])
+        self.assertEqual(response.headers["cache-control"], "no-store, private")
+        with self.assertRaises(HTTPException) as denied:
+            main.export_admin_components(self.user_request, "signatures", self.db)
+        self.assertEqual(denied.exception.status_code, 403)
 
     def test_signature_api_supports_multiple_domain_assignments(self):
         first = main.DomainDB(domain_name="first.example", is_active=True)
