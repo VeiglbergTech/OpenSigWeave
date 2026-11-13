@@ -19,6 +19,7 @@ from signature_catalog import (
     update_signature_variant,
 )
 from signature_storage import SignatureFileStore
+from signature_sanitizer import sanitize_signature_html
 
 
 class SignatureCatalogTests(unittest.TestCase):
@@ -201,44 +202,54 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertFalse((Path(self.tempdir.name) / "signatur" / "Rollback").exists())
         self.assertEqual(self.session.execute(select(SignatureDB)).scalars().all(), [])
 
-    def test_signature_html_is_sanitized_before_storage(self):
+    def test_signature_source_is_preserved_and_sanitized_before_rendering(self):
+        source = (
+            '<!--[if mso]><xml>Outlook metadata</xml><![endif]-->'
+            '<v:rect id="outlook-box"><v:fill color="#ffffff" /></v:rect>'
+            '<p style="color: red; position: fixed" onclick="alert(1)">'
+            '{{ first_name }}'
+            '<img src="https://example.org/logo.png" onerror="alert(1)">'
+            '<a href="javascript:alert(1)">link</a>'
+            '<script>alert(1)</script>'
+            '</p>'
+        )
         signature, version, _ = create_signature(
             self.session,
             self.store,
             name="Untrusted template",
             domain_id=None,
             mode=SignatureMode.AUTO,
-            html_content=(
-                '<p style="color: red; position: fixed" onclick="alert(1)">'
-                '{{ first_name }}'
-                '<img src="https://example.org/logo.png" onerror="alert(1)">'
-                '<a href="javascript:alert(1)">link</a>'
-                '<script>alert(1)</script>'
-                '</p>'
-            ),
+            html_content=source,
         )
         stored = self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256)
-        self.assertIn("{{ first_name }}", stored)
-        self.assertIn('src="https://example.org/logo.png"', stored)
-        self.assertNotIn("onclick", stored)
-        self.assertNotIn("onerror", stored)
-        self.assertNotIn("javascript:", stored)
-        self.assertNotIn("<script", stored)
-        self.assertNotIn("position", stored)
+        self.assertEqual(stored, source)
 
-    def test_new_signature_versions_are_sanitized_too(self):
+        rendered_source = sanitize_signature_html(stored)
+        self.assertIn("{{ first_name }}", rendered_source)
+        self.assertIn('src="https://example.org/logo.png"', rendered_source)
+        self.assertNotIn("<!--[if mso]", rendered_source)
+        self.assertNotIn("<v:rect", rendered_source)
+        self.assertNotIn("onclick", rendered_source)
+        self.assertNotIn("onerror", rendered_source)
+        self.assertNotIn("javascript:", rendered_source)
+        self.assertNotIn("<script", rendered_source)
+        self.assertNotIn("position", rendered_source)
+
+    def test_new_signature_versions_preserve_source_too(self):
         signature, _, _ = create_signature(
             self.session, self.store, name="Versioned", domain_id=None,
             mode=SignatureMode.PROFESSIONAL, html_content="<p>Version 1</p>",
         )
+        source = '<div onmouseover="alert(1)">Version 2<script>bad()</script></div>'
         version = add_signature_version(
-            self.session, self.store, signature.id,
-            '<div onmouseover="alert(1)">Version 2<script>bad()</script></div>',
+            self.session, self.store, signature.id, source,
         )
         stored = self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256)
-        self.assertIn("Version 2", stored)
-        self.assertNotIn("onmouseover", stored)
-        self.assertNotIn("<script", stored)
+        self.assertEqual(stored, source)
+        sanitized = sanitize_signature_html(stored)
+        self.assertIn("Version 2", sanitized)
+        self.assertNotIn("onmouseover", sanitized)
+        self.assertNotIn("<script", sanitized)
 
 
 if __name__ == "__main__":
