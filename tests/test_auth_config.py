@@ -8,7 +8,7 @@ from types import SimpleNamespace
 
 from identity.attributes import IdentityAttributes
 from urllib.parse import urlencode
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -346,6 +346,26 @@ class ManagedOIDCLoginButtonTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = main.configured_login_providers(db)
         self.assertEqual(result, [{"id": "auth-main", "display_name": "Authentik Main"}])
+
+    def test_managed_oidc_client_accepts_generic_provider_configuration(self):
+        config = {
+            "IDP_TYPE": "oidc",
+            "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+            "OIDC_CLIENT_ID": "client",
+            "OIDC_CLIENT_SECRET": "secret",
+            "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main",
+            "OIDC_SCOPES": "openid email profile groups",
+        }
+        oidc_client = object()
+        oauth_client = SimpleNamespace(register=Mock(), oidc=oidc_client)
+        with (
+            patch.object(main.identity_provider_registry, "get_config", return_value=config),
+            patch.object(main, "OAuth", return_value=oauth_client),
+        ):
+            result, returned_config = main.managed_oidc_client("oidc-main")
+        self.assertIs(result, oidc_client)
+        self.assertEqual(returned_config, config)
+        oauth_client.register.assert_called_once()
 
     async def test_login_page_lists_generic_oidc_providers(self):
         providers = [SimpleNamespace(id="oidc-main", display_name="Company OIDC")]
