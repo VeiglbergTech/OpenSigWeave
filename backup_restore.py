@@ -51,6 +51,12 @@ def _run(
     except subprocess.TimeoutExpired as exc:
         raise BackupRestoreError(f"Restore command timed out: {command[0]}") from exc
     if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        if detail:
+            detail = detail[-1200:]
+            raise BackupRestoreError(
+                f"Restore command failed: {command[0]} (exit {result.returncode}): {detail}"
+            )
         raise BackupRestoreError(f"Restore command failed: {command[0]} (exit {result.returncode})")
     return result
 
@@ -320,10 +326,10 @@ def restore_fresh_deployment(
 
             # The restored deployment uses the exact image saved in the backup.
             override = (
-                "services:\\n"
-                "  opensigweave:\\n"
-                "    image: opensigweave:restore\\n"
-                "    build: null\\n"
+                "services:\n"
+                "  opensigweave:\n"
+                "    image: opensigweave:restore\n"
+                "    build: null\n"
             )
             (target / "compose.restore.yaml").write_text(override, encoding="utf-8")
             os.chmod(target / "compose.restore.yaml", 0o600)
