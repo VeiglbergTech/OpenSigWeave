@@ -17,11 +17,20 @@ from backup_encryption import (
     decrypt_archive,
     encrypt_archive,
 )
+from backup_docker import BackupDockerError, create_docker_backup
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="opensigweave-backup")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    create = commands.add_parser("create", help="Create a complete encrypted backup from a Docker Compose project")
+    create.add_argument("--project-dir", required=True, type=Path)
+    create.add_argument("--output", required=True, type=Path)
+    create.add_argument("--recipient", required=True)
+    create.add_argument("--identity", required=True, type=Path)
+    create.add_argument("--docker-binary", default="docker")
+    create.add_argument("--age-binary", default="age")
 
     package = commands.add_parser("package", help="Create and encrypt an archive from a prepared staging directory")
     package.add_argument("--staging", required=True, type=Path)
@@ -45,6 +54,18 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "create":
+            result = create_docker_backup(
+                args.project_dir,
+                args.output,
+                args.recipient,
+                args.identity,
+                docker_binary=args.docker_binary,
+                age_binary=args.age_binary,
+            )
+            print(f"Full encrypted backup created and verified: {result}")
+            return 0
+
         if args.command == "package":
             staging = args.staging.expanduser().absolute()
             if staging.is_symlink() or not staging.is_dir():
@@ -80,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Verified archive decrypted: {args.output}")
             return 0
-    except (BackupArchiveError, BackupEncryptionError, OSError) as exc:
+    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, OSError) as exc:
         print(f"Backup operation failed: {exc}", file=sys.stderr)
         return 2
     return 2
