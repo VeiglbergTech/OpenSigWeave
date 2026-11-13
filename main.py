@@ -81,6 +81,20 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         if meta is None or not meta.is_enabled:
             return IdentityAttributes()
         cache_key = f"{provider_id}:{normalized_email}"
+        if meta.provider_type == "oidc":
+            cached = db.get(IdentityCacheDB, cache_key)
+            if cached is None:
+                return IdentityAttributes()
+            return IdentityAttributes(
+                principal_id=cached.principal_id or "",
+                first_name=cached.first_name or "",
+                last_name=cached.last_name or "",
+                title=cached.title or "",
+                phone=cached.phone or "",
+                groups=frozenset(cached.groups or []),
+                claims=cached.claims or {},
+                attributes=cached.attributes or {},
+            )
     else:
         # Compatibility path for older callers without a domain assignment.
         provider = attribute_provider
@@ -441,7 +455,7 @@ def configured_login_providers(db) -> list[dict[str, str]]:
         return []
     query = db.query(IdentityProviderDB).filter(
         IdentityProviderDB.is_enabled.is_(True),
-        IdentityProviderDB.provider_type == "authentik",
+        IdentityProviderDB.provider_type.in_({"authentik", "oidc"}),
     )
     if not hasattr(query, "all"):
         return []
@@ -469,7 +483,7 @@ def login_page(request: Request, error: bool = False, status_code: int = 200, db
 
 def managed_oidc_client(provider_id: str):
     config = identity_provider_registry.get_config(provider_id)
-    if config.get("IDP_TYPE", "").casefold() != "authentik":
+    if config.get("IDP_TYPE", "").casefold() not in {"authentik", "oidc"}:
         raise ProviderConfigError("Selected provider is not an OIDC provider.")
     required = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
     if not all(config.get(key) for key in required):
@@ -525,7 +539,7 @@ async def managed_oidc_login(provider_id: str, request: Request, db: Session = D
     if request.session.get("user"):
         return RedirectResponse(url="/", status_code=303)
     provider_meta = db.get(IdentityProviderDB, provider_id)
-    if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type != "authentik":
+    if provider_meta is None or not provider_meta.is_enabled or provider_meta.provider_type not in {"authentik", "oidc"}:
         return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
     try:
         client, config = managed_oidc_client(provider_id)
@@ -619,7 +633,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
             }
             request.session["csrf_token"] = secrets.token_urlsafe(32)
             return RedirectResponse(url="/", status_code=303)
-        if provider_meta.provider_type == "authentik":
+        if provider_meta.provider_type in {"authentik", "oidc"}:
             try:
                 client, config = managed_oidc_client(provider_id)
                 request.session["pending_managed_login"] = {
@@ -662,6 +676,46 @@ async def auth(request: Request, db: Session = Depends(get_db)):
             for key in ("phone", "title")
             if isinstance((value := raw_attributes.get(key)), str)
         }
+        if provider_meta.provider_type == "oidc":
+            def claim_text(value):
+                return value[:256] if isinstance(value, str) else ""
+
+            display_name = claim_text(user.get("name"))
+            first_name = claim_text(user.get("given_name") or user.get("first_name"))
+            last_name = claim_text(user.get("family_name") or user.get("last_name"))
+            if not first_name and not last_name and display_name:
+                name_parts = display_name.split(None, 1)
+                first_name = name_parts[0][:256]
+                last_name = name_parts[1][:256] if len(name_parts) > 1 else ""
+            title = claim_text(user.get("title") or raw_attributes.get("title"))
+            phone = claim_text(user.get("phone_number") or user.get("phone") or raw_attributes.get("phone"))
+            safe_custom_attributes = {}
+            for key, value in list(raw_attributes.items())[:32]:
+                if not isinstance(key, str) or not key or len(key) > 64:
+                    continue
+                if isinstance(value, str):
+                    safe_custom_attributes[key] = value[:256]
+                elif isinstance(value, list) and len(value) <= 16 and all(isinstance(item, str) for item in value):
+                    safe_custom_attributes[key] = [item[:256] for item in value]
+            safe_claims = {"email": email, "email_verified": True, "groups": groups}
+            for key in ("name", "preferred_username", "given_name", "family_name", "locale", "department", "job_title"):
+                if isinstance(user.get(key), str):
+                    safe_claims[key] = user[key][:256]
+            cache_key = f"{provider_id}:{email}"
+            cached = db.get(IdentityCacheDB, cache_key)
+            if cached is None:
+                cached = IdentityCacheDB(email=cache_key)
+                db.add(cached)
+            cached.principal_id = f"{provider_id}:oidc:{hashlib.sha256(str(user['sub']).encode('utf-8')).hexdigest()}"
+            cached.first_name = first_name
+            cached.last_name = last_name
+            cached.title = title
+            cached.phone = phone
+            cached.groups = groups
+            cached.claims = safe_claims
+            cached.attributes = safe_custom_attributes
+            db.commit()
+            safe_attributes = {"phone": phone, "title": title}
         request.session.clear()
         request.session["user"] = {
             "sub": str(user["sub"])[:255],
