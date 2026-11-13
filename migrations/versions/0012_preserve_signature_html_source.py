@@ -6,7 +6,7 @@ removed markup cannot be reconstructed by this migration.
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0012_preserve_signature_html_source"
+revision = "0012_html_source"
 down_revision = "0011_legacy_signature_groups"
 branch_labels = None
 depends_on = None
