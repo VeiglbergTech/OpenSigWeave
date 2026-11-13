@@ -1,0 +1,19 @@
+[Unit]
+Description=Create and retain an encrypted OpenSigWeave backup
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+RequiresMountsFor=/mnt/opensigweave-backups
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/opensigweave/backup.env
+ExecStart=/opt/opensigweave/scripts/backup_to_mounted_storage.sh
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/mnt/opensigweave-backups /run/lock
