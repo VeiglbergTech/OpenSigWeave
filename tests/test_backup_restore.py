@@ -32,6 +32,7 @@ class BackupRestoreTests(unittest.TestCase):
             "postgres_image_id": "sha256:" + "b" * 64,
             "application_image_ref": "opensigweave:preview",
             "postgres_image_ref": "postgres:17-alpine",
+            "alembic_revision": "revision_001",
         })
         archive = root / "backup.tar.gz"
         create_archive(staging, archive)
@@ -56,6 +57,8 @@ class BackupRestoreTests(unittest.TestCase):
 
             def run(command, *, cwd, stdin=None, timeout=900):
                 output = "healthy" if command[1:3] == ["inspect", "--format"] else ""
+                if "SELECT version_num FROM alembic_version" in " ".join(command):
+                    output = "revision_001"
                 return subprocess.CompletedProcess(command, 0, output, "")
 
             def decrypt_archive(source, identity_file, destination, **kwargs):
@@ -69,6 +72,7 @@ class BackupRestoreTests(unittest.TestCase):
                 patch("backup_restore._compose", side_effect=compose),
                 patch("backup_restore._run", side_effect=run),
                 patch("backup_restore._restore_volume") as restore_volume,
+                patch("backup_restore._verify_restored_volume") as verify_volume,
                 patch("backup_restore._wait_healthy"),
             ):
                 result = restore_fresh_deployment(
@@ -81,6 +85,7 @@ class BackupRestoreTests(unittest.TestCase):
             self.assertIn(("up", "-d", "postgres"), compose_calls)
             self.assertIn(("up", "-d", "opensigweave"), compose_calls)
             self.assertEqual(restore_volume.call_count, 2)
+            self.assertEqual(verify_volume.call_count, 2)
 
     def test_existing_target_is_rejected_before_any_docker_action(self):
         with tempfile.TemporaryDirectory() as temporary:
