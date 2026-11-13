@@ -188,6 +188,17 @@ def create_docker_backup(
             if dump_path.stat().st_size == 0:
                 raise BackupDockerError("PostgreSQL produced an empty dump")
 
+            migration_revision = _run(
+                [
+                    docker_binary, "compose", "exec", "-T", "postgres", "sh", "-c",
+                    'exec psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"',
+                ],
+                cwd=project,
+                timeout=60,
+            ).stdout.strip()
+            if not migration_revision or "\\n" in migration_revision:
+                raise BackupDockerError("Unable to determine a single Alembic migration revision")
+
             _run(
                 [docker_binary, "cp", f"{app_id}:/data/signatures/.", str(staging / "data" / "signatures")],
                 cwd=project,
@@ -244,6 +255,7 @@ def create_docker_backup(
                     "application_image_ref": app_image_ref,
                     "postgres_image_ref": db_image_ref,
                     "database_dump_format": "pg_dump-custom",
+                    "alembic_revision": migration_revision,
                     "included_components": [
                         "postgresql", "signatures", "identity-provider-config",
                         "compose-definition", "encrypted-environment",
