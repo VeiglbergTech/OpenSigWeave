@@ -166,3 +166,20 @@ The console supports a retention preview and an explicit deletion mode:
 The command considers only direct regular .age files in the selected directory. It sorts them newest first, decrypts and verifies every candidate using the supplied age identity, and retains the newest requested number. Any invalid archive aborts the operation before deletion. The default is a dry run; deletion requires --apply. Symlinks and files changed during inspection are refused.
 
 Retention is not off-host protection. The backup directory should still be replicated to a separate system or object-storage target, with access controls and encryption retained. Automated scheduling and remote replication are deferred until their target and credentials can be configured safely.
+
+
+## 9. Scheduled off-host backup
+
+A systemd service and daily timer are provided for deployments that mount remote storage (for example NFS or SMB) at /mnt/opensigweave-backups. The script refuses to run unless that exact directory is a mount point, preventing a disconnected share from silently filling the local root filesystem. It creates a full encrypted backup, then applies verified retention.
+
+Deployment outline:
+
+1. Mount a dedicated remote backup share at /mnt/opensigweave-backups using the host's normal mount configuration.
+2. Install the repository at /opt/opensigweave and ensure Docker Compose, Python, age, mountpoint and flock are available.
+3. Create /etc/opensigweave/backup.env from scripts/backup.env.example and set the actual age recipient, project path, remote mount and retention count.
+4. Store the matching age identity at /etc/opensigweave/age-identity.txt with owner root and mode 0600. Keep a separate offline recovery copy of that identity.
+5. Install the service and timer from scripts/systemd/, reload systemd, enable the timer, and inspect the first manual service run before relying on the schedule.
+
+The service runs with root privileges because it needs the Docker socket. Its systemd unit uses a read-only system view except for the backup mount and lock directory. Review and adapt the fixed installation paths if the deployment differs. The age identity must remain outside the backup share; compromise of the scheduled host can still expose it, so this is not a substitute for offline key custody.
+
+This automation has not yet been exercised against a real NFS/SMB server or a second physical host. CI validates shell syntax and the underlying backup/restore CLI, not remote-storage availability, network interruption recovery or the host's systemd configuration.
