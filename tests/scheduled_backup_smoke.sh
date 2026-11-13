@@ -58,21 +58,21 @@ export AGE_BINARY=age
 SCRIPT="$ROOT/scripts/backup_to_mounted_storage.sh"
 
 # An absent mount must fail closed before backup creation or pruning.
-if MOUNTED=no "$SCRIPT" >/dev/null 2>&1; then
+if MOUNTED=no bash "$SCRIPT" >/dev/null 2>&1; then
   echo "Expected an unmounted backup target to be rejected" >&2
   exit 1
 fi
 [[ ! -s "$CALL_LOG" ]] || { echo "Backup CLI ran while the target was unmounted" >&2; exit 1; }
 
 # A mounted local filesystem must also be rejected.
-if BACKUP_FS_TYPE=ext4 "$SCRIPT" >/dev/null 2>&1; then
+if BACKUP_FS_TYPE=ext4 bash "$SCRIPT" >/dev/null 2>&1; then
   echo "Expected a local filesystem to be rejected" >&2
   exit 1
 fi
 [[ ! -s "$CALL_LOG" ]] || { echo "Backup CLI ran on a disallowed filesystem" >&2; exit 1; }
 
 # An approved remote filesystem runs create first and verified prune second.
-BACKUP_FS_TYPE=nfs4 "$SCRIPT"
+BACKUP_FS_TYPE=nfs4 bash "$SCRIPT"
 [[ "$(wc -l < "$CALL_LOG")" -eq 2 ]] || { echo "Expected create and prune invocations" >&2; exit 1; }
 grep -q 'backup_cli.py create' "$CALL_LOG"
 grep -q 'backup_cli.py prune' "$CALL_LOG"
