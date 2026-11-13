@@ -117,6 +117,11 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   const template = fs.readFileSync("templates/index.html", "utf8");
   const portalJs = fs.readFileSync("static/js/portal.js", "utf8");
+  assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
+  assert.match(template, /@click="previewGroup\(group\)"[^>]*>Preview<\/button>/, "Every group card must expose its preview action");
+  assert.match(portalJs, /async previewGroup\(group\)[\s\S]*?\/api\/admin\/signature-groups\//, "Group preview must call the administrator preview API");
+  assert.match(portalJs, /rotation history\./, "The UI must explain that preview does not mutate rotation history");
+  assert.match(portalJs, /open-preview[\s\S]*?result\.html/, "The rendered API HTML must be sent to the existing preview modal");
   assert.match(portalJs, /Alpine\.data\("identityProviderManager", identityProviderManager\)/, "Identity provider Alpine component must be registered");
   assert.match(template, /@alpinejs\/csp@3\.17\.5/);
   assert.doesNotMatch(template, /alpinejs@3\.17\.5\/dist\/cdn\.min\.js/);
