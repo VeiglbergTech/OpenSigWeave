@@ -78,4 +78,26 @@ signature_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /data/signat
 idp_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/restore-probe.txt)"
 [[ "$idp_value" == "idp-volume-roundtrip" ]] || { echo "Restored IDP volume does not match" >&2; exit 1; }
 
-echo "Full encrypted backup/restore integration passed: PostgreSQL, Alembic revision, signature volume, IDP volume and application health."
+# Exercise retention with real age-encrypted archives. The preview must not
+# delete anything; applying retention must verify all archives and keep newest.
+RETENTION_DIR="$WORK/retention"
+mkdir -p "$RETENTION_DIR"
+cp "$BACKUP" "$RETENTION_DIR/backup-old.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-middle.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-newest.age"
+touch -d "3 days ago" "$RETENTION_DIR/backup-old.age"
+touch -d "2 days ago" "$RETENTION_DIR/backup-middle.age"
+touch -d "1 day ago" "$RETENTION_DIR/backup-newest.age"
+
+retention_preview="$(python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1)"
+grep -q "Dry run; no files were deleted." <<<"$retention_preview"
+[[ "$(grep -c '^Would delete:' <<<"$retention_preview")" == "2" ]]
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "3" ]]
+
+python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1 --apply
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "1" ]]
+[[ -f "$RETENTION_DIR/backup-newest.age" ]]
+
+echo "Full encrypted backup/restore and verified retention integration passed: PostgreSQL, Alembic revision, signature volume, IDP volume, application health and age-verified retention."
