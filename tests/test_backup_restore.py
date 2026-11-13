@@ -96,6 +96,33 @@ class BackupRestoreTests(unittest.TestCase):
                     )
                 run.assert_not_called()
 
+    def test_existing_project_volume_is_never_reused(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            backup, manifest = self._backup(root)
+            identity = root / "identity"
+            identity.write_text("identity", encoding="utf-8")
+            identity.chmod(0o600)
+            target = root / "restore-target"
+
+            def run(command, *, cwd, stdin=None, timeout=900):
+                output = ""
+                if command[1:3] == ["volume", "ls"]:
+                    output = "opensigweave-dr_opensigweave-signatures\\n"
+                return subprocess.CompletedProcess(command, 0, output, "")
+
+            with (
+                patch("backup_restore.decrypt_and_verify_archive", return_value=manifest),
+                patch("backup_restore.decrypt_archive", side_effect=lambda src, ident, dest, **kw: shutil.copyfile(root / "backup.tar.gz", dest)),
+                patch("backup_restore.decrypt_file", side_effect=lambda src, ident, dest, **kw: Path(dest).write_text("SECRET=value")),
+                patch("backup_restore._compose", side_effect=lambda docker, project, directory, *args, **kw: subprocess.CompletedProcess([], 0, "postgres\\nopensigweave\\n" if args == ("config", "--services") else "", "")),
+                patch("backup_restore._run", side_effect=run),
+            ):
+                with self.assertRaises(BackupRestoreError):
+                    restore_fresh_deployment(
+                        backup, identity, target, project_name="opensigweave-dr"
+                    )
+
     def test_partial_backup_is_not_restorable(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
