@@ -75,7 +75,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0008_domain_auth_provider",))
+            self.assertEqual(revision, ("0009_signature_groups",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -86,8 +86,16 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("identity_attribute_cache", tables)
             self.assertIn("signature_domains", tables)
             self.assertIn("identity_providers", tables)
+            self.assertIn("signature_groups", tables)
+            self.assertIn("signature_group_domains", tables)
+            self.assertIn("signature_group_members", tables)
             self.assertIn("identity_provider_id", columns)
             self.assertIn("authentication_provider_id", columns)
+
+            group_member_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_group_members)")}
+            rule_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_rules)")}
+            self.assertTrue({"group_id", "signature_id", "weight", "is_enabled"}.issubset(group_member_columns))
+            self.assertIn("group_id", rule_columns)
 
 
 if __name__ == "__main__":
