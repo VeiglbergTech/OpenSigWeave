@@ -80,7 +80,11 @@ class AuthentikAttributeProvider:
             groups = frozenset(group for group in groups if group)
             claim_keys = ("username", "email", "name", "is_active", "uid", "path", "type")
             claims = {key: user[key] for key in claim_keys if key in user}
+            stable_pk = user.get("pk")
+            if not isinstance(stable_pk, (str, int)) or not str(stable_pk).strip():
+                raise IdentityProviderUnavailable("Authentik user response omitted immutable user pk")
             return IdentityAttributes(
+                principal_id=f"authentik:{stable_pk}",
                 first_name=name_parts[0] if name_parts else "",
                 last_name=" ".join(name_parts[1:]) if len(name_parts) > 1 else "",
                 title=_attribute_value(attributes.get("title")),
