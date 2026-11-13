@@ -57,6 +57,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             result,
             IdentityAttributes(
+                principal_id="authentik:user-immutable-42",
                 first_name="Alice",
                 last_name="Example",
                 title="Systems Engineer",
