@@ -55,7 +55,7 @@ This document describes the current branch state. It is not a promise that defer
 - Trusted Host validation and response security headers.
 - Global request-body limit and bounded signature HTML storage.
 - Sandboxed signature previews and server-side HTML sanitization.
-- Database-backed shared rate limiting; forwarded client IP headers are trusted only from configured proxy CIDRs.
+- Database-backed shared rate limiting for login, legacy and managed OIDC callbacks, and signature-engine requests; forwarded client IP headers are trusted only from configured proxy CIDRs. Managed `/auth/{provider_id}` callbacks are explicitly covered by the same callback policy as legacy `/auth`.
 - File-store path validation, symlink rejection, atomic writes and hash verification.
 - GitHub Actions dependency audit, syntax checks, migrations, regression tests and full-history Gitleaks scan.
 
@@ -86,7 +86,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest full CI runs `43431525732` (push) and `43431532537` (pull request) both passed on commit `bd8b3d946109c48e93595dab91cd511366d8e64f`. They additionally execute the scheduled-backup remote-filesystem guard smoke test. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest full CI runs `43432512592` (push) and `43432517710` (pull request) both passed on commit `2716c5e0d91a143257b24f11253b481dfe07d907`. They include a regression test confirming both legacy and managed OIDC callback paths use the same rate-limit policy. They additionally execute the scheduled-backup remote-filesystem guard smoke test. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
