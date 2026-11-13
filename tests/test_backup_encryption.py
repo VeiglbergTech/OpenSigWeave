@@ -27,7 +27,8 @@ class BackupEncryptionTests(unittest.TestCase):
     def _mock_age(self, command, **kwargs):
         output = kwargs["stdout"]
         source = Path(command[-1])
-        shutil.copyfile(source, output)
+        with source.open("rb") as input_stream:
+            shutil.copyfileobj(input_stream, output)
 
         class Result:
             returncode = 0
