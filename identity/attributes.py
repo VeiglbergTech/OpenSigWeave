@@ -5,6 +5,7 @@ from typing import Any, Mapping
 
 @dataclass(frozen=True)
 class IdentityAttributes:
+    principal_id: str = ""
     first_name: str = ""
     last_name: str = ""
     title: str = ""
