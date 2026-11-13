@@ -293,6 +293,40 @@ class IdentityProviderRegistryTests(unittest.TestCase):
                 "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-http",
             })
 
+    def test_generic_oidc_connection_test_validates_discovery_metadata(self):
+        import asyncio
+        import tempfile
+        from identity.registry import IdentityProviderRegistry
+        class DiscoveryResponse:
+            status_code = 200
+            def json(self):
+                return {
+                    "issuer": "https://idp.example.org/",
+                    "authorization_endpoint": "https://idp.example.org/authorize",
+                    "token_endpoint": "https://idp.example.org/token",
+                    "jwks_uri": "https://idp.example.org/jwks",
+                }
+        class DiscoveryClient:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+            async def get(self, url):
+                self.url = url
+                return DiscoveryResponse()
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = IdentityProviderRegistry(tmp)
+            registry.save("oidc-main", "Generic OIDC", "oidc", {
+                "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "client",
+                "OIDC_CLIENT_SECRET": "secret",
+                "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main",
+            })
+            client = DiscoveryClient()
+            with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
+                self.assertTrue(asyncio.run(registry.test("oidc-main")))
+            self.assertEqual(client.url, "https://idp.example.org/.well-known/openid-configuration")
+
     def test_provider_slug_rejects_path_traversal(self):
         import tempfile
         from identity.registry import IdentityProviderRegistry, ProviderConfigError
