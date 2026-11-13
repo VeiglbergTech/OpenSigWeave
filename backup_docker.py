@@ -160,6 +160,7 @@ def create_docker_backup(
         (staging / "data" / "signatures").mkdir(parents=True)
         (staging / "data" / "idp-config").mkdir(parents=True)
         (staging / "deployment").mkdir()
+        (staging / "images").mkdir()
 
         stopped = False
         published = False
@@ -207,16 +208,30 @@ def create_docker_backup(
                 executable=age_binary,
             )
 
-            image = _run(
+            app_image = _run(
                 [docker_binary, "inspect", "--format", "{{.Image}}", app_id],
                 cwd=project,
             ).stdout.strip()
+            db_image = _run(
+                [docker_binary, "inspect", "--format", "{{.Image}}", db_id],
+                cwd=project,
+            ).stdout.strip()
+            if not app_image or not db_image:
+                raise BackupDockerError("Unable to identify application and PostgreSQL images")
+            _run(
+                [
+                    docker_binary, "image", "save", "--output",
+                    str(staging / "images" / "images.tar"), app_image, db_image,
+                ],
+                cwd=project,
+                timeout=1800,
+            )
             _secure_staging_tree(staging)
             manifest = write_manifest(
                 staging,
                 {
                     "backup_kind": "full",
-                    "application_image_id": image or None,
+                    "application_image_id": app_image,\n                    "postgres_image_id": db_image,
                     "database_dump_format": "pg_dump-custom",
                     "included_components": [
                         "postgresql", "signatures", "identity-provider-config",
@@ -224,7 +239,7 @@ def create_docker_backup(
                     ],
                 },
             )
-            if not {"database/opensigweave.dump", "deployment/env.enc", "deployment/compose.yaml"}.issubset(
+            if not {"database/opensigweave.dump", "deployment/env.enc", "deployment/compose.yaml", "images/images.tar"}.issubset(
                 {entry["path"] for entry in manifest["files"]}
             ):
                 raise BackupDockerError("A mandatory backup component is missing")
