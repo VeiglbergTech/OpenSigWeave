@@ -243,10 +243,88 @@ function identityProviderManager() { return {
             };
         }
 
+        function signatureGroupManager() {
+            return {
+                groups: [], signatures: [], domains: [], editing: false,
+                form: { id: null, name: '', slug: '', domain_ids: [], is_active: true },
+                memberForm: { group_id: '', signature_id: '', weight: 1 },
+                async fetchAll() {
+                    try {
+                        const responses = await Promise.all([
+                            fetch('/api/admin/signature-groups'), fetch('/api/admin/signatures'), fetch('/domains/')
+                        ]);
+                        if (responses.some(response => !response.ok)) throw new Error('Could not load signature group data');
+                        [this.groups, this.signatures, this.domains] = await Promise.all(responses.map(response => response.json()));
+                    } catch (error) { notify(error.message, 'error'); }
+                },
+                signatureName(id) {
+                    const item = this.signatures.find(signature => signature.id === id);
+                    return item ? item.name : 'Missing signature';
+                },
+                toggleDomain(id, checked) {
+                    const value = Number(id);
+                    this.form.domain_ids = checked
+                        ? [...new Set([...this.form.domain_ids.map(Number), value])]
+                        : this.form.domain_ids.filter(item => Number(item) !== value);
+                },
+                newGroup() {
+                    this.form = { id: null, name: '', slug: '', domain_ids: [], is_active: true };
+                    this.editing = true;
+                },
+                editGroup(group) {
+                    this.form = { id: group.id, name: group.name, slug: group.slug,
+                        domain_ids: (group.domain_ids || []).map(Number), is_active: group.is_active };
+                    this.editing = true;
+                },
+                async saveGroup() {
+                    if (!this.form.name.trim()) { notify('Please enter a group name.', 'error'); return; }
+                    const payload = { name: this.form.name.trim(), slug: this.form.slug.trim() || null,
+                        domain_ids: this.form.domain_ids.map(Number), is_active: this.form.is_active };
+                    const response = await fetch(this.form.id
+                        ? '/api/admin/signature-groups/' + encodeURIComponent(this.form.id)
+                        : '/api/admin/signature-groups', {
+                        method: this.form.id ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) { notify('Could not save group: ' + (await response.text()), 'error'); return; }
+                    this.editing = false; notify('Signature group saved.'); await this.fetchAll();
+                },
+                async addMember() {
+                    if (!this.memberForm.group_id || !this.memberForm.signature_id) { notify('Select a group and signature.', 'error'); return; }
+                    const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(this.memberForm.group_id) + '/members', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ signature_id: this.memberForm.signature_id, weight: Number(this.memberForm.weight), is_enabled: true })
+                    });
+                    if (!response.ok) { notify('Could not add signature: ' + (await response.text()), 'error'); return; }
+                    this.memberForm.signature_id = ''; notify('Signature added to group.'); await this.fetchAll();
+                },
+                async saveMember(group, member) {
+                    const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id) + '/members/' + encodeURIComponent(member.signature_id), {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ signature_id: member.signature_id, weight: Number(member.weight), is_enabled: member.is_enabled })
+                    });
+                    if (!response.ok) notify('Could not update group member: ' + (await response.text()), 'error');
+                    else notify('Group member updated.');
+                },
+                async removeMember(group, member) {
+                    if (!window.confirm('Remove this signature from the group?')) return;
+                    const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id) + '/members/' + encodeURIComponent(member.signature_id), { method: 'DELETE' });
+                    if (!response.ok) { notify('Could not remove group member.', 'error'); return; }
+                    await this.fetchAll();
+                },
+                async deleteGroup(group) {
+                    if (!window.confirm('Delete signature group "' + group.name + '"?')) return;
+                    const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id), { method: 'DELETE' });
+                    if (!response.ok) { notify('Could not delete group: ' + (await response.text()), 'error'); return; }
+                    notify('Group deleted.'); await this.fetchAll();
+                }
+            };
+        }
+
         function ruleManager() {
             return {
-                rules: [], signatures: [], editing: false,
-                form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] },
+                rules: [], signatures: [], groups: [], editing: false,
+                form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', group_id: '', is_enabled: true, conditions: [] },
                 formatConditions(rule) {
                     return rule.conditions.length
                         ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
@@ -255,40 +333,39 @@ function identityProviderManager() { return {
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode); },
                 async fetchAll() {
                     try {
-                        const [rulesResponse, signaturesResponse] = await Promise.all([
-                            fetch('/api/admin/rules'), fetch('/api/admin/signatures')
+                        const responses = await Promise.all([
+                            fetch('/api/admin/rules'), fetch('/api/admin/signatures'), fetch('/api/admin/signature-groups')
                         ]);
-                        if (!rulesResponse.ok || !signaturesResponse.ok) throw new Error('Could not load rule data');
-                        this.rules = await rulesResponse.json();
-                        this.signatures = await signaturesResponse.json();
+                        if (responses.some(response => !response.ok)) throw new Error('Could not load rule data');
+                        [this.rules, this.signatures, this.groups] = await Promise.all(responses.map(response => response.json()));
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newRule() {
-                    this.form = { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', is_enabled: true, conditions: [] };
+                    this.form = { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', group_id: '', is_enabled: true, conditions: [] };
                     this.editing = true;
                 },
                 editRule(rule) {
-                    this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '' }));
+                    this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '', group_id: rule.group_id || '' }));
                     this.editing = true;
                 },
                 addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
                 async saveRule() {
                     if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
-                    if (this.form.conditions.some(c => !c.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
-                    const payload = { ...this.form, signature_id: this.form.signature_id || null };
+                    if (this.form.conditions.some(condition => !condition.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
+                    const payload = { ...this.form,
+                        signature_id: this.form.action_mode === 'GROUP' ? null : (this.form.signature_id || null),
+                        group_id: this.form.action_mode === 'GROUP' ? (this.form.group_id || null) : null };
                     const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
-                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) { notify('Could not save rule: ' + (await response.text()), 'error'); return; }
-                    notify('Signature rule saved.');
-                    this.editing = false;
-                    await this.fetchAll();
+                    notify('Signature rule saved.'); this.editing = false; await this.fetchAll();
                 },
                 async deleteRule(rule) {
                     if (!window.confirm('Delete rule "' + rule.name + '"?')) return;
                     const response = await fetch('/api/admin/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete rule.', 'error'); return; }
-                    notify('Signature rule deleted.');
-                    await this.fetchAll();
+                    notify('Signature rule deleted.'); await this.fetchAll();
                 }
             };
         }
