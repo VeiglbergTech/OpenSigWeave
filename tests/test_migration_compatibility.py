@@ -76,7 +76,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0012_preserve_signature_html_source",))
+            self.assertEqual(revision, ("0012_html_source",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
