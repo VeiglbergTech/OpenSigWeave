@@ -3,7 +3,7 @@
 **Project:** OpenSigWeave standalone preview  
 **Working branch:** `architecture/refactor-foundation`  
 **Status:** First Docker-testable revision; not a production release  
-**Last documentation review:** 2026-11-12
+**Last documentation review:** 2026-11-13
 
 This document describes the current branch state. It is not a promise that deferred work is complete.
 
@@ -34,8 +34,9 @@ This document describes the current branch state. It is not a promise that defer
 - age-based encryption/decryption for archives and standalone secret files.
 - Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, recorded Alembic revision, signature and IDP volume snapshots, encrypted host `.env`, exact application/PostgreSQL image export, archive encryption and decrypt-and-verify.
 - Staging-directory packaging, encrypted archive verification and decryption CLI commands.
+- Verified retention CLI: newest N encrypted backups are retained; every candidate is decrypted and integrity-checked before any deletion; dry-run is the default and deletion requires `--apply`.
 - Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
-- Cross-host restore drill, destructive in-place restore, backup retention/off-host automation and administrator UI exports remain outstanding.
+- Cross-host restore drill, destructive in-place restore, automated scheduling/off-host replication and administrator UI exports remain outstanding.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -80,6 +81,8 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 - All 146 regression tests, including LDAP bind authentication, managed OIDC discovery validation, domain-based LDAP/OIDC routing, separate OIDC provider buttons, callback validation and managed OIDC logout URL construction.
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
+
+The latest backup/restore CI runs `43378727333` (push) and `43378733211` (pull request) passed on commit `3e25692ed4b4067ad452dddad51a30a693e21c4b`. They include a full encrypted Docker backup and fresh restore with PostgreSQL data, Alembic revision, signature and IDP volume integrity, and application health checks. This is a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
