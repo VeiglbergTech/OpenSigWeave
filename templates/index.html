@@ -98,7 +98,8 @@
                                 <button @click="previewUserSignature()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
                             </div>
                         </div>
-                        <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                        <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Server-Sanitizer entfernt diese Inhalte beim Speichern. Sichere den Original-HTML-Code separat, bevor du speicherst.</div></div>
                     </div>
                 </div>
                 
@@ -503,7 +504,8 @@
                                             <button @click="previewDomainSignature(domain)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                         </div>
                                     </div>
-                                    <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                    <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="domain-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Server-Sanitizer entfernt diese Inhalte beim Speichern. Sichere den Original-HTML-Code separat, bevor du speicherst.</div></div>
                                 </div>
                             </div>
                         </div>
@@ -548,7 +550,8 @@
                                         <button @click="previewAdminSignature(editingUserEmail)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                     </div>
                                 </div>
-                                <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="admin-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Server-Sanitizer entfernt diese Inhalte beim Speichern. Sichere den Original-HTML-Code separat, bevor du speicherst.</div></div>
                             </div>
                         </div>
 
