@@ -196,7 +196,7 @@ def create_docker_backup(
                 cwd=project,
                 timeout=60,
             ).stdout.strip()
-            if not migration_revision or "\\n" in migration_revision:
+            if not migration_revision or len(migration_revision.splitlines()) != 1:
                 raise BackupDockerError("Unable to determine a single Alembic migration revision")
 
             _run(
