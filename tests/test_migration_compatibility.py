@@ -58,10 +58,10 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             connection = sqlite3.connect(database_path)
             domain = connection.execute(
-                "SELECT domain_name, template_html FROM domains WHERE id = 1"
+                "SELECT domain_name, template_html, template_html_source FROM domains WHERE id = 1"
             ).fetchone()
             override = connection.execute(
-                "SELECT user_email, html_content FROM user_overrides WHERE id = 1"
+                "SELECT user_email, html_content, html_content_source FROM user_overrides WHERE id = 1"
             ).fetchone()
             revision = connection.execute(
                 "SELECT version_num FROM alembic_version"
@@ -74,9 +74,9 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             group_member_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_group_members)")}
             rule_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_rules)")}
 
-            self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
-            self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0011_legacy_signature_groups",))
+            self.assertEqual(domain, ("example.org", "<p>Keep me</p>", "<p>Keep me</p>"))
+            self.assertEqual(override, ("alice@example.org", "<p>Existing</p>", "<p>Existing</p>"))
+            self.assertEqual(revision, ("0012_preserve_signature_html_source",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -93,6 +93,9 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("group_selection_state", tables)
             self.assertIn("identity_provider_id", columns)
             self.assertIn("authentication_provider_id", columns)
+            self.assertIn("template_html_source", columns)
+            override_columns = {row[1] for row in connection.execute("PRAGMA table_info(user_overrides)")}
+            self.assertIn("html_content_source", override_columns)
 
             self.assertTrue({"group_id", "signature_id", "weight", "is_enabled"}.issubset(group_member_columns))
             self.assertIn("group_id", rule_columns)
