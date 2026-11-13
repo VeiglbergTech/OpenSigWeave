@@ -172,7 +172,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="domain-outlook-markup-warning"[^>]*role="alert"/, "Domain editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/, "Admin editor must warn when Outlook-specific markup is detected");
-  assert.ok(portalJs.includes("const outlookMarkup = /<!--[\\s]*\\[if\\s+mso\\b|<\\s*v:[a-z][\\w-]*/i;"), "Editor must detect Outlook conditional comments and VML");
+  assert.ok(portalJs.includes(String.raw`const outlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i;`), "Editor must detect Outlook conditional comments and VML");
   assert.match(portalJs, /checkAllLocks\(\)[\s\S]*?checkOutlookMarkupWarnings\(\)/, "Editor state updates must refresh the Outlook markup warning");
   assert.match(template, /insertGroupTag\(selectedGroupSlug, \$refs\.signatureHtmlTemplate\)/, "Group picker must insert into the signature HTML editor");
   assert.match(template, /x-for="group in availableGroups"/, "Only active groups must be offered by the signature tag picker");
