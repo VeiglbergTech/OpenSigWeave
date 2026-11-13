@@ -5,7 +5,7 @@ from unittest.mock import patch
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from core.group_selection_repository import select_and_record_group_signature
+from core.group_selection_repository import get_group_preview_signature, select_and_record_group_signature
 from database import Base
 from models import (
     DomainDB, GroupSelectionStateDB, SignatureDB, SignatureGroupDB,
@@ -67,6 +67,30 @@ class GroupSelectionRepositoryTests(unittest.TestCase):
         self.session.commit()
         selected = select_and_record_group_signature(self.session, "idp-a:user:99", self.group.id, self.domain.id)
         self.assertEqual(selected.id, self.two.id)
+
+
+    def test_preview_is_deterministic_and_does_not_change_rotation_state(self):
+        first = get_group_preview_signature(self.session, self.group.id, self.domain.id)
+        second = get_group_preview_signature(self.session, self.group.id, self.domain.id)
+        self.assertIsNotNone(first)
+        self.assertEqual(first.id, min(self.one.id, self.two.id))
+        self.assertEqual(second.id, first.id)
+        self.assertEqual(self.session.query(GroupSelectionStateDB).count(), 0)
+
+    def test_preview_respects_disabled_members_and_domain_scope(self):
+        self.session.query(SignatureGroupMemberDB).filter_by(
+            group_id=self.group.id, signature_id=self.one.id
+        ).update({"is_enabled": False})
+        self.session.commit()
+        preview = get_group_preview_signature(self.session, self.group.id, self.domain.id)
+        self.assertEqual(preview.id, self.two.id)
+
+        other = DomainDB(domain_name="other.example", is_active=True)
+        self.session.add(other)
+        self.session.flush()
+        self.session.add(SignatureGroupDomainDB(group_id=self.group.id, domain_id=other.id))
+        self.session.commit()
+        self.assertIsNone(get_group_preview_signature(self.session, self.group.id, self.domain.id))
 
 
 if __name__ == "__main__":
