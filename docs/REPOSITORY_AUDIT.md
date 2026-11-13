@@ -35,7 +35,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | HTML handling | Server-side allowlist sanitizer, re-sanitization before use, autoescaped identity data and sandboxed previews. | Real-browser testing and email-client rendering compatibility remain. |
 | Host validation | TrustedHostMiddleware accepts the callback hostname and explicit aliases only. | Proxy Host/forwarded-header behavior must match deployment topology. |
 | Request size | Global request-body limit and bounded signature HTML storage. | Validate operational limits with representative usage. |
-| Rate limiting | Atomic database-backed counters shared across workers; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
+| Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
 | File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Exercise backup/restore and filesystem failure scenarios. |
 | Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
 | Rspamd MIME rewrite | Multipart messages are left unchanged. | Only non-multipart rewrite path is currently supported; no full MIME or DKIM integration proof. |
