@@ -15,6 +15,7 @@
 - Administrator routes check the `signature-admins` group server-side.
 - Personal signature routes require `signature-users` or `signature-admins`.
 - State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
+- Legacy `/auth` and managed `/auth/{provider_id}` OIDC callbacks share the database-backed callback rate-limit policy.
 
 **Known provider limitation:** In OIDC mode, the attribute provider and logout URL still use Authentik-specific APIs/paths. Authentik is the currently supported complete external provider configuration. A generic OIDC provider cannot yet be assumed to provide all application behavior. Local-only mode bypasses the external provider entirely and returns empty identity attributes.
 
