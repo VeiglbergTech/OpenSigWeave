@@ -17,7 +17,7 @@ from database import engine as application_engine
 from sqlalchemy import create_engine
 
 from models import Base, RateLimitBucketDB
-from rate_limiter import _rate_limit_hash_key, client_identity, consume_rate_limit
+from rate_limiter import _policy_for_path, _rate_limit_hash_key, client_identity, consume_rate_limit
 
 TEST_HASH_KEY = b"opensigweave-test-rate-limit-key"
 
@@ -35,6 +35,15 @@ class RateLimiterTests(unittest.TestCase):
         self.engine.dispose()
         self.tempdir.cleanup()
 
+
+
+    def test_legacy_and_managed_oidc_callbacks_share_rate_limit_policy(self):
+        with patch.dict("os.environ", {"AUTH_CALLBACK_RATE_LIMIT": "7"}, clear=False):
+            expected = ("auth-callback", 7, 300)
+            self.assertEqual(_policy_for_path("/auth"), expected)
+            self.assertEqual(_policy_for_path("/auth/provider-123"), expected)
+            self.assertEqual(_policy_for_path("/auth/another-provider"), expected)
+            self.assertIsNone(_policy_for_path("/authentic"))
 
     def test_rate_limit_hash_key_uses_configured_session_secret(self):
         with patch.dict("os.environ", {"SECRET_KEY": "s" * 48}, clear=False):
