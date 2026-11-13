@@ -27,6 +27,7 @@ class SignatureRule:
     action: str
     enabled: bool = True
     signature_id: str | None = None
+    group_id: str | None = None
 
 
 def _matches_value(actual: Any, expected: str) -> bool:
