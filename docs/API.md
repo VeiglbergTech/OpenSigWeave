@@ -165,3 +165,20 @@ or an element with `data-opensigweave-mode="PROFESSIONAL"`. Markers found only a
 - SMTP envelope-sender authorization must be enforced by Mailcow/Postfix; `task:get_user()` is not sufficient authorization by itself.
 - Docker CI validates image build, Compose startup, PostgreSQL migrations, healthchecks and an authenticated engine API request. It does not perform an OIDC browser login or a full SMTP delivery test.
 - CSP remains report-only pending real-browser testing.
+
+
+## Signature groups
+
+Administrator-only endpoints:
+
+- `GET /api/admin/signature-groups` — list groups, domain scopes and members.
+- `POST /api/admin/signature-groups` — create a group. Body: `{"name":"Corporate","slug":"corporate","domain_ids":[],"is_active":true}`. Omit slug to derive it from the name. An empty domain list means all domains.
+- `PUT /api/admin/signature-groups/{group_id}` — update group metadata and domain scope.
+- `DELETE /api/admin/signature-groups/{group_id}` — delete an unreferenced group. Rules referencing it must be updated first.
+- `POST /api/admin/signature-groups/{group_id}/members` — add a signature with `signature_id`, positive `weight` and `is_enabled`.
+- `PUT /api/admin/signature-groups/{group_id}/members/{signature_id}` — update membership weight or enabled state.
+- `DELETE /api/admin/signature-groups/{group_id}/members/{signature_id}` — remove a membership.
+
+Rules accept `action_mode: "GROUP"` together with `group_id`; `signature_id` must be null. A group tag in signature HTML uses `{{ group:slug }}`. Repeated tags for the same slug reuse one selection during that message. Selection state requires a provider-namespaced immutable identity: Authentik user `pk` or Active Directory `objectGUID`; email is never used as the group rotation key.
+
+Migrations seed `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing variant pools. Existing rules remain on their original modes until an administrator explicitly changes them.
