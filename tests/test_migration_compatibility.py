@@ -203,7 +203,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(professional_members, [("sig-prof-1", 4, 1)])
             self.assertEqual(internal_members, [("sig-int-1", 6, 1)])
             self.assertEqual(existing_rule, ("AUTO", None, 10))
-            self.assertEqual(revision, ("0011_legacy_signature_groups",))
+            self.assertEqual(revision, ("0012_html_source",))
 
 
 if __name__ == "__main__":
