@@ -139,7 +139,7 @@ class LDAPAttributeProvider:
                 attributes=[
                     "mail", "givenname", "sn", "displayName", "title",
                     "telephonenumber", "memberof", "samaccountname",
-                    "distinguishedname", "useraccountcontrol",
+                    "distinguishedname", "useraccountcontrol", "objectGUID",
                 ],
                 size_limit=3,
             )
