@@ -73,7 +73,6 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             columns = {row[1] for row in connection.execute("PRAGMA table_info(domains)")}
             group_member_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_group_members)")}
             rule_columns = {row[1] for row in connection.execute("PRAGMA table_info(signature_rules)")}
-            connection.close()
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>"))
@@ -101,6 +100,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("principal_id", cache_columns)
             legacy_groups = connection.execute("SELECT slug FROM signature_groups ORDER BY slug").fetchall()
             self.assertEqual(legacy_groups, [("legacy-auto",), ("legacy-internal",), ("legacy-professional",)])
+            connection.close()
 
 
 if __name__ == "__main__":
