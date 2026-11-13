@@ -2,7 +2,7 @@
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
 **Reviewed branch:** `architecture/refactor-foundation`  
-**Review date:** 2026-11-11  
+**Review date:** 2026-11-13  
 **Purpose:** Engineering review of the current standalone preview. This is not a security certification or penetration test.
 
 ## 1. Scope and baseline
@@ -11,14 +11,15 @@ The original repository was a compact FastAPI application with an Authentik-spec
 
 ## 2. Current implementation summary
 
-- FastAPI application with optional OIDC login or a local scrypt-protected administrator account; group-based authorization is shared by both modes.
-- Authentik API-backed employee attribute retrieval and Authentik-specific logout.
+- FastAPI application with managed OIDC providers, LDAPS / Active Directory authentication and an independent local emergency administrator login; group-based authorization is shared across modes.
+- Per-provider OIDC discovery/callback/logout handling and a separate profile-attribute provider.
 - PostgreSQL and Alembic for standalone persistence; SQLite compatibility remains.
 - Hybrid signature storage: relational metadata plus versioned HTML files.
 - Signature catalog, variants, weighted selection and persisted rules.
 - Server-side HTML sanitization, autoescaped profile variables and sandboxed previews.
 - Session-bound CSRF, secure session cookies, trusted-host checks, response headers and body-size limits.
-- Shared database-backed rate limiting.
+- Shared database-backed rate limiting for login, legacy and managed OIDC callbacks, and signature-engine requests.
+- Versioned, encrypted Docker-aware full backups, fresh-deployment restore, verified retention and guarded scheduled backups to a mounted remote filesystem.
 - Rspamd adapter with external configuration, HTTPS-only API URL, shared engine key, bounded timeout and response-size limits.
 - Standalone Docker Compose stack with a non-root application container and persistent volumes.
 
@@ -30,13 +31,13 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | Browser authorization | Admin and personal-user routes enforce group checks server-side. | Real-browser authorization walkthrough remains outstanding. |
 | CSRF | Session-bound token required for state-changing browser requests. | Verify complete browser behavior and edge cases. |
 | Session security | Strong startup secret validation; Secure, HttpOnly, SameSite cookie with limited lifetime. | Validate behind the intended reverse-proxy topology. |
-| Authentication | OIDC validates HTTPS discovery, verified email, subject and groups; `OIDC_ENABLED=false` removes the callback route and uses a scrypt-protected local administrator. | Local-only mode has one environment-provisioned administrator and no external identity attributes. |
+| Authentication | Managed OIDC providers, LDAPS / Active Directory bind authentication and independent local emergency administrator login; authorization is group-based. | Live sign-in and logout still need verification against real identity providers. |
 | Authentik API | HTTPS required, TLS verification enabled, bounded timeout, exact email match and active-user check. | Validate least-privilege service account permissions in a real Authentik instance. |
 | HTML handling | Server-side allowlist sanitizer, re-sanitization before use, autoescaped identity data and sandboxed previews. | Real-browser testing and email-client rendering compatibility remain. |
 | Host validation | TrustedHostMiddleware accepts the callback hostname and explicit aliases only. | Proxy Host/forwarded-header behavior must match deployment topology. |
 | Request size | Global request-body limit and bounded signature HTML storage. | Validate operational limits with representative usage. |
 | Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
-| File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Exercise backup/restore and filesystem failure scenarios. |
+| File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Real cross-host restore and remote filesystem failure scenarios remain. |
 | Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
 | Rspamd MIME rewrite | Multipart messages are left unchanged. | Only non-multipart rewrite path is currently supported; no full MIME or DKIM integration proof. |
 | CSP | Restrictive policy is report-only; Alpine CSP build and SRI are used. | Real-browser CSP report review before enforcement. |
@@ -70,7 +71,7 @@ These findings drove the work on the current branch. The current status is in th
 
 ## 6. CI evidence
 
-CI run #520 on commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62` passed:
+The latest CI runs `43432993185` (push) and `43432999997` (pull request) on commit `738c98f6f4bc5a1eec411cc8f0ca4aab5572a391` both passed:
 
 - Full-history Gitleaks scan.
 - Python dependency audit.
@@ -80,7 +81,9 @@ CI run #520 on commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62` passed:
 - Docker image build and Compose startup.
 - Container healthchecks and Alembic migration in the application container.
 - Authenticated engine API smoke request against PostgreSQL.
-- 102 regression tests.
+- 197 regression tests.
+- Scheduled remote-filesystem guard tests, including symlinked lock-file rejection.
+- Encrypted Docker full-backup and fresh-deployment restore integration, including verified retention.
 
 This evidence covers automated checks and a container/API smoke test. It does not constitute a dynamic penetration test, browser acceptance test, SMTP integration test or production certification.
 
@@ -92,7 +95,8 @@ The historical Rspamd engine credential must be rotated anywhere it may have bee
 
 1. Real-browser acceptance tests for login, roles, signature editor, rules and logout.
 2. Review CSP reports and Quill runtime behavior before enforcing CSP.
-3. Verify backup/restore of PostgreSQL and signature files as a consistent set.
-4. Validate rate limits and resource usage under realistic load.
-5. Test Rspamd in a disposable Mailcow environment: sender authorization, supported MIME cases, idempotency and DKIM.
-6. Perform a focused dynamic security test before any production release.
+3. Complete a cross-host restore drill and validate scheduled backup against real NFS/SMB storage.
+4. Implement selective administrator UI exports with component manifests and encryption for secret-bearing exports.
+5. Validate rate limits and resource usage under realistic load.
+6. Test Rspamd in a disposable Mailcow environment: sender authorization, supported MIME cases, idempotency and DKIM.
+7. Perform a focused dynamic security test before any production release.
