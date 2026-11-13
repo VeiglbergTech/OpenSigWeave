@@ -14,6 +14,7 @@ class DomainDB(Base):
     trim_whitespace = Column(Boolean, default=True)
     strip_device_signatures = Column(Boolean, default=False)
     template_html = Column(Text, default="<p>Best Regards,</p><p><br></p><p><strong>{{ first_name }} {{ last_name }}</strong></p><p>{{ title }} | {{ domain_name }}</p>")
+    template_html_source = Column(Text, nullable=True)
     identity_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
     authentication_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
 
@@ -22,6 +23,7 @@ class UserOverrideDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_email = Column(String, unique=True, index=True)
     html_content = Column(Text, default="")
+    html_content_source = Column(Text, nullable=True)
     is_disabled = Column(Boolean, default=False)
 
 class SignatureDB(Base):
