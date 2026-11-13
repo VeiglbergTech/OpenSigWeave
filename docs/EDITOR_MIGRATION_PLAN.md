@@ -80,3 +80,12 @@ For each fixture, compare normalized HTML before and after editing. Any lost att
 ## Current status
 
 Assessment complete; migration not started. The immediate next implementation step is a small CKEditor 5 GPL prototype against the compatibility corpus, while keeping Quill as the production editor until the prototype passes.
+
+
+## Compatibility corpus: first server-side baseline
+
+The first executable compatibility checks are in `tests/test_signature_editor_compatibility.py`. They cover nested presentation tables, common inline email styles, links, images, template tokens and removal of unsafe markup.
+
+**Known blocker discovered:** the current `nh3` sanitizer strips HTML comments and disallowed VML elements. Therefore Outlook conditional comments and VML are not preserved when sanitized content is saved. The test records this current behavior explicitly; it does not treat it as acceptable migration fidelity. Do not enable CKEditor or claim source-mode preservation until a deliberate, security-reviewed policy for Outlook conditional markup exists.
+
+These tests validate the server-side sanitizer baseline only. They are not CKEditor round-trip tests and do not prove rendering in Outlook or other mail clients. Quill remains the production editor.
