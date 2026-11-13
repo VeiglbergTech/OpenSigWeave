@@ -684,47 +684,6 @@ async def auth(request: Request, db: Session = Depends(get_db)):
             for key in ("phone", "title")
             if isinstance((value := raw_attributes.get(key)), str)
         }
-        if provider_meta.provider_type == "oidc":
-            def claim_text(value):
-                return value[:256] if isinstance(value, str) else ""
-
-            display_name = claim_text(user.get("name"))
-            first_name = claim_text(user.get("given_name") or user.get("first_name"))
-            last_name = claim_text(user.get("family_name") or user.get("last_name"))
-            if not first_name and not last_name and display_name:
-                name_parts = display_name.split(None, 1)
-                first_name = name_parts[0][:256]
-                last_name = name_parts[1][:256] if len(name_parts) > 1 else ""
-            title = claim_text(user.get("title") or raw_attributes.get("title"))
-            phone = claim_text(user.get("phone_number") or user.get("phone") or raw_attributes.get("phone"))
-            safe_custom_attributes = {}
-            for key, value in list(raw_attributes.items())[:32]:
-                if not isinstance(key, str) or not key or len(key) > 64:
-                    continue
-                if isinstance(value, str):
-                    safe_custom_attributes[key] = value[:256]
-                elif isinstance(value, list) and len(value) <= 16 and all(isinstance(item, str) for item in value):
-                    safe_custom_attributes[key] = [item[:256] for item in value]
-            safe_claims = {"email": email, "email_verified": True, "groups": groups}
-            for key in ("name", "preferred_username", "given_name", "family_name", "locale", "department", "job_title"):
-                if isinstance(user.get(key), str):
-                    safe_claims[key] = user[key][:256]
-            cache_key = f"{provider_id}:{email}"
-            cached = db.get(IdentityCacheDB, cache_key)
-            if cached is None:
-                cached = IdentityCacheDB(email=cache_key)
-                db.add(cached)
-            cached.principal_id = f"{provider_id}:oidc:{hashlib.sha256(str(user['sub']).encode('utf-8')).hexdigest()}"
-            cached.first_name = first_name
-            cached.last_name = last_name
-            cached.title = title
-            cached.phone = phone
-            cached.groups = groups
-            cached.claims = safe_claims
-            cached.attributes = safe_custom_attributes
-            cached.updated_at = datetime.now(timezone.utc)
-            db.commit()
-            safe_attributes = {"phone": phone, "title": title}
         request.session.clear()
         request.session["user"] = {
             "sub": str(user["sub"])[:255],
@@ -768,6 +727,47 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
             for key in ("phone", "title")
             if isinstance((value := raw_attributes.get(key)), str)
         }
+        if provider_meta.provider_type == "oidc":
+            def claim_text(value):
+                return value[:256] if isinstance(value, str) else ""
+
+            display_name = claim_text(user.get("name"))
+            first_name = claim_text(user.get("given_name") or user.get("first_name"))
+            last_name = claim_text(user.get("family_name") or user.get("last_name"))
+            if not first_name and not last_name and display_name:
+                name_parts = display_name.split(None, 1)
+                first_name = name_parts[0][:256]
+                last_name = name_parts[1][:256] if len(name_parts) > 1 else ""
+            title = claim_text(user.get("title") or raw_attributes.get("title"))
+            phone = claim_text(user.get("phone_number") or user.get("phone") or raw_attributes.get("phone"))
+            safe_custom_attributes = {}
+            for key, value in list(raw_attributes.items())[:32]:
+                if not isinstance(key, str) or not key or len(key) > 64:
+                    continue
+                if isinstance(value, str):
+                    safe_custom_attributes[key] = value[:256]
+                elif isinstance(value, list) and len(value) <= 16 and all(isinstance(item, str) for item in value):
+                    safe_custom_attributes[key] = [item[:256] for item in value]
+            safe_claims = {"email": email, "email_verified": True, "groups": groups}
+            for key in ("name", "preferred_username", "given_name", "family_name", "locale", "department", "job_title"):
+                if isinstance(user.get(key), str):
+                    safe_claims[key] = user[key][:256]
+            cache_key = f"{provider_id}:{email}"
+            cached = db.get(IdentityCacheDB, cache_key)
+            if cached is None:
+                cached = IdentityCacheDB(email=cache_key)
+                db.add(cached)
+            cached.principal_id = f"{provider_id}:oidc:{hashlib.sha256(str(user['sub']).encode('utf-8')).hexdigest()}"
+            cached.first_name = first_name
+            cached.last_name = last_name
+            cached.title = title
+            cached.phone = phone
+            cached.groups = groups
+            cached.claims = safe_claims
+            cached.attributes = safe_custom_attributes
+            cached.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            safe_attributes = {"phone": phone, "title": title}
         request.session.clear()
         request.session["user"] = {
             "sub": f"oidc:{provider_id}:{str(user['sub'])[:220]}",
