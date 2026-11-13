@@ -17,7 +17,12 @@ import time
 from typing import IO
 
 from backup_archive import BackupArchiveError, extract_archive
-from backup_encryption import BackupEncryptionError, decrypt_file, decrypt_and_verify_archive
+from backup_encryption import (
+    BackupEncryptionError,
+    decrypt_and_verify_archive,
+    decrypt_archive,
+    decrypt_file,
+)
 
 
 class BackupRestoreError(Exception):
@@ -151,6 +156,8 @@ def restore_fresh_deployment(
 
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,47}", project_name):
         raise BackupRestoreError("Compose project name must be a safe lowercase slug")
+    if health_timeout < 1:
+        raise BackupRestoreError("Health timeout must be at least one second")
     if source.is_symlink() or not source.is_file():
         raise BackupRestoreError("Encrypted backup is missing or unsafe")
     if identity.is_symlink() or not identity.is_file():
@@ -180,15 +187,21 @@ def restore_fresh_deployment(
         raise BackupRestoreError("Backup is missing mandatory full-restore components")
     metadata = manifest["metadata"]
     app_image_id = metadata.get("application_image_id")
-    if not isinstance(app_image_id, str) or not app_image_id.startswith("sha256:"):
-        raise BackupRestoreError("Backup does not contain a valid application image identity")
+    if (
+        not isinstance(app_image_id, str)
+        or not re.fullmatch(r"sha256:[0-9a-f]{64}", app_image_id)
+        or not isinstance(metadata.get("application_image_ref"), str)
+        or not metadata["application_image_ref"].strip()
+        or not isinstance(metadata.get("postgres_image_ref"), str)
+        or not metadata["postgres_image_ref"].strip()
+    ):
+        raise BackupRestoreError("Backup does not contain valid application and PostgreSQL image identities")
 
     try:
         with tempfile.TemporaryDirectory(prefix="opensigweave-restore-") as temporary:
             work = Path(temporary)
             os.chmod(work, 0o700)
             archive = work / "backup.tar.gz"
-            from backup_encryption import decrypt_archive
             decrypt_archive(source, identity, archive, executable=age_binary)
             extracted = work / "extracted"
             extract_archive(archive, extracted)
