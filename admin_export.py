@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from io import BytesIO
+import hashlib
 import json
 import uuid
 import zipfile
@@ -84,6 +85,7 @@ def build_admin_export(
         manifest["assets"].append({
             "path": name,
             "size_bytes": len(payload),
+            "sha256": hashlib.sha256(payload).hexdigest(),
         })
         return name
 
