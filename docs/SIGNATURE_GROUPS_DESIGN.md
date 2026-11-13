@@ -71,6 +71,8 @@ Proposed syntax: {{ group:unternehmen }} where unternehmen is the normalized gro
 
 The renderer must not interpret arbitrary unknown group names as profile attributes. Unknown, inactive or unauthorized groups resolve safely to an empty string and are logged without message content or secrets.
 
+The administrator preview endpoint is `GET /api/admin/signature-groups/{group_id}/preview?domain_id={id}`. It renders a deterministic eligible member and returns `rotation_state_changed: false`; it does not require or create a user principal.
+
 The tag syntax is currently documented for manual use in signature HTML. A dynamic editor tag picker remains follow-up work. The administrator API now exposes a deterministic group-member preview using the first eligible signature ID; it does not read or mutate production rotation state.
 
 ## 6. Preview behavior
