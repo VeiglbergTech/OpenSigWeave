@@ -91,7 +91,7 @@ The migration must be additive and preserve existing IDs, HTML files, versions, 
 8. Run old and new selection in isolated tests, then switch the engine to group selection behind an explicit feature flag.
 9. Remove legacy mode storage only in a later migration after compatibility and rollback windows have passed.
 
-Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `0011` creates `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing weighted variants while leaving existing rules and signature assets untouched. A richer populated legacy fixture with all mode/domain/disabled combinations remains a follow-up test.
+Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `0011` creates `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing weighted variants while leaving existing rules and signature assets untouched. The populated legacy fixture verifies aggregation of multiple variants, disabled-only members, all three generated groups and preservation of existing rule action, group reference and priority.
 
 ## 8. Acceptance criteria
 
