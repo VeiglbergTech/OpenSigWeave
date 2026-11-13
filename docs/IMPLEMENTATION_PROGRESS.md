@@ -35,8 +35,9 @@ This document describes the current branch state. It is not a promise that defer
 - Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, recorded Alembic revision, signature and IDP volume snapshots, encrypted host `.env`, exact application/PostgreSQL image export, archive encryption and decrypt-and-verify.
 - Staging-directory packaging, encrypted archive verification and decryption CLI commands.
 - Verified retention CLI: newest N encrypted backups are retained; every candidate is decrypted and integrity-checked before any deletion; dry-run is the default and deletion requires `--apply`.
+- Scheduled backup automation: systemd service and daily timer create full encrypted backups on a separately mounted remote filesystem, enforce a remote-filesystem allowlist, prevent overlapping runs and apply verified retention.
 - Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
-- Cross-host restore drill, destructive in-place restore, automated scheduling/off-host replication and administrator UI exports remain outstanding.
+- Cross-host restore drill, destructive in-place restore and administrator UI exports remain outstanding. The scheduled remote-mount workflow still needs a real NFS/SMB host test; CI does not prove network storage or systemd behavior.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
