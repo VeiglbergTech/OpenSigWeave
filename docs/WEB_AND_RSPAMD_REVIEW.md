@@ -112,6 +112,6 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest push and pull-request CI runs `43432993185` and `43432999997` on commit `738c98f6f4bc5a1eec411cc8f0ca4aab5572a391` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention and 197 regression tests.
+The latest push and pull-request CI runs `43442572622` and `43442582940` on commit `30c3b0cb8b707ffc799fddd83bac829da7de3e35` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention, selective administrator export checks and 202 regression tests.
 
 This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
