@@ -578,6 +578,48 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertIn("Automatic fallback", result["html"])
 
 
+    def test_rspamd_engine_selects_signature_from_group_rule(self):
+        domain = main.DomainDB(domain_name="group.example", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Group Engine Signature",
+                mode="AUTO",
+                html_content="<p>Group engine selected</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        group = main.create_signature_group(
+            main.SignatureGroupCreateRequest(name="Engine Group"),
+            self.admin_request,
+            self.db,
+        )
+        main.add_signature_group_member(
+            group["id"],
+            main.SignatureGroupMemberRequest(signature_id=signature["id"], weight=1),
+            self.admin_request,
+            self.db,
+        )
+        main.create_signature_rule(
+            main.SignatureRuleCreateRequest(name="Use engine group", action_mode="GROUP", group_id=group["id"]),
+            self.admin_request,
+            self.db,
+        )
+        with patch.object(
+            main,
+            "get_identity_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(principal_id="idp-immutable:user-42")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "alice@group.example",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                db=self.db,
+            ))
+        self.assertIn("Group engine selected", result["html"])
+
     def test_admin_can_create_group_add_members_and_target_group_from_rule(self):
         signature = main.create_signature_endpoint(
             main.SignatureCreateRequest(
