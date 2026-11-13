@@ -197,6 +197,34 @@ def restore_fresh_deployment(
     ):
         raise BackupRestoreError("Backup does not contain valid application and PostgreSQL image identities")
 
+    # Refuse to collide with any deployment before creating the target directory.
+    existing_project_containers = _run(
+        [
+            docker_binary, "ps", "-aq",
+            "--filter", f"label=com.docker.compose.project={project_name}",
+        ],
+        cwd=target.parent,
+    ).stdout.strip()
+    if existing_project_containers:
+        raise BackupRestoreError("A Docker Compose project with this name already exists")
+    expected_volumes = {
+        f"{project_name}_opensigweave-postgres-data",
+        f"{project_name}_opensigweave-signatures",
+        f"{project_name}_opensigweave-idp-data",
+    }
+    existing_volumes = set(
+        _run(
+            [docker_binary, "volume", "ls", "--format", "{{.Name}}"],
+            cwd=target.parent,
+        ).stdout.splitlines()
+    )
+    collisions = expected_volumes & existing_volumes
+    if collisions:
+        raise BackupRestoreError(
+            "Restore refused because target volume names already exist: "
+            + ", ".join(sorted(collisions))
+        )
+
     try:
         with tempfile.TemporaryDirectory(prefix="opensigweave-restore-") as temporary:
             work = Path(temporary)
