@@ -85,6 +85,8 @@ jobs:
           echo
       - name: Check backup automation shell syntax
         run: bash -n scripts/backup_to_mounted_storage.sh
+      - name: Test scheduled backup remote-filesystem guards
+        run: bash tests/scheduled_backup_smoke.sh
       - name: Check Rspamd Lua syntax
         run: |
           sudo apt-get update
