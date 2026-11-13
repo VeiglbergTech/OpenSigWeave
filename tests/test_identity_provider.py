@@ -146,7 +146,7 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
             title=["Systems Engineer"], telephoneNumber=["+49 123"],
             memberOf=["CN=signature-users,OU=Groups,DC=example,DC=org"],
             sAMAccountName=["alice"], distinguishedName=["CN=Alice,OU=Users,DC=example,DC=org"],
-            userAccountControl=["512"],
+            userAccountControl=["512"], objectGUID=bytes.fromhex("00112233445566778899aabbccddeeff"),
         )
         connection = type("ConnectionStub", (), {
             "entries": [entry], "search": lambda self, **kwargs: setattr(self, "search_args", kwargs),
@@ -161,6 +161,7 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await provider.get_attributes("alice*)(example.org")
 
+        self.assertEqual(result.principal_id, "ldap:00112233445566778899aabbccddeeff")
         self.assertEqual(result.first_name, "Alice")
         self.assertEqual(result.last_name, "Example")
         self.assertEqual(result.title, "Systems Engineer")
