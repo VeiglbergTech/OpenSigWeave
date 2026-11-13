@@ -169,9 +169,18 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
+                signatures: [], domains: [], groups: [], variants: [], editing: false, variantEditor: false, variantSignature: null,
                 form: { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
+                get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
+                insertGroupTag(slug, editor) {
+                    if (!slug) { notify('Select a signature group first.', 'error'); return; }
+                    const token = '{{ group:' + slug + ' }}';
+                    const start = editor ? editor.selectionStart : this.form.html_content.length;
+                    const end = editor ? editor.selectionEnd : start;
+                    this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
+                    if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
+                },
                 toggleDomain(domainId, checked) {
                     const id = Number(domainId);
                     this.form.domain_ids = checked ? [...new Set([...this.form.domain_ids.map(Number), id])] : this.form.domain_ids.filter(item => Number(item) !== id);
@@ -186,10 +195,13 @@ function identityProviderManager() { return {
                 },
                 async fetchAll() {
                     try {
-                        const [signaturesResponse, domainsResponse] = await Promise.all([fetch('/api/admin/signatures'), fetch('/domains/')]);
-                        if (!signaturesResponse.ok || !domainsResponse.ok) throw new Error('Could not load signature catalog');
-                        this.signatures = await signaturesResponse.json();
-                        this.domains = await domainsResponse.json();
+                        const [signaturesResponse, domainsResponse, groupsResponse] = await Promise.all([
+                            fetch('/api/admin/signatures'), fetch('/domains/'), fetch('/api/admin/signature-groups')
+                        ]);
+                        if (!signaturesResponse.ok || !domainsResponse.ok || !groupsResponse.ok) throw new Error('Could not load signature catalog');
+                        [this.signatures, this.domains, this.groups] = await Promise.all([
+                            signaturesResponse.json(), domainsResponse.json(), groupsResponse.json()
+                        ]);
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
