@@ -192,6 +192,8 @@ def restore_fresh_deployment(
             decrypt_archive(source, identity, archive, executable=age_binary)
             extracted = work / "extracted"
             extract_archive(archive, extracted)
+            (extracted / "data" / "signatures").mkdir(parents=True, exist_ok=True)
+            (extracted / "data" / "idp-config").mkdir(parents=True, exist_ok=True)
 
             target.mkdir(mode=0o700)
             os.chmod(target, 0o700)
