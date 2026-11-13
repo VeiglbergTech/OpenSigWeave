@@ -578,5 +578,50 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertIn("Automatic fallback", result["html"])
 
 
+    def test_admin_can_create_group_add_members_and_target_group_from_rule(self):
+        signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Group member",
+                mode="AUTO",
+                html_content="<p>Group member</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        group = main.create_signature_group(
+            main.SignatureGroupCreateRequest(name="Corporate Team", domain_ids=[]),
+            self.admin_request,
+            self.db,
+        )
+        main.add_signature_group_member(
+            group["id"],
+            main.SignatureGroupMemberRequest(signature_id=signature["id"], weight=4, is_enabled=True),
+            self.admin_request,
+            self.db,
+        )
+        listed_groups = main.list_signature_groups(self.admin_request, self.db)
+        listed = next(item for item in listed_groups if item["id"] == group["id"])
+        self.assertEqual(listed["slug"], "corporate-team")
+        self.assertEqual(listed["members"], [{"signature_id": signature["id"], "weight": 4, "is_enabled": True}])
+
+        rule = main.create_signature_rule(
+            main.SignatureRuleCreateRequest(
+                name="Corporate group rule",
+                action_mode="GROUP",
+                group_id=group["id"],
+            ),
+            self.admin_request,
+            self.db,
+        )
+        listed_rules = main.list_signature_rules(self.admin_request, self.db)
+        stored_rule = next(item for item in listed_rules if item["id"] == rule["id"])
+        self.assertEqual(stored_rule["action_mode"], "GROUP")
+        self.assertEqual(stored_rule["group_id"], group["id"])
+
+        with self.assertRaises(Exception):
+            main.delete_signature_group(group["id"], self.admin_request, self.db)
+
+
+
 if __name__ == "__main__":
     unittest.main()
