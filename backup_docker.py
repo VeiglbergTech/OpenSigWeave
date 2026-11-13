@@ -208,20 +208,28 @@ def create_docker_backup(
                 executable=age_binary,
             )
 
-            app_image = _run(
+            app_image_id = _run(
                 [docker_binary, "inspect", "--format", "{{.Image}}", app_id],
                 cwd=project,
             ).stdout.strip()
-            db_image = _run(
+            db_image_id = _run(
                 [docker_binary, "inspect", "--format", "{{.Image}}", db_id],
                 cwd=project,
             ).stdout.strip()
-            if not app_image or not db_image:
+            app_image_ref = _run(
+                [docker_binary, "inspect", "--format", "{{.Config.Image}}", app_id],
+                cwd=project,
+            ).stdout.strip()
+            db_image_ref = _run(
+                [docker_binary, "inspect", "--format", "{{.Config.Image}}", db_id],
+                cwd=project,
+            ).stdout.strip()
+            if not all((app_image_id, db_image_id, app_image_ref, db_image_ref)):
                 raise BackupDockerError("Unable to identify application and PostgreSQL images")
             _run(
                 [
                     docker_binary, "image", "save", "--output",
-                    str(staging / "images" / "images.tar"), app_image, db_image,
+                    str(staging / "images" / "images.tar"), app_image_ref, db_image_ref,
                 ],
                 cwd=project,
                 timeout=1800,
