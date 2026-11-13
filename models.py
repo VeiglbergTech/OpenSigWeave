@@ -57,6 +57,36 @@ class SignatureVersionDB(Base):
     )
 
 
+class SignatureGroupDB(Base):
+    """Named reusable selection pool for signature templates."""
+    __tablename__ = "signature_groups"
+    id = Column(String(32), primary_key=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(64), nullable=False, unique=True, index=True)
+    selection_policy = Column(String(40), nullable=False, default="WEIGHTED_RANDOM_NO_REPEAT")
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class SignatureGroupDomainDB(Base):
+    """Optional many-to-many domain scope for signature groups."""
+    __tablename__ = "signature_group_domains"
+    group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="CASCADE"), primary_key=True)
+    domain_id = Column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), primary_key=True)
+
+
+class SignatureGroupMemberDB(Base):
+    """Signature membership and independent selection weight within a group."""
+    __tablename__ = "signature_group_members"
+    group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="CASCADE"), primary_key=True)
+    signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="CASCADE"), primary_key=True)
+    weight = Column(Integer, nullable=False, default=1)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    __table_args__ = (
+        CheckConstraint("weight > 0", name="ck_signature_group_member_weight_positive"),
+    )
+
+
 class SignatureVariantDB(Base):
     __tablename__ = "signature_variants"
     id = Column(String(32), primary_key=True)
