@@ -36,16 +36,20 @@ class DockerBackupTests(unittest.TestCase):
                     result_stdout = "postgres\nopensigweave\n"
                 elif command[1:4] == ["compose", "ps", "-q"]:
                     result_stdout = "app-container\n" if command[-1] == "opensigweave" else "db-container\n"
-                elif command[1:3] == ["inspect", "--format"]:
-                    if command[2] == "{{.State.Running}}":
+                elif command[1] == "inspect":
+                    template = command[3]
+                    container_id = command[4]
+                    if template == "{{.State.Running}}":
                         result_stdout = "true"
-                    elif command[2] == "{{json .Mounts}}":
+                    elif template == "{{json .Mounts}}":
                         result_stdout = json.dumps([
                             {"Type": "volume", "Destination": "/data/signatures"},
                             {"Type": "volume", "Destination": "/app/.idp"},
                         ])
-                    else:
-                        result_stdout = "sha256:app-image"
+                    elif template == "{{.Image}}":
+                        result_stdout = "sha256:app-image" if container_id == "app-container" else "sha256:db-image"
+                    elif template == "{{.Config.Image}}":
+                        result_stdout = "opensigweave:test" if container_id == "app-container" else "postgres:17-alpine"
                 elif command[1:3] == ["compose", "exec"]:
                     stdout.write(b"postgres custom dump")
                 elif command[1:4] == ["image", "save", "--output"]:
@@ -93,13 +97,22 @@ class DockerBackupTests(unittest.TestCase):
                         command, 0,
                         "app-container\n" if command[-1] == "opensigweave" else "db-container\n", ""
                     )
-                if command[1:3] == ["inspect", "--format"]:
-                    if command[2] == "{{.State.Running}}":
-                        return subprocess.CompletedProcess(command, 0, "true", "")
-                    return subprocess.CompletedProcess(command, 0, json.dumps([
-                        {"Type": "volume", "Destination": "/data/signatures"},
-                        {"Type": "volume", "Destination": "/app/.idp"},
-                    ]), "")
+                if command[1] == "inspect":
+                    template = command[3]
+                    if template == "{{.State.Running}}":
+                        result_stdout = "true"
+                    elif template == "{{json .Mounts}}":
+                        result_stdout = json.dumps([
+                            {"Type": "volume", "Destination": "/data/signatures"},
+                            {"Type": "volume", "Destination": "/app/.idp"},
+                        ])
+                    elif template == "{{.Image}}":
+                        result_stdout = "sha256:app-image" if command[4] == "app-container" else "sha256:db-image"
+                    elif template == "{{.Config.Image}}":
+                        result_stdout = "opensigweave:test" if command[4] == "app-container" else "postgres:17-alpine"
+                    else:
+                        result_stdout = ""
+                    return subprocess.CompletedProcess(command, 0, result_stdout, "")
                 if command[1:3] == ["compose", "exec"]:
                     raise BackupDockerError("simulated pg_dump failure")
                 return subprocess.CompletedProcess(command, 0, "", "")
