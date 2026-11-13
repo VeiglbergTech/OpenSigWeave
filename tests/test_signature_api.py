@@ -578,6 +578,38 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertIn("Automatic fallback", result["html"])
 
 
+    def test_group_placeholder_resolves_once_and_reuses_same_signature(self):
+        domain = main.DomainDB(domain_name="tags.example", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        child = main.create_signature_endpoint(
+            main.SignatureCreateRequest(name="Reusable Footer", mode="INTERNAL", html_content="<b>Reusable footer</b>"),
+            self.admin_request, self.db,
+        )
+        group = main.create_signature_group(
+            main.SignatureGroupCreateRequest(name="Footer Group"), self.admin_request, self.db,
+        )
+        main.add_signature_group_member(
+            group["id"], main.SignatureGroupMemberRequest(signature_id=child["id"]), self.admin_request, self.db,
+        )
+        main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Outer Template", mode="AUTO",
+                html_content="<div>Top {{ group:footer-group }} Bottom {{ group:footer-group }}</div>",
+            ),
+            self.admin_request, self.db,
+        )
+        with patch.object(
+            main, "get_identity_attributes",
+            new=AsyncMock(return_value=IdentityAttributes(principal_id="idp-immutable:alice-42")),
+        ):
+            result = asyncio.run(main.get_rspamd_signature(
+                "alice@tags.example", Response(), x_engine_key=main.ENGINE_API_KEY, db=self.db,
+            ))
+        self.assertEqual(result["html"].count("Reusable footer"), 2)
+        states = self.db.query(main.GroupSelectionStateDB).all()
+        self.assertEqual(len(states), 1)
+
     def test_rspamd_engine_selects_signature_from_group_rule(self):
         domain = main.DomainDB(domain_name="group.example", is_active=True)
         self.db.add(domain)
