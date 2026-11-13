@@ -234,6 +234,25 @@ class ManagedLoginRoutingTests(unittest.IsolatedAsyncioTestCase):
         )
         client.authorize_redirect.assert_awaited_once()
 
+    async def test_login_starts_generic_oidc_provider(self):
+        domain = SimpleNamespace(authentication_provider_id="oidc-main", is_active=True)
+        provider = SimpleNamespace(is_enabled=True, provider_type="oidc")
+        db = self.FakeDatabase(domain, provider)
+        request = self._request("alice@example.org")
+        client = SimpleNamespace(authorize_redirect=AsyncMock(return_value=main.RedirectResponse("/provider", status_code=302)))
+        config = {"OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main"}
+        with (
+            patch.object(main, "LOCAL_ADMIN_CONFIGURED", False),
+            patch.object(main, "managed_oidc_client", return_value=(client, config)),
+        ):
+            response = await main.login_submit(request, db=db)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            request.session["pending_managed_login"],
+            {"email": "alice@example.org", "provider_id": "oidc-main"},
+        )
+        client.authorize_redirect.assert_awaited_once()
+
     async def test_managed_oidc_callback_rechecks_domain_assignment_and_email(self):
         domain = SimpleNamespace(authentication_provider_id="auth-main", is_active=True)
         provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
