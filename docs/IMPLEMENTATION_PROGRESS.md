@@ -42,7 +42,7 @@ This document describes the current branch state. It is not a promise that defer
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
 - Editor replacement evaluated: retain vendored Quill 1.3.7 until a self-hosted CKEditor 5 GPL proof of concept passes email-HTML, sanitizer, Outlook, CSP/offline and licensing acceptance tests; see [EDITOR_DECISION.md](EDITOR_DECISION.md).
-- Signature-group target architecture and additive migration plan documented; implementation is not yet started. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md).
+- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). PostgreSQL concurrency stress and full browser UI tests remain outstanding.
 
 ### Security baseline
 
