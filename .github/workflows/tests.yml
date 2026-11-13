@@ -83,6 +83,8 @@ jobs:
           printf 'Alpine CSP SRI: sha384-'
           openssl dgst -sha384 -binary /tmp/alpine-csp.min.js | base64 -w0
           echo
+      - name: Check backup automation shell syntax
+        run: bash -n scripts/backup_to_mounted_storage.sh
       - name: Check Rspamd Lua syntax
         run: |
           sudo apt-get update
