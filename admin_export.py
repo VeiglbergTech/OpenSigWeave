@@ -70,6 +70,7 @@ def build_admin_export(
             "Identity-provider credential files and secrets are never exported.",
             "Personal user overrides and identity attribute caches are excluded.",
             "A component export is not a complete disaster-recovery backup.",
+            "Rule conditions can contain email addresses or other operator-entered identifiers; review before sharing.",
         ],
     }
     assets: dict[str, bytes] = {}
@@ -108,6 +109,10 @@ def build_admin_export(
                         html = store.read(
                             signature.name, uuid.UUID(hex=version.id), version.sha256
                         )
+                        if len(html.encode("utf-8")) != version.size_bytes:
+                            raise AdminExportError(
+                                f"Signature asset size metadata mismatch for {signature.name}"
+                            )
                     except (SignatureStorageError, ValueError, TypeError) as exc:
                         raise AdminExportError(
                             f"Signature asset integrity check failed for {signature.name}"
