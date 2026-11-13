@@ -23,10 +23,26 @@ window.fetch = (resource, options = {}) => {
             if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
             else lockEl.classList.add('hidden');
         }
+        function checkOutlookMarkupWarnings() {
+            const editors = [
+                ['raw-html-editor', 'outlook-markup-warning'],
+                ['domain-raw-html-editor', 'domain-outlook-markup-warning'],
+                ['admin-raw-html-editor', 'admin-outlook-markup-warning']
+            ];
+            const outlookMarkup = /<!--[\\s]*\\[if\\s+mso\\b|<\\s*v:[a-z][\\w-]*/i;
+            editors.forEach(([editorId, warningId]) => {
+                const editor = document.getElementById(editorId);
+                const warning = document.getElementById(warningId);
+                if (editor && warning) {
+                    warning.classList.toggle('hidden', !outlookMarkup.test(editor.value));
+                }
+            });
+        }
         function checkAllLocks() {
             toggleLock('user-quill-lock', 'raw-html-editor');
             toggleLock('domain-quill-lock', 'domain-raw-html-editor');
             toggleLock('admin-quill-lock', 'admin-raw-html-editor');
+            checkOutlookMarkupWarnings();
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
