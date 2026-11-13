@@ -115,6 +115,13 @@ def create_docker_backup(
     db_id = db_result.stdout.strip()
     if not app_id or not db_id:
         raise BackupDockerError("Both application and PostgreSQL containers must exist and be running")
+    for container_id in (app_id, db_id):
+        state = _run(
+            [docker_binary, "inspect", "--format", "{{.State.Running}}", container_id],
+            cwd=project,
+        ).stdout.strip()
+        if state.lower() != "true":
+            raise BackupDockerError("Both application and PostgreSQL containers must be running")
 
     mounts = _inspect_mounts(docker_binary, app_id, project)
     for destination in ("/data/signatures", "/app/.idp"):
@@ -137,12 +144,14 @@ def create_docker_backup(
         stopped = False
         published = False
         try:
+            # Set this before stop: a failed stop may still have partially stopped
+            # the service, so the finally block must always attempt recovery.
+            stopped = True
             _run(
                 [docker_binary, "compose", "stop", "--timeout", "30", "opensigweave"],
                 cwd=project,
                 timeout=60,
             )
-            stopped = True
 
             dump_path = staging / "database" / "opensigweave.dump"
             with dump_path.open("wb") as dump:
@@ -205,6 +214,8 @@ def create_docker_backup(
             published = True
             decrypt_and_verify_archive(output, identity, executable=age_binary)
         except (BackupArchiveError, BackupEncryptionError, OSError) as exc:
+            if published:
+                output.unlink(missing_ok=True)
             raise BackupDockerError(f"Backup creation failed: {exc}") from exc
         finally:
             if stopped:
