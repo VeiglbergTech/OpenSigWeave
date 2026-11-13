@@ -348,6 +348,7 @@ function identityProviderManager() { return {
                     this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '', group_id: rule.group_id || '' }));
                     this.editing = true;
                 },
+                changeAction() { this.form.signature_id = ''; this.form.group_id = ''; },
                 addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
                 async saveRule() {
                     if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
