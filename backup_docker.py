@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import tempfile
 from typing import IO
@@ -95,6 +96,8 @@ def create_docker_backup(
         raise BackupDockerError(".env is missing or unsafe")
     if identity.is_symlink() or not identity.is_file():
         raise BackupDockerError("The age identity file is missing or unsafe")
+    if os.name == "posix" and stat.S_IMODE(identity.stat().st_mode) & 0o077:
+        raise BackupDockerError("The age identity file must not be accessible by group or other users")
     if not recipient or not recipient.strip():
         raise BackupDockerError("An age recipient is required")
     if output.exists() or output.is_symlink():
