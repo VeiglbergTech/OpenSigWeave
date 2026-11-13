@@ -128,17 +128,24 @@ def consume_rate_limit(
     return int(count)
 
 
+def _policy_for_path(path: str):
+    """Return the fixed-window policy for a protected route."""
+    if path == "/login":
+        return ("login", int(os.environ.get("LOGIN_RATE_LIMIT", "10")), 300)
+    if path == "/auth" or path.startswith("/auth/"):
+        # Managed OIDC callbacks use /auth/{provider_id}; protect them just
+        # like the legacy /auth callback against repeated state/token probes.
+        return ("auth-callback", int(os.environ.get("AUTH_CALLBACK_RATE_LIMIT", "20")), 300)
+    if path.startswith("/api/signature/"):
+        return ("engine", int(os.environ.get("ENGINE_RATE_LIMIT", "1800")), 60)
+    return None
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         path = request.url.path
         identity = client_identity(request)
-        policy = None
-        if path == "/login":
-            policy = ("login", int(os.environ.get("LOGIN_RATE_LIMIT", "10")), 300)
-        elif path == "/auth":
-            policy = ("auth-callback", int(os.environ.get("AUTH_CALLBACK_RATE_LIMIT", "20")), 300)
-        elif path.startswith("/api/signature/"):
-            policy = ("engine", int(os.environ.get("ENGINE_RATE_LIMIT", "1800")), 60)
+        policy = _policy_for_path(path)
 
         if policy is None:
             return await call_next(request)
