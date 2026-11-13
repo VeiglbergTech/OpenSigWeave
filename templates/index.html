@@ -129,7 +129,7 @@
                 <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
                         <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
-                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : 'Authentik'"></td>
+                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')"></td>
                         <td class="px-4 py-3 text-sm" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Enabled' : 'Disabled')"></td>
                         <td class="px-4 py-3 text-right space-x-3"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
                     </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
@@ -140,7 +140,7 @@
                 <div class="grid md:grid-cols-2 gap-4">
                     <label class="text-sm">Folder name / ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                     <label class="text-sm">Display name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                    <label class="text-sm">Provider type<select x-model="form.provider_type" @change="changeType()" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="ldap">LDAP / Active Directory</option></select></label>
+                    <label class="text-sm">Provider type<select x-model="form.provider_type" @change="changeType()" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="oidc">OpenID Connect (generic)</option><option value="ldap">LDAP / Active Directory</option></select></label>
                     <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled"> Enabled</label>
                 </div>
                 <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
@@ -158,6 +158,15 @@
                         </div>
                     </div>
                     <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div x-show="form.provider_type === 'oidc'" class="grid md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2"><p class="text-sm font-semibold text-gray-200">Generic OpenID Connect</p><p class="text-xs text-gray-400 mt-1">Profile attributes are taken from verified UserInfo claims at sign-in and cached for signature rendering. Assign this provider as both the domain's login and profile provider.</p></div>
+                    <label class="text-sm">OIDC discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm md:col-span-2">OIDC callback / redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/oidc-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm md:col-span-2">OIDC post-logout redirect URI (optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                 </div>
                 <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
                     <label class="text-sm">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
