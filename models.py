@@ -117,6 +117,7 @@ class SignatureRuleDB(Base):
     priority = Column(Integer, nullable=False, default=0)
     action_mode = Column(String(32), nullable=False, default="AUTO")
     signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="SET NULL"), nullable=True)
+    group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="SET NULL"), nullable=True, index=True)
     is_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
