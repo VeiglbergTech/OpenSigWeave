@@ -46,7 +46,7 @@ class GroupSelectionRepositoryTests(unittest.TestCase):
             self.assertEqual(second.id, expected_second)
             self.session.commit()
         state = self.session.execute(select(GroupSelectionStateDB)).scalar_one()
-        self.assertEqual(state.last_signature_id, self.two.id)
+        self.assertEqual(state.last_signature_id, expected_second)
 
     def test_email_is_not_accepted_as_stable_principal(self):
         with self.assertRaises(ValueError):
