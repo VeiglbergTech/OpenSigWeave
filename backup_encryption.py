@@ -214,3 +214,48 @@ def encrypt_file(
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
+
+
+
+def decrypt_file(
+    encrypted_path: str | Path,
+    identity_file: str | Path,
+    destination: str | Path,
+    *,
+    executable: str = "age",
+    timeout: int = 900,
+) -> Path:
+    """Decrypt one age-encrypted regular file to a new private destination."""
+    source = Path(encrypted_path)
+    identity = Path(identity_file)
+    target = Path(destination).expanduser().absolute()
+    if source.is_symlink() or not source.is_file():
+        raise BackupEncryptionError("Encrypted file is missing or unsafe")
+    if identity.is_symlink() or not identity.is_file():
+        raise BackupEncryptionError("The age identity file is missing or unsafe")
+    if target.exists() or target.is_symlink():
+        raise BackupEncryptionError("Decrypted file destination already exists")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            dir=target.parent, prefix=".opensigweave-file-", suffix=".tmp", delete=False
+        ) as stream:
+            temporary = Path(stream.name)
+        os.chmod(temporary, 0o600)
+        _run_age(
+            ["--decrypt", "--identity", str(identity), str(source)],
+            output_path=temporary,
+            timeout=timeout,
+            executable=executable,
+        )
+        if not temporary.is_file():
+            raise BackupEncryptionError("age did not produce decrypted output")
+        os.replace(temporary, target)
+        os.chmod(target, 0o600)
+        return target
+    except OSError as exc:
+        raise BackupEncryptionError("Unable to publish decrypted file") from exc
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
