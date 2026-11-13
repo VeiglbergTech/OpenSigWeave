@@ -85,7 +85,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest full CI run `43410756082` passed on commit `9b4d8ab2effa62d30fe75c4ff9e64f33b580bee2`. It includes full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. The populated legacy-group migration fixture verifies weight aggregation, disabled variants, all three generated groups and preservation of existing rules. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest full CI run `43412905287` passed on commit `58579ca0458ce74062f9ac417d1e1455e5d36758` (the matching pull-request workflow `43412913205` also passed). It includes full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. The populated legacy-group migration fixture verifies weight aggregation, disabled variants, all three generated groups and preservation of existing rules. Group preview tests verify deterministic member selection, domain eligibility, administrator-only access and that preview does not create or update rotation state. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
