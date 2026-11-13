@@ -347,6 +347,31 @@ class ManagedOIDCLoginButtonTests(unittest.IsolatedAsyncioTestCase):
             result = main.configured_login_providers(db)
         self.assertEqual(result, [{"id": "auth-main", "display_name": "Authentik Main"}])
 
+    async def test_login_page_lists_generic_oidc_providers(self):
+        providers = [SimpleNamespace(id="oidc-main", display_name="Company OIDC")]
+        db = self.ProviderDatabase(providers, None)
+        config = {
+            "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+            "OIDC_CLIENT_ID": "client",
+            "OIDC_CLIENT_SECRET": "secret",
+            "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main",
+        }
+        with patch.object(main.identity_provider_registry, "get_config", return_value=config):
+            result = main.configured_login_providers(db)
+        self.assertEqual(result, [{"id": "oidc-main", "display_name": "Company OIDC"}])
+
+    async def test_generic_oidc_login_button_starts_provider_flow(self):
+        provider = SimpleNamespace(is_enabled=True, provider_type="oidc")
+        db = self.ProviderDatabase([], provider)
+        request = SimpleNamespace(session={})
+        client = SimpleNamespace(authorize_redirect=AsyncMock(return_value=main.RedirectResponse("/oidc", status_code=302)))
+        config = {"OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main"}
+        with patch.object(main, "managed_oidc_client", return_value=(client, config)):
+            response = await main.managed_oidc_login("oidc-main", request, db)
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(request.session["pending_managed_login"], {"provider_id": "oidc-main"})
+        client.authorize_redirect.assert_awaited_once()
+
     async def test_oidc_button_starts_provider_flow_without_email_preselection(self):
         provider = SimpleNamespace(is_enabled=True, provider_type="authentik")
         db = self.ProviderDatabase([], provider)
