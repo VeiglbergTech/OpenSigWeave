@@ -245,7 +245,7 @@ function identityProviderManager() { return {
 
         function signatureGroupManager() {
             return {
-                groups: [], signatures: [], domains: [], editing: false,
+                groups: [], signatures: [], domains: [], editing: false, previewDomainId: '',
                 form: { id: null, name: '', slug: '', domain_ids: [], is_active: true },
                 memberForm: { group_id: '', signature_id: '', weight: 1 },
                 async fetchAll() {
@@ -255,6 +255,7 @@ function identityProviderManager() { return {
                         ]);
                         if (responses.some(response => !response.ok)) throw new Error('Could not load signature group data');
                         [this.groups, this.signatures, this.domains] = await Promise.all(responses.map(response => response.json()));
+                        if (!this.previewDomainId && this.domains.length) this.previewDomainId = String(this.domains[0].id);
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 signatureName(id) {
@@ -311,6 +312,16 @@ function identityProviderManager() { return {
                     const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id) + '/members/' + encodeURIComponent(member.signature_id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not remove group member.', 'error'); return; }
                     await this.fetchAll();
+                },
+                async previewGroup(group) {
+                    if (!this.previewDomainId) { notify('Create or select a domain before previewing.', 'error'); return; }
+                    const url = '/api/admin/signature-groups/' + encodeURIComponent(group.id)
+                        + '/preview?domain_id=' + encodeURIComponent(this.previewDomainId);
+                    const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
+                    if (!response.ok) { notify('Could not render group preview: ' + (await response.text()), 'error'); return; }
+                    const result = await response.json();
+                    window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: result.html } }));
+                    notify('Preview uses a deterministic member and does not change rotation history.');
                 },
                 async deleteGroup(group) {
                     if (!window.confirm('Delete signature group "' + group.name + '"?')) return;
