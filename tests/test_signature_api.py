@@ -696,6 +696,51 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.delete_signature_group(group["id"], self.admin_request, self.db)
 
 
+    def test_admin_group_preview_renders_without_consuming_rotation_state(self):
+        domain = main.DomainDB(domain_name="preview.example", is_active=True)
+        self.db.add(domain)
+        self.db.commit()
+        signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Preview Member",
+                mode="AUTO",
+                html_content="<p>Hello {{ first_name }} {{ last_name }}</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        group = main.create_signature_group(
+            main.SignatureGroupCreateRequest(name="Preview Group"),
+            self.admin_request,
+            self.db,
+        )
+        main.add_signature_group_member(
+            group["id"],
+            main.SignatureGroupMemberRequest(signature_id=signature["id"]),
+            self.admin_request,
+            self.db,
+        )
+
+        first = main.preview_signature_group(
+            group["id"], domain.id, self.admin_request, self.db
+        )
+        second = main.preview_signature_group(
+            group["id"], domain.id, self.admin_request, self.db
+        )
+        self.assertEqual(first["signature_id"], signature["id"])
+        self.assertEqual(first["html"], "<p>Hello Alex Example</p>")
+        self.assertEqual(second["signature_id"], first["signature_id"])
+        self.assertFalse(first["rotation_state_changed"])
+        self.assertEqual(self.db.query(main.GroupSelectionStateDB).count(), 0)
+
+    def test_non_admin_cannot_preview_signature_group(self):
+        with self.assertRaises(main.HTTPException) as raised:
+            main.preview_signature_group(
+                "missing-group", 1, self.user_request, self.db
+            )
+        self.assertEqual(raised.exception.status_code, 403)
+
+
 
 if __name__ == "__main__":
     unittest.main()
