@@ -41,7 +41,7 @@ from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB
 from core.selection_repository import select_and_record_variant
-from core.group_selection_repository import select_and_record_group_signature
+from core.group_selection_repository import get_group_preview_signature, select_and_record_group_signature
 from core.modes import SignatureMode, resolve_mode
 from core.slug import slugify
 from core.rules import RuleContext, evaluate_rules
@@ -1294,6 +1294,58 @@ def create_signature_variant_endpoint(
         raise HTTPException(status_code=422, detail=str(exc))
     return {"id": variant.id, "pool_name": variant.pool_name, "weight": variant.weight}
 
+
+
+@app.get("/api/admin/signature-groups/{group_id}/preview")
+def preview_signature_group(
+    group_id: str,
+    domain_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Render a stable group preview without consuming a user's rotation state."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    group = db.get(SignatureGroupDB, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    selected = get_group_preview_signature(db, group_id, domain_id)
+    if selected is None:
+        raise HTTPException(status_code=404, detail="No eligible signature for this group and domain")
+    latest_version = (
+        db.query(SignatureVersionDB)
+        .filter(SignatureVersionDB.signature_id == selected.id)
+        .order_by(SignatureVersionDB.version_number.desc())
+        .first()
+    )
+    if latest_version is None:
+        raise HTTPException(status_code=503, detail="Signature version metadata is missing")
+    try:
+        raw_html = signature_file_store.read(
+            selected.name, uuid.UUID(hex=latest_version.id), latest_version.sha256
+        )
+    except (SignatureStorageError, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Signature asset unavailable")
+    preview_values = {
+        "first_name": "Alex",
+        "last_name": "Example",
+        "title": "Position (Preview)",
+        "phone": "+49 123 456789",
+        "email": "alex@example.org",
+        "domain_name": "example.org",
+    }
+    try:
+        html = render_signature_template(sanitize_signature_html(raw_html), preview_values)
+    except TemplateError:
+        raise HTTPException(status_code=422, detail="Invalid signature template")
+    return {
+        "group_id": group.id,
+        "group_slug": group.slug,
+        "signature_id": selected.id,
+        "signature_name": selected.name,
+        "html": html,
+        "rotation_state_changed": False,
+    }
 
 
 @app.get("/api/admin/signature-groups")
