@@ -239,7 +239,10 @@ def create_docker_backup(
                 staging,
                 {
                     "backup_kind": "full",
-                    "application_image_id": app_image,\n                    "postgres_image_id": db_image,
+                    "application_image_id": app_image_id,
+                    "postgres_image_id": db_image_id,
+                    "application_image_ref": app_image_ref,
+                    "postgres_image_ref": db_image_ref,
                     "database_dump_format": "pg_dump-custom",
                     "included_components": [
                         "postgresql", "signatures", "identity-provider-config",
