@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation, and encrypted archive verification are implemented. Safe restore, cross-host restore testing and UI exports are not implemented.
+**Status:** Versioned archive primitives, age file/archive encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification and initial fresh-deployment restore are implemented. Cross-host restore testing, destructive restore and UI exports are not implemented.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -146,7 +146,7 @@ A documented restore drill against a clean, disposable host is a release require
 ## 9. Delivery order
 
 1. ~~Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.~~
-2. Implement safe restore into a fresh deployment, then destructive restore with safety snapshots.
+2. ~~Implement safe restore into a fresh deployment.~~ Add cross-host restore drills, deeper post-restore validation and, only later, destructive restore with safety snapshots.
 3. Add automated cross-host restore tests and a documented restore drill.
 4. Add selective administrator UI exports as a separate layer over the same backup components.
 5. Add retention and off-host destination support after the basic restore path is proven.
