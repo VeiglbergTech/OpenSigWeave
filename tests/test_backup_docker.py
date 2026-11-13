@@ -50,8 +50,10 @@ class DockerBackupTests(unittest.TestCase):
                         result_stdout = "sha256:app-image" if container_id == "app-container" else "sha256:db-image"
                     elif template == "{{.Config.Image}}":
                         result_stdout = "opensigweave:test" if container_id == "app-container" else "postgres:17-alpine"
-                elif command[1:3] == ["compose", "exec"]:
+                elif command[1:3] == ["compose", "exec"] and "pg_dump" in " ".join(command):
                     stdout.write(b"postgres custom dump")
+                elif command[1:3] == ["compose", "exec"] and "alembic_version" in " ".join(command):
+                    result_stdout = "revision_001"
                 elif command[1:4] == ["image", "save", "--output"]:
                     Path(command[4]).write_bytes(b"saved docker images")
                 elif command[1:3] == ["cp", "app-container:/data/signatures/."]:
