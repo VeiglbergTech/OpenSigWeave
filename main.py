@@ -25,6 +25,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
+from markupsafe import Markup
 
 load_dotenv()
 
@@ -1598,6 +1599,8 @@ async def get_rspamd_signature(
 
     selected_from_variant = False
     selected_from_group = False
+    selected_group_id = None
+    selected_group_signature = None
     signature_id = None
     marker_requested = isinstance(x_signature_name, str) or isinstance(x_signature_code, str)
     mode_candidate = x_signature_mode.strip().upper() if isinstance(x_signature_mode, str) else ""
@@ -1679,6 +1682,8 @@ async def get_rspamd_signature(
                 )
                 if selected_signature is None:
                     return empty_response
+                selected_group_id = matched_rule.group_id
+                selected_group_signature = selected_signature
                 latest_version = (
                     db.query(SignatureVersionDB)
                     .filter(SignatureVersionDB.signature_id == selected_signature.id)
@@ -1749,16 +1754,65 @@ async def get_rspamd_signature(
     title = identity_attributes.title
     phone = identity_attributes.phone
 
+    profile_values = {
+        "first_name": first_name,
+        "last_name": last_name,
+        "title": title,
+        "phone": phone,
+        "email": normalized_email,
+        "domain_name": domain_part,
+    }
     try:
         raw_template = sanitize_signature_html(raw_template)
-        parsed = render_signature_template(raw_template, {
-            "first_name": first_name,
-            "last_name": last_name,
-            "title": title,
-            "phone": phone,
-            "email": normalized_email,
-            "domain_name": domain_part,
-        })
+        group_values = {}
+        group_tags = sorted(set(re.findall(r"{{\\s*group:([a-z0-9-]{1,64})\\s*}}", raw_template)))
+        for slug in group_tags:
+            group = db.query(SignatureGroupDB).filter(
+                SignatureGroupDB.slug == slug,
+                SignatureGroupDB.is_active.is_(True),
+            ).first()
+            selected = None
+            if group is not None and identity_attributes.principal_id:
+                if group.id == selected_group_id:
+                    selected = selected_group_signature
+                else:
+                    selected = select_and_record_group_signature(
+                        db,
+                        principal_id=identity_attributes.principal_id,
+                        group_id=group.id,
+                        domain_id=domain_obj.id,
+                    )
+                    if selected is not None:
+                        selected_from_group = True
+            if selected is None:
+                group_values[f"group__{slug}"] = Markup("")
+                continue
+            nested_version = (
+                db.query(SignatureVersionDB)
+                .filter(SignatureVersionDB.signature_id == selected.id)
+                .order_by(SignatureVersionDB.version_number.desc())
+                .first()
+            )
+            if nested_version is None:
+                raise HTTPException(status_code=503, detail="Group signature version metadata is missing")
+            try:
+                nested_html = signature_file_store.read(
+                    selected.name, uuid.UUID(hex=nested_version.id), nested_version.sha256
+                )
+                nested_html = sanitize_signature_html(nested_html)
+                # Group nesting is intentionally one level deep to prevent recursive templates.
+                nested_html = re.sub(r"{{\\s*group:[a-z0-9-]{1,64}\\s*}}", "", nested_html)
+                rendered_group = render_signature_template(nested_html, profile_values)
+                group_values[f"group__{slug}"] = Markup(rendered_group)
+            except (SignatureStorageError, ValueError, TypeError):
+                raise HTTPException(status_code=503, detail="Group signature asset unavailable")
+        for slug in group_tags:
+            raw_template = re.sub(
+                r"{{\\s*group:" + re.escape(slug) + r"\\s*}}",
+                "{{ group__" + slug + " }}",
+                raw_template,
+            )
+        parsed = render_signature_template(raw_template, {**profile_values, **group_values})
     except TemplateError:
         raise HTTPException(status_code=422, detail="Invalid signature template")
 
