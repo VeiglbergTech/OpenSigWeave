@@ -1765,7 +1765,7 @@ async def get_rspamd_signature(
     try:
         raw_template = sanitize_signature_html(raw_template)
         group_values = {}
-        group_tags = sorted(set(re.findall(r"{{\\s*group:([a-z0-9-]{1,64})\\s*}}", raw_template)))
+        group_tags = sorted(set(re.findall(r"{{\s*group:([a-z0-9-]{1,64})\s*}}", raw_template)))
         for slug in group_tags:
             group = db.query(SignatureGroupDB).filter(
                 SignatureGroupDB.slug == slug,
@@ -1801,14 +1801,14 @@ async def get_rspamd_signature(
                 )
                 nested_html = sanitize_signature_html(nested_html)
                 # Group nesting is intentionally one level deep to prevent recursive templates.
-                nested_html = re.sub(r"{{\\s*group:[a-z0-9-]{1,64}\\s*}}", "", nested_html)
+                nested_html = re.sub(r"{{\s*group:[a-z0-9-]{1,64}\s*}}", "", nested_html)
                 rendered_group = render_signature_template(nested_html, profile_values)
                 group_values[f"group__{slug}"] = Markup(rendered_group)
             except (SignatureStorageError, ValueError, TypeError):
                 raise HTTPException(status_code=503, detail="Group signature asset unavailable")
         for slug in group_tags:
             raw_template = re.sub(
-                r"{{\\s*group:" + re.escape(slug) + r"\\s*}}",
+                r"{{\s*group:" + re.escape(slug) + r"\s*}}",
                 "{{ group__" + slug + " }}",
                 raw_template,
             )
