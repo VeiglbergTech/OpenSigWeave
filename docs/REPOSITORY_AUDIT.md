@@ -38,6 +38,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | Request size | Global request-body limit and bounded signature HTML storage. | Validate operational limits with representative usage. |
 | Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
 | File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Real cross-host restore and remote filesystem failure scenarios remain. |
+| Administrator exports | Selective versioned ZIP exports for signatures, domains, groups, rules and identity-provider metadata; SHA-256 asset checksums, 20 MiB bound, administrator authorization and separate rate limit. | Import/reconciliation is not included; review rule conditions for identifiers before sharing. |
 | Administrator exports | Selective versioned ZIP exports for signatures, domains, groups, rules and IDP metadata; HTML asset checksums, 20 MiB bound, admin authorization and separate rate limit. | Import/reconciliation is not included; review rule conditions for operator-entered identifiers before sharing. |
 | Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
 | Rspamd MIME rewrite | Multipart messages are left unchanged. | Only non-multipart rewrite path is currently supported; no full MIME or DKIM integration proof. |
@@ -98,7 +99,7 @@ The historical Rspamd engine credential must be rotated anywhere it may have bee
 1. Real-browser acceptance tests for login, roles, signature editor, rules and logout.
 2. Review CSP reports and Quill runtime behavior before enforcing CSP.
 3. Complete a cross-host restore drill and validate scheduled backup against real NFS/SMB storage.
-4. Implement selective administrator UI exports with component manifests and encryption for secret-bearing exports.
+4. Review export scope and privacy boundaries as new configuration components are added; importing/reconciling selective exports is not implemented.
 5. Validate rate limits and resource usage under realistic load.
 6. Test Rspamd in a disposable Mailcow environment: sender authorization, supported MIME cases, idempotency and DKIM.
 7. Perform a focused dynamic security test before any production release.
