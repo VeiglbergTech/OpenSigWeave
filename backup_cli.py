@@ -19,6 +19,7 @@ from backup_encryption import (
 )
 from backup_docker import BackupDockerError, create_docker_backup
 from backup_restore import BackupRestoreError, restore_fresh_deployment
+from backup_retention import BackupRetentionError, prune_backups
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,6 +59,13 @@ def build_parser() -> argparse.ArgumentParser:
     decrypt.add_argument("--identity", required=True, type=Path)
     decrypt.add_argument("--output", required=True, type=Path)
     decrypt.add_argument("--age-binary", default="age")
+
+    prune = commands.add_parser("prune", help="Verify backups and apply or preview retention")
+    prune.add_argument("--directory", required=True, type=Path)
+    prune.add_argument("--identity", required=True, type=Path)
+    prune.add_argument("--keep", type=int, default=7)
+    prune.add_argument("--age-binary", default="age")
+    prune.add_argument("--apply", action="store_true", help="Actually delete verified backups outside the retention window")
     return parser
 
 
@@ -125,7 +133,24 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"Verified archive decrypted: {args.output}")
             return 0
-    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, BackupRestoreError, OSError) as exc:
+
+        if args.command == "prune":
+            result = prune_backups(
+                args.directory,
+                args.identity,
+                keep=args.keep,
+                apply=args.apply,
+                age_binary=args.age_binary,
+            )
+            print(f"Verified and retained: {len(result["retained"])}")
+            if args.apply:
+                print(f"Deleted: {len(result["deleted"])}")
+            else:
+                print("Dry run; no files were deleted.")
+                for path in result["would_delete"]:
+                    print(f"Would delete: {path}")
+            return 0
+    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, BackupRestoreError, BackupRetentionError, OSError) as exc:
         print(f"Backup operation failed: {exc}", file=sys.stderr)
         return 2
     return 2
