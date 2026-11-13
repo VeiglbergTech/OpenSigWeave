@@ -256,7 +256,19 @@
                 </div>
                 <label class="block text-sm text-gray-300">
                     <span x-text="form.id ? 'New HTML version (leave empty to keep current version)' : 'HTML template'"></span>
-                    <textarea x-model="form.html_content" rows="9" maxlength="65536" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono text-xs" placeholder="Enter signature HTML"></textarea>
+                    <div class="mt-2 flex flex-wrap items-end gap-2">
+                        <label class="text-xs text-gray-400">Insert signature group tag
+                            <select x-model="selectedGroupSlug" class="mt-1 block bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                <option value="">Select active group</option>
+                                <template x-for="group in availableGroups" :key="group.id">
+                                    <option :value="group.slug" x-text="group.name + ' ({{ group:' + group.slug + ' }})'"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <button type="button" @click="insertGroupTag(selectedGroupSlug, $refs.signatureHtmlTemplate)" :disabled="!selectedGroupSlug" class="px-3 py-2 rounded text-sm bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Insert at cursor</button>
+                        <span class="text-xs text-gray-500">Adds the tag at the cursor or replaces selected text. Existing HTML remains unchanged.</span>
+                    </div>
+                    <textarea x-ref="signatureHtmlTemplate" x-model="form.html_content" rows="9" maxlength="65536" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono text-xs" placeholder="Enter signature HTML"></textarea>
                 </label>
                 <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
             </div>
