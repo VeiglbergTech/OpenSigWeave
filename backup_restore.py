@@ -6,7 +6,7 @@ for inspection instead of attempting risky automatic cleanup.
 """
 from __future__ import annotations
 
-import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -139,6 +139,74 @@ def _restore_volume(
         )
 
 
+
+def _file_inventory(root: Path) -> dict[str, str]:
+    inventory: dict[str, str] = {}
+    if root.is_symlink() or not root.is_dir():
+        raise BackupRestoreError("Restored volume snapshot is not a regular directory")
+    for path in sorted(root.rglob("*")):
+        if path.is_symlink():
+            raise BackupRestoreError("Restored volume contains a symbolic link")
+        if path.is_dir():
+            continue
+        if not path.is_file():
+            raise BackupRestoreError("Restored volume contains a non-regular file")
+        digest = hashlib.sha256()
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+        inventory[path.relative_to(root).as_posix()] = digest.hexdigest()
+    return inventory
+
+
+def _verify_restored_volume(
+    docker: str,
+    project_name: str,
+    directory: Path,
+    image: str,
+    volume: str,
+    manifest_files: list[dict],
+    manifest_prefix: str,
+) -> None:
+    expected = {
+        entry["path"][len(manifest_prefix):]: entry["sha256"]
+        for entry in manifest_files
+        if entry["path"].startswith(manifest_prefix)
+    }
+    helper_name = f"{project_name[:36]}-verify-{manifest_prefix.split('/')[-2]}"
+    _run(
+        [
+            docker, "create", "--name", helper_name, "--user", "0:0",
+            "--volume", f"{volume}:/restore:ro",
+            "--entrypoint", "sh", image, "-c", "sleep 600",
+        ],
+        cwd=directory,
+    )
+    try:
+        _run([docker, "start", helper_name], cwd=directory)
+        with tempfile.TemporaryDirectory(prefix="opensigweave-volume-check-") as temporary:
+            snapshot = Path(temporary)
+            os.chmod(snapshot, 0o700)
+            _run(
+                [docker, "cp", f"{helper_name}:/restore/.", str(snapshot)],
+                cwd=directory,
+                timeout=900,
+            )
+            actual = _file_inventory(snapshot)
+        if actual != expected:
+            raise BackupRestoreError(
+                f"Restored volume integrity check failed for {manifest_prefix.rstrip('/')}"
+            )
+    finally:
+        subprocess.run(
+            [docker, "rm", "--force", helper_name],
+            cwd=directory,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=60,
+        )
+
 def restore_fresh_deployment(
     encrypted_backup: str | Path,
     identity_file: str | Path,
@@ -176,6 +244,9 @@ def restore_fresh_deployment(
 
     if manifest.get("metadata", {}).get("backup_kind") != "full":
         raise BackupRestoreError("Only complete disaster-recovery backups can be restored")
+    expected_revision = manifest.get("metadata", {}).get("alembic_revision")
+    if not isinstance(expected_revision, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", expected_revision):
+        raise BackupRestoreError("Backup does not contain a valid Alembic migration revision")
     required = {
         "database/opensigweave.dump",
         "deployment/compose.yaml",
@@ -262,7 +333,7 @@ def restore_fresh_deployment(
             _run([docker_binary, "image", "tag", app_image_id, "opensigweave:restore"],
                  cwd=target, timeout=120)
 
-            config = _compose(docker_binary, project_name, target, "config", "--quiet")
+            _compose(docker_binary, project_name, target, "config", "--quiet")
             services = _compose(docker_binary, project_name, target, "config", "--services").stdout.splitlines()
             if not {"postgres", "opensigweave"}.issubset(set(services)):
                 raise BackupRestoreError("Restored Compose definition is missing required services")
@@ -321,6 +392,33 @@ def restore_fresh_deployment(
                 )
             finally:
                 dump.close()
+
+            restored_revision = _run(
+                [
+                    docker_binary, "compose", "--project-name", project_name,
+                    "--file", str(target / "compose.yaml"),
+                    "--file", str(target / "compose.restore.yaml"),
+                    "exec", "-T", "postgres", "sh", "-c",
+                    'exec psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT version_num FROM alembic_version"',
+                ],
+                cwd=target,
+                timeout=60,
+            ).stdout.strip()
+            if restored_revision != expected_revision:
+                raise BackupRestoreError(
+                    "Restored database migration revision does not match the backup manifest"
+                )
+
+            _verify_restored_volume(
+                docker_binary, project_name, target, "opensigweave:restore",
+                f"{project_name}_opensigweave-signatures",
+                manifest["files"], "data/signatures/",
+            )
+            _verify_restored_volume(
+                docker_binary, project_name, target, "opensigweave:restore",
+                f"{project_name}_opensigweave-idp-data",
+                manifest["files"], "data/idp-config/",
+            )
 
             _compose(docker_binary, project_name, target, "up", "-d", "opensigweave", timeout=600)
             _wait_healthy(docker_binary, project_name, target, "opensigweave", health_timeout)
