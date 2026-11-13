@@ -118,6 +118,7 @@
                 <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
                 <button @click="adminTab = 'signature-groups'" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
                 <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button @click="adminTab = 'exports'" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
             <div class="flex justify-between items-center gap-3 mb-6">
@@ -416,6 +417,28 @@
                 <div class="flex justify-end gap-2 border-t border-gray-700 pt-4">
                     <button @click="editing=false" class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button>
                     <button @click="saveRule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Rule</button>
+                </div>
+            </div>
+        </div>
+        <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="space-y-5">
+            <div>
+                <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
+                <p class="text-sm text-gray-400 mt-1">Download selected configuration components as a versioned ZIP archive.</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="rounded"> Signatures and all HTML versions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="rounded"> Domains and original templates</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="rounded"> Signature groups and memberships</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="rounded"> Rules and conditions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="rounded"> Identity-provider metadata</label>
+                </div>
+                <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
+                    Provider credentials, application secrets, personal user overrides and identity caches are never included. This is a selective configuration export, not a disaster-recovery backup.
+                </div>
+                <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+                <div class="flex justify-end">
+                    <button @click="download()" :disabled="busy || selected.length === 0" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium" x-text="busy ? 'Preparing export…' : 'Download selected components'"></button>
                 </div>
             </div>
         </div>
