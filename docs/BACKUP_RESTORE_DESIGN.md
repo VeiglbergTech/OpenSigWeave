@@ -38,8 +38,8 @@ Use a versioned archive format. A full backup contains:
     ├── database/
     │   └── opensigweave.dump
     ├── data/
-    │   ├── signatures.tar.gz
-    │   └── idp-config.tar.gz
+    │   ├── signatures/             # complete signature volume contents
+    │   └── idp-config/              # complete identity-provider volume contents
     └── deployment/
         ├── compose.yaml
         └── env.enc
@@ -49,7 +49,7 @@ The final distributable artifact is encrypted with age. The encryption recipient
 The manifest records at least:
 
 - Backup format version and OpenSigWeave version/image digest.
-- UTC creation time and database engine/version.
+- UTC creation time, database engine/version and the exact Alembic revision.
 - Included component names and byte sizes.
 - SHA-256 checksums for every payload file.
 - Migration revision at backup time.
@@ -89,17 +89,18 @@ Restore is a destructive administrative operation and must be a separate, explic
 
 The `create` command validates the Compose project, stops the application service, exports PostgreSQL, copies the signature and IDP volumes from the stopped application container, encrypts the host `.env` as a separate payload, creates the archive, and decrypt-verifies the encrypted result. The age identity is required for that final verification and should be supplied from removable/off-host storage. The lower-level `package` command remains available for an already prepared staging directory.
 
-The restore command must:
+The initial restore implementation is intentionally limited to a fresh deployment:
 
-1. Require an explicit confirmation flag for destructive replacement (for example, --confirm) and print the target Compose project and volumes.
-2. Decrypt and verify the complete archive before stopping or deleting any target data.
-3. Reject unsupported format versions, missing mandatory components, path traversal entries, symlinks, unexpected file types, oversized payloads, and checksum mismatches.
-4. Require a compatible or explicitly supported target OpenSigWeave version.
-5. Stop the application and database services and create a safety snapshot of any existing target data before replacement.
-6. Restore PostgreSQL into an empty target database/volume and restore the signature and IDP data into their respective volumes with restrictive ownership and permissions.
-7. Restore the host deployment configuration only through an explicit operator-controlled step; never overwrite an existing .env silently.
-8. Start the stack, wait for health checks, verify Alembic revision and signature-file integrity, and report the result.
-9. Keep the pre-restore safety snapshot until the operator explicitly removes it.
+1. Decrypt and verify the complete archive before creating target files or Docker volumes.
+2. Reject unsupported format versions, missing mandatory components, path traversal entries, symlinks, unexpected file types, oversized payloads and checksum mismatches.
+3. Require a new target directory and a Compose project name that has no existing containers or expected named volumes.
+4. Restore the saved application and PostgreSQL images, encrypted host configuration, PostgreSQL custom dump, signature volume and IDP volume into newly created resources.
+5. Restore file ownership and restrictive permissions for application data.
+6. Compare the restored database's Alembic revision with the revision recorded in the backup manifest.
+7. Export each restored data volume through a read-only helper container and compare its complete SHA-256 file inventory with the archive manifest.
+8. Start the application and wait for its healthcheck. A failed restore leaves the new target resources in place for operator inspection; it never removes pre-existing resources.
+
+This is not an in-place replacement workflow. Existing deployment directories, Compose projects and expected volume names are refused. A cross-host restore drill is still required before relying on this as the only disaster-recovery path.
 
 A failed restore must not automatically delete the safety snapshot. Recovery instructions must be printed and logged without exposing secret values.
 
@@ -137,7 +138,8 @@ The feature is not complete until automated tests cover:
 - Application service is restarted after both successful and failed backup attempts.
 - Archive traversal, symlinks, unexpected file types, unsupported versions and tampered checksums are rejected before restore.
 - Restore to a fresh Compose project on a different host reproduces database records, signature versions and hashes, IDP provider files and application configuration.
-- Existing target data is protected by a safety snapshot before destructive restore.
+- Restore compares the recorded and restored Alembic revision and independently validates the signature and IDP volume SHA-256 inventories.
+- Existing deployment directories, Compose projects and expected named volumes are refused without modification.
 - UI component selection produces an accurate manifest and never claims a partial export is a full backup.
 - No secret values appear in logs, API responses, manifests, or test failure output.
 
