@@ -48,6 +48,7 @@ from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
+from admin_export import AdminExportError, build_admin_export
 from signature_sanitizer import sanitize_signature_html
 from auth_config import (
     is_valid_email, is_valid_password_hash, oidc_enabled_from_env,
@@ -1109,6 +1110,32 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
     identity_provider_registry.delete(provider_id)
     db.delete(row); db.commit()
     return {"status": "deleted"}
+
+
+@app.get("/api/admin/exports")
+def export_admin_components(
+    request: Request,
+    components: str = "signatures,domains,rules,groups,identity_providers",
+    db: Session = Depends(get_db),
+):
+    """Download selected non-secret administrator configuration components."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    selected = [item.strip() for item in components.split(",") if item.strip()]
+    try:
+        archive, filename = build_admin_export(db, signature_file_store, selected)
+    except AdminExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return Response(
+        content=archive,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-store, private",
+            "Pragma": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @app.get("/api/admin/signatures")
