@@ -14,6 +14,7 @@ class FakeResponse:
                 {
                     "name": "Alice Example",
                     "username": "alice",
+                    "pk": "user-immutable-42",
                     "email": "alice@example.org",
                     "is_active": True,
                     "attributes": {
@@ -123,7 +124,7 @@ class AuthentikAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         client = FakeClient()
         response = FakeResponse()
         response.json = lambda: {"results": [{
-            "name": "", "email": "alice@example.org", "is_active": True,
+            "name": "", "pk": "user-empty-42", "email": "alice@example.org", "is_active": True,
             "attributes": {}, "groups": [],
         }]}
         with patch("identity.providers.authentik.httpx.AsyncClient", return_value=client):
