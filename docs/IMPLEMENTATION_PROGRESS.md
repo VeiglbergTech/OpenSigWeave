@@ -41,6 +41,7 @@ This document describes the current branch state. It is not a promise that defer
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
+- Editor replacement evaluated: retain vendored Quill 1.3.7 until a self-hosted CKEditor 5 GPL proof of concept passes email-HTML, sanitizer, Outlook, CSP/offline and licensing acceptance tests; see [EDITOR_DECISION.md](EDITOR_DECISION.md).
 
 ### Security baseline
 
