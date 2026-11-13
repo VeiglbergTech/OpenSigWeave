@@ -434,7 +434,7 @@
                     <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="rounded"> Identity-provider metadata</label>
                 </div>
                 <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
-                    Provider credentials, application secrets, personal user overrides and identity caches are never included. This is a selective configuration export, not a disaster-recovery backup.
+                    Provider credentials, application secrets, personal user overrides and identity caches are never included. Rule conditions can still contain email addresses or other identifiers; review the archive before sharing. This is a selective configuration export, not a disaster-recovery backup.
                 </div>
                 <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
                 <div class="flex justify-end">
