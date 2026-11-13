@@ -50,6 +50,23 @@ def _run(
     return result
 
 
+def _secure_staging_tree(root: Path) -> None:
+    """Restrict plaintext backup staging permissions and reject copied symlinks."""
+    for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+        current_path = Path(current)
+        for name in directories:
+            path = current_path / name
+            if path.is_symlink():
+                raise BackupDockerError("Backup volume contains a symbolic link")
+            os.chmod(path, 0o700)
+        for name in files:
+            path = current_path / name
+            if path.is_symlink() or not path.is_file():
+                raise BackupDockerError("Backup volume contains an unsafe file")
+            os.chmod(path, 0o600)
+        os.chmod(current_path, 0o700)
+
+
 def _inspect_mounts(docker: str, container_id: str, project: Path) -> dict[str, dict]:
     result = _run(
         [docker, "inspect", "--format", "{{json .Mounts}}", container_id],
@@ -194,6 +211,7 @@ def create_docker_backup(
                 [docker_binary, "inspect", "--format", "{{.Image}}", app_id],
                 cwd=project,
             ).stdout.strip()
+            _secure_staging_tree(staging)
             manifest = write_manifest(
                 staging,
                 {
