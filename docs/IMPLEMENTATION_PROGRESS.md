@@ -86,7 +86,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest full CI runs `43432512592` (push) and `43432517710` (pull request) both passed on commit `2716c5e0d91a143257b24f11253b481dfe07d907`. They include a regression test confirming both legacy and managed OIDC callback paths use the same rate-limit policy. They additionally execute the scheduled-backup remote-filesystem guard smoke test. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest full CI runs `43432993185` (push) and `43432999997` (pull request) both passed on commit `738c98f6f4bc5a1eec411cc8f0ca4aab5572a391`. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and smoke test, scheduled-backup remote-filesystem guard tests (including symlinked lock-file rejection), encrypted Docker backup and fresh restore, verified retention, and all 197 regression tests. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
@@ -115,7 +115,7 @@ The latest full CI runs `43432512592` (push) and `43432517710` (pull request) bo
 ### Operations
 
 - Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. A real cross-host restore drill, destructive in-place restore, administrator UI exports and real NFS/SMB validation remain outstanding; see [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
-- CI run `43286877301` passed syntax checks, security scans, migrations and Docker smoke tests but failed in regression tests because the archive inventory incorrectly treated `manifest.json` as a payload file. The bug has been corrected; a fresh CI run is still required to confirm the fix and the new encryption/CLI tests.
+- Historical CI failures involving archive inventory and migration compatibility have been corrected and superseded by the successful current full CI runs listed above.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
 
