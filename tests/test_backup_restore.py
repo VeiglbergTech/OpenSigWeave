@@ -30,6 +30,8 @@ class BackupRestoreTests(unittest.TestCase):
             "backup_kind": "full",
             "application_image_id": "sha256:" + "a" * 64,
             "postgres_image_id": "sha256:" + "b" * 64,
+            "application_image_ref": "opensigweave:preview",
+            "postgres_image_ref": "postgres:17-alpine",
         })
         archive = root / "backup.tar.gz"
         create_archive(staging, archive)
