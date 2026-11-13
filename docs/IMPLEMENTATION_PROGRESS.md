@@ -42,7 +42,7 @@ This document describes the current branch state. It is not a promise that defer
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
 - Editor replacement evaluated: retain vendored Quill 1.3.7 until a self-hosted CKEditor 5 GPL proof of concept passes email-HTML, sanitizer, Outlook, CSP/offline and licensing acceptance tests; see [EDITOR_DECISION.md](EDITOR_DECISION.md).
-- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). PostgreSQL concurrency stress and full browser UI tests remain outstanding.
+- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). PostgreSQL concurrency stress and full browser UI tests remain outstanding. The PostgreSQL concurrency test is present in CI but still needs a confirmed run against the CI PostgreSQL service.
 
 ### Security baseline
 
@@ -85,7 +85,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest backup/restore/retention CI runs `43380058709` (push) and `43380067095` (pull request) passed on commit `588b796ab15281faf4c8509c38bc79e76bf66949`. They include a full encrypted Docker backup and fresh restore with PostgreSQL data, Alembic revision, signature and IDP volume integrity, application health checks, plus age-verified retention dry-run and deletion. This is a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest full CI run `43410756082` passed on commit `9b4d8ab2effa62d30fe75c4ff9e64f33b580bee2`. It includes full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, PostgreSQL and SQLite migrations, Docker build and smoke test, encrypted Docker backup and fresh restore, and the complete regression suite. The populated legacy-group migration fixture verifies weight aggregation, disabled variants, all three generated groups and preservation of existing rules. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
