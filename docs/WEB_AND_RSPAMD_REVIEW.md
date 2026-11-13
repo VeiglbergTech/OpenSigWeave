@@ -1,7 +1,7 @@
 # Web application and Rspamd security review
 
 **Branch:** `architecture/refactor-foundation`  
-**Review date:** 2026-11-11  
+**Review date:** 2026-11-13  
 **Status:** Code-level review of the standalone preview; not a penetration test.
 
 ## 1. Web application
@@ -112,6 +112,6 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest confirmed Docker integration run (#520, commit `753deb6a8ac8ad2a893a396575c18b4e7eaa0a62`) passed image build, Compose startup, healthchecks, PostgreSQL migrations inside the container, authenticated engine API smoke test and 102 regression tests. Dependency audit and full-history Gitleaks scan also passed.
+The latest push and pull-request CI runs `43432993185` and `43432999997` on commit `738c98f6f4bc5a1eec411cc8f0ca4aab5572a391` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention and 197 regression tests.
 
 This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
