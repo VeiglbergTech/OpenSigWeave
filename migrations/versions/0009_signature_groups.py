@@ -39,12 +39,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("group_id", "domain_id"),
     )
 
-    op.add_column("signature_rules", sa.Column("group_id", sa.String(length=32), nullable=True))
-    op.create_foreign_key(
-        "fk_signature_rules_group_id", "signature_rules", "signature_groups",
-        ["group_id"], ["id"], ondelete="SET NULL",
-    )
-    op.create_index("ix_signature_rules_group_id", "signature_rules", ["group_id"], unique=False)
+    with op.batch_alter_table("signature_rules") as batch_op:
+        batch_op.add_column(sa.Column("group_id", sa.String(length=32), nullable=True))
+        batch_op.create_foreign_key(
+            "fk_signature_rules_group_id", "signature_groups",
+            ["group_id"], ["id"], ondelete="SET NULL",
+        )
+        batch_op.create_index("ix_signature_rules_group_id", ["group_id"], unique=False)
 
     op.create_table(
         "signature_group_members",
@@ -60,9 +61,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_signature_rules_group_id", table_name="signature_rules")
-    op.drop_constraint("fk_signature_rules_group_id", "signature_rules", type_="foreignkey")
-    op.drop_column("signature_rules", "group_id")
+    with op.batch_alter_table("signature_rules") as batch_op:
+        batch_op.drop_index("ix_signature_rules_group_id")
+        batch_op.drop_constraint("fk_signature_rules_group_id", type_="foreignkey")
+        batch_op.drop_column("group_id")
     op.drop_table("signature_group_members")
     op.drop_table("signature_group_domains")
     op.drop_index("ix_signature_groups_slug", table_name="signature_groups")
