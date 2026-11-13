@@ -10,6 +10,9 @@ from identity.attributes import IdentityAttributes
 from urllib.parse import urlencode
 from unittest.mock import AsyncMock, patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
 os.environ["OIDC_ENABLED"] = "true"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-with-more-than-thirty-two-characters")
 os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thirty-two-characters")
@@ -26,6 +29,8 @@ from auth_config import (
     verify_local_admin_password,
 )
 import main
+from database import Base
+from models import IdentityCacheDB, IdentityProviderDB
 
 
 class AuthenticationConfigurationTests(unittest.TestCase):
@@ -354,3 +359,80 @@ class ManagedOIDCLoginButtonTests(unittest.IsolatedAsyncioTestCase):
             response = await main.managed_oidc_callback("auth-main", request, db=db)
         self.assertEqual(response.status_code, 303)
         self.assertEqual(request.session["user"]["email"], "alice@example.org")
+
+
+class GenericOIDCProfileCacheTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.db = self.Session()
+        provider = IdentityProviderDB(
+            id="oidc-main",
+            display_name="Generic OIDC",
+            provider_type="oidc",
+            is_enabled=True,
+        )
+        domain = main.DomainDB(
+            domain_name="example.org",
+            is_active=True,
+            identity_provider_id="oidc-main",
+            authentication_provider_id="oidc-main",
+        )
+        self.db.add_all([provider, domain])
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    async def test_verified_userinfo_is_cached_for_signature_profile_lookups(self):
+        request = SimpleNamespace(session={
+            "pending_managed_login": {
+                "provider_id": "oidc-main",
+                "email": "alice@example.org",
+            }
+        })
+        token = {
+            "access_token": "must-not-be-persisted",
+            "userinfo": {
+                "sub": "immutable-subject-123",
+                "email": "alice@example.org",
+                "email_verified": True,
+                "name": "Alice Example",
+                "given_name": "Alice",
+                "family_name": "Example",
+                "title": "Systems Engineer",
+                "phone_number": "+49 123",
+                "groups": ["signature-users", "engineering"],
+                "department": "Infrastructure",
+                "attributes": {"office": "Munich"},
+            },
+        }
+        client = SimpleNamespace(authorize_access_token=AsyncMock(return_value=token))
+        with patch.object(main, "managed_oidc_client", return_value=(client, {})):
+            response = await main.managed_oidc_callback("oidc-main", request, db=self.db)
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(request.session["user"]["auth_provider_id"], "oidc-main")
+        cached = self.db.get(IdentityCacheDB, "oidc-main:alice@example.org")
+        self.assertIsNotNone(cached)
+        self.assertNotIn("must-not-be-persisted", str(cached.claims))
+        profile = await main.get_identity_attributes(
+            self.db, "alice@example.org", "oidc-main"
+        )
+        self.assertEqual(profile.first_name, "Alice")
+        self.assertEqual(profile.last_name, "Example")
+        self.assertEqual(profile.title, "Systems Engineer")
+        self.assertEqual(profile.phone, "+49 123")
+        self.assertEqual(profile.groups, frozenset({"signature-users", "engineering"}))
+        self.assertEqual(profile.attributes, {"office": "Munich"})
+        self.assertTrue(profile.principal_id.startswith("oidc-main:oidc:"))
+
+    async def test_generic_oidc_profile_returns_empty_when_no_verified_login_cache_exists(self):
+        profile = await main.get_identity_attributes(
+            self.db, "alice@example.org", "oidc-main"
+        )
+        self.assertEqual(profile, IdentityAttributes())
+
+
