@@ -5,6 +5,8 @@ import json
 import hmac
 import hashlib
 import secrets
+import re
+from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import RedirectResponse
@@ -28,7 +30,7 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db, SessionLocal
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
@@ -38,6 +40,7 @@ from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB
 from core.selection_repository import select_and_record_variant
+from core.group_selection_repository import select_and_record_group_signature
 from core.modes import SignatureMode, resolve_mode
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
@@ -89,8 +92,13 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Unsupported identity result")
+        if provider_id and fresh.principal_id:
+            fresh = replace(fresh, principal_id=f"{provider_id}:{fresh.principal_id}")
+        else:
+            fresh = replace(fresh, principal_id="")
         cached = db.get(IdentityCacheDB, cache_key)
         values = {
+            "principal_id": fresh.principal_id or None,
             "first_name": fresh.first_name[:256],
             "last_name": fresh.last_name[:256],
             "title": fresh.title[:256],
@@ -113,6 +121,7 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         if cached is None:
             return IdentityAttributes()
         return IdentityAttributes(
+            principal_id=cached.principal_id or "",
             first_name=cached.first_name or "",
             last_name=cached.last_name or "",
             title=cached.title or "",
@@ -183,11 +192,25 @@ class SignatureRuleConditionRequest(BaseModel):
     key: str = Field(default="", max_length=255)
     value: str = Field(min_length=1, max_length=4096)
 
+class SignatureGroupCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    domain_ids: List[int] = Field(default_factory=list, max_length=100)
+    is_active: bool = True
+
+
+class SignatureGroupMemberRequest(BaseModel):
+    signature_id: str = Field(min_length=1, max_length=32)
+    weight: int = Field(default=1, ge=1, le=1000)
+    is_enabled: bool = True
+
+
 class SignatureRuleCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=0, ge=-100000, le=100000)
-    action_mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL", "NONE"] = "AUTO"
+    action_mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL", "NONE", "GROUP"] = "AUTO"
     signature_id: Optional[str] = None
+    group_id: Optional[str] = None
     is_enabled: bool = True
     conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list, max_length=64)
 
@@ -1268,6 +1291,121 @@ def create_signature_variant_endpoint(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"id": variant.id, "pool_name": variant.pool_name, "weight": variant.weight}
+
+
+
+@app.get("/api/admin/signature-groups")
+def list_signature_groups(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    groups = db.query(SignatureGroupDB).order_by(SignatureGroupDB.name.asc()).all()
+    result = []
+    for group in groups:
+        members = db.query(SignatureGroupMemberDB).filter(SignatureGroupMemberDB.group_id == group.id).order_by(SignatureGroupMemberDB.signature_id.asc()).all()
+        domain_ids = [row.domain_id for row in db.query(SignatureGroupDomainDB).filter(SignatureGroupDomainDB.group_id == group.id).order_by(SignatureGroupDomainDB.domain_id.asc()).all()]
+        result.append({"id": group.id, "name": group.name, "slug": group.slug, "selection_policy": group.selection_policy, "is_active": group.is_active, "domain_ids": domain_ids, "members": [{"signature_id": item.signature_id, "weight": item.weight, "is_enabled": item.is_enabled} for item in members]})
+    return result
+
+
+@app.post("/api/admin/signature-groups", status_code=201)
+def create_signature_group(payload: SignatureGroupCreateRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    slug = (payload.slug or re.sub(r"[^a-z0-9]+", "-", payload.name.casefold()).strip("-"))[:64]
+    if not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+        raise HTTPException(status_code=422, detail="Invalid group slug")
+    if db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug).first():
+        raise HTTPException(status_code=409, detail="Group slug already exists")
+    domains = db.query(DomainDB).filter(DomainDB.id.in_(payload.domain_ids)).all() if payload.domain_ids else []
+    if len(domains) != len(set(payload.domain_ids)):
+        raise HTTPException(status_code=422, detail="One or more domains do not exist")
+    group = SignatureGroupDB(id=uuid.uuid4().hex, name=payload.name.strip(), slug=slug, is_active=payload.is_active)
+    try:
+        db.add(group)
+        db.flush()
+        db.add_all([SignatureGroupDomainDB(group_id=group.id, domain_id=item.id) for item in domains])
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"id": group.id, "slug": group.slug}
+
+
+@app.put("/api/admin/signature-groups/{group_id}")
+def update_signature_group(group_id: str, payload: SignatureGroupCreateRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    group = db.get(SignatureGroupDB, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    slug = (payload.slug or re.sub(r"[^a-z0-9]+", "-", payload.name.casefold()).strip("-"))[:64]
+    if not slug or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", slug):
+        raise HTTPException(status_code=422, detail="Invalid group slug")
+    if db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug, SignatureGroupDB.id != group_id).first():
+        raise HTTPException(status_code=409, detail="Group slug already exists")
+    domains = db.query(DomainDB).filter(DomainDB.id.in_(payload.domain_ids)).all() if payload.domain_ids else []
+    if len(domains) != len(set(payload.domain_ids)):
+        raise HTTPException(status_code=422, detail="One or more domains do not exist")
+    group.name, group.slug, group.is_active = payload.name.strip(), slug, payload.is_active
+    db.query(SignatureGroupDomainDB).filter(SignatureGroupDomainDB.group_id == group_id).delete(synchronize_session=False)
+    db.add_all([SignatureGroupDomainDB(group_id=group_id, domain_id=item.id) for item in domains])
+    db.commit()
+    return {"status": "updated"}
+
+
+@app.post("/api/admin/signature-groups/{group_id}/members", status_code=201)
+def add_signature_group_member(group_id: str, payload: SignatureGroupMemberRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if db.get(SignatureGroupDB, group_id) is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if db.get(SignatureDB, payload.signature_id) is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    if db.get(SignatureGroupMemberDB, (group_id, payload.signature_id)):
+        raise HTTPException(status_code=409, detail="Signature is already a member")
+    db.add(SignatureGroupMemberDB(group_id=group_id, signature_id=payload.signature_id, weight=payload.weight, is_enabled=payload.is_enabled))
+    db.commit()
+    return {"status": "created"}
+
+
+@app.put("/api/admin/signature-groups/{group_id}/members/{signature_id}")
+def update_signature_group_member(group_id: str, signature_id: str, payload: SignatureGroupMemberRequest, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if payload.signature_id != signature_id:
+        raise HTTPException(status_code=422, detail="Path and payload signature IDs must match")
+    member = db.get(SignatureGroupMemberDB, (group_id, signature_id))
+    if member is None:
+        raise HTTPException(status_code=404, detail="Group membership not found")
+    member.weight, member.is_enabled = payload.weight, payload.is_enabled
+    db.commit()
+    return {"status": "updated"}
+
+
+@app.delete("/api/admin/signature-groups/{group_id}/members/{signature_id}")
+def remove_signature_group_member(group_id: str, signature_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    member = db.get(SignatureGroupMemberDB, (group_id, signature_id))
+    if member is None:
+        raise HTTPException(status_code=404, detail="Group membership not found")
+    db.delete(member)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@app.delete("/api/admin/signature-groups/{group_id}")
+def delete_signature_group(group_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    group = db.get(SignatureGroupDB, group_id)
+    if group is None:
+        raise HTTPException(status_code=404, detail="Group not found")
+    if db.query(SignatureRuleDB).filter(SignatureRuleDB.group_id == group_id).first():
+        raise HTTPException(status_code=409, detail="Group is referenced by a rule; update the rule first")
+    db.delete(group)
+    db.commit()
+    return {"status": "deleted"}
 
 
 @app.get("/api/admin/rules")
