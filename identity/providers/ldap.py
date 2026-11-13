@@ -272,7 +272,15 @@ class LDAPAttributeProvider:
                 for key in ("mail", "displayName", "samaccountname", "distinguishedname", "useraccountcontrol")
                 if data.get(key) is not None
             }
+            raw_object_guid = data.get("objectguid")
+            if isinstance(raw_object_guid, (bytes, bytearray)):
+                stable_guid = bytes(raw_object_guid).hex()
+            else:
+                stable_guid = _first(raw_object_guid).strip()
+            if not stable_guid:
+                raise IdentityProviderUnavailable("LDAP result omitted immutable objectGUID")
             return IdentityAttributes(
+                principal_id=f"ldap:{stable_guid.casefold()}",
                 first_name=_first(data.get("givenname")),
                 last_name=_first(data.get("sn")),
                 title=_first(data.get("title")),
