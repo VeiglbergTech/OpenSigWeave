@@ -12,7 +12,7 @@ DOCKER_BINARY="${DOCKER_BINARY:-docker}"
 AGE_BINARY="${AGE_BINARY:-age}"
 PYTHON_BINARY="${PYTHON_BINARY:-python3}"
 
-for command in mountpoint flock date; do
+for command in mountpoint findmnt flock date; do
     command -v "$command" >/dev/null 2>&1 || { echo "Required command missing: $command" >&2; exit 2; }
 done
 [[ "$RETENTION_COUNT" =~ ^[1-9][0-9]*$ ]] || { echo "RETENTION_COUNT must be a positive integer" >&2; exit 2; }
@@ -20,6 +20,12 @@ done
 [[ -f "$PROJECT_DIR/backup_cli.py" && ! -L "$PROJECT_DIR/backup_cli.py" ]] || { echo "backup_cli.py not found in PROJECT_DIR" >&2; exit 2; }
 [[ -d "$BACKUP_DIRECTORY" && ! -L "$BACKUP_DIRECTORY" ]] || { echo "BACKUP_DIRECTORY must be a real directory" >&2; exit 2; }
 mountpoint -q "$BACKUP_DIRECTORY" || { echo "Backup target is not mounted; refusing to write to local disk" >&2; exit 2; }
+filesystem_type="$(findmnt -n -o FSTYPE --target "$BACKUP_DIRECTORY")"
+BACKUP_FS_ALLOWLIST="${BACKUP_FS_ALLOWLIST:-nfs nfs4 cifs smb3 fuse.sshfs fuse.rclone}"
+case " $BACKUP_FS_ALLOWLIST " in
+    *" $filesystem_type "*) ;;
+    *) echo "Backup target filesystem is not an approved remote type: $filesystem_type" >&2; exit 2 ;;
+esac
 [[ -f "$AGE_IDENTITY" && ! -L "$AGE_IDENTITY" ]] || { echo "AGE_IDENTITY is missing or unsafe" >&2; exit 2; }
 command -v "$PYTHON_BINARY" >/dev/null 2>&1 || { echo "Python executable not found: $PYTHON_BINARY" >&2; exit 2; }
 command -v "$DOCKER_BINARY" >/dev/null 2>&1 || { echo "Docker executable not found: $DOCKER_BINARY" >&2; exit 2; }
