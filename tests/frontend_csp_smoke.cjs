@@ -120,6 +120,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const portalJs = fs.readFileSync("static/js/portal.js", "utf8");
 
   const notifications = [];
+  window.addEventListener("notify", event => notifications.push(event.detail));
   window.fetch = async () => ({ ok: true, json: async () => [] });
   const signatureContext = {
     window,
@@ -164,7 +165,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
     "Insertion without an editor reference must append the token",
   );
   signatureEditor.insertGroupTag("", editor);
-  assert.equal(notifications.at(-1).message, "Select a signature group first.", "An empty group selection must be rejected");
+  assert.equal(notifications.at(-1).msg, "Select a signature group first.", "An empty group selection must be rejected");
   assert.equal(notifications.at(-1).type, "error");
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
