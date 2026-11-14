@@ -79,10 +79,26 @@ async function main() {
       return row && row.children[3].textContent.trim() === "2";
     });
 
+    const groupPanel = page.locator('[x-data="signatureGroupManager"]');
+    await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
+    await groupPanel.getByRole("button", { name: "+ Add Group" }).click();
+    await groupPanel.getByLabel("Name").fill("Browser Smoke Group");
+    await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
+    const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
+      .filter({ hasText: "Browser Smoke Group" });
+    await groupCard.waitFor();
+    const memberSelectors = groupPanel.locator("select");
+    await memberSelectors.nth(1).selectOption({ label: "Browser Smoke Group" });
+    await memberSelectors.nth(2).selectOption({ label: "Browser Smoke Signature" });
+    await groupPanel.getByRole("button", { name: "Add", exact: true }).click();
+    await groupCard.getByText("Browser Smoke Signature", { exact: true }).waitFor();
+
     const rulesPanel = page.locator('[x-data="ruleManager"]');
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();
     await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
+    await rulesPanel.getByLabel("Action").selectOption("GROUP");
+    await rulesPanel.getByLabel("Signature Group").selectOption({ label: "Browser Smoke Group" });
     await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
     await rulesPanel.getByText("Browser Smoke Rule", { exact: true }).waitFor();
 
@@ -97,7 +113,7 @@ async function main() {
     const protectedPage = await page.request.get(baseURL + "/");
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
-    process.stdout.write("Browser smoke passed: login, personal API, all admin sections, signature creation/version update, rule creation, logout and session invalidation.\n");
+    process.stdout.write("Browser smoke passed: login, personal API, all admin sections, signature creation/version update, group creation/membership, GROUP rule creation, logout and session invalidation.\n");
   } finally {
     await browser.close();
   }
