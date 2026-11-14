@@ -123,6 +123,7 @@ async function main() {
     });
 
     // Update the group metadata and verify the existing membership survives.
+    await groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor({ state: "visible" });
     await groupPanel.getByRole("button", { name: "Edit", exact: true }).click();
     const groupForm = groupPanel.locator("div[x-show='editing']");
     await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
