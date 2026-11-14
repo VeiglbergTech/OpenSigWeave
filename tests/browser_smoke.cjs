@@ -201,12 +201,12 @@ async function main() {
     // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
     const normalContext = await browser.newContext();
     await normalContext.addCookies([{
-      name: "__Host-opensigweave-session",
+      name: "opensigweave-session",
       value: process.env.BROWSER_TEST_NORMAL_USER_SESSION,
       url: baseURL + '/',
       path: '/',
       httpOnly: true,
-      secure: true,
+      secure: false,
       sameSite: "Lax",
     }]);
     const normalPage = await normalContext.newPage();
@@ -232,12 +232,12 @@ async function main() {
 
     const restrictedContext = await browser.newContext();
     await restrictedContext.addCookies([{
-      name: "__Host-opensigweave-session",
+      name: "opensigweave-session",
       value: process.env.BROWSER_TEST_RESTRICTED_USER_SESSION,
       url: baseURL + '/',
       path: '/',
       httpOnly: true,
-      secure: true,
+      secure: false,
       sameSite: "Lax",
     }]);
     const restrictedPage = await restrictedContext.newPage();
