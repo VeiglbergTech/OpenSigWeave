@@ -101,6 +101,10 @@ jobs:
         env:
           DATABASE_URL: sqlite:///./ci_test.db
         run: alembic upgrade head
+      - name: Install Chromium for real-browser smoke test
+        run: |
+          npm install --no-save --package-lock=false playwright@1.56.0
+          npx playwright install --with-deps chromium
       - name: Build and smoke-test standalone Docker stack
         run: |
           postgres_password='ci-password'
@@ -127,6 +131,7 @@ jobs:
             exit 1
           fi
           grep -q "Use email and password for LDAP" <<<"$login_page"
+          BROWSER_TEST_EMAIL="admin@example.test" BROWSER_TEST_PASSWORD="ci-local-admin-password" node tests/browser_smoke.cjs
           engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
           response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == ""' "$response"
