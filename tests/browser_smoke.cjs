@@ -159,7 +159,7 @@ async function main() {
 
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
     page.once("dialog", dialog => dialog.accept());
-    await groupCard.getByRole("button", { name: "Delete", exact: true }).click();
+    await updatedGroupCard.getByRole("button", { name: "Delete", exact: true }).click();
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
