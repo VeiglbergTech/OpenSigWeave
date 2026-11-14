@@ -524,15 +524,6 @@ local function inject_signature(task)
         local is_flat_plain = not is_multipart and (ct_header == "" or string.find(ct_header, "text/plain") ~= nil)
         local is_flat_html = not is_multipart and string.find(ct_header, "text/html", 1, true) ~= nil
 
-        -- Do not rewrite raw multipart bodies with string patterns. Nested boundaries,
-        -- transfer encodings and inline resources require a parser-backed rewrite path.
-        -- Until that path is implemented and exercised against supported Rspamd versions,
-        -- preserving the original message is safer than risking MIME corruption.
-        if is_multipart then
-            rspamd_logger.warnx(task, "OpenSigWeave: multipart message left unchanged; safe MIME rewrite is not yet available")
-            return
-        end
-
         if is_flat_plain then
             rspamd_logger.errx(task, "OpenSigWeave: Upgrading Flat text/plain to multipart/alternative.")
             
