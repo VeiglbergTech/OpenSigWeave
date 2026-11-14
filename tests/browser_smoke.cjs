@@ -97,7 +97,10 @@ async function main() {
     await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();
     await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
     await rulesPanel.getByLabel("Action").selectOption("GROUP");
-    await rulesPanel.getByLabel("Signature Group").selectOption({ label: "Browser Smoke Group" });
+    const ruleGroupSelect = rulesPanel.getByLabel("Signature Group");
+    await ruleGroupSelect.waitFor({ state: "visible" });
+    await ruleGroupSelect.locator("option").filter({ hasText: "Browser Smoke Group" }).waitFor();
+    await ruleGroupSelect.selectOption({ label: "Browser Smoke Group" });
     await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
     await rulesPanel.getByText("Browser Smoke Rule", { exact: true }).waitFor();
 
