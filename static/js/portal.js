@@ -377,6 +377,7 @@ function identityProviderManager() { return {
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode); },
                 init() {
                     window.addEventListener('signature-groups-updated', () => this.fetchAll());
+                    this.fetchAll();
                 },
                 async fetchAll() {
                     try {
