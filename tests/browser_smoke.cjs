@@ -63,7 +63,9 @@ async function main() {
 
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
+    const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
     process.stdout.write("CSP report-only browser violations: " + JSON.stringify(cspViolations) + "\\n");
+    process.stdout.write("Inline style elements: " + JSON.stringify(inlineStyleElements) + "\\n");
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
     await page.getByLabel("Email address").waitFor();
