@@ -124,14 +124,14 @@ async function main() {
 
     // Update the group metadata and verify the existing membership survives.
     const groupCardBeforeEdit = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
-      .filter({ hasText: "Browser Smoke Group" });
+      .filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCardBeforeEdit.getByRole("button", { name: "Edit", exact: true }).click();
     const groupForm = groupPanel.locator("div[x-show='editing']");
     await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
     await groupForm.getByLabel("Slug").fill("browser-smoke-group-updated");
     await groupForm.getByRole("button", { name: "Save Group", exact: true }).click();
     const updatedGroupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
-      .filter({ hasText: "Browser Smoke Group Updated" });
+      .filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
     await updatedGroupCard.getByText("Browser Smoke Signature", { exact: true }).waitFor();
 
     // Update a group member's weight and verify the UI remains operational.
