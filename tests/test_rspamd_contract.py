@@ -45,7 +45,7 @@ class RspamdAdapterContractTests(unittest.TestCase):
     def test_no_regular_expression_mime_boundary_reconstruction_is_enabled(self):
         # This adapter deliberately refuses multipart messages until a parser-backed
         # rewrite path is implemented and exercised against supported Rspamd versions.
-        self.assertRegex(SOURCE, r'if is_multipart then\s+rspamd_logger\.warnx\(task,.*?return\s+end')
+        self.assertRegex(SOURCE, r'if is_multipart then\s+rspamd_logger\.warnx\(task,[\\s\\S]*?return\s+end')
         self.assertNotRegex(SOURCE, r'parse_multipart\s*\(')
 
 
