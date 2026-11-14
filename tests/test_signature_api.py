@@ -861,12 +861,16 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             main.app.dependency_overrides[main.get_db] = self.previous_override
         self.engine.dispose()
 
-    def authenticate(self, user):
+    def authenticate(self, user, csrf_token="csrf-test-token"):
         payload = base64.b64encode(
-            json.dumps({"user": user}, separators=(",", ":")).encode("utf-8")
+            json.dumps(
+                {"user": user, "csrf_token": csrf_token},
+                separators=(",", ":"),
+            ).encode("utf-8")
         )
         signed = TimestampSigner(os.environ["SECRET_KEY"]).sign(payload).decode("utf-8")
         self.client.cookies.set(self.COOKIE_NAME, signed)
+        return csrf_token
 
     def test_anonymous_http_requests_cannot_read_admin_or_personal_apis(self):
         for path in (
@@ -897,6 +901,22 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         personal = self.client.get("/api/my-signature")
         self.assertEqual(personal.status_code, 200)
         self.assertEqual(personal.json(), {"html_content": ""})
+
+    def test_admin_mutation_requires_session_bound_csrf_token(self):
+        self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
+        payload = {"name": "HTTP CSRF Group", "domain_ids": [], "is_active": True}
+
+        denied = self.client.post("/api/admin/signature-groups", json=payload)
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.json(), {"detail": "CSRF validation failed"})
+
+        allowed = self.client.post(
+            "/api/admin/signature-groups",
+            json=payload,
+            headers={"X-CSRF-Token": "csrf-test-token"},
+        )
+        self.assertEqual(allowed.status_code, 201, allowed.text)
+        self.assertIsNotNone(allowed.json().get("id"))
 
     def test_administrator_http_session_can_read_admin_apis(self):
         self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
