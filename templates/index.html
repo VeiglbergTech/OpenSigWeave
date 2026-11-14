@@ -7,68 +7,56 @@
     {% if has_favicon %} <link rel="icon" href="/branding/favicon.ico" type="image/x-icon"> {% endif %}
     
     <link href="/static/css/tailwind.css" rel="stylesheet">
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="/static/vendor/quill/1.3.7/quill.snow.min.css" rel="stylesheet">
+    <script src="/static/vendor/quill/1.3.7/quill.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <style>
-        .ql-toolbar { background-color: #374151; border-color: #4b5563 !important; border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; color: #d1d5db; }
-        .ql-toolbar .ql-stroke { stroke: #d1d5db; }
-        .ql-toolbar .ql-fill { fill: #d1d5db; }
-        .ql-toolbar .ql-picker { color: #d1d5db; }
-        .ql-container { border-color: #4b5563 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; border-bottom-left-radius: 0.5rem !important; border-bottom-right-radius: 0.5rem !important; font-family: inherit; font-size: 1rem; background-color: #ffffff; color: #000000; overflow: hidden !important; }
-        .ql-editor { overflow-y: auto; height: 100%; padding: 1rem 1.5rem 2.5rem 1.5rem !important; }
-        .ql-snow.ql-toolbar button:hover .ql-stroke, .ql-snow .ql-toolbar button:focus .ql-stroke, .ql-snow.ql-toolbar button.ql-active .ql-stroke, .ql-snow .ql-toolbar button.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item.ql-selected .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item.ql-selected .ql-stroke { stroke: #60a5fa; }
-        
-        @keyframes slideUpFade {
-            0% { transform: translateY(100%); opacity: 0; }
-            10% { transform: translateY(0); opacity: 1; }
-            90% { transform: translateY(0); opacity: 1; }
-            100% { transform: translateY(-20%); opacity: 0; }
-        }
-        .animate-toast { animation: slideUpFade 3s forwards ease-in-out; }
-    </style>
+    <link href="/static/css/portal.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}">
 
-    <div x-data="{ toasts: [] }" @notify.window="toasts.push({id: Date.now(), msg: $event.detail.msg, type: $event.detail.type || 'success'}); setTimeout(() => { toasts.shift() }, 2900)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
             <div class="animate-toast px-4 py-3 rounded shadow-lg text-white font-medium text-sm pointer-events-auto flex items-center gap-2" :class="toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'"><span x-text="toast.msg"></span></div>
         </template>
     </div>
 
-    <script>const userData = { first_name: "{{ first_name }}", last_name: "{{ last_name }}", email: "{{ user.email }}", title: "{{ title }}", phone: "{{ phone }}" };</script>
+    
 
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
             {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
-            {% if app_name %}<div class="text-xl font-bold tracking-wider" style="color: {{ app_color }};">{{ app_name }}</div>{% endif %}
+            {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand" data-app-color="{{ app_color|e }}">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
                 <button @click="tab = 'personal'" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
-                {% if is_admin %}<button @click="tab = 'admin'" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
+                {% if is_admin %}<button @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <div class="h-6 w-px bg-gray-600"></div>
-            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><a href="/logout" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</a></div>
+            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" id="logout-button" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</button></div>
         </div>
     </nav>
 
     <div class="max-w-7xl mx-auto p-6 mt-4">
 
-        <div x-show="tab === 'personal'" style="display: none;" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div x-show="tab === 'personal'" x-cloak class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="space-y-6">
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Your Profile Data</h2>
                     <div class="space-y-3 text-sm text-gray-300 mb-6">
                         <p><span class="font-medium text-gray-400 w-16 inline-block">Name:</span> {{ user.name }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Email:</span> {{ user.email }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Title:</span> {{ title }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Phone:</span> {{ phone }}</p>
                     </div>
-                    <a href="{{ authentik_settings_url }}" target="_blank" class="w-full block text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded transition text-sm border border-gray-600">Edit Profile in Authentik ↗</a>
+                    {% if authentik_settings_url %}
+                    <a href="{{ authentik_settings_url }}" target="_blank" rel="noopener noreferrer" class="w-full block text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded transition text-sm border border-gray-600">Edit Profile in Authentik ↗</a>
+                    {% else %}
+                    <p class="text-xs text-gray-500">Local administrator account</p>
+                    {% endif %}
                 </div>
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Available Variables</h2>
                     <ul class="space-y-2 text-sm font-mono text-blue-300 bg-gray-900 p-3 rounded border border-gray-700">
-                        <li>{{ '{{' }} first_name {{ '}}' }}</li><li>{{ '{{' }} last_name {{ '}}' }}</li><li>{{ '{{' }} title {{ '}}' }}</li><li>{{ '{{' }} phone {{ '}}' }}</li><li>{{ '{{' }} email {{ '}}' }}</li><li>{{ '{{' }} domain_name {{ '}}' }}</li>
+                        <li>{{ '{{' }} first_name {{ '}}' }}</li><li>{{ '{{' }} last_name {{ '}}' }}</li><li>{{ '{{' }} title {{ '}}' }}</li><li>{{ '{{' }} phone {{ '}}' }}</li><li>{{ '{{' }} email {{ '}}' }}</li><li>{{ '{{' }} domain_name {{ '}}' }}</li><li>{{ '{{' }} group:group-slug {{ '}}' }}</li>
                     </ul>
                 </div>
             </div>
@@ -85,8 +73,8 @@
                     <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
                         <h2 class="text-lg font-semibold text-white">Custom Override Signature</h2>
                         <div class="flex gap-2">
-                            <button @click="$dispatch('open-confirm', { action: 'clear-user' })" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
-                            <button onclick="saveUserSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
+                            <button @click="confirmClearUser()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
+                            <button id="save-user-signature" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
                         </div>
                     </div>
                     
@@ -100,57 +88,375 @@
                         <div id="quill-editor" class="h-[300px]"></div>
                     </div>
                     
-                    <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
+                    <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
                         <div class="flex justify-between items-center px-4 py-3">
                             <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                             <div class="flex gap-2">
                                 <button @click="$dispatch('open-sanitizer', 'personal')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                 </button>
-                                <button @click="$dispatch('open-preview', { html: document.getElementById('raw-html-editor').value })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
+                                <button @click="previewUserSignature()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
                             </div>
                         </div>
-                        <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                        <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Originalcode bleibt gespeichert; der Sanitizer entfernt diese Inhalte jedoch aus Vorschau und versendeter Signatur.</div></div>
                     </div>
                 </div>
                 
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Default Domain Template (Read-Only)</h2>
-                    <div class="bg-white border border-gray-700 rounded p-4 min-h-[100px] text-sm text-black">{{ domain_template | safe }}</div>
+                    <iframe title="Default domain signature preview" sandbox="" srcdoc="{{ domain_template | e }}" class="w-full min-h-[120px] bg-white border border-gray-700 rounded"></iframe>
                 </div>
             </div>
         </div>
 
         {% if is_admin %}
-        <div x-show="tab === 'admin'" style="display: none;" x-data="domainManager()" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
+        <div x-show="tab === 'admin'" x-cloak>
+            <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
+                <button @click="adminTab = 'identity-providers'" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
+                <button @click="adminTab = 'domains'" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
+                <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button @click="adminTab = 'signature-groups'" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
+                <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button @click="adminTab = 'exports'" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
+            </div>
+        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
+            <div class="flex justify-between items-center gap-3 mb-6">
+                <div><h1 class="text-2xl font-semibold">Identity Providers</h1><p class="text-sm text-gray-400 mt-1">Profile attributes for signatures. Login authentication remains independent.</p></div>
+                <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mb-6">
+                <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
+                        <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
+                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')"></td>
+                        <td class="px-4 py-3 text-sm" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Enabled' : 'Disabled')"></td>
+                        <td class="px-4 py-3 text-right space-x-3"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
+                    </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
+                </table>
+            </div>
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <h2 class="text-lg font-semibold" x-text="form.original_id ? 'Edit Identity Provider' : 'Add Identity Provider'"></h2>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">Folder name / ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Display name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Provider type<select x-model="form.provider_type" @change="changeType()" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="oidc">OpenID Connect (generic)</option><option value="ldap">LDAP / Active Directory</option></select></label>
+                    <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled"> Enabled</label>
+                </div>
+                <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">API token<input type="password" autocomplete="new-password" x-model="form.settings.AUTHENTIK_API_TOKEN" placeholder="Leave empty to keep existing token" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <div class="md:col-span-2 border-t border-gray-700 pt-3 mt-2">
+                        <p class="text-sm font-semibold text-gray-200 mb-2">OIDC sign-in (optional)</p>
+                        <div class="grid md:grid-cols-2 gap-3">
+                            <label class="text-sm">OIDC discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://auth.example.org/application/o/app/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm md:col-span-2">OIDC callback / redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/auth-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm md:col-span-2">OIDC post-logout redirect URI (optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                        </div>
+                    </div>
+                    <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div x-show="form.provider_type === 'oidc'" class="grid md:grid-cols-2 gap-4">
+                    <div class="md:col-span-2"><p class="text-sm font-semibold text-gray-200">Generic OpenID Connect</p><p class="text-xs text-gray-400 mt-1">Profile attributes are taken from verified UserInfo claims at sign-in and cached for signature rendering. Assign this provider as both the domain's login and profile provider.</p></div>
+                    <label class="text-sm">OIDC discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">OIDC scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm md:col-span-2">OIDC callback / redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/oidc-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm md:col-span-2">OIDC post-logout redirect URI (optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
+                    <label class="text-sm">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Bind password<input type="password" autocomplete="new-password" x-model="form.settings.LDAP_BIND_PASSWORD" placeholder="Leave empty to keep existing password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">User filter<input x-model="form.settings.LDAP_USER_FILTER" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">CA certificate file<input x-model="form.settings.LDAP_CA_CERT_FILE" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                    <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.LDAP_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                </div>
+                <div class="flex gap-3"><button @click="saveProvider()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">Save</button><button @click="editing=false" class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button></div>
+                <p class="text-xs text-gray-500">Credentials are stored only in .idp/&lt;name&gt;/.env with restricted permissions. Secret fields are never returned to the browser.</p>
+            </div>
+        </div>
+
+        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
             </div>
             <div class="bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-700">
                 <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
+                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Profile Provider</th><th class="px-6 py-4 font-medium">Login Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="domain in domains" :key="domain.id">
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
-                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="$dispatch('open-confirm', {domain: domain, action: 'toggle'})" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" :value="domain.identity_provider_id || ''" @change="setProvider(domain, $event.target.value)"><option value="">No provider</option><template x-for="provider in providers" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td><td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" :value="domain.authentication_provider_id || ''" @change="setAuthenticationProvider(domain, $event.target.value)"><option value="">Local / no SSO</option><template x-for="provider in loginProviders()" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td>
                                 <td class="px-6 py-4 text-right space-x-3">
                                     <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Settings & Users</button>
-                                    <button @click="$dispatch('open-confirm', {domain: domain, action: 'delete'})" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                                    <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="domains.length === 0"><td colspan="3" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
+                        <tr x-show="domains.length === 0"><td colspan="4" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="space-y-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold">Signature Catalog</h2>
+                    <p class="text-sm text-gray-400 mt-1">Manage signature assets, versions and delivery variants.</p>
+                </div>
+                <button @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Signature</button>
+            </div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Mode</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Variants</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="signature in signatures" :key="signature.id">
+                            <tr>
+                                <td class="px-4 py-3 font-medium">
+                                    <div x-text="signature.name"></div>
+                                    <div class="text-xs text-gray-500 font-mono mt-1" x-text="formatSignatureMarker(signature)"></div>
+                                </td>
+                                <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
+                                <td class="px-4 py-3 text-sm" x-text="domainNames(signature)"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="signature.variants"></td>
+                                <td class="px-4 py-3"><span class="text-xs" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Inactive'"></span></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <button @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
+                                    <button @click="manageVariants(signature)" class="text-indigo-400 hover:text-indigo-300 text-sm">Variants</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="signatures.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No signatures configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Mode
+                        <select x-model="form.mode" :disabled="!!form.id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option>
+                        </select>
+                    </label>
+                    <div class="text-sm text-gray-300 md:col-span-2">
+                        <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
+                            <template x-for="domain in domains" :key="domain.id">
+                                <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(Number(domain.id))" @change="toggleDomain(domain.id, $event.target.checked)" class="rounded"><span x-text="domain.domain_name"></span></label>
+                            </template>
+                            <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
+                    <label x-show="!form.id" class="text-sm text-gray-300">Initial variant weight<input type="number" min="1" max="1000" x-model.number="form.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                </div>
+                <label class="block text-sm text-gray-300">
+                    <span x-text="form.id ? 'New HTML version (leave empty to keep current version)' : 'HTML template'"></span>
+                    <div class="mt-2 flex flex-wrap items-end gap-2">
+                        <label class="text-xs text-gray-400">Insert signature group tag
+                            <select x-model="selectedGroupSlug" class="mt-1 block bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                <option value="">Select active group</option>
+                                <template x-for="group in availableGroups" :key="group.id">
+                                    <option :value="group.slug" x-text="group.name + ' (' + '{' + '{ group:' + group.slug + ' ' + '}' + '}' + ')'"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <button type="button" @click="insertGroupTag(selectedGroupSlug, $refs.signatureHtmlTemplate)" :disabled="!selectedGroupSlug" class="px-3 py-2 rounded text-sm bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Insert at cursor</button>
+                        <span class="text-xs text-gray-500">Adds the tag at the cursor or replaces selected text. Existing HTML remains unchanged.</span>
+                    </div>
+                    <textarea x-ref="signatureHtmlTemplate" x-model="form.html_content" rows="9" maxlength="65536" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono text-xs" placeholder="Enter signature HTML"></textarea>
+                </label>
+                <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
+            </div>
+
+            <div x-show="variantEditor" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature ? variantSignature.name : ''"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="space-y-3">
+                    <template x-for="variant in variants" :key="variant.id">
+                        <div class="flex flex-wrap items-center gap-4 bg-gray-900 rounded p-3">
+                            <span class="font-medium text-sm w-36" x-text="variant.pool_name"></span>
+                            <label class="text-sm text-gray-300">Weight <input type="number" min="1" max="1000" x-model.number="variant.weight" class="ml-2 w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1"></label>
+                            <label class="text-sm text-gray-300"><input type="checkbox" x-model="variant.is_enabled" class="mr-1"> Enabled</label>
+                            <button @click="saveVariant(variant)" class="text-blue-400 hover:text-blue-300 text-sm ml-auto">Save</button>
+                        </div>
+                    </template>
+                    <p x-show="variants.length === 0" class="text-sm text-gray-400">No variants configured.</p>
+                </div>
+            </div>
+        </div>
+
+
+        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="space-y-5">
+            <div class="flex items-center justify-between">
+                <div><h2 class="text-2xl font-semibold">Signature Groups</h2><p class="text-sm text-gray-400 mt-1">Reusable signature pools. Each membership has its own weight and enabled state.</p></div>
+                <button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button>
+            </div>
+            <div class="flex items-center gap-2 text-sm text-gray-300"><label for="group-preview-domain">Preview domain</label><select id="group-preview-domain" x-model="previewDomainId" class="bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select domain</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select><span class="text-xs text-gray-500">Preview does not advance rotation history.</span></div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <template x-for="group in groups" :key="group.id">
+                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                        <div class="flex items-start justify-between">
+                            <div><h3 class="font-semibold" x-text="group.name"></h3><p class="text-xs text-gray-500 font-mono" x-text="group.slug"></p></div>
+                            <span class="text-xs" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span>
+                        </div>
+                        <p class="text-xs text-gray-400" x-text="group.domain_ids.length ? 'Domain-scoped group' : 'Available to all domains'"></p>
+                        <div class="border-t border-gray-700 pt-3 space-y-2">
+                            <template x-for="member in group.members" :key="member.signature_id">
+                                <div class="flex items-center gap-2 text-sm">
+                                    <span class="flex-1 truncate" x-text="signatureName(member.signature_id)"></span>
+                                    <label class="text-xs text-gray-400">Weight <input type="number" min="1" max="1000" class="w-16 bg-gray-900 border border-gray-600 rounded px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)"></label>
+                                    <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)">Active</label>
+                                    <button @click="removeMember(group, member)" class="text-red-400 text-xs">Remove</button>
+                                </div>
+                            </template>
+                            <p x-show="group.members.length === 0" class="text-xs text-gray-500">No signatures assigned.</p>
+                        </div>
+                        <div class="flex justify-end gap-3 border-t border-gray-700 pt-3">
+                            <button @click="previewGroup(group)" class="text-emerald-400 text-sm">Preview</button>
+                            <button @click="editGroup(group)" class="text-blue-400 text-sm">Edit</button>
+                            <button @click="deleteGroup(group)" class="text-red-400 text-sm">Delete</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex justify-between items-center"><h3 class="font-semibold" x-text="form.id ? 'Edit Group' : 'Create Group'"></h3><button @click="editing=false" class="text-gray-400">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <label class="text-sm">Name<input x-model="form.name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                    <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                </div>
+                <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active">Group enabled</label>
+                <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(Number(domain.id))" @change="toggleDomain(domain.id, $event.target.checked)"><span x-text="domain.domain_name"></span></label></template></div></div>
+                <div class="flex justify-end gap-2"><button @click="editing=false" class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                <h3 class="font-semibold">Add Signature to Group</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <select x-model="memberForm.group_id" class="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select>
+                    <select x-model="memberForm.signature_id" class="bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><option value="">Select signature</option><template x-for="signature in signatures" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select>
+                    <div class="flex gap-2"><input type="number" min="1" max="1000" x-model.number="memberForm.weight" class="w-24 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-sm"><button @click="addMember()" class="flex-1 bg-blue-600 rounded px-3 py-2 text-sm">Add</button></div>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="space-y-5">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h2 class="text-2xl font-semibold">Signature Rules</h2>
+                    <p class="text-sm text-gray-400 mt-1">Rules are evaluated by priority. Conditions within one rule are combined with AND.</p>
+                </div>
+                <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
+            </div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Action</th><th class="px-4 py-3">Conditions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="rule in rules" :key="rule.id">
+                            <tr>
+                                <td class="px-4 py-3 font-medium" x-text="rule.name"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="rule.priority"></td>
+                                <td class="px-4 py-3 text-sm" x-text="rule.action_mode"></td>
+                                <td class="px-4 py-3 text-xs text-gray-400" x-text="formatConditions(rule)"></td>
+                                <td class="px-4 py-3"><span class="text-xs" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <button @click="editRule(rule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
+                                    <button @click="deleteRule(rule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="rules.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-500">No signature rules configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature Rule' : 'Create Signature Rule'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Action
+                        <select x-model="form.action_mode" @change="changeAction()" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>GROUP</option><option>NONE</option>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-300" x-show="form.action_mode !== 'GROUP'">Specific Signature (optional)
+                        <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="">Any signature in selected mode</option>
+                            <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                        </select>
+                    </label>
+                    <label class="text-sm text-gray-300" x-show="form.action_mode === 'GROUP'">Signature Group
+                        <select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template>
+                        </select>
+                    </label>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled"> Rule enabled</label>
+                <div class="border-t border-gray-700 pt-4 space-y-3">
+                    <div class="flex items-center justify-between"><h4 class="font-medium">Conditions</h4><span class="text-xs text-gray-500">All conditions must match</span></div>
+                    <template x-for="(condition, index) in form.conditions" :key="index">
+                        <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                            <select x-model="condition.kind" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                <option value="sender_equals">Sender equals</option><option value="domain_equals">Domain equals</option><option value="group_contains">Group contains</option><option value="attribute_equals">Attribute equals</option><option value="claim_equals">Claim equals</option>
+                            </select>
+                            <input x-model="condition.key" :disabled="['sender_equals','domain_equals','group_contains'].includes(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm disabled:opacity-40">
+                            <input x-model="condition.value" placeholder="Value" class="md:col-span-5 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                            <button @click="form.conditions.splice(index,1)" class="text-red-400 text-sm md:col-span-1">Remove</button>
+                        </div>
+                    </template>
+                    <button @click="addCondition()" class="text-blue-400 hover:text-blue-300 text-sm">+ Add condition</button>
+                </div>
+                <div class="flex justify-end gap-2 border-t border-gray-700 pt-4">
+                    <button @click="editing=false" class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button>
+                    <button @click="saveRule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Rule</button>
+                </div>
+            </div>
+        </div>
+        <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="space-y-5">
+            <div>
+                <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
+                <p class="text-sm text-gray-400 mt-1">Download selected configuration components as a versioned ZIP archive.</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="rounded"> Signatures and all HTML versions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="rounded"> Domains and original templates</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="rounded"> Signature groups and memberships</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="rounded"> Rules and conditions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="rounded"> Identity-provider metadata</label>
+                </div>
+                <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
+                    Provider credentials, application secrets, personal user overrides and identity caches are never included. Rule conditions can still contain email addresses or other identifiers; review the archive before sharing. This is a selective configuration export, not a disaster-recovery backup.
+                </div>
+                <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+                <div class="flex justify-end">
+                    <button @click="download()" :disabled="busy || selected.length === 0" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium" x-text="busy ? 'Preparing export…' : 'Download selected components'"></button>
+                </div>
+            </div>
+        </div>
         </div>
         {% endif %}
 
     </div>
 
-    <div x-data="domainSettingsModal()" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-50 overflow-y-auto">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
@@ -160,7 +466,7 @@
                         <div class="h-8 w-px bg-gray-700 ml-4"></div>
                         <div class="flex gap-2 ml-4">
                             <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings & Template</button>
-                            <button @click="modalTab = 'users'; fetchOverrides();" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
+                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
                         </div>
                     </div>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-300"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
@@ -220,23 +526,24 @@
                                     </div>
                                     <div id="domain-quill-editor" class="h-[250px]"></div>
                                 </div>
-                                <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
+                                <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
                                     <div class="flex justify-between items-center px-4 py-3">
                                         <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                         <div class="flex gap-2">
                                             <button @click="$dispatch('open-sanitizer', 'domain')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                             </button>
-                                            <button @click="$dispatch('open-preview', { html: document.getElementById('domain-raw-html-editor').value, previewDomain: domain.domain_name })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
+                                            <button @click="previewDomainSignature(domain)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                         </div>
                                     </div>
-                                    <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                    <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="domain-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Originalcode bleibt gespeichert; der Sanitizer entfernt diese Inhalte jedoch aus Vorschau und versendeter Signatur.</div></div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div x-show="modalTab === 'users'" style="display: none;" class="space-y-4">
+                    <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
                         <div class="flex justify-between items-center">
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Active User Overrides</h4>
                             <div class="flex gap-2">
@@ -265,17 +572,18 @@
                                 </div>
                                 <div id="admin-quill-editor" class="h-[200px]"></div>
                             </div>
-                            <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
+                            <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
                                 <div class="flex justify-between items-center px-4 py-3">
                                     <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                     <div class="flex gap-2">
                                         <button @click="$dispatch('open-sanitizer', 'admin')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                         </button>
-                                        <button @click="$dispatch('open-preview', { html: document.getElementById('admin-raw-html-editor').value, previewEmail: editingUserEmail })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
+                                        <button @click="previewAdminSignature(editingUserEmail)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                     </div>
                                 </div>
-                                <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="admin-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Originalcode bleibt gespeichert; der Sanitizer entfernt diese Inhalte jedoch aus Vorschau und versendeter Signatur.</div></div>
                             </div>
                         </div>
 
@@ -291,7 +599,7 @@
                                             </td>
                                             <td class="px-4 py-3 text-right space-x-3">
                                                 <button @click="loadAdminEditor(user.user_email, user.html_content, user.is_disabled)" class="text-blue-400 hover:text-blue-300">Edit</button>
-                                                <button @click="$dispatch('open-confirm', { action: 'clear-admin', targetId: user.id })" class="text-red-400 hover:text-red-300">Clear</button>
+                                                <button @click="confirmClearAdmin(user.id)" class="text-red-400 hover:text-red-300">Clear</button>
                                             </td>
                                         </tr>
                                     </template>
@@ -303,7 +611,7 @@
                 </div>
 
                 <div x-show="modalTab === 'settings'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('save-domain-settings', {domain: domain, allowOverrides: allowOverrides, injectOnReplies: injectOnReplies, trimWhitespace: trimWhitespace, stripDeviceSignatures: stripDeviceSignatures, html: document.getElementById('domain-raw-html-editor').value}); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
+                    <button @click="saveSettings()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
                     <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
                 </div>
                 <div x-show="modalTab === 'users'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
@@ -313,24 +621,24 @@
         </div>
     </div>
 
-    <div x-data="{ show: false, rawInput: '', targetEditor: '' }" 
-         @open-sanitizer.window="show = true; targetEditor = $event.detail; rawInput = ''; setTimeout(() => $refs.sanitizerInput.focus(), 100);" 
+    <div x-data="sanitizerModal" 
+         @open-sanitizer.window="open($event)" 
          @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[70] overflow-y-auto">
+         x-show="show" x-cloak class="fixed inset-0 z-[70] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl border border-gray-700 sm:my-8 sm:align-middle sm:max-w-3xl w-full transform transition-all flex flex-col">
                 <div class="px-6 py-5 border-b border-gray-700 bg-gray-900">
                     <h3 class="text-xl font-bold text-white mb-2">Import HTML Signature</h3>
-                    <p class="text-sm text-gray-400">Online generators wrap code in full-page tags (<code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>) that will break email layouts. Paste your raw generator code here. The browser will safely extract the core table structure and strip out the dangerous tags.</p>
+                    <p class="text-sm text-gray-400">Online generators wrap code in full-page tags (<code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>) that will break email layouts. Paste your raw generator code here. The browser extracts the body content; review the imported markup before saving.</p>
                 </div>
                 <div class="p-6 bg-gray-800">
                     <textarea x-ref="sanitizerInput" x-model="rawInput" placeholder="Paste your <!DOCTYPE HTML>... code here" class="w-full h-64 bg-gray-950 border border-gray-600 rounded-lg p-3 text-green-400 font-mono text-sm focus:outline-none focus:border-blue-500"></textarea>
                 </div>
                 <div class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('sanitize-html', { html: rawInput, target: targetEditor }); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
+                    <button @click="apply()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        Sanitize & Import
+                        Import HTML
                     </button>
                     <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium transition">Cancel</button>
                 </div>
@@ -338,39 +646,9 @@
         </div>
     </div>
 
-    <div x-data="{ show: false, previewHtml: '' }" 
-         @open-preview.window="
-            show = true; 
-            let raw = $event.detail.html; 
-            
-            let pEmail = $event.detail.previewEmail || userData.email;
-            let pDomain = $event.detail.previewDomain || pEmail.split('@')[1] || '';
-            
-            let pFirst = userData.first_name;
-            let pLast = userData.last_name;
-            let pTitle = userData.title;
-            let pPhone = userData.phone;
-
-            if ($event.detail.previewEmail) {
-                let namePart = pEmail.split('@')[0];
-                let parts = namePart.split('.');
-                pFirst = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'User';
-                pLast = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
-                pTitle = 'Title (Preview)';
-                pPhone = 'Phone (Preview)';
-            }
-
-            raw = raw.replace(/\{\{\s*first_name\s*\}\}/g, pFirst)
-                     .replace(/\{\{\s*last_name\s*\}\}/g, pLast)
-                     .replace(/\{\{\s*title\s*\}\}/g, pTitle)
-                     .replace(/\{\{\s*phone\s*\}\}/g, pPhone)
-                     .replace(/\{\{\s*email\s*\}\}/g, pEmail)
-                     .replace(/\{\{\s*domain_name\s*\}\}/g, pDomain);
-            
-            previewHtml = raw;
-         " 
-         @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto">
+    <div x-data="previewModal" 
+         @open-preview.window="open($event)" @keydown.escape.window="show = false" 
+         x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-gray-300">
@@ -378,164 +656,16 @@
                     <h3 class="text-lg font-bold text-gray-900">Live Signature Preview</h3>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
-                <div class="p-8 text-black text-sm" x-html="previewHtml"></div>
+                <iframe id="signature-preview-frame" title="Signature preview" sandbox="" class="w-full min-h-[320px] bg-white border-0"></iframe>
             </div>
         </div>
     </div>
     
-    <div x-data="{ show: false, domainName: '' }" @open-add-domain.window="show = true; domainName = ''; setTimeout(() => $refs.domainInput.focus(), 100);" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="$dispatch('submit-new-domain', domainName); show = false;" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('submit-new-domain', domainName); show = false;" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="addDomainModal" @open-add-domain.window="open()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="submit()" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="submit()" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
     
-    <div x-data="{ show: false, domain: null, action: '', title: '', message: '', targetId: null }" @open-confirm.window="show = true; action = $event.detail.action; domain = $event.detail.domain || null; targetId = $event.detail.targetId || null; if (action === 'toggle') { title = (domain.is_active ? 'Disable' : 'Enable') + ' Domain?'; message = 'Are you sure you want to ' + (domain.is_active ? 'disable' : 'enable') + ' ' + domain.domain_name + '?'; } else if (action === 'delete') { title = 'Delete Domain?'; message = 'CRITICAL WARNING: Delete ' + domain.domain_name + ' permanently?'; } else if (action === 'clear-user') { title = 'Clear Custom Signature?'; message = 'Are you sure you want to clear your custom signature? Your emails will revert to the domain\'s default template.'; } else if (action === 'clear-admin') { title = 'Clear User Override?'; message = 'Are you sure you want to permanently delete this user\'s custom signature?'; }" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('confirm-action', {domain: domain, action: action, targetId: targetId}); show = false;" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="confirmModal" @open-confirm.window="open($event)" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="confirm()" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
 
-    <script>
-        var quill, domainQuill, adminQuill;
-        const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
 
-        // THE SMART LOCK ENGINE
-        function toggleLock(lockId, rawId) {
-            const rawVal = document.getElementById(rawId).value.toLowerCase();
-            const lockEl = document.getElementById(lockId);
-            if (lockEl) {
-                if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
-                else lockEl.classList.add('hidden');
-            }
-        }
-        function checkAllLocks() {
-            toggleLock('user-quill-lock', 'raw-html-editor');
-            toggleLock('domain-quill-lock', 'domain-raw-html-editor');
-            toggleLock('admin-quill-lock', 'admin-raw-html-editor');
-        }
-
-        document.addEventListener('DOMContentLoaded', async function() {
-            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
-            quill = new Quill('#quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            domainQuill = new Quill('#domain-quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            
-            quill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('raw-html-editor').value = quill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.root.innerHTML = this.value; checkAllLocks(); });
-            
-            domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('domain-raw-html-editor').value = domainQuill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.root.innerHTML = this.value; checkAllLocks(); });
-
-            if(!{{ 'true' if can_edit else 'false' }}) { quill.disable(); }
-
-            const res = await fetch('/api/my-signature');
-            if(res.ok) {
-                const data = await res.json();
-                document.getElementById('raw-html-editor').value = data.html_content;
-                quill.root.innerHTML = data.html_content;
-                checkAllLocks();
-            }
-        });
-
-        window.addEventListener('sanitize-html', (e) => {
-            const { html, target } = e.detail;
-            if (!html) return;
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            let cleanHtml = doc.body.innerHTML.trim();
-            cleanHtml = cleanHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-
-            if (target === 'personal') {
-                document.getElementById('raw-html-editor').value = cleanHtml;
-                quill.root.innerHTML = cleanHtml;
-            } else if (target === 'domain') {
-                document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                domainQuill.root.innerHTML = cleanHtml;
-            } else if (target === 'admin') {
-                document.getElementById('admin-raw-html-editor').value = cleanHtml;
-                if(adminQuill) adminQuill.root.innerHTML = cleanHtml;
-            }
-            checkAllLocks();
-            notify("Signature successfully imported and sanitized!");
-        });
-
-        async function saveUserSignature() {
-            const finalHtml = document.getElementById('raw-html-editor').value;
-            const res = await fetch('/api/my-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: finalHtml }) });
-            if(res.ok) notify("Signature saved successfully!"); else notify("Failed to save.", "error");
-        }
-
-        function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
-
-        function domainSettingsModal() {
-            return {
-                show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
-                open(domainData) {
-                    this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
-                    
-                    setTimeout(() => { 
-                        document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        domainQuill.root.innerHTML = domainData.template_html; 
-                        checkAllLocks();
-                    }, 50);
-                    
-                    if(!adminQuill) {
-                        adminQuill = new Quill('#admin-quill-editor', { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], ['link', 'image'], ['clean']] }});
-                        adminQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('admin-raw-html-editor').value = adminQuill.root.innerHTML; checkAllLocks(); } });
-                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.root.innerHTML = this.value; checkAllLocks(); });
-                    }
-                },
-                async fetchOverrides() {
-                    const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
-                    if(res.ok) this.userOverrides = await res.json();
-                },
-                loadAdminEditor(email, directHtml = null, isDisabled = false) {
-                    if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }
-                    this.editingUserEmail = email; 
-                    
-                    if (directHtml !== null) { 
-                        document.getElementById('admin-raw-html-editor').value = directHtml;
-                        adminQuill.root.innerHTML = directHtml; 
-                        this.editingUserDisabled = isDisabled;
-                    } else {
-                        const existingUser = this.userOverrides.find(u => u.user_email === email);
-                        const content = existingUser ? existingUser.html_content : '';
-                        document.getElementById('admin-raw-html-editor').value = content;
-                        adminQuill.root.innerHTML = content;
-                        this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
-                    }
-                    checkAllLocks();
-                },
-                async saveAdminOverride() {
-                    const finalHtml = document.getElementById('admin-raw-html-editor').value;
-                    const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); }
-                }
-            }
-        }
-
-        window.addEventListener('submit-new-domain', async (e) => {
-            const res = await fetch('/domains/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_name: e.detail, is_active: true }) });
-            if (res.ok) { notify("Domain registered!"); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Failed.", "error");
-        });
-        window.addEventListener('save-domain-settings', async (e) => {
-            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures, template_html: document.getElementById('domain-raw-html-editor').value }) });
-            if (res.ok) { notify("Settings saved!"); window.dispatchEvent(new CustomEvent('domain-updated')); }
-        });
-        
-        window.addEventListener('confirm-action', async (e) => {
-            const { domain, action, targetId } = e.detail;
-            if (action === 'toggle') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !domain.is_active, allow_overrides: domain.allow_overrides, inject_on_replies: domain.inject_on_replies, trim_whitespace: domain.trim_whitespace, strip_device_signatures: domain.strip_device_signatures, template_html: domain.template_html }) });
-                if (res.ok) { notify("Status updated."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'delete') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'DELETE' });
-                if (res.ok) { notify("Domain deleted."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'clear-user') {
-                const res = await fetch('/api/my-signature', { method: 'DELETE' });
-                if(res.ok) {
-                    document.getElementById('raw-html-editor').value = '';
-                    quill.root.innerHTML = ''; 
-                    checkAllLocks();
-                    notify("Signature cleared and removed from database!");
-                } else { notify("Failed to clear signature.", "error"); }
-            } else if (action === 'clear-admin') {
-                const res = await fetch(`/api/admin/overrides/${targetId}`, { method: 'DELETE' });
-                if(res.ok) { notify("User override deleted."); window.dispatchEvent(new CustomEvent('refresh-admin-overrides')); }
-            }
-        });
-    </script>
+    <script src="/static/js/portal.js"></script>
 </body>
 </html>

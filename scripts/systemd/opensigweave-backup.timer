@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily OpenSigWeave encrypted backup
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+RandomizedDelaySec=20m
+Unit=opensigweave-backup.service
+
+[Install]
+WantedBy=timers.target
