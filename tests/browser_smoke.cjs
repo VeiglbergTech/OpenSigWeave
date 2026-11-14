@@ -71,7 +71,7 @@ async function main() {
     const exportDownload = page.waitForEvent("download");
     await exportPanel.getByRole("button", { name: "Download selected components" }).click();
     const [exportResponseResult, exportDownloadResult] = await Promise.all([exportResponse, exportDownload]);
-    assert.match(exportResponseResult.headers()["content-type"], /application\\/zip/);
+    assert.match(exportResponseResult.headers()["content-type"], /application\/zip/);
     assert.equal(exportDownloadResult.suggestedFilename(), "opensigweave-component-export.zip");
     const exportPath = await exportDownloadResult.path();
     assert.ok(exportPath, "administrator export must produce a downloadable file");
