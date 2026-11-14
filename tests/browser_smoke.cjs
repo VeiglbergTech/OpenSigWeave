@@ -235,12 +235,12 @@ async function main() {
     // Disable and re-enable the domain through the confirmation dialog.
     await domainRow.locator("td").nth(1).locator("span").click();
     const confirmDialog = page.locator('[x-data="confirmModal"]');
-    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     const disableDomainResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await disableDomainResponse;
     await page.waitForFunction(async () => {
       const domains = await (await fetch("/domains/")).json();
@@ -249,12 +249,12 @@ async function main() {
     });
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.locator("td").nth(1).locator("span").click();
-    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     const enableDomainResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await enableDomainResponse;
     await page.waitForFunction(async () => {
       const domains = await (await fetch("/domains/")).json();
@@ -302,12 +302,12 @@ async function main() {
 
     // Delete the test domain and verify it is removed from persistence and the UI.
     await domainRow.getByRole("button", { name: "Delete", exact: true }).click();
-    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     const deleteDomainResponse = page.waitForResponse(response =>
       response.request().method() === "DELETE"
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await deleteDomainResponse;
     await page.waitForFunction(async () => {
       const domains = await (await fetch("/domains/")).json();
