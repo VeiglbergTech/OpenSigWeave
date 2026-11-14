@@ -213,7 +213,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   await groupManager.previewGroup({ id: "g/1" });
   assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=2");
   assert.equal(previewHtml, "<p>Preview</p>");
-  assert.match(notifications.at(-1).message, /does not change rotation history/);
+  assert.match(notifications.at(-1).msg, /does not change rotation history/);
 
   groupManager.memberForm = { group_id: "g1", signature_id: "s1", weight: "4" };
   groupResponses = [{ ok: true, json: async () => ({}) }, ...[
