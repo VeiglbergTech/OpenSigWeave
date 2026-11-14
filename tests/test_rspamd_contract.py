@@ -44,7 +44,7 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertLess(guard_end, body_rewrite)
         self.assertIn("multipart message left unchanged; safe MIME rewrite is not yet available", SOURCE[guard:guard_end])
         self.assertIn("remove_text_marker_from_message()", SOURCE[guard:guard_end])
-        self.assertRegex(SOURCE[guard:guard_end], r"return\s+end")
+        self.assertRegex(SOURCE[guard:guard_end], r"return\s*$")
         # There must be one authoritative top-level multipart guard, not a
         # misleading second guard hidden in an unreachable branch.
         self.assertNotIn("if is_multipart then", SOURCE)
