@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
 
-const baseURL = "http://signature.example.test:8085";
+const baseURL = "http://localhost:8085";
 const email = process.env.BROWSER_TEST_EMAIL;
 const password = process.env.BROWSER_TEST_PASSWORD;
 
@@ -11,7 +11,7 @@ async function main() {
 
   const browser = await chromium.launch({
     headless: true,
-    args: ["--no-sandbox", "--host-resolver-rules=MAP signature.example.test 127.0.0.1"],
+    args: ["--no-sandbox"],
   });
   const page = await browser.newPage();
   const pageErrors = [];
