@@ -282,6 +282,8 @@ async function main() {
     createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
     assert.equal(createdDomain.allow_overrides, false);
     assert.equal(createdDomain.inject_on_replies, true);
+    assert.equal(createdDomain.identity_provider_id, "browser-smoke-profile-provider",
+      "saving domain settings must preserve the profile provider assignment");
 
     await page.reload();
     await page.getByRole("button", { name: "Admin", exact: true }).click();
