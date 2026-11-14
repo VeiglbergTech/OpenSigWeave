@@ -14,6 +14,18 @@ async function main() {
     args: ["--no-sandbox"],
   });
   const page = await browser.newPage();
+  await page.addInitScript(() => {
+    window.__cspViolations = [];
+    window.addEventListener("securitypolicyviolation", event => {
+      window.__cspViolations.push({
+        directive: event.violatedDirective,
+        blockedURI: event.blockedURI,
+        sourceFile: event.sourceFile,
+        lineNumber: event.lineNumber,
+        disposition: event.disposition,
+      });
+    });
+  });
   const pageErrors = [];
   page.on("pageerror", error => pageErrors.push({ message: error.message, stack: error.stack }));
 
@@ -47,6 +59,8 @@ async function main() {
     }
 
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
+    const cspViolations = await page.evaluate(() => window.__cspViolations || []);
+    process.stdout.write("CSP report-only browser violations: " + JSON.stringify(cspViolations) + "\\n");
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
     await page.getByLabel("Email address").waitFor();
