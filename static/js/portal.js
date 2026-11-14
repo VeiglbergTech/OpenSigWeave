@@ -286,7 +286,7 @@ function identityProviderManager() { return {
                         ]);
                         if (responses.some(response => !response.ok)) throw new Error('Could not load signature group data');
                         [this.groups, this.signatures, this.domains] = await Promise.all(responses.map(response => response.json()));
-                        if (!this.previewDomainId && this.domains.length) this.previewDomainId = String(this.domains[0].id);
+                        if (!this.previewDomainId && this.domains.length) this.previewDomainId = this.domains[0].id.toString();
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 signatureName(id) {
