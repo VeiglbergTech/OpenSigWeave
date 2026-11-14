@@ -189,7 +189,7 @@ async function main() {
     const protectedPage = await page.request.get(baseURL + "/");
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
-    process.stdout.write("Browser smoke passed: login, personal API, all admin sections, signature create/update/versioning, group create/update/member-weight update/delete, GROUP rule create/update/delete, logout and session invalidation.\n");
+    process.stdout.write("Browser smoke passed: login, personal API, all admin sections, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, logout and session invalidation.\n");
   } finally {
     await browser.close();
   }
