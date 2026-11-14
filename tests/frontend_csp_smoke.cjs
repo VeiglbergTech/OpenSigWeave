@@ -167,6 +167,87 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   signatureEditor.insertGroupTag("", editor);
   assert.equal(notifications.at(-1).msg, "Select a signature group first.", "An empty group selection must be rejected");
   assert.equal(notifications.at(-1).type, "error");
+
+  const groupManager = vm.runInNewContext("signatureGroupManager()", signatureContext);
+  const groupRequests = [];
+  let groupResponses = [];
+  window.fetch = async (url, options = {}) => {
+    groupRequests.push({ url, options });
+    const response = groupResponses.shift() || { ok: true, json: async () => [] };
+    return response;
+  };
+  groupResponses = [
+    { ok: true, json: async () => [{ id: "g1", name: "Sales", slug: "sales", domain_ids: [2], is_active: true }] },
+    { ok: true, json: async () => [{ id: "s1", name: "Corporate" }] },
+    { ok: true, json: async () => [{ id: 2, name: "example.test" }] },
+  ];
+  await groupManager.fetchAll();
+  assert.equal(groupManager.groups[0].slug, "sales");
+  assert.equal(groupManager.previewDomainId, "2");
+  assert.equal(groupManager.signatureName("missing"), "Missing signature");
+  groupManager.editGroup(groupManager.groups[0]);
+  groupManager.toggleDomain("3", true);
+  groupManager.toggleDomain("2", false);
+  assert.deepEqual([...groupManager.form.domain_ids], [3]);
+  groupManager.form.name = "  Sales Team  ";
+  groupManager.form.slug = "";
+  groupResponses = [{ ok: true, json: async () => ({}) }, ...[
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+  ]];
+  await groupManager.saveGroup();
+  const updateRequest = groupRequests.at(-4);
+  assert.equal(updateRequest.url, "/api/admin/signature-groups/g1");
+  assert.equal(updateRequest.options.method, "PUT");
+  assert.deepEqual(JSON.parse(updateRequest.options.body), {
+    name: "Sales Team", slug: null, domain_ids: [3], is_active: true,
+  });
+  assert.equal(groupManager.editing, false);
+
+  groupManager.previewDomainId = "2";
+  let previewHtml = "";
+  window.addEventListener("open-preview", event => { previewHtml = event.detail.html; }, { once: true });
+  groupResponses = [{ ok: true, json: async () => ({ html: "<p>Preview</p>" }) }];
+  await groupManager.previewGroup({ id: "g/1" });
+  assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=2");
+  assert.equal(previewHtml, "<p>Preview</p>");
+  assert.match(notifications.at(-1).message, /does not change rotation history/);
+
+  groupManager.memberForm = { group_id: "g1", signature_id: "s1", weight: "4" };
+  groupResponses = [{ ok: true, json: async () => ({}) }, ...[
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+  ]];
+  await groupManager.addMember();
+  const addRequest = groupRequests.at(-4);
+  assert.equal(addRequest.url, "/api/admin/signature-groups/g1/members");
+  assert.deepEqual(JSON.parse(addRequest.options.body), { signature_id: "s1", weight: 4, is_enabled: true });
+
+  groupResponses = [{ ok: true, json: async () => ({}) }];
+  await groupManager.saveMember({ id: "g1" }, { signature_id: "s1", weight: "5", is_enabled: false });
+  assert.equal(groupRequests.at(-1).options.method, "PUT");
+  assert.deepEqual(JSON.parse(groupRequests.at(-1).options.body), { signature_id: "s1", weight: 5, is_enabled: false });
+
+  window.confirm = () => true;
+  groupResponses = [{ ok: true, json: async () => ({}) }, ...[
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+  ]];
+  await groupManager.removeMember({ id: "g1" }, { signature_id: "s1" });
+  assert.equal(groupRequests.at(-4).url, "/api/admin/signature-groups/g1/members/s1");
+  assert.equal(groupRequests.at(-4).options.method, "DELETE");
+
+  groupResponses = [{ ok: true, json: async () => ({}) }, ...[
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+  ]];
+  await groupManager.deleteGroup({ id: "g1", name: "Sales" });
+  assert.equal(groupRequests.at(-4).url, "/api/admin/signature-groups/g1");
+  assert.equal(groupRequests.at(-4).options.method, "DELETE");
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
