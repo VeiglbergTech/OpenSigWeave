@@ -3,7 +3,7 @@
 **Project:** OpenSigWeave standalone preview  
 **Working branch:** `architecture/refactor-foundation`  
 **Status:** First Docker-testable revision; not a production release  
-**Last documentation review:** 2026-11-13
+**Last documentation review:** 2026-11-14
 
 This document describes the current branch state. It is not a promise that deferred work is complete.
 
@@ -44,7 +44,7 @@ This document describes the current branch state. It is not a promise that defer
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
 - Original signature HTML is preserved separately from sanitized delivery content for domain templates, personal/admin overrides and versioned catalog signatures. Migration `0012_html_source` backfills legacy values; all preview/mail rendering paths sanitize before output. Outlook conditional comments/VML warnings are present in all three raw-HTML editors. Automated source round-trip, API, sanitizer and migration tests pass; real-browser and email-client acceptance remain open.
 - Editor replacement evaluated: retain vendored Quill 1.3.7 until a self-hosted CKEditor 5 GPL proof of concept passes email-HTML, sanitizer, Outlook, CSP/offline and licensing acceptance tests; see [EDITOR_DECISION.md](EDITOR_DECISION.md).
-- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, deterministic administrator group previews in the group manager UI/API that do not mutate rotation state, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). PostgreSQL concurrency stress and full browser UI tests remain outstanding. The PostgreSQL concurrency test is present in CI but still needs a confirmed run against the CI PostgreSQL service.
+- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, deterministic administrator group previews in the group manager UI/API that do not mutate rotation state, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). The PostgreSQL concurrency regression now ran successfully against the CI PostgreSQL 17 service: both 12-worker stress tests (variant rotation and group rotation) passed on 2026-11-14. Full browser UI tests remain outstanding.
 
 ### Security baseline
 
@@ -87,7 +87,7 @@ CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed
 
 The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
 
-The latest full CI runs `43442572622` (push) and `43442582940` (pull request) both passed on commit `30c3b0cb8b707ffc799fddd83bac829da7de3e35`. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and smoke test, scheduled-backup remote-filesystem guard tests (including symlinked lock-file rejection), encrypted Docker backup and fresh restore, verified retention, and all 202 regression tests. They also cover selective administrator export archives, administrator-only access, ZIP response headers, original HTML preservation, asset checksums and a separate export rate-limit policy. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
+The latest full CI runs `43573306357` (push) and `43573310299` (pull request) both passed on commit `f3bbb3f151b01f43a90ad9684f7f275f56b84c2d`. The PostgreSQL 17-backed regression suite ran 218 tests; both concurrent no-repeat stress tests passed. They include full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and smoke test, scheduled-backup remote-filesystem guard tests (including symlinked lock-file rejection), encrypted Docker backup and fresh restore, verified retention, and all 202 regression tests. They also cover selective administrator export archives, administrator-only access, ZIP response headers, original HTML preservation, asset checksums and a separate export rate-limit policy. Both runs completed every step successfully. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
 
 ## 3. Current limitations
 
