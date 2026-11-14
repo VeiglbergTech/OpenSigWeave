@@ -15,7 +15,7 @@ async function main() {
   });
   const page = await browser.newPage();
   const pageErrors = [];
-  page.on("pageerror", error => pageErrors.push(error.message));
+  page.on("pageerror", error => pageErrors.push({ message: error.message, stack: error.stack }));
 
   try {
     const loginResponse = await page.goto(baseURL + "/login");
