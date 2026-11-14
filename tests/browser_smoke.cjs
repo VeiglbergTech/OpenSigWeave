@@ -1,5 +1,6 @@
 const assert = require("node:assert/strict");
 const { chromium } = require("playwright");
+const fs = require("node:fs");
 
 const baseURL = "http://localhost:8085";
 const email = process.env.BROWSER_TEST_EMAIL;
@@ -60,6 +61,22 @@ async function main() {
       await page.getByRole("button", { name: section.tab, exact: true }).click();
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
+
+    // Exercise the actual administrator export UI and verify a ZIP download is produced.
+    const exportPanel = page.locator('[x-data="adminExportManager"]');
+    const exportResponse = page.waitForResponse(response =>
+      response.url().includes("/api/admin/exports?")
+      && response.status() === 200
+    );
+    const exportDownload = page.waitForEvent("download");
+    await exportPanel.getByRole("button", { name: "Download selected components" }).click();
+    const [exportResponseResult, exportDownloadResult] = await Promise.all([exportResponse, exportDownload]);
+    assert.match(exportResponseResult.headers()["content-type"], /application\\/zip/);
+    assert.equal(exportDownloadResult.suggestedFilename(), "opensigweave-component-export.zip");
+    const exportPath = await exportDownloadResult.path();
+    assert.ok(exportPath, "administrator export must produce a downloadable file");
+    const exportBytes = fs.readFileSync(exportPath);
+    assert.equal(exportBytes.subarray(0, 4).toString("hex"), "504b0304", "download must be a ZIP archive");
 
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
