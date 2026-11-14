@@ -4,7 +4,7 @@ OpenSigWeave is a self-hosted application for centrally managing email signature
 
 The current preview is a **standalone Docker Compose deployment**. It runs OpenSigWeave and PostgreSQL independently of a mail server. Mailcow is not required to install or test the portal.
 
-> **Preview status:** The Docker image, PostgreSQL migrations, application healthcheck and authenticated engine API smoke test pass in CI. A Chromium smoke test covers local administrator login, the personal API, all administration sections and logout. Full CRUD workflows, live identity-provider sign-in and end-to-end mail delivery have not yet been validated. Do not connect this preview to a production mail flow.
+> **Preview status:** The Docker image, PostgreSQL migrations, application healthcheck and authenticated engine API smoke test pass in CI. A Chromium smoke test covers local administrator login, the personal API, all administration sections, signature creation and HTML version updates, rule creation and logout. Full CRUD workflows, live identity-provider sign-in and end-to-end mail delivery have not yet been validated. Do not connect this preview to a production mail flow.
 
 ## What is implemented
 
@@ -76,7 +76,7 @@ The identity cache is isolated by provider ID and normalized sender address, so 
 - The previous global OIDC configuration is retained for compatibility; new installations should use per-provider `.idp/{provider-id}/.env` files.
 - The Rspamd adapter is not automatically installed or configured by the standalone Compose stack.
 - Every top-level `multipart/*` message is left unchanged. The current rewrite path is limited to non-multipart messages; do not assume that HTML messages with attachments or multipart/alternative are modified.
-- Chromium smoke coverage exercises login, portal navigation and logout. Full CRUD workflows, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
+- Chromium smoke coverage exercises login, portal navigation, signature creation/version updates, rule creation and logout. Full CRUD workflows, Outlook compatibility and Rspamd/DKIM ordering still require isolated integration tests.
 - CSP is currently report-only. Do not treat it as an enforced browser security boundary.
 - This is a preview, not a production-ready mail-flow release.
 
