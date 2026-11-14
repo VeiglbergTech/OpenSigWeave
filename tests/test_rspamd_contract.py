@@ -36,17 +36,23 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", SOURCE)
         self.assertIn("ignoring duplicate mode headers", SOURCE)
 
-    def test_multipart_is_explicitly_left_unchanged(self):
-        self.assertIn("if multipart_message then", SOURCE)
-        self.assertIn("multipart message left unchanged; safe MIME rewrite is not yet available", SOURCE)
-        self.assertRegex(SOURCE, r'if is_multipart then[\s\S]*?return\s+end')
-        self.assertIn("Do not rewrite raw multipart bodies with string patterns", SOURCE)
+    def test_multipart_is_rejected_before_any_body_rewrite(self):
+        guard = SOURCE.index("if multipart_message then")
+        guard_end = SOURCE.index("\\n        end", guard)
+        body_rewrite = SOURCE.index("local function splice_body_logic")
+        self.assertLess(guard, guard_end)
+        self.assertLess(guard_end, body_rewrite)
+        self.assertIn("multipart message left unchanged; safe MIME rewrite is not yet available", SOURCE[guard:guard_end])
+        self.assertIn("remove_text_marker_from_message()", SOURCE[guard:guard_end])
+        self.assertRegex(SOURCE[guard:guard_end], r"return\\s+end")
+        # There must be one authoritative top-level multipart guard, not a
+        # misleading second guard hidden in an unreachable branch.
+        self.assertNotIn("if is_multipart then", SOURCE)
 
     def test_no_regular_expression_mime_boundary_reconstruction_is_enabled(self):
-        # This adapter deliberately refuses multipart messages until a parser-backed
-        # rewrite path is implemented and exercised against supported Rspamd versions.
-        self.assertRegex(SOURCE, r'if is_multipart then[\s\S]*?return\s+end')
-        self.assertNotRegex(SOURCE, r'parse_multipart\s*\(')
+        # Multipart support requires a parser-backed implementation and fixtures
+        # for nested boundaries, attachments and transfer encodings.
+        self.assertNotRegex(SOURCE, r'parse_multipart\\s*\\(')
 
 
 if __name__ == "__main__":
