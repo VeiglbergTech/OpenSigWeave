@@ -341,10 +341,10 @@ app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=session_secret,
-    session_cookie="__Host-opensigweave-session",
+    session_cookie=os.getenv("SESSION_COOKIE_NAME", "__Host-opensigweave-session"),
     path="/",
     same_site="lax",
-    https_only=True,
+    https_only=os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no"},
     max_age=3600,
 )
 # Validate explicit hostnames before accepting requests. In local-only mode there is
