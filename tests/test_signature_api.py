@@ -827,3 +827,73 @@ class SignatureCatalogApiTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class AuthorizationEndpointTests(unittest.TestCase):
+    """Verify authorization at real route-handler boundaries, not only helpers."""
+
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+        self.db = self.Session()
+        self.user_request = SimpleNamespace(session={
+            "user": {"email": "user@example.org", "groups": ["signature-users"]}
+        })
+        self.admin_request = SimpleNamespace(session={
+            "user": {"email": "admin@example.org", "groups": ["signature-admins"]}
+        })
+        self.anonymous_request = SimpleNamespace(session={})
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def test_signature_catalog_and_group_endpoints_reject_regular_users(self):
+        for handler, args in (
+            (main.list_signatures, (self.user_request, self.db)),
+            (main.list_signature_groups, (self.user_request, self.db)),
+            (main.list_signature_rules, (self.user_request, self.db)),
+            (main.read_domains, (self.user_request, self.db)),
+            (main.list_identity_providers, (self.user_request, self.db)),
+        ):
+            with self.subTest(handler=handler.__name__):
+                with self.assertRaises(HTTPException) as denied:
+                    handler(*args)
+                self.assertEqual(denied.exception.status_code, 403)
+
+    def test_signature_catalog_and_group_endpoints_reject_anonymous_sessions(self):
+        for handler, args in (
+            (main.list_signatures, (self.anonymous_request, self.db)),
+            (main.list_signature_groups, (self.anonymous_request, self.db)),
+            (main.list_signature_rules, (self.anonymous_request, self.db)),
+            (main.read_domains, (self.anonymous_request, self.db)),
+            (main.list_identity_providers, (self.anonymous_request, self.db)),
+        ):
+            with self.subTest(handler=handler.__name__):
+                with self.assertRaises(HTTPException) as denied:
+                    handler(*args)
+                self.assertEqual(denied.exception.status_code, 403)
+
+    def test_personal_signature_endpoint_requires_valid_signature_group(self):
+        with self.assertRaises(HTTPException) as anonymous:
+            main.get_my_signature(self.anonymous_request, self.db)
+        self.assertEqual(anonymous.exception.status_code, 401)
+
+        with self.assertRaises(HTTPException) as unrelated:
+            main.get_my_signature(SimpleNamespace(session={
+                "user": {"email": "outsider@example.org", "groups": ["unrelated"]}
+            }), self.db)
+        self.assertEqual(unrelated.exception.status_code, 403)
+
+    def test_authorized_signature_user_can_access_personal_signature_endpoint(self):
+        result = main.get_my_signature(self.user_request, self.db)
+        self.assertEqual(result, {"html_content": ""})
+
+    def test_signature_administrator_can_access_admin_read_endpoints(self):
+        self.assertEqual(main.list_signatures(self.admin_request, self.db), [])
+        self.assertEqual(main.list_signature_groups(self.admin_request, self.db), [])
+        self.assertEqual(main.list_signature_rules(self.admin_request, self.db), [])
+        self.assertEqual(main.read_domains(self.admin_request, self.db), [])
+        self.assertEqual(main.list_identity_providers(self.admin_request, self.db), [])
+
