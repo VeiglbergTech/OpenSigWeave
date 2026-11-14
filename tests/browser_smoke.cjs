@@ -23,6 +23,9 @@ async function main() {
         sourceFile: event.sourceFile,
         lineNumber: event.lineNumber,
         disposition: event.disposition,
+        targetTag: event.target && event.target.tagName,
+        targetClass: event.target && event.target.className,
+        inlineStyle: event.target && event.target.getAttribute && event.target.getAttribute("style"),
       });
     });
   });
