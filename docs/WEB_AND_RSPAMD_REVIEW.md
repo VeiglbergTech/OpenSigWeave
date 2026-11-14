@@ -112,6 +112,6 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest verified push and pull-request CI runs `43446006059` and `43446015519` on commit `d5e56271919a3ce25b20ce086f58bf42d6c0f791` both passed. They include full-history Gitleaks, dependency audit, Python/JavaScript/Lua checks, Alpine CSP smoke test, PostgreSQL and SQLite migrations, Docker build and stack smoke test, scheduled remote-filesystem guard tests, encrypted full-backup/fresh-restore integration, verified retention, selective administrator export checks and the generic OIDC regression coverage. These runs validate automated code paths and mocks, not live-provider integration.
+The latest verified CI runs `43573306357` (push) and `43573310299` (pull request) on commit `f3bbb3f151b01f43a90ad9684f7f275f56b84c2d` both passed. The PostgreSQL 17-backed regression suite ran 218 tests, including both 12-worker no-repeat concurrency stress tests for variant and group selection. The automated suite still does not replace live-provider integration or a real-browser walkthrough.
 
 This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
