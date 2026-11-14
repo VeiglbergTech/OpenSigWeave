@@ -114,6 +114,8 @@ jobs:
           POSTGRES_USER=opensigweave
           POSTGRES_PASSWORD=$postgres_password
           SECRET_KEY=$session_key
+          SESSION_COOKIE_NAME=opensigweave-session
+          SESSION_COOKIE_SECURE=false
           ENGINE_API_KEY=$engine_key
           OIDC_ENABLED=false
           APP_ALLOWED_HOSTS=signature.example.test,localhost
