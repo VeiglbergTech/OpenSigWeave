@@ -32,6 +32,7 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | CSRF | Session-bound token required for state-changing browser requests. | Verify complete browser behavior and edge cases. |
 | Session security | Strong startup secret validation; Secure, HttpOnly, SameSite cookie with limited lifetime. | Validate behind the intended reverse-proxy topology. |
 | Authentication | Managed OIDC providers, LDAPS / Active Directory bind authentication and independent local emergency administrator login; authorization is group-based. | Live sign-in and logout still need verification against real identity providers. |
+| Signature-group concurrency | PostgreSQL 17 CI passed 12-worker concurrency tests for both variant and group no-repeat rotation (2026-11-14). | Full browser UI tests and realistic production-load testing remain outstanding. |
 | Authentik API | HTTPS required, TLS verification enabled, bounded timeout, exact email match and active-user check. | Validate least-privilege service account permissions in a real Authentik instance. |
 | HTML handling | Server-side allowlist sanitizer, re-sanitization before use, autoescaped identity data and sandboxed previews. | Real-browser testing and email-client rendering compatibility remain. |
 | Host validation | TrustedHostMiddleware accepts the callback hostname and explicit aliases only. | Proxy Host/forwarded-header behavior must match deployment topology. |
@@ -39,7 +40,6 @@ The original repository was a compact FastAPI application with an Authentik-spec
 | Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
 | File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Real cross-host restore and remote filesystem failure scenarios remain. |
 | Administrator exports | Selective versioned ZIP exports for signatures, domains, groups, rules and identity-provider metadata; SHA-256 asset checksums, 20 MiB bound, administrator authorization and separate rate limit. | Import/reconciliation is not included; review rule conditions for identifiers before sharing. |
-| Administrator exports | Selective versioned ZIP exports for signatures, domains, groups, rules and IDP metadata; HTML asset checksums, 20 MiB bound, admin authorization and separate rate limit. | Import/reconciliation is not included; review rule conditions for operator-entered identifiers before sharing. |
 | Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
 | Rspamd MIME rewrite | Multipart messages are left unchanged. | Only non-multipart rewrite path is currently supported; no full MIME or DKIM integration proof. |
 | CSP | Restrictive policy is report-only; Alpine CSP build and SRI are used. | Real-browser CSP report review before enforcement. |
