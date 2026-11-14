@@ -125,6 +125,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const signatureContext = {
     window,
     document,
+    fetch: (...args) => window.fetch(...args),
     CustomEvent: window.CustomEvent,
     notify: (message, type) => notifications.push({ message, type }),
     Alpine: { data() {} },
