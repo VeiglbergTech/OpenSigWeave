@@ -61,6 +61,31 @@ async function main() {
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
 
+    const signaturePanel = page.locator('[x-data="signatureManager"]');
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
+    await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
+    await signaturePanel.locator('textarea[placeholder="Enter signature HTML"]').fill("<p>Browser smoke version 1</p>");
+    await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
+
+    const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
+    await signatureRow.waitFor();
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await signaturePanel.locator('textarea[placeholder="Enter signature HTML"]').fill("<p>Browser smoke version 2</p>");
+    await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
+        .find(item => item.textContent.includes("Browser Smoke Signature"));
+      return row && row.children[3].textContent.trim() === "2";
+    });
+
+    const rulesPanel = page.locator('[x-data="ruleManager"]');
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
+    await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();
+    await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
+    await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
+    await rulesPanel.getByText("Browser Smoke Rule", { exact: true }).waitFor();
+
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
