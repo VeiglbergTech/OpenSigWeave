@@ -90,7 +90,7 @@ async function main() {
     await memberSelectors.nth(1).selectOption({ label: "Browser Smoke Group" });
     await memberSelectors.nth(2).selectOption({ label: "Browser Smoke Signature" });
     await groupPanel.getByRole("button", { name: "Add", exact: true }).click();
-    await groupCard.getByText("Browser Smoke Signature", { exact: true }).waitFor();
+    await groupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" }).waitFor();
 
     const rulesPanel = page.locator('[x-data="ruleManager"]');
     await page.getByRole("button", { name: "Rules", exact: true }).click();
