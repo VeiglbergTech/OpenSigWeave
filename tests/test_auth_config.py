@@ -515,4 +515,44 @@ class GenericOIDCProfileCacheTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(profile, IdentityAttributes())
 
+class SessionAuthorizationTests(unittest.TestCase):
+    def _request(self, user=None):
+        return SimpleNamespace(session={} if user is None else {"user": user})
+
+    def test_session_user_rejects_missing_or_malformed_identity(self):
+        with self.assertRaises(main.HTTPException) as missing:
+            main.session_user(self._request())
+        self.assertEqual(missing.exception.status_code, 401)
+
+        for email in ("", "not-an-email", "alice@localhost", "alice example.org"):
+            with self.subTest(email=email):
+                with self.assertRaises(main.HTTPException) as invalid:
+                    main.session_user(self._request({"email": email, "groups": ["signature-users"]}))
+                self.assertEqual(invalid.exception.status_code, 401)
+
+    def test_signature_portal_requires_an_authorized_group(self):
+        for groups in ([], ["unrelated"], "signature-users", None):
+            with self.subTest(groups=groups):
+                with self.assertRaises(main.HTTPException) as denied:
+                    main.require_signature_user(self._request({
+                        "email": "alice@example.org",
+                        "groups": groups,
+                    }))
+                self.assertEqual(denied.exception.status_code, 403)
+
+    def test_signature_users_and_admins_can_access_portal(self):
+        for group in ("signature-users", "signature-admins"):
+            with self.subTest(group=group):
+                user = {"email": "alice@example.org", "groups": [group]}
+                self.assertIs(main.require_signature_user(self._request(user)), user)
+
+    def test_admin_check_requires_exact_admin_group_membership(self):
+        self.assertTrue(main.is_admin_user(self._request({
+            "email": "admin@example.org", "groups": ["signature-admins"]
+        })))
+        for groups in ([], ["signature-users"], ["signature-admins-extra"], "signature-admins", None):
+            with self.subTest(groups=groups):
+                self.assertFalse(main.is_admin_user(self._request({
+                    "email": "user@example.org", "groups": groups
+                })))
 
