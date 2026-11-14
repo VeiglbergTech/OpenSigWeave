@@ -116,7 +116,7 @@ jobs:
           SECRET_KEY=$session_key
           ENGINE_API_KEY=$engine_key
           OIDC_ENABLED=false
-          APP_ALLOWED_HOSTS=signature.example.test
+          APP_ALLOWED_HOSTS=signature.example.test,localhost
           LOCAL_ADMIN_EMAIL=admin@example.test
           LOCAL_ADMIN_PASSWORD_HASH='$local_admin_hash'
           EOF
