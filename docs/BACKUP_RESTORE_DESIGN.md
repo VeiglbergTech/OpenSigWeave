@@ -1,6 +1,6 @@
 # Backup and disaster recovery design
 
-**Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention, guarded scheduled remote-filesystem backups and selective administrator component exports are implemented. Cross-host restore testing, destructive restore and validation against a real NFS/SMB target remain outstanding.
+**Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention, guarded scheduled remote-filesystem backups and selective administrator component exports are implemented. Cross-host restore testing, destructive restore and validation against a real NFS/SMB target remain outstanding. A dedicated two-host operator drill is documented in [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md); it is a procedure, not evidence that the drill has passed.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
 ## 1. Goals and guarantees
@@ -100,7 +100,7 @@ The initial restore implementation is intentionally limited to a fresh deploymen
 7. Export each restored data volume through a read-only helper container and compare its complete SHA-256 file inventory with the archive manifest.
 8. Start the application and wait for its healthcheck. A failed restore leaves the new target resources in place for operator inspection; it never removes pre-existing resources.
 
-This is not an in-place replacement workflow. Existing deployment directories, Compose projects and expected volume names are refused. A cross-host restore drill is still required before relying on this as the only disaster-recovery path.
+This is not an in-place replacement workflow. Existing deployment directories, Compose projects and expected volume names are refused. A cross-host restore drill is still required before relying on this as the only disaster-recovery path. Follow [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md) and retain its evidence; same-host CI is not a substitute.
 
 A failed restore must not automatically delete the safety snapshot. Recovery instructions must be printed and logged without exposing secret values.
 
@@ -149,7 +149,7 @@ A documented restore drill against a clean, disposable host is a release require
 
 1. ~~Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.~~
 2. ~~Implement safe restore into a fresh deployment.~~ Add cross-host restore drills, deeper post-restore validation and, only later, destructive restore with safety snapshots.
-3. Add automated cross-host restore tests and a documented restore drill.
+3. ~~Document the two-host restore drill and acceptance evidence.~~ Execute and record the two-host drill; add automated cross-host restore tests where CI infrastructure permits.
 4. ~~Add selective administrator UI exports as a separate layer over the same backup components.~~
 5. ~~Add verified retention and scheduled off-host destination support.~~ Validate the scheduled workflow against a real NFS/SMB target and document operational recovery.
 
