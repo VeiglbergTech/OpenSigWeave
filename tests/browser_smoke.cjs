@@ -131,9 +131,16 @@ async function main() {
     const groupForm = groupPanel.locator("div[x-show='editing']");
     await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
     await groupForm.getByLabel("Slug").fill("browser-smoke-group-updated");
+    const groupUpdateResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().includes("/api/admin/signature-groups/")
+      && response.status() === 200
+    );
     await groupForm.getByRole("button", { name: "Save Group", exact: true }).click();
-    const updatedGroupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
-    await updatedGroupCard.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor();
+    await groupUpdateResponse;
+    const updatedGroupCard = groupPanel.locator("div.grid.grid-cols-1.xl\\:grid-cols-2 > div")
+      .filter({ hasText: "Browser Smoke Group Updated" });
+    await updatedGroupCard.getByText("Browser Smoke Group Updated", { exact: true }).waitFor();
     const updatedMemberLabel = updatedGroupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" });
     await updatedMemberLabel.waitFor();
 
