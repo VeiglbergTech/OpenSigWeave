@@ -669,6 +669,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("identityProviderManager", identityProviderManager);
     Alpine.data("domainSettingsModal", domainSettingsModal);
     Alpine.data("signatureManager", signatureManager);
+    Alpine.data("signatureGroupManager", signatureGroupManager);
     Alpine.data("ruleManager", ruleManager);
     Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("toastManager", toastManager);
