@@ -246,6 +246,7 @@ async function main() {
     const disableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([disableDomainResponse, disableDomainNavigation]);
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
@@ -258,6 +259,7 @@ async function main() {
     const enableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([enableDomainResponse, enableDomainNavigation]);
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
 
@@ -309,6 +311,7 @@ async function main() {
     const deleteDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([deleteDomainResponse, deleteDomainNavigation]);
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     assert.equal(await domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" }).count(), 0,
