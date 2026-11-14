@@ -9,6 +9,8 @@ const password = process.env.BROWSER_TEST_PASSWORD;
 async function main() {
   assert.ok(email, "BROWSER_TEST_EMAIL must be set");
   assert.ok(password, "BROWSER_TEST_PASSWORD must be set");
+  assert.ok(process.env.BROWSER_TEST_NORMAL_USER_SESSION, "BROWSER_TEST_NORMAL_USER_SESSION must be set");
+  assert.ok(process.env.BROWSER_TEST_RESTRICTED_USER_SESSION, "BROWSER_TEST_RESTRICTED_USER_SESSION must be set");
 
   const browser = await chromium.launch({
     headless: true,
@@ -195,6 +197,64 @@ async function main() {
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
+    // Exercise normal-user authorization with signed, non-admin browser sessions.
+    // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
+    const normalContext = await browser.newContext();
+    await normalContext.addCookies([{
+      name: "__Host-opensigweave-session",
+      value: process.env.BROWSER_TEST_NORMAL_USER_SESSION,
+      domain: "localhost",
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    }]);
+    const normalPage = await normalContext.newPage();
+    const normalHome = await normalPage.goto(baseURL + "/");
+    assert.equal(normalHome.status(), 200, "regular signature user can open the portal");
+    await normalPage.locator("#logout-button").waitFor();
+    assert.equal(await normalPage.getByRole("button", { name: "Admin", exact: true }).count(), 0,
+      "regular users must not see administrator navigation");
+    const normalSignature = await normalPage.request.get(baseURL + "/api/my-signature");
+    assert.equal(normalSignature.status(), 200, "regular user can read only their personal signature");
+    assert.equal((await normalSignature.json()).html_content, "");
+    const deniedAdminApi = await normalPage.request.get(baseURL + "/api/admin/signatures");
+    assert.equal(deniedAdminApi.status(), 403, "regular user must be denied administrator APIs");
+    const savedPersonalSignature = await normalPage.request.post(baseURL + "/api/my-signature", {
+      headers: { "X-CSRF-Token": "ci-normal-user-csrf-token" },
+      data: { html_content: "<p>Normal user browser signature</p>" },
+    });
+    assert.equal(savedPersonalSignature.status(), 200,
+      "regular user can save a personal override when the assigned domain permits it");
+    const savedSignature = await normalPage.request.get(baseURL + "/api/my-signature");
+    assert.equal((await savedSignature.json()).html_content, "<p>Normal user browser signature</p>");
+    await normalContext.close();
+
+    const restrictedContext = await browser.newContext();
+    await restrictedContext.addCookies([{
+      name: "__Host-opensigweave-session",
+      value: process.env.BROWSER_TEST_RESTRICTED_USER_SESSION,
+      domain: "localhost",
+      path: "/",
+      httpOnly: true,
+      secure: true,
+      sameSite: "Lax",
+    }]);
+    const restrictedPage = await restrictedContext.newPage();
+    const restrictedHome = await restrictedPage.goto(baseURL + "/");
+    assert.equal(restrictedHome.status(), 200, "restricted-domain user can open the portal");
+    await restrictedPage.getByRole("heading", { name: "Editing Disabled" }).waitFor();
+    const disabledSaveButton = restrictedPage.locator("#save-user-signature");
+    assert.equal(await disabledSaveButton.isDisabled(), true,
+      "domain override policy must disable personal signature editing in the UI");
+    const deniedOverrideSave = await restrictedPage.request.post(baseURL + "/api/my-signature", {
+      headers: { "X-CSRF-Token": "ci-restricted-user-csrf-token" },
+      data: { html_content: "<p>Must be rejected</p>" },
+    });
+    assert.equal(deniedOverrideSave.status(), 403,
+      "domain override policy must also be enforced by the API");
+    await restrictedContext.close();
+
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
@@ -206,7 +266,7 @@ async function main() {
     const protectedPage = await page.request.get(baseURL + "/");
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
-    process.stdout.write("Browser smoke passed: login, personal API, all admin sections, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, logout and session invalidation.\n");
+    process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, export ZIP download, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
   } finally {
     await browser.close();
   }
