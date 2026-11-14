@@ -106,4 +106,4 @@ Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `
 - Concurrent messages cannot race rotation state.
 - Preview does not mutate production rotation state.
 - Existing signature HTML, versions, IDs and current production behavior survive migration.
-- Group CRUD, membership, group rules, weighted no-repeat selection, stable principal validation, repeated group placeholders and the Rspamd engine path are covered by API/repository tests. PostgreSQL concurrency stress and full UI browser tests remain outstanding.
+- Group CRUD, membership, group rules, weighted no-repeat selection, stable principal validation, repeated group placeholders and the Rspamd engine path are covered by API/repository tests. The 12-worker PostgreSQL concurrency stress tests for both variant and group selection passed against PostgreSQL 17 in CI on 2026-11-14. Full UI browser tests remain outstanding.
