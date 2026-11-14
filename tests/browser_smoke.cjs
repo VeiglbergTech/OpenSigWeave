@@ -122,6 +122,9 @@ async function main() {
         && row.children[3].textContent.includes("example.test");
     });
 
+    // Return to the group tab before interacting with its hidden Alpine panel.
+    await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
+
     // Update the group metadata and verify the existing membership survives.
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor({ state: "visible" });
     await groupPanel.getByRole("button", { name: "Edit", exact: true }).click();
