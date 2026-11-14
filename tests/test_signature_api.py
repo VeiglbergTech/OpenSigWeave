@@ -888,7 +888,7 @@ class AuthorizationEndpointTests(unittest.TestCase):
 
     def test_authorized_signature_user_can_access_personal_signature_endpoint(self):
         result = main.get_my_signature(self.user_request, self.db)
-        self.assertEqual(result, "")
+        self.assertEqual(result, {"html_content": ""})
 
     def test_signature_administrator_can_access_admin_read_endpoints(self):
         self.assertEqual(main.list_signatures(self.admin_request, self.db), [])
