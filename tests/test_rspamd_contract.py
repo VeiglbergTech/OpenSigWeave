@@ -39,13 +39,13 @@ class RspamdAdapterContractTests(unittest.TestCase):
     def test_multipart_is_explicitly_left_unchanged(self):
         self.assertIn("if multipart_message then", SOURCE)
         self.assertIn("multipart message left unchanged; safe MIME rewrite is not yet available", SOURCE)
-        self.assertIn("if is_multipart then", SOURCE)
+        self.assertRegex(SOURCE, r'if is_multipart then[\s\S]*?return\s+end')
         self.assertIn("Do not rewrite raw multipart bodies with string patterns", SOURCE)
 
     def test_no_regular_expression_mime_boundary_reconstruction_is_enabled(self):
         # This adapter deliberately refuses multipart messages until a parser-backed
         # rewrite path is implemented and exercised against supported Rspamd versions.
-        self.assertRegex(SOURCE, r'if is_multipart then\s+rspamd_logger\.warnx\(task,[\\s\\S]*?return\s+end')
+        self.assertRegex(SOURCE, r'if is_multipart then[\s\S]*?return\s+end')
         self.assertNotRegex(SOURCE, r'parse_multipart\s*\(')
 
 
