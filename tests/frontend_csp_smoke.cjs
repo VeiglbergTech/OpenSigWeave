@@ -249,6 +249,67 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   await groupManager.deleteGroup({ id: "g1", name: "Sales" });
   assert.equal(groupRequests.at(-4).url, "/api/admin/signature-groups/g1");
   assert.equal(groupRequests.at(-4).options.method, "DELETE");
+  // Exercise the real ruleManager implementation, not only the CSP fixture.
+  const rulesManager = vm.runInNewContext("ruleManager()", signatureContext);
+  const ruleRequests = [];
+  let ruleResponses = [];
+  window.fetch = async (url, options = {}) => {
+    ruleRequests.push({ url, options });
+    const response = ruleResponses.shift() || { ok: true, json: async () => [] };
+    return response;
+  };
+  ruleResponses = [
+    { ok: true, json: async () => [{ id: "r1", name: "Existing", action_mode: "GROUP", group_id: "g1", conditions: [{ kind: "sender_equals", value: "sales@example.test" }] }] },
+    { ok: true, json: async () => [
+      { id: "s1", name: "Automatic", mode: "AUTO", is_active: true },
+      { id: "s2", name: "Inactive", mode: "AUTO", is_active: false },
+      { id: "s3", name: "Internal", mode: "INTERNAL", is_active: true },
+    ] },
+    { ok: true, json: async () => [{ id: "g1", name: "Sales" }] },
+  ];
+  await rulesManager.fetchAll();
+  assert.equal(rulesManager.rules[0].name, "Existing");
+  assert.equal(rulesManager.groups[0].id, "g1");
+  rulesManager.form.action_mode = "AUTO";
+  assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1"]);
+  rulesManager.editRule(rulesManager.rules[0]);
+  assert.equal(rulesManager.form.group_id, "g1");
+  assert.equal(rulesManager.form.signature_id, "");
+  rulesManager.changeAction();
+  assert.equal(rulesManager.form.group_id, "");
+  assert.equal(rulesManager.form.signature_id, "");
+  rulesManager.newRule();
+  rulesManager.form.name = "  Sales routing  ";
+  rulesManager.form.action_mode = "GROUP";
+  rulesManager.form.group_id = "g1";
+  rulesManager.addCondition();
+  rulesManager.form.conditions[0] = { kind: "sender_equals", key: "", value: "sales@example.test" };
+  rulesManager.form.conditions[1].value = "signature-users";
+  ruleResponses = [{ ok: true, json: async () => ({ id: "r2" }) },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] }];
+  await rulesManager.saveRule();
+  const savedRule = ruleRequests.find(request => request.url === "/api/admin/rules" && request.options.method === "POST");
+  assert.ok(savedRule, "Creating a rule must use the rules API");
+  assert.deepEqual(JSON.parse(savedRule.options.body), {
+    id: null, name: "  Sales routing  ", priority: 0, action_mode: "GROUP",
+    signature_id: null, group_id: "g1", is_enabled: true,
+    conditions: [
+      { kind: "sender_equals", key: "", value: "sales@example.test" },
+      { kind: "sender_equals", key: "", value: "signature-users" },
+    ],
+  });
+  assert.equal(rulesManager.editing, false);
+  window.confirm = () => true;
+  ruleResponses = [{ ok: true, json: async () => ({}) },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] },
+    { ok: true, json: async () => [] }];
+  await rulesManager.deleteRule({ id: "r2", name: "Sales routing" });
+  const deleteRule = ruleRequests.find(request => request.url === "/api/admin/rules/r2" && request.options.method === "DELETE");
+  assert.ok(deleteRule, "Deleting a rule must use its identifier in the DELETE endpoint");
+
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
