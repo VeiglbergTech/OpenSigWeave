@@ -84,7 +84,7 @@ async function main() {
     await groupPanel.getByRole("button", { name: "+ Add Group" }).click();
     await groupPanel.getByLabel("Name").fill("Browser Smoke Group");
     await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
-    const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").first();
+    const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: page.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCard.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor();
     const memberSelectors = groupPanel.locator("select");
     await memberSelectors.nth(1).selectOption({ label: "Browser Smoke Group" });
@@ -127,7 +127,7 @@ async function main() {
 
     // Update the group metadata and verify the existing membership survives.
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor({ state: "visible" });
-    await groupPanel.getByRole("button", { name: "Edit", exact: true }).click();
+    await groupCard.getByRole("button", { name: "Edit", exact: true }).click();
     const groupForm = groupPanel.locator("div[x-show='editing']");
     await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
     await groupForm.getByLabel("Slug").fill("browser-smoke-group-updated");
@@ -157,7 +157,7 @@ async function main() {
 
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
     page.once("dialog", dialog => dialog.accept());
-    await groupPanel.getByRole("button", { name: "Delete", exact: true }).click();
+    await groupCard.getByRole("button", { name: "Delete", exact: true }).click();
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
