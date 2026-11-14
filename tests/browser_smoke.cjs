@@ -200,6 +200,7 @@ async function main() {
     // Exercise the complete domain lifecycle through the administrator UI.
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     const domainPanel = page.locator('[x-data="domainManager"]');
+    await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     await domainPanel.getByRole("button", { name: "+ Add Domain" }).click();
     const addDomainDialog = page.locator('[x-data="addDomainModal"]');
     await addDomainDialog.locator('input[placeholder="e.g., hatsthings.com"]').fill("browser-smoke-domain.test");
@@ -233,7 +234,9 @@ async function main() {
       "profile provider assignment must not implicitly configure the login provider");
 
     // Disable and re-enable the domain through the confirmation dialog.
-    await domainRow.locator("td").nth(1).locator("span").click();
+    const domainStatus = domainRow.locator("td").nth(1).locator("span");
+    await domainStatus.waitFor({ state: "visible" });
+    await domainStatus.click();
     const confirmDialog = page.locator('[x-data="confirmModal"]');
     const disableDomainResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
