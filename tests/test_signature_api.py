@@ -1,5 +1,7 @@
 """Runtime tests for administrator signature-catalog API handlers."""
 import asyncio
+import base64
+import json
 import os
 import tempfile
 import unittest
@@ -20,6 +22,7 @@ os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from starlette.responses import Response
+from itsdangerous import TimestampSigner
 
 import main
 from core.modes import SignatureMode
@@ -823,6 +826,84 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertNotIn("onclick", result["html"])
         self.assertNotIn("<script", result["html"])
 
+
+
+class AuthorizationHttpRouteTests(unittest.TestCase):
+    """Exercise authorization through ASGI routing and signed browser sessions."""
+
+    COOKIE_NAME = "__Host-opensigweave-session"
+
+    def setUp(self):
+        self.engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(self.engine)
+        self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
+
+        def override_get_db():
+            db = self.Session()
+            try:
+                yield db
+            finally:
+                db.close()
+
+        self.previous_override = main.app.dependency_overrides.get(main.get_db)
+        main.app.dependency_overrides[main.get_db] = override_get_db
+        self.client = TestClient(main.app, base_url="https://app.example.org")
+
+    def tearDown(self):
+        if self.previous_override is None:
+            main.app.dependency_overrides.pop(main.get_db, None)
+        else:
+            main.app.dependency_overrides[main.get_db] = self.previous_override
+        self.engine.dispose()
+
+    def authenticate(self, user):
+        payload = base64.b64encode(
+            json.dumps({"user": user}, separators=(",", ":")).encode("utf-8")
+        )
+        signed = TimestampSigner(os.environ["SECRET_KEY"]).sign(payload).decode("utf-8")
+        self.client.cookies.set(self.COOKIE_NAME, signed)
+
+    def test_anonymous_http_requests_cannot_read_admin_or_personal_apis(self):
+        for path in (
+            "/api/admin/signatures",
+            "/api/admin/signature-groups",
+            "/api/admin/rules",
+            "/api/admin/identity-providers",
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 403)
+
+        personal = self.client.get("/api/my-signature")
+        self.assertEqual(personal.status_code, 401)
+
+    def test_regular_user_http_requests_are_denied_admin_apis_but_can_read_personal_signature(self):
+        self.authenticate({"email": "user@example.org", "groups": ["signature-users"]})
+        for path in (
+            "/api/admin/signatures",
+            "/api/admin/signature-groups",
+            "/api/admin/rules",
+            "/api/admin/identity-providers",
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 403)
+
+        personal = self.client.get("/api/my-signature")
+        self.assertEqual(personal.status_code, 200)
+        self.assertEqual(personal.json(), {"html_content": ""})
+
+    def test_administrator_http_session_can_read_admin_apis(self):
+        self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
+        for path in (
+            "/api/admin/signatures",
+            "/api/admin/signature-groups",
+            "/api/admin/rules",
+            "/api/admin/identity-providers",
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 200, response.text)
 
 
 if __name__ == "__main__":
