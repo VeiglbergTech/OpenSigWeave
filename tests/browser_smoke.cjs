@@ -132,11 +132,13 @@ async function main() {
     await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
     await groupForm.getByLabel("Slug").fill("browser-smoke-group-updated");
     await groupForm.getByRole("button", { name: "Save Group", exact: true }).click();
-    await groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor();
-    await groupPanel.getByText("Browser Smoke Signature", { exact: true }).waitFor();
+    const updatedGroupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
+    await updatedGroupCard.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor();
+    const updatedMemberLabel = updatedGroupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" });
+    await updatedMemberLabel.waitFor();
 
     // Update a group member's weight and verify the UI remains operational.
-    const memberWeight = groupPanel.locator('input[type="number"]').first();
+    const memberWeight = updatedGroupCard.locator('input[type="number"]').first();
     await memberWeight.fill("4");
     await memberWeight.dispatchEvent("change");
 
