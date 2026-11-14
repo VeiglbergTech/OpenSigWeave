@@ -320,7 +320,7 @@ function identityProviderManager() { return {
                     });
                     if (!response.ok) { notify('Could not save group: ' + (await response.text()), 'error'); return; }
                     this.editing = false; notify('Signature group saved.'); await this.fetchAll();
-                    window.dispatchEvent(new Event('signature-groups-updated'));
+                    window.dispatchEvent(new window.Event('signature-groups-updated'));
                 },
                 async addMember() {
                     if (!this.memberForm.group_id || !this.memberForm.signature_id) { notify('Select a group and signature.', 'error'); return; }
@@ -360,7 +360,7 @@ function identityProviderManager() { return {
                     const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete group: ' + (await response.text()), 'error'); return; }
                     notify('Group deleted.'); await this.fetchAll();
-                    window.dispatchEvent(new Event('signature-groups-updated'));
+                    window.dispatchEvent(new window.Event('signature-groups-updated'));
                 }
             };
         }
