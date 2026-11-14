@@ -246,6 +246,8 @@ async function main() {
     const disableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([disableDomainResponse, disableDomainNavigation]);
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.locator("td").nth(1).locator("span").click();
     const enableDomainResponse = page.waitForResponse(response =>
@@ -256,6 +258,8 @@ async function main() {
     const enableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([enableDomainResponse, enableDomainNavigation]);
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
 
     // Save domain policy settings, reload the UI, and verify persistence.
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
@@ -305,6 +309,13 @@ async function main() {
     const deleteDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await Promise.all([deleteDomainResponse, deleteDomainNavigation]);
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    assert.equal(await domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" }).count(), 0,
+      "deleted domain must disappear from the administrator UI");
+    assert.equal((await (await page.request.get(baseURL + "/domains/")).json())
+      .some(item => item.domain_name === "browser-smoke-domain.test"), false,
+      "deleted domain must no longer be returned by the API");
 
     // Exercise normal-user authorization with signed, non-admin browser sessions.
     // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
