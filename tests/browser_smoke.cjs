@@ -203,7 +203,7 @@ async function main() {
     await normalContext.addCookies([{
       name: "__Host-opensigweave-session",
       value: process.env.BROWSER_TEST_NORMAL_USER_SESSION,
-      url: baseURL,
+      url: baseURL + '/',
       httpOnly: true,
       secure: true,
       sameSite: "Lax",
@@ -233,7 +233,7 @@ async function main() {
     await restrictedContext.addCookies([{
       name: "__Host-opensigweave-session",
       value: process.env.BROWSER_TEST_RESTRICTED_USER_SESSION,
-      url: baseURL,
+      url: baseURL + '/',
       httpOnly: true,
       secure: true,
       sameSite: "Lax",
