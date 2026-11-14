@@ -197,6 +197,123 @@ async function main() {
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
+    // Exercise the complete domain lifecycle through the administrator UI.
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    const domainPanel = page.locator('[x-data="domainManager"]');
+    await domainPanel.getByRole("button", { name: "+ Add Domain" }).click();
+    const addDomainDialog = page.locator('[x-data="addDomainModal"]');
+    await addDomainDialog.locator('input[placeholder="e.g., hatsthings.com"]').fill("browser-smoke-domain.test");
+    const createDomainResponse = page.waitForResponse(response =>
+      response.request().method() === "POST"
+      && response.url().endsWith("/domains/")
+      && response.status() === 200
+    );
+    await addDomainDialog.getByRole("button", { name: "Register Domain", exact: true }).click();
+    await createDomainResponse;
+    let domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
+    await domainRow.waitFor();
+    let domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    let createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.ok(createdDomain, "new domain must be persisted by the create workflow");
+
+    // A profile provider is deliberately available without a configured login provider.
+    const profileProviderSelect = domainRow.locator("select").nth(0);
+    await profileProviderSelect.selectOption("browser-smoke-profile-provider");
+    await page.waitForFunction(async () => {
+      const response = await fetch("/domains/");
+      const domains = await response.json();
+      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
+      return item && item.identity_provider_id === "browser-smoke-profile-provider"
+        && item.authentication_provider_id === null;
+    });
+    domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.equal(createdDomain.identity_provider_id, "browser-smoke-profile-provider");
+    assert.equal(createdDomain.authentication_provider_id, null,
+      "profile provider assignment must not implicitly configure the login provider");
+
+    // Disable and re-enable the domain through the confirmation dialog.
+    await domainRow.locator("td").nth(1).locator("span").click();
+    const confirmDialog = page.locator('[x-data="confirmModal"]');
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    const disableDomainResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id)
+      && response.status() === 200
+    );
+    await disableDomainResponse;
+    await page.waitForFunction(async () => {
+      const domains = await (await fetch("/domains/")).json();
+      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
+      return item && item.is_active === false;
+    });
+    domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
+    await domainRow.locator("td").nth(1).locator("span").click();
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    const enableDomainResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id)
+      && response.status() === 200
+    );
+    await enableDomainResponse;
+    await page.waitForFunction(async () => {
+      const domains = await (await fetch("/domains/")).json();
+      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
+      return item && item.is_active === true;
+    });
+
+    // Save domain policy settings, reload the UI, and verify persistence.
+    domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
+    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    const domainSettings = page.locator('[x-data="domainSettingsModal"]');
+    const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" });
+    await allowOverridesLabel.click();
+    const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Enable Experimental Reply Injection" });
+    await replyInjectionLabel.click();
+    const saveDomainSettingsResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id)
+      && response.status() === 200
+    );
+    await domainSettings.getByRole("button", { name: "Save Settings", exact: true }).click();
+    await saveDomainSettingsResponse;
+    domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.equal(createdDomain.allow_overrides, false);
+    assert.equal(createdDomain.inject_on_replies, true);
+
+    await page.reload();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    domainRow = page.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
+    await domainRow.waitFor();
+    assert.equal(await domainRow.locator("select").nth(0).inputValue(), "browser-smoke-profile-provider");
+    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "",
+      "login provider must remain local after page reload");
+    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    const reloadedSettings = page.locator('[x-data="domainSettingsModal"]');
+    await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
+      .locator('input[type="checkbox"]').waitFor();
+    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
+      .locator('input[type="checkbox"]').isChecked(), false);
+    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Enable Experimental Reply Injection" })
+      .locator('input[type="checkbox"]').isChecked(), true);
+    await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
+
+    // Delete the test domain and verify it is removed from persistence and the UI.
+    await domainRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    const deleteDomainResponse = page.waitForResponse(response =>
+      response.request().method() === "DELETE"
+      && response.url().endsWith("/domains/" + createdDomain.id)
+      && response.status() === 200
+    );
+    await deleteDomainResponse;
+    await page.waitForFunction(async () => {
+      const domains = await (await fetch("/domains/")).json();
+      return !domains.some(domain => domain.domain_name === "browser-smoke-domain.test");
+    });
+
     // Exercise normal-user authorization with signed, non-admin browser sessions.
     // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
     const normalContext = await browser.newContext();
