@@ -21,6 +21,7 @@ os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from starlette.responses import Response
 from itsdangerous import TimestampSigner
 
@@ -834,7 +835,11 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
     COOKIE_NAME = "__Host-opensigweave-session"
 
     def setUp(self):
-        self.engine = create_engine("sqlite:///:memory:")
+        self.engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
 
