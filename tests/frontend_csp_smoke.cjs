@@ -284,6 +284,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   rulesManager.form.group_id = "g1";
   rulesManager.addCondition();
   rulesManager.form.conditions[0] = { kind: "sender_equals", key: "", value: "sales@example.test" };
+  rulesManager.addCondition();
   rulesManager.form.conditions[1].value = "signature-users";
   ruleResponses = [{ ok: true, json: async () => ({ id: "r2" }) },
     { ok: true, json: async () => [] },
