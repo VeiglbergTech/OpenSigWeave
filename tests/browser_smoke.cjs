@@ -107,6 +107,61 @@ async function main() {
     await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
     await rulesPanel.getByText("Browser Smoke Rule", { exact: true }).waitFor();
 
+    // Exercise update and delete paths as well as the initial create flows.
+    const createdRuleRow = rulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Rule" });
+    await createdRuleRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await rulesPanel.getByLabel("Priority").fill("25");
+    await rulesPanel.getByRole("button", { name: "+ Add condition" }).click();
+    const conditionRows = rulesPanel.locator("div.grid.grid-cols-1.md\\:grid-cols-12");
+    await conditionRows.last().locator('input[placeholder="Value"]').fill("example.test");
+    await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('[x-data="ruleManager"] tbody tr')]
+        .find(item => item.textContent.includes("Browser Smoke Rule"));
+      return row && row.children[1].textContent.trim() === "25"
+        && row.children[3].textContent.includes("example.test");
+    });
+
+    // Update the group metadata and verify the existing membership survives.
+    const groupCardBeforeEdit = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
+      .filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
+    await groupCardBeforeEdit.getByRole("button", { name: "Edit", exact: true }).click();
+    const groupForm = groupPanel.locator("div[x-show='editing']");
+    await groupForm.getByLabel("Name").fill("Browser Smoke Group Updated");
+    await groupForm.getByLabel("Slug").fill("browser-smoke-group-updated");
+    await groupForm.getByRole("button", { name: "Save Group", exact: true }).click();
+    const updatedGroupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
+      .filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
+    await updatedGroupCard.getByText("Browser Smoke Signature", { exact: true }).waitFor();
+
+    // Update a group member's weight and verify the UI remains operational.
+    const memberWeight = updatedGroupCard.locator('input[type="number"]').first();
+    await memberWeight.fill("4");
+    await memberWeight.dispatchEvent("change");
+
+    // Update the signature metadata without creating an extra HTML version.
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    const updatedSignatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
+    await updatedSignatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature Updated");
+    await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
+
+    // Remove the rule and group again so this test also covers destructive UI paths.
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
+    page.once("dialog", dialog => dialog.accept());
+    const updatedRuleRow = rulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Rule" });
+    await updatedRuleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await updatedRuleRow.waitFor({ state: "detached" });
+
+    await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
+    page.once("dialog", dialog => dialog.accept());
+    await updatedGroupCard.getByRole("button", { name: "Delete", exact: true }).click();
+    await updatedGroupCard.waitFor({ state: "detached" });
+
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
+
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
