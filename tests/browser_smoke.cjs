@@ -149,6 +149,12 @@ async function main() {
     await memberWeight.fill("4");
     await memberWeight.dispatchEvent("change");
 
+    // Exercise explicit membership removal independently from group deletion.
+    const updatedMemberRow = updatedMemberLabel.locator("xpath=..");
+    page.once("dialog", dialog => dialog.accept());
+    await updatedMemberRow.getByRole("button", { name: "Remove", exact: true }).click();
+    await updatedMemberLabel.waitFor({ state: "detached" });
+
     // Update the signature metadata without creating an extra HTML version.
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     const updatedSignatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
