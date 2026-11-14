@@ -240,13 +240,9 @@ async function main() {
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    const disableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-    await disableDomainResponse;
-    await page.waitForFunction(async () => {
-      const domains = await (await fetch("/domains/")).json();
-      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
-      return item && item.is_active === false;
-    });
+    await Promise.all([disableDomainResponse, disableDomainNavigation]);
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.locator("td").nth(1).locator("span").click();
     const enableDomainResponse = page.waitForResponse(response =>
@@ -254,13 +250,9 @@ async function main() {
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    const enableDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-    await enableDomainResponse;
-    await page.waitForFunction(async () => {
-      const domains = await (await fetch("/domains/")).json();
-      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
-      return item && item.is_active === true;
-    });
+    await Promise.all([enableDomainResponse, enableDomainNavigation]);
 
     // Save domain policy settings, reload the UI, and verify persistence.
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
@@ -307,12 +299,9 @@ async function main() {
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
+    const deleteDomainNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
     await confirmDialog.getByRole("button", { name: "Confirm", exact: true }).click();
-    await deleteDomainResponse;
-    await page.waitForFunction(async () => {
-      const domains = await (await fetch("/domains/")).json();
-      return !domains.some(domain => domain.domain_name === "browser-smoke-domain.test");
-    });
+    await Promise.all([deleteDomainResponse, deleteDomainNavigation]);
 
     // Exercise normal-user authorization with signed, non-admin browser sessions.
     // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
