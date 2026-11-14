@@ -85,7 +85,7 @@ async function main() {
     await groupPanel.getByLabel("Name").fill("Browser Smoke Group");
     await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
     const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3")
-      .filter({ hasText: "Browser Smoke Group" });
+      .filter({ has: groupPanel.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCard.waitFor();
     const memberSelectors = groupPanel.locator("select");
     await memberSelectors.nth(1).selectOption({ label: "Browser Smoke Group" });
