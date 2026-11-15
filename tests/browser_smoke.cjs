@@ -268,17 +268,28 @@ async function main() {
 
     // A profile provider is deliberately available without a configured login provider.
     const profileProviderSelect = domainRow.locator("select").nth(0);
+    const providerAssignmentResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id + "/identity-provider")
+    );
     await profileProviderSelect.selectOption("browser-smoke-profile-provider");
+    const providerAssignment = await providerAssignmentResponse;
+    assert.equal(providerAssignment.status(), 200, "profile provider assignment request must succeed");
+    assert.deepEqual(await providerAssignment.json(), {
+      domain_id: createdDomain.id,
+      identity_provider_id: "browser-smoke-profile-provider"
+    }, "profile provider assignment endpoint must acknowledge the persisted provider");
+
+    // Poll the uncached browser-session API response so a cached domain list
+    // cannot make this persistence assertion pass or fail spuriously.
     await page.waitForFunction(async () => {
-      const response = await fetch("/domains/");
+      const response = await fetch("/domains/", { cache: "no-store" });
+      if (!response.ok) return false;
       const domains = await response.json();
       const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
       return item && item.identity_provider_id === "browser-smoke-profile-provider"
         && item.authentication_provider_id === null;
     });
-    // The in-page fetch above is the authoritative browser-session check.
-    // Keep the initially created record (and its stable ID) rather than issuing
-    // a second APIRequestContext request that can observe a different session/cache.
     const assignedProviders = await page.evaluate(async () => {
       const response = await fetch("/domains/", { cache: "no-store" });
       const domains = await response.json();
