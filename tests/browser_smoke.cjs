@@ -66,13 +66,19 @@ async function main() {
 
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
+    const exportButton = exportPanel.getByRole("button", { name: "Download selected components" });
+    assert.equal(await exportButton.isDisabled(), false, "export button must be enabled");
     const exportResponse = page.waitForResponse(response =>
       response.url().includes("/api/admin/exports?")
-      && response.status() === 200
     );
     const exportDownload = page.waitForEvent("download");
-    await exportPanel.getByRole("button", { name: "Download selected components" }).click();
-    const [exportResponseResult, exportDownloadResult] = await Promise.all([exportResponse, exportDownload]);
+    await exportButton.click();
+    const exportResponseResult = await exportResponse;
+    if (exportResponseResult.status() !== 200) {
+      const failureBody = await exportResponseResult.text();
+      throw new Error("Administrator export returned HTTP " + exportResponseResult.status() + ": " + failureBody);
+    }
+    const exportDownloadResult = await exportDownload;
     assert.match(exportResponseResult.headers()["content-type"], /application\/zip/);
     assert.equal(exportDownloadResult.suggestedFilename(), "opensigweave-component-export.zip");
     const exportPath = await exportDownloadResult.path();
