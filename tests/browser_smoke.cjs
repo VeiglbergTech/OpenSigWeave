@@ -20,7 +20,14 @@ async function main() {
   // Bound browser operations so CI reports the stalled action before its outer timeout.
   page.setDefaultTimeout(15000);
   page.setDefaultNavigationTimeout(30000);
-  page.on("requestfailed", request => process.stderr.write("[browser-smoke] request failed: " + request.method() + " " + request.url() + "\n"));
+  page.on("requestfailed", request => {
+    const failure = request.failure();
+    // Navigation intentionally aborts in-flight Alpine refresh requests.
+    // Keep genuine network failures in CI logs without reporting these as faults.
+    if (failure && failure.errorText === "net::ERR_ABORTED") return;
+    process.stderr.write("[browser-smoke] request failed: " + request.method() + " " + request.url()
+      + (failure ? " (" + failure.errorText + ")" : "") + "\\n");
+  });
   const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
   await page.addInitScript(() => {
     window.__cspViolations = [];
