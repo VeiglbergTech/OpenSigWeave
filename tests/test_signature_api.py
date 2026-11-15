@@ -77,6 +77,54 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.export_admin_components(self.user_request, "signatures", self.db)
         self.assertEqual(denied.exception.status_code, 403)
 
+    def test_domain_profile_provider_assignment_is_independent_of_login_provider(self):
+        domain = main.DomainDB(domain_name="profile-provider.example", is_active=True)
+        provider = main.IdentityProviderDB(
+            id="profile-provider-test",
+            display_name="Profile provider test",
+            provider_type="ldap",
+            is_enabled=True,
+        )
+        self.db.add_all([domain, provider])
+        self.db.commit()
+        self.db.refresh(domain)
+
+        assigned = main.assign_domain_identity_provider(
+            domain.id,
+            {"identity_provider_id": provider.id},
+            self.admin_request,
+            self.db,
+        )
+        self.assertEqual(assigned["identity_provider_id"], provider.id)
+
+        listed = next(
+            item for item in main.read_domains(self.admin_request, self.db)
+            if item["id"] == domain.id
+        )
+        self.assertEqual(listed["identity_provider_id"], provider.id)
+        self.assertIsNone(listed["authentication_provider_id"])
+
+        # Updating unrelated domain settings must not clear either provider field.
+        main.update_domain(
+            domain.id,
+            main.DomainUpdate(
+                is_active=True,
+                allow_overrides=True,
+                inject_on_replies=False,
+                trim_whitespace=True,
+                strip_device_signatures=False,
+                template_html="<p>Profile provider test</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        listed_after_update = next(
+            item for item in main.read_domains(self.admin_request, self.db)
+            if item["id"] == domain.id
+        )
+        self.assertEqual(listed_after_update["identity_provider_id"], provider.id)
+        self.assertIsNone(listed_after_update["authentication_provider_id"])
+
     def test_signature_api_supports_multiple_domain_assignments(self):
         first = main.DomainDB(domain_name="first.example", is_active=True)
         second = main.DomainDB(domain_name="second.example", is_active=True)
