@@ -111,6 +111,8 @@ async function main() {
       "preview should identify both matching domains as reusable");
     assert.equal(await importPanel.getByText("New: 0 · Reused: 1").count(), 1,
       "preview should identify the matching identity-provider metadata as reusable");
+    assert.equal(await importPanel.getByText("New: 0 · Reused: 3").count(), 1,
+      "preview should identify all matching built-in signature groups as reusable");
 
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
