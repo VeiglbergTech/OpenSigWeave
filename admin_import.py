@@ -229,13 +229,13 @@ def inspect_admin_import(
 
     if "domains" in components:
         for row in data["domains"]:
-                row = _object(row, "domain")
-                for key in ("identity_provider_id", "authentication_provider_id"):
-                    provider_id = row.get(key)
-                    if provider_id is not None:
-                        _string(provider_id, key, 64)
-                        if provider_id not in imported_providers and db.get(IdentityProviderDB, provider_id) is None:
-                            conflicts.append(f"Domain references unavailable identity provider: {provider_id}")
+            row = _object(row, "domain")
+            for key in ("identity_provider_id", "authentication_provider_id"):
+                provider_id = row.get(key)
+                if provider_id is not None:
+                    _string(provider_id, key, 64)
+                    if provider_id not in imported_providers and db.get(IdentityProviderDB, provider_id) is None:
+                        conflicts.append(f"Domain references unavailable identity provider: {provider_id}")
 
     if "domains" in components:
         imported_domain_ids = set()
