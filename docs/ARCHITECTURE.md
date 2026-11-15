@@ -133,7 +133,7 @@ Current implementation includes:
 - HTTPS-only OIDC discovery and Authentik API URL validation.
 - TLS certificate verification for Authentik API requests and LDAPS connections.
 - Per-provider OIDC callback validation and per-domain login-provider revalidation.
-- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime.
+- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime. Starlette's current signed client-side session cookie is not immediately revocable: clearing it on logout removes it from that browser, but a copied cookie can remain usable until expiry. Role/group changes likewise may not affect an already-issued cookie immediately. Treat this as a known limitation; do not claim server-side session revocation.
 - Session-bound CSRF checks for state-changing browser requests.
 - Trusted Host validation using explicit allowed hostnames; legacy OIDC also validates its configured callback hostname.
 - Security response headers and a global request-body size limit.
