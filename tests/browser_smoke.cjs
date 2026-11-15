@@ -45,6 +45,21 @@ async function main() {
     await page.locator("#logout-button").waitFor();
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
+    // Exercise the real personal Quill editor before entering the admin UI.
+    // This verifies that the rich-text surface remains functional under the
+    // report-only CSP and that edits are synchronized to the source textarea.
+    const personalEditor = page.locator("#quill-editor .ql-editor");
+    await personalEditor.waitFor({ state: "visible" });
+    await personalEditor.fill("CSP editor smoke");
+    await personalEditor.press("Control+A");
+    await page.locator("#quill-editor .ql-bold").click();
+    await personalEditor.press("B");
+    await page.waitForFunction(() =>
+      document.querySelector("#raw-html-editor").value.includes("<strong>B</strong>")
+    );
+    assert.match(await personalEditor.innerHTML(), /<strong>B<\/strong>/,
+      "Quill formatting must remain functional with the current report-only CSP");
+
     const personal = await page.request.get(baseURL + "/api/my-signature");
     assert.equal(personal.status(), 200, "signed-in administrator can load personal signature");
 
