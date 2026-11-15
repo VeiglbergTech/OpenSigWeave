@@ -124,18 +124,29 @@ class AdminImportTests(unittest.TestCase):
 
     def test_existing_signature_is_reported_as_conflict_and_never_overwritten(self):
         archive = self.make_export()
-        plan = inspect_admin_import(self.db, self.store, archive)
-        self.assertTrue(plan["can_apply"])
-        signature_id = "a" * 32
-        self.db.add(SignatureDB(id=signature_id, name="Source signature", scope="GLOBAL", mode="AUTO", is_active=False))
-        self.db.commit()
-        plan = inspect_admin_import(self.db, self.store, archive)
-        self.assertFalse(plan["can_apply"])
-        self.assertTrue(any("Source signature" in item for item in plan["conflicts"]))
-        with self.assertRaises(AdminImportError):
-            apply_admin_import(self.db, self.store, archive)
-        existing = self.db.get(SignatureDB, signature_id)
-        self.assertFalse(existing.is_active)
+        target_dir = tempfile.TemporaryDirectory()
+        target_store = SignatureFileStore(target_dir.name)
+        target_engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(target_engine)
+        TargetSession = sessionmaker(bind=target_engine, expire_on_commit=False)
+        target = TargetSession()
+        try:
+            plan = inspect_admin_import(target, target_store, archive)
+            self.assertTrue(plan["can_apply"], plan["conflicts"])
+            signature_id = "a" * 32
+            target.add(SignatureDB(id=signature_id, name="Source signature", scope="GLOBAL", mode="AUTO", is_active=False))
+            target.commit()
+            plan = inspect_admin_import(target, target_store, archive)
+            self.assertFalse(plan["can_apply"])
+            self.assertTrue(any("Source signature" in item for item in plan["conflicts"]))
+            with self.assertRaises(AdminImportError):
+                apply_admin_import(target, target_store, archive)
+            existing = target.get(SignatureDB, signature_id)
+            self.assertFalse(existing.is_active)
+        finally:
+            target.close()
+            target_engine.dispose()
+            target_dir.cleanup()
 
     def test_asset_checksum_tampering_is_rejected(self):
         archive = self.make_export()
