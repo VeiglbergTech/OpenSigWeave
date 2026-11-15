@@ -97,8 +97,10 @@ async function main() {
     await importPanel.locator("#admin-import-file").setInputFiles(exportPath);
     await importPanel.getByRole("button", { name: "Validate and preview" }).click();
     await importPanel.getByText("Archive validated. No conflicts detected.", { exact: true }).waitFor();
-    assert.equal(await importPanel.getByText("New: 0 · Reused: 2").count(), 2,
-      "preview should identify the matching domains and identity-provider metadata as reusable");
+    assert.equal(await importPanel.getByText("New: 0 · Reused: 2").count(), 1,
+      "preview should identify both matching domains as reusable");
+    assert.equal(await importPanel.getByText("New: 0 · Reused: 1").count(), 1,
+      "preview should identify the matching identity-provider metadata as reusable");
 
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
