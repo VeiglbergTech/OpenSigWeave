@@ -17,9 +17,9 @@ Implemented on the working branch:
 - All three raw-HTML editors display an Outlook-markup warning explaining that conditional comments and VML are preserved in source but removed from sanitized output.
 - Automated tests cover source round-trips, sanitizer behavior, API delivery paths and migration compatibility.
 
-CI evidence: push run [43422505731](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43422505731) and pull-request run [43422512796](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43422512796) both passed on commit `8ea29837b67b5d38333485d54a87fd6d0d6c68c2`, including PostgreSQL/SQLite migrations, Docker smoke tests, encrypted backup/fresh restore and regression tests.
+Latest CI evidence: push run [#1796](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43752194740) and pull-request run [#1797](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43752199398) both passed on commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`, including all 243 regression tests, PostgreSQL/SQLite migrations, Docker/browser smoke tests, encrypted backup/fresh restore and the source-preservation tests.
 
-Remaining acceptance work is real-browser testing of all three editors and verification of actual email-client rendering. This implementation does not make Outlook VML available in delivered signatures.
+Remaining acceptance work is real-browser coverage of all three source-editing surfaces and verification of actual email-client rendering. The current Playwright flow exercises Quill typing/formatting and raw-source synchronization in the personal editor; it does not yet prove round-trip behavior in all three editors. Outlook conditional comments and VML are preserved in stored source but removed from sanitized output, so this implementation does not make Outlook VML available in delivered signatures.
 
 ## Context
 
