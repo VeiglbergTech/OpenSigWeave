@@ -8,7 +8,7 @@
 
 ### Authentication and authorization
 
-- OIDC login (when enabled) uses discovery metadata and an explicit HTTPS callback URI. `OIDC_ENABLED=false` disables OIDC setup/callback registration and uses a local administrator login verified against a salted scrypt hash.
+- Legacy global OIDC uses discovery metadata and an explicit HTTPS callback URI only when `OIDC_ENABLED=true`. `OIDC_ENABLED=false` disables that legacy client; managed OIDC providers and their `/auth/{provider_id}` callbacks remain available. The local emergency administrator uses a salted scrypt hash.
 - The callback requires a subject, a syntactically valid email, `email_verified` as the JSON boolean `true`, and a well-formed groups array.
 - The previous session is cleared before the authenticated user object is stored.
 - The session stores only the application-required identity fields and selected profile attributes.
@@ -17,7 +17,7 @@
 - State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
 - Legacy `/auth` and managed `/auth/{provider_id}` OIDC callbacks share the database-backed callback rate-limit policy.
 
-**Provider distinctions:** Authentik remains the provider with dedicated account lookup through its API. Generic OIDC login and logout use standard discovery metadata; the verified callback claims are cached for profile use (currently up to 24 hours) because generic OIDC does not define a portable account-status or profile-management API. Consequently, group or account changes at a generic provider may not take effect until cache expiry. Do not describe generic OIDC as providing immediate account revocation. Local-only mode bypasses external providers and returns empty external identity attributes.
+**Provider distinctions:** Authentik remains the provider with dedicated account lookup through its API. Generic OIDC login and logout use standard discovery metadata; the verified callback claims are cached for profile use (currently up to 24 hours) because generic OIDC does not define a portable account-status or profile-management API. Consequently, group or account changes at a generic provider may not take effect until cache expiry. Do not describe generic OIDC as providing immediate account revocation. When no managed provider is assigned, the local administrator remains available independently; requests without an assigned profile provider return empty external identity attributes.
 
 ### Session and HTTP controls
 

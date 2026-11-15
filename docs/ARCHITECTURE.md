@@ -21,7 +21,7 @@ Managed identity providers are the default. New installations use `OIDC_ENABLED=
 
 - FastAPI application served by Uvicorn on TCP port 8085 inside the container.
 - Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
-- The login page presents a separate sign-in box for each configured Authentik provider and an email/password form for LDAP and the local administrator. The selected OIDC callback validates the returned email domain against the provider assignment.
+- The login page presents a separate sign-in box for each configured managed OIDC provider and an email/password form for LDAP and the local administrator. The selected OIDC callback validates the returned email domain against the provider assignment.
 - Browser session authorization based on the `signature-users` and `signature-admins` groups.
 - CSRF protection for state-changing browser requests.
 - Secure session cookies and trusted-host validation.
@@ -32,7 +32,7 @@ Managed identity-provider configuration is stored outside PostgreSQL under `.idp
 
 **Login provider and profile provider are separate domain settings.** The login route extracts the email domain and selects its assigned provider. LDAP / Active Directory performs an exact email search with a read-only service bind, then verifies the password with a user-DN bind over LDAPS. Authentik uses OIDC Authorization Code with its own discovery URL, client credentials, scopes and exact callback URI `/auth/{provider-id}`. OIDC callbacks require a stable subject, a verified email (email_verified must be the JSON boolean true) and a groups array, then re-check the domain's current provider assignment.
 
-The profile provider is used independently by the portal and signature engine. The Authentik API provider and LDAP service-bind provider retrieve active user attributes and selected claims. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
+The profile provider is used independently by the portal and signature engine. Authentik and LDAP profile providers retrieve active user attributes and selected claims; generic OIDC uses verified callback claims cached for up to 24 hours. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
 
 The local administrator account uses a salted scrypt hash and remains independent of external provider availability. New installations default to managed providers; root-level global OIDC is retained only for explicit compatibility mode. Managed OIDC logout uses the provider's discovery-based HTTPS end-session endpoint and an optional post-logout redirect URI. The legacy global OIDC compatibility path still uses its Authentik-specific logout URL.
 
@@ -159,25 +159,20 @@ Before enabling Rspamd in any real mail flow, a disposable integration environme
 
 The current adapter intentionally skips multipart messages. Do not work around this by adding raw string-based multipart reconstruction.
 
-## 8. Near-term development scope
+## 8. Remaining acceptance work
 
-The first testable standalone revision should focus on:
+- Verify live Authentik and Active Directory sign-in/logout.
+- Complete the two-host restore drill and real NFS/SMB backup-target tests.
+- Verify Rspamd sender authorization, processing order, idempotency and final DKIM in disposable Mailcow.
+- Resolve the observed Quill CSP reports before enforcing CSP.
+- Validate rate limits, reverse-proxy behavior and realistic load; perform dynamic security testing.
 
-- Reliable Docker installation and upgrade instructions.
-- Domain-routed Authentik OIDC and LDAP/Active Directory authentication, with an independent local administrator emergency account.
-- Domain, signature, variant and rule workflows.
-- PostgreSQL persistence and signature-file persistence.
-- Browser-level verification and CSP report review.
-- An isolated Rspamd test only after the portal works.
-
-Do not start native Mailcow UI integration in this repository. That work belongs in a separate project after the standalone product is stable.
+Native Mailcow UI integration remains a separate future project.
 
 ## 9. Deferred design work
 
-- Live interactive verification against real Authentik and Active Directory servers.
 - Nested LDAP group expansion and SCIM user/group provisioning.
 - Native Mailcow authentication, user synchronization and UI integration.
 - Parser-backed multipart MIME mutation.
 - Full audit logging and retention policy.
-- Production-grade backup/restore automation and deployment orchestration.
-- Dynamic penetration testing, load testing and operational SLOs.
+- Production SLOs and deployment orchestration.

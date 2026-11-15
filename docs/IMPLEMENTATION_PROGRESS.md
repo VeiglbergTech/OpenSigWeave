@@ -1,148 +1,51 @@
-# Implementation progress
+# Implementation status
 
 **Project:** OpenSigWeave standalone preview  
-**Development baseline:** `architecture/refactor-foundation`  
-**Status:** Automated preview validation passed; external acceptance remains; not a production release  
-**Last documentation review:** 2026-11-15
+**Status:** Automated preview validation passed; external acceptance remains. Not production-ready.  
+**Verified baseline:** `f5f197c3b1c0740527f7e307525cd5fe1db11932`
 
-This document describes the current branch state. It is not a promise that deferred work is complete.
+## Implemented
 
-## 1. Implemented
+- **Application:** FastAPI portal and management API, PostgreSQL/Alembic persistence, SQLite compatibility and server-rendered UI.
+- **Identity:** Per-domain login and profile providers; managed Authentik/generic OIDC, LDAP/Active Directory over LDAPS and independent local emergency administrator. Roles: `signature-users`, `signature-admins`.
+- **Signatures:** Domain and personal overrides, catalog, immutable HTML versions, variants, weighted no-repeat selection, groups, GROUP rules and per-message `{{ group:slug }}` placeholders.
+- **HTML:** Original source storage, server-side sanitization before use, autoescaped profile values and sandboxed previews. Outlook conditional comments/VML are not currently preserved by the sanitizer; see [HTML source preservation](HTML_SOURCE_PRESERVATION_ADR.md).
+- **Administration:** Signature/group/rule management and selective ZIP export with additive, validated import and conflict handling.
+- **Security:** Strong secret validation, CSRF, secure sessions, trusted-host checks, request limits, shared database-backed rate limiting, proxy-CIDR validation and symlink-safe atomic signature storage.
+- **Backups:** Encrypted Docker-aware full backups, verification, fresh-deployment restore, verified retention and guarded systemd scheduling to mounted remote storage.
+- **Deployment:** Python 3.12 non-root application container, read-only filesystem, dropped capabilities, PostgreSQL 17 and loopback-only application port.
+- **Mail adapter:** Separate Rspamd Lua integration. Top-level `multipart/*` messages are deliberately left unchanged.
 
-### Application and identity
+Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [API](API.md), [backup/restore](BACKUP_RESTORE_DESIGN.md), [security review](WEB_AND_RSPAMD_REVIEW.md) and [signature groups](SIGNATURE_GROUPS_DESIGN.md).
 
-- FastAPI application with server-rendered portal and management APIs.
-- Managed identity providers are stored separately in `.idp/{provider-id}/.env`; secrets are not returned by management APIs.
-- Domains have separate profile-attribute and login-provider assignments. Login is selected by the email domain.
-- Authentik supports per-provider OIDC Authorization Code login with a provider-specific callback at `/auth/{provider-id}`; discovery, client ID, client secret, scopes and redirect URI are stored in that provider's file.
-- LDAP / Active Directory supports LDAPS user authentication: a read-only service bind searches for an exact email match, then a second bind validates the submitted password as the user's DN. TLS certificate validation is mandatory and disabled AD accounts are rejected.
-- The local administrator remains an independent emergency login when configured. New installations default to `OIDC_ENABLED=false`; the previous global OIDC configuration remains an opt-in compatibility path.
-- OIDC callbacks validate subject, email, boolean `email_verified`, groups and the domain's current provider assignment.
-- Portal authorization uses the exact group names `signature-users` and `signature-admins`.
-- The profile provider is independent from the login provider and supplies name, phone, title, groups, claims and custom attributes to the portal and signature engine. Successful identity attributes are cached per provider and normalized email.
-- First administrator visit opens identity-provider setup automatically when no provider exists.
-- The login page renders a separate “Anmelden mit {display_name}” box for each enabled and fully configured Authentik OIDC provider. LDAP and local administrator access remain on the email/password form.
-- Managed OIDC logout discovers the provider's HTTPS end-session endpoint and supports an optional post-logout redirect URI; legacy global OIDC logout remains Authentik-specific.
+## Automated verification
 
-### Signature functionality
+- Full regression baseline: push #1822 and PR #1823 passed **244 tests** on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
+- Latest pre-cleanup CI: push #1843 and PR #1844 passed on README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`.
+- CI covers full-history Gitleaks scanning, dependency audit, Python/JavaScript/Lua syntax, Alpine CSP evaluator, PostgreSQL and SQLite migrations, Docker build/startup/health, Chromium/Playwright browser workflows, scheduled-backup guards, encrypted backup/fresh restore and the Python regression suite.
+- PostgreSQL 17 tests include 12-worker concurrency checks for variant and group selection. Browser coverage includes local login, authorization boundaries, signature/group/rule CRUD, export/import preview, domain override policy, logout and Quill editor synchronization.
 
-- Domain configuration and user-specific overrides.
-- Signature catalog with global/domain scope, active state and immutable HTML versions.
-- Hybrid persistence: PostgreSQL metadata and versioned HTML files with SHA-256 integrity validation.
-- Signature variants with weights and per-sender selection state to avoid immediate repeats.
-- Backup archive primitives with versioned manifests, SHA-256 inventory, bounded archive verification and safe extraction.
-- age-based encryption/decryption for archives and standalone secret files.
-- Docker Compose full-backup creation: service/volume preflight, application quiescence, PostgreSQL custom-format dump, recorded Alembic revision, signature and IDP volume snapshots, encrypted host `.env`, exact application/PostgreSQL image export, archive encryption and decrypt-and-verify.
-- Staging-directory packaging, encrypted archive verification and decryption CLI commands.
-- Verified retention CLI: newest N encrypted backups are retained; every candidate is decrypted and integrity-checked before any deletion; dry-run is the default and deletion requires `--apply`.
-- Scheduled backup automation: systemd service and daily timer create full encrypted backups on a separately mounted remote filesystem, enforce a remote-filesystem allowlist, prevent overlapping runs and apply verified retention. A CI smoke test now verifies that unmounted targets and local filesystems are rejected before the backup CLI runs, that an approved remote filesystem runs backup creation followed by retention, and that symlinked lock files are refused without modifying their targets. The systemd unit creates a private `/run/opensigweave` runtime directory for the lock.
-- Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
-- Selective administrator export and additive import are implemented. Versioned ZIP archives include selected signatures and all HTML versions, domains and original templates, groups, rules and identity-provider metadata with SHA-256 asset checksums. Import validates archive paths, entry types, duplicate names, format version, file counts, compressed/uncompressed size bounds and every asset checksum. The UI provides a dry-run preview and requires an explicit apply action. Existing signatures, rules and non-identical groups/domains/providers are never overwritten; exact matching domains, providers and groups can be reused. Conflicts block the transaction and must be resolved manually. Database changes are committed transactionally and newly written signature assets are cleaned up on failure. Provider credentials, application secrets, personal overrides and identity caches are excluded; imported provider records contain metadata only and require local credential configuration. Rule conditions may contain identifiers; the UI warns before sharing.
-- Cross-host restore drill, destructive in-place restore and real NFS/SMB validation remain outstanding. The operator runbook now includes explicit source/destination isolation checks, concrete NFS/SMB mount/read-write/verification/unmount-refusal acceptance steps and a structured evidence record. Scheduled remote-mount backup, verified retention, systemd service/timer, mountpoint enforcement and filesystem allowlisting are implemented; a real two-host drill and real NFS/SMB host test are still required.
-- Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
-- Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
-- Server-side HTML sanitization and automatic escaping of dynamic profile values.
-- Original signature HTML is preserved separately from sanitized delivery content for domain templates, personal/admin overrides and versioned catalog signatures. Migration `0012_html_source` backfills legacy values; all preview/mail rendering paths sanitize before output. Outlook conditional comments/VML warnings are present in all three raw-HTML editors. Automated source round-trip, API, sanitizer and migration tests pass; real-browser and email-client acceptance remain open.
-- Editor replacement evaluated: retain vendored Quill 1.3.7 until a self-hosted CKEditor 5 GPL proof of concept passes email-HTML, sanitizer, Outlook, CSP/offline and licensing acceptance tests; see [EDITOR_DECISION.md](EDITOR_DECISION.md).
-- Signature groups implemented on the development branch: administrator CRUD and membership UI/API, weighted no-repeat transactional selection, `GROUP` rule actions, stable Authentik `pk` / Active Directory `objectGUID` principal IDs, per-message `{{ group:slug }}` placeholders, deterministic administrator group previews in the group manager UI/API that do not mutate rotation state, and migrations that seed legacy groups without rewriting existing rules. See [SIGNATURE_GROUPS_DESIGN.md](SIGNATURE_GROUPS_DESIGN.md). The PostgreSQL concurrency regression now ran successfully against the CI PostgreSQL 17 service: both 12-worker stress tests (variant rotation and group rotation) passed on 2026-11-14. Chromium/Playwright now also covers the main create, update and delete paths for signatures, groups, group memberships and GROUP rules, signed normal-user sessions, administrator API denial, personal signature access, and domain-specific override allow/deny behavior. Live LDAP/OIDC identity-provider sign-in and logout against external services remain outstanding.
+The later changes through the verified baseline were documentation-only. Passing CI does not establish production readiness or replace live integration tests.
 
-### Security baseline
+## Outstanding external acceptance
 
-- Startup validation for strong, non-placeholder `SECRET_KEY` and `ENGINE_API_KEY`.
-- HTTPS validation for OIDC discovery and Authentik API configuration.
-- TLS certificate verification and bounded Authentik API requests.
-- Secure, HttpOnly, SameSite session cookie with a one-hour lifetime.
-- Session-bound CSRF protection for state-changing browser requests.
-- Trusted Host validation and response security headers.
-- Global request-body limit and bounded signature HTML storage.
-- Sandboxed signature previews and server-side HTML sanitization.
-- Database-backed shared rate limiting for login, legacy and managed OIDC callbacks, and signature-engine requests; forwarded client IP headers are trusted only from configured proxy CIDRs. Managed `/auth/{provider_id}` callbacks are explicitly covered by the same callback policy as legacy `/auth`.
-- File-store path validation, symlink rejection, atomic writes and hash verification.
-- GitHub Actions dependency audit, syntax checks, migrations, regression tests and full-history Gitleaks scan.
+| Area | Required verification |
+|---|---|
+| Identity | Live LDAP/Active Directory and Authentik sign-in, group mapping and logout |
+| Browser/editor | Investigate two Quill 1.3.7 `style-src-attr` CSP reports; keep CSP report-only until resolved. Verify real email-client rendering and Outlook behavior. |
+| HTML fidelity | Define a security-reviewed policy for Outlook conditional comments/VML; current sanitizer removes them. |
+| Backup | Execute the documented two-host restore drill and test real NFS/SMB mount, disconnect and recovery behavior. |
+| Mail flow | In disposable Mailcow, verify sender authorization, supported non-multipart processing, idempotency, Rspamd order and final DKIM. |
+| Operations/security | Rotate the historical Rspamd key wherever deployed; validate rate limits against real throughput and perform dynamic security/load testing. |
+| Reverse proxy | Verify canonical Host and trusted forwarded-header behavior on the intended deployment topology. |
 
-### Standalone Docker
+## Scope boundaries
 
-- Python 3.12 application image.
-- Non-root application UID/GID 10001.
-- Read-only application container filesystem, bounded temporary filesystem, dropped Linux capabilities and `no-new-privileges`.
-- PostgreSQL 17 Alpine service with healthcheck.
-- Persistent named volumes for PostgreSQL, signature HTML and managed identity-provider credentials.
-- Application port bound to host loopback at `127.0.0.1:8085`.
-- Startup waits for PostgreSQL, applies Alembic migrations and then starts Uvicorn.
-- Application process healthcheck.
-- Standalone `.env.example` and Docker Compose installation/upgrade documentation.
+- Keep OpenSigWeave independent of Mailcow; native Mailcow UI/authentication is a separate future project.
+- Do not enable production mail flow until the disposable SMTP/DKIM acceptance tests pass.
+- Do not enable enforced CSP until real-browser reports have been resolved.
+- The current pull request remains Draft; do not merge or deploy to production without explicit approval.
 
-## 2. Verification completed
+## Signature storage layout
 
-Latest full regression baseline: commit `e49f8ce6322224cb7feda48764fe4810d2e0701f` (push #1822 / PR #1823). The current documentation-only head is `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`.
-
-- Push CI run #1822 (`43763421813`): **success** (244 regression tests).
-- Pull-request CI run #1823 (`43763427297`): **success** (244 regression tests).
-- All 244 regression tests passed.
-- Full-history Gitleaks scan and Python dependency audit passed.
-- Python compilation, browser JavaScript syntax, Lua syntax and Alpine CSP evaluator checks passed.
-- PostgreSQL 17 and SQLite migrations passed.
-- Standalone Docker image build, Compose startup, application healthcheck and browser smoke test passed.
-- Scheduled-backup remote-filesystem guards passed, including rejection of unmounted/local targets and symlinked lock files.
-- Encrypted Docker backup, fresh-deployment restore and archive verification passed.
-- Chromium/Playwright exercised the local administrator login, personal signature API, all seven administration areas, signature and group CRUD, group membership and weights, GROUP rules, export download, import preview, authorization boundaries, domain override policies, logout and session invalidation.
-- The browser smoke test also typed into the existing Quill editor, applied bold formatting and verified that the resulting HTML reached the raw-source textarea.
-
-The latest push CI run #1843 (`43766145281`) and pull-request CI run #1844 (`43766152801`) both passed on README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`. Both completed the `unit` job successfully with no failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. The changes since that full regression were documentation-only; no application behavior changed.
-
-The two successful CI runs validate the same commit. They provide automated regression and local-container evidence; they do **not** prove live authentication against external identity providers, a real cross-host recovery, production NFS/SMB behavior, SMTP delivery, DKIM correctness or production deployment readiness.
-
-The browser's report-only CSP instrumentation currently observes two `style-src-attr` violations originating from vendored Quill 1.3.7 and no script-policy violations. CSP therefore remains report-only. The editor replacement is deliberately deferred; no broad `unsafe-inline` exception has been added.
-
-## 3. Current limitations
-
-### Identity
-
-- Live interactive LDAP and OIDC sign-in still need verification against a real Active Directory and Authentik instance.
-- Managed OIDC logout is implemented through discovery metadata, but the RP-initiated logout flow still needs live verification against Authentik.
-- Authentik UserInfo must provide a verified email and a groups array. The application currently uses `signature-users` and `signature-admins`.
-- The Authentik API service token and LDAP service bind retrieve profile attributes on signature lookup. Technical lookup failures fall back to the last successful PostgreSQL cache; confirmed missing or inactive accounts clear that cache. If no cached record exists, profile attributes are empty.
-
-### Browser and CSP
-
-- The frontend CSP remains `Content-Security-Policy-Report-Only`.
-- Alpine's CSP-compatible build is version-pinned and protected by SRI, but still loaded from a CDN.
-- Chromium/Playwright smoke coverage verifies local administrator login, the personal signature API, all seven administration sections, signature creation and metadata update, group creation/rename/member-weight update/deletion, GROUP rule creation/update/deletion, export download, import preview, signed normal-user authorization, administrator API denial, domain override allow/deny behavior, logout and session invalidation. The follow-up browser test now also types and applies bold formatting in the real personal Quill editor and checks synchronization into the raw HTML source textarea. Live LDAP/OIDC identity-provider sign-in and logout against external services remain outstanding. Chromium report-only instrumentation observes exactly two `style-src-attr` violations originating in Quill 1.3.7 during the current browser flow; no script-policy violations were observed. These are a known editor compatibility issue, not grounds for a broad `unsafe-inline` exception. The policy remains report-only until a replacement/editor strategy is proven.
-
-### Rspamd and mail flow
-
-- The Lua adapter uses an HTTPS API endpoint, a shared engine key, bounded request timeout and response-size limits.
-- Every top-level `multipart/*` message is deliberately left unchanged. The current rewrite path is limited to non-multipart messages.
-- Outlook marker behavior needs tests with real client versions.
-- SMTP envelope sender authorization must be enforced by Mailcow/Postfix. `task:get_user()` alone does not prove send-as authorization.
-- Rspamd processing order and DKIM signing order have not been verified in a disposable Mailcow environment.
-- No production Mailcow configuration has been changed.
-
-### Operations
-
-- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. Selective administrator export and additive import are implemented; imports never overwrite existing records and conflicting records require manual resolution. The cross-host runbook now defines host-isolation acceptance, remote NFS/SMB validation and a reusable evidence worksheet; none of those real-host checks has yet been executed. The Docker restore integration test restores a realistic LDAP provider `.env` fixture, compares its complete contents including the bind credential, asserts restrictive restored permissions (0600 file / 0700 provider directory), and loads the restored configuration through the application's `IdentityProviderRegistry` to verify that it constructs an LDAP provider with the restored connection settings and bind credential. Destructive in-place restore remains unsupported. See [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md) and [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md).
-- Historical CI failures involving archive inventory and migration compatibility have been corrected and superseded by the successful current full CI runs listed above.
-- Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
-- A dynamic penetration test and realistic load test have not been performed.
-
-## 4. Required before wider preview/release
-
-1. Verify live LDAP/OIDC sign-in and logout against real Active Directory and Authentik services; browser authorization, normal-user access and domain override policies are already covered by the smoke suite.
-2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Execute and retain evidence for the documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage using the new acceptance steps. Only after that consider destructive in-place restore.
-4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
-5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
-6. Validate rate-limit thresholds and run a focused security review.
-
-## 5. Scope decisions
-
-- Finish and test OpenSigWeave as a standalone application first.
-- Keep the core independent of Mailcow-specific UI and account management.
-- Do not implement native Mailcow UI integration in this repository. That will be a separate future project.
-- Keep the current pull request as Draft until the standalone preview has been tested.
-- Never deploy to production Mailcow as part of this development work without explicit approval.
-
-
-### Signature file layout
-
-The canonical HTML file is `signatur/{Signaturname}/signature.html`; immutable UUID-based version snapshots live under `signatur/{Signaturname}/.versions/`. The database ID remains stable when the signature name and directory are changed.
+The configured storage root contains `signatur/{Signaturname}/signature.html` and immutable UUID snapshots under `signatur/{Signaturname}/.versions/`. PostgreSQL retains stable internal IDs and metadata; renaming a signature renames its directory without changing its ID.

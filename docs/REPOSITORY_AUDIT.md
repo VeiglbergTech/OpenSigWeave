@@ -1,103 +1,50 @@
 # Repository and security audit
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
-**Development baseline:** `architecture/refactor-foundation`  
 **Review date:** 2026-11-15  
-**Purpose:** Engineering review of the current standalone preview. This is not a security certification or penetration test.
+**Scope:** Current standalone preview. This is an engineering review, not a penetration test or security certification.
 
-## 1. Scope and baseline
+## Current implementation
 
-The original repository was a compact FastAPI application with an Authentik-specific profile lookup, SQLite persistence and a Rspamd Lua adapter. The current branch has been refactored substantially. The old findings below are retained as historical context only; the status table describes the current branch.
+- FastAPI portal, management API, PostgreSQL/Alembic and SQLite compatibility.
+- Per-domain Authentik/generic OIDC or LDAPS login and independent profile providers; local emergency administrator.
+- Versioned signature HTML storage, sanitization, catalog, groups, rules and weighted selection.
+- CSRF/session/host controls, request limits, shared database rate limiting and proxy-CIDR-aware client identity.
+- Encrypted full backups, fresh-target restore, verified retention and guarded remote-mount scheduling.
+- Optional Rspamd adapter, isolated from the standalone application and Mailcow configuration.
 
-## 2. Current implementation summary
+## Security and operational findings
 
-- FastAPI application with managed OIDC providers, LDAPS / Active Directory authentication and an independent local emergency administrator login; group-based authorization is shared across modes.
-- Per-provider OIDC discovery/callback/logout handling and a separate profile-attribute provider.
-- PostgreSQL and Alembic for standalone persistence; SQLite compatibility remains.
-- Hybrid signature storage: relational metadata plus versioned HTML files.
-- Signature catalog, variants, weighted selection and persisted rules.
-- Server-side HTML sanitization, autoescaped profile variables and sandboxed previews.
-- Session-bound CSRF, secure session cookies, trusted-host checks, response headers and body-size limits.
-- Shared database-backed rate limiting for login, legacy and managed OIDC callbacks, and signature-engine requests.
-- Versioned, encrypted Docker-aware full backups, fresh-deployment restore, verified retention and guarded scheduled backups to a mounted remote filesystem.
-- Rspamd adapter with external configuration, HTTPS-only API URL, shared engine key, bounded timeout and response-size limits.
-- Standalone Docker Compose stack with a non-root application container and persistent volumes.
-
-## 3. Security findings and current status
-
-| Area | Current status | Remaining risk/work |
+| Area | Verified implementation | Remaining work |
 |---|---|---|
-| Historical engine credential | Removed from current Lua source; runtime configuration is external. | Treat the historical value as compromised and rotate wherever deployed. Git history was not rewritten. |
-| Browser authorization | Admin and personal-user routes enforce group checks server-side; Chromium/Playwright covers signed normal-user sessions, administrator API access/denial, personal signature access and domain override allow/deny behavior. | Live LDAP/OIDC sign-in and reverse-proxy deployment behavior remain external acceptance work. |
-| CSRF | Session-bound token required for state-changing browser requests; admin UI mutation paths are exercised in the browser smoke flow. | Validate behind the intended reverse-proxy topology and during live-provider sign-in. |
-| Session security | Strong startup secret validation; Secure, HttpOnly, SameSite cookie with limited lifetime. | Validate behind the intended reverse-proxy topology. |
-| Authentication | Managed OIDC providers, LDAPS / Active Directory bind authentication and independent local emergency administrator login; authorization is group-based. | Live sign-in and logout still need verification against real identity providers. |
-| Signature-group concurrency | PostgreSQL 17 CI passed 12-worker concurrency tests for both variant and group no-repeat rotation; Chromium/Playwright covers group CRUD, membership/weight updates and GROUP rules. | Realistic production-load testing remains outstanding. |
-| Authentik API | HTTPS required, TLS verification enabled, bounded timeout, exact email match and active-user check. | Validate least-privilege service account permissions in a real Authentik instance. |
-| HTML handling | Server-side allowlist sanitizer, re-sanitization before use, autoescaped identity data and sandboxed previews. | Real-browser testing and email-client rendering compatibility remain. |
-| Host validation | TrustedHostMiddleware accepts the callback hostname and explicit aliases only. | Proxy Host/forwarded-header behavior must match deployment topology. |
-| Request size | Global request-body limit and bounded signature HTML storage. | Validate operational limits with representative usage. |
-| Rate limiting | Atomic database-backed counters shared across workers; login, legacy and managed OIDC callback paths, and signature-engine requests are covered; proxy IP headers trusted only from configured CIDRs. | Tune thresholds against real engine throughput. |
-| File storage | Generated UUID names, path containment, symlink checks, atomic writes and SHA-256 integrity verification. | Real cross-host restore and remote filesystem failure scenarios remain. |
-| Administrator exports/imports | Selective versioned ZIP export and additive import are implemented, with SHA-256 asset checksums, archive/path/size validation, dry-run preview, conflict handling, administrator authorization and transactional cleanup. | Review rule conditions for identifiers before sharing; external operational acceptance remains. |
-| Docker isolation | Non-root UID, read-only root filesystem, dropped capabilities, no-new-privileges and loopback-only port. | Container image vulnerability scanning and runtime deployment review remain useful follow-up work. |
-| Rspamd MIME rewrite | Top-level multipart messages are deliberately left unchanged; only supported non-multipart rewrite paths are active. | No full Mailcow MIME/SMTP/DKIM integration proof. |
-| CSP | Restrictive policy remains report-only; Alpine CSP build and SRI are used. Chromium reports two Quill 1.3.7 `style-src-attr` violations and no script-policy violations. | Editor strategy is deferred; resolve the actual violations before enforcement. |
+| Authentication/authorization | Managed OIDC, LDAPS, local emergency login and server-side role checks | Live provider sign-in/logout and group mapping |
+| Browser security | CSRF, secure sessions, trusted hosts, response headers and server-side HTML sanitization | CSP remains report-only; two Quill 1.3.7 style-attribute reports remain |
+| Request protection | Body limits, shared database rate limits and trusted-proxy CIDR checks | Validate thresholds and proxy behavior on the target deployment |
+| Signature storage | Path validation, symlink rejection, atomic writes and SHA-256 integrity checks | Real cross-host restore and remote-filesystem failure tests |
+| Backups | Encrypted archive, fresh-target restore, checksum verification and fail-closed retention | Two-host drill and real NFS/SMB acceptance |
+| Mail flow | HTTPS engine API; multipart messages fail closed and remain unchanged | SMTP sender authorization, Rspamd ordering, idempotency and DKIM in disposable Mailcow |
+| Container | Non-root user, read-only root filesystem, dropped capabilities, no-new-privileges and loopback binding | Deployment-specific runtime review |
 
-## 4. Mail-flow trust boundaries
+See [web and Rspamd security review](WEB_AND_RSPAMD_REVIEW.md) for detailed trust boundaries and test cases, and [backup/restore design](BACKUP_RESTORE_DESIGN.md) for recovery guarantees.
 
-The Rspamd adapter obtains the envelope sender from the Rspamd task and requires an authenticated SMTP user. These are separate facts. The authenticated SMTP identity is not proof that the mailbox may send as the selected envelope sender.
+## Historical credential
 
-Mailcow/Postfix sender verification must remain enabled. Mailbox aliases and delegated send-as identities must be configured explicitly. Do not add broad sender restrictions exceptions or global send-as permissions to make signature selection work.
+A Rspamd engine credential was present in historical Git content. It is not reproduced here. Treat it as compromised and rotate it anywhere it may have been deployed, copied or stored. Git history was not rewritten; the known historical finding is allowlisted for scanning, while new findings remain subject to CI.
 
-The Rspamd module currently leaves every top-level `multipart/*` message unchanged. This is intentional fail-safe behavior. Do not enable raw string-based multipart reconstruction as a workaround.
+## CI evidence and limits
 
-The Lua prefilter registration does not prove DKIM order. A disposable integration test must inspect the effective Rspamd pipeline and cryptographically verify the final delivered DKIM signature.
+- Full regression runs #1822/#1823 passed 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
+- Push #1843 and PR #1844 passed on documentation-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`.
+- CI covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
 
-## 5. Historical baseline findings
+Automated local CI is not live LDAP/OIDC validation, a cross-host restore drill, real NFS/SMB testing, SMTP/DKIM integration, a dynamic penetration test or production certification.
 
-The initial audit on `main` identified:
+## Remaining actions
 
-- A static Rspamd engine credential in the Lua source.
-- Missing route-level authorization on some domain-management endpoints.
-- Weak fallback session-secret behavior.
-- Disabled TLS certificate verification for Authentik API requests.
-- Missing explicit CSRF protection.
-- Untrusted HTML flowing into browser/editor paths.
-- Manual MIME rewriting without sufficient nested multipart fixture coverage.
-- Authentik-specific OIDC configuration.
-- SQLite-only persistence without migrations.
-- Unsupported broad SPF/DMARC/DKIM deliverability claims.
-
-These findings drove the work on the current branch. The current status is in the table above; do not infer that every integration or deployment risk is closed simply because the original code issue was remediated.
-
-## 6. CI evidence
-
-The latest successful push and pull-request CI runs before this cleanup target README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`:
-
-- Push run #1843 (`43766145281`): success.
-- Pull-request run #1844 (`43766152801`): success.
-- Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Changes since that full regression run were documentation-only; no application behavior changed.
-- Full-history Gitleaks scan and dependency audit passed.
-- Python, JavaScript and Lua syntax checks and the Alpine CSP evaluator passed.
-- PostgreSQL 17 and SQLite migrations passed.
-- Docker build, Compose startup, healthcheck and Chromium/Playwright browser smoke passed.
-- Scheduled backup guards, encrypted Docker backup, fresh restore and archive verification passed.
-- Browser coverage includes local login, admin and normal-user authorization, signature/group/rule management, export/import preview, personal access, domain override policy, logout/session invalidation, and a real Quill typing/formatting assertion.
-
-This evidence is automated regression and local-container evidence. It does not constitute live LDAP/OIDC provider validation, a cross-host disaster-recovery drill, real NFS/SMB validation, SMTP/DKIM integration, a dynamic penetration test or production certification.
-
-## 7. Credential and history handling
-
-The historical Rspamd engine credential must be rotated anywhere it may have been deployed, copied or stored. The value is intentionally not reproduced in this document. The old credential remains in immutable Git history because history rewriting was not authorized. Gitleaks allowlists only the known introducing commits; new findings remain subject to CI scanning.
-
-## 8. Recommended remaining work
-
-1. Complete live LDAP/OIDC sign-in and logout verification against the intended Active Directory and Authentik instances.
-2. Keep CSP in report-only mode; investigate the two Quill `style-src-attr` reports before enforcement. The editor replacement remains a separate deferred task.
-3. Execute the documented two-host restore drill and real NFS/SMB mount/unmount acceptance checks.
-4. Test Rspamd in a disposable Mailcow environment: SMTP sender authorization, supported non-multipart behavior, idempotency and DKIM verification. Multipart messages remain unchanged by design.
-5. Rotate the historical Rspamd engine credential anywhere it may have been deployed; the old value remains in Git history.
-6. Validate rate-limit thresholds under realistic mail throughput and perform a focused dynamic security review.
-7. Review proxy Host/forwarded-header behavior on the intended deployment path.
-
+1. Rotate the historical Rspamd key wherever deployed.
+2. Verify live LDAP/OIDC login, group mapping and logout.
+3. Resolve Quill CSP reports without broad `unsafe-inline` exceptions.
+4. Complete the two-host and real NFS/SMB backup acceptance.
+5. Test Rspamd sender authorization, MIME behavior, idempotency and DKIM in disposable Mailcow.
+6. Validate rate-limit thresholds and reverse-proxy Host/forwarded-header handling.
+7. Perform focused dynamic security and realistic load testing.
