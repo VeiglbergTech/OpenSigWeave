@@ -21,7 +21,6 @@ from typing import List, Optional, Literal
 from dotenv import load_dotenv
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.middleware.body_limit import RequestBodyLimitMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
@@ -49,7 +48,9 @@ from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
-from admin_export import AdminExportError, build_admin_export
+from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
+from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
+from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
 from auth_config import (
     is_valid_email, is_valid_password_hash, oidc_enabled_from_env,
@@ -336,7 +337,14 @@ class CSRFProtectionMiddleware(BaseHTTPMiddleware):
 
 # SessionMiddleware must wrap CSRFProtectionMiddleware so the session is available
 # while validating the anti-CSRF token.
-app.add_middleware(RequestBodyLimitMiddleware, max_body_size=1024 * 1024)
+app.add_middleware(
+    PathAwareRequestBodyLimitMiddleware,
+    default_max_body_size=1024 * 1024,
+    path_limits={
+        "/api/admin/imports/preview": MAX_EXPORT_BYTES,
+        "/api/admin/imports/apply": MAX_EXPORT_BYTES,
+    },
+)
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -1199,6 +1207,34 @@ def export_admin_components(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@app.post("/api/admin/imports/preview")
+async def preview_admin_import(request: Request, db: Session = Depends(get_db)):
+    """Validate an administrator ZIP and return an additive-import preview."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/zip":
+        raise HTTPException(status_code=415, detail="Import archive must use application/zip")
+    try:
+        payload = await request.body()
+        return inspect_admin_import(db, signature_file_store, payload)
+    except AdminImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
+
+@app.post("/api/admin/imports/apply")
+async def apply_admin_import_endpoint(request: Request, db: Session = Depends(get_db)):
+    """Apply a previously reviewed archive after validating it again."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/zip":
+        raise HTTPException(status_code=415, detail="Import archive must use application/zip")
+    try:
+        payload = await request.body()
+        return apply_admin_import(db, signature_file_store, payload)
+    except AdminImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 @app.get("/api/admin/signatures")
