@@ -2,7 +2,7 @@
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
 **Reviewed branch:** `architecture/refactor-foundation`  
-**Review date:** 2026-11-13  
+**Review date:** 2026-11-15  
 **Purpose:** Engineering review of the current standalone preview. This is not a security certification or penetration test.
 
 ## 1. Scope and baseline
