@@ -280,25 +280,22 @@ async function main() {
       identity_provider_id: "browser-smoke-profile-provider"
     }, "profile provider assignment endpoint must acknowledge the persisted provider");
 
-    // Poll the uncached browser-session API response so a cached domain list
-    // cannot make this persistence assertion pass or fail spuriously.
-    await page.waitForFunction(async () => {
-      const response = await fetch("/domains/", { cache: "no-store" });
-      if (!response.ok) return false;
-      const domains = await response.json();
-      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
-      return item && item.identity_provider_id === "browser-smoke-profile-provider"
-        && item.authentication_provider_id === null;
+    // Verify persistence through Playwright's API client rather than a page
+    // wait predicate. This avoids leaving the browser smoke test blocked on a
+    // renderer-side fetch while still reading a fresh server response.
+    const persistedDomainsResponse = await page.request.get(baseURL + "/domains/", {
+      headers: { "Cache-Control": "no-cache" }
     });
-    const assignedProviders = await page.evaluate(async () => {
-      const response = await fetch("/domains/", { cache: "no-store" });
-      const domains = await response.json();
-      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
-      return item ? {
-        identity_provider_id: item.identity_provider_id,
-        authentication_provider_id: item.authentication_provider_id
-      } : null;
-    });
+    assert.equal(persistedDomainsResponse.status(), 200,
+      "domain list API must remain available after provider assignment");
+    const persistedDomains = await persistedDomainsResponse.json();
+    const persistedDomain = persistedDomains.find(
+      item => item.domain_name === "browser-smoke-domain.test"
+    );
+    const assignedProviders = persistedDomain ? {
+      identity_provider_id: persistedDomain.identity_provider_id,
+      authentication_provider_id: persistedDomain.authentication_provider_id
+    } : null;
     assert.deepEqual(assignedProviders, {
       identity_provider_id: "browser-smoke-profile-provider",
       authentication_provider_id: null
