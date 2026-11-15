@@ -17,6 +17,11 @@ async function main() {
     args: ["--no-sandbox"],
   });
   const page = await browser.newPage();
+  // Bound browser operations so CI reports the stalled action before its outer timeout.
+  page.setDefaultTimeout(15000);
+  page.setDefaultNavigationTimeout(30000);
+  page.on("requestfailed", request => process.stderr.write("[browser-smoke] request failed: " + request.method() + " " + request.url() + "\n"));
+  const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
   await page.addInitScript(() => {
     window.__cspViolations = [];
     window.addEventListener("securitypolicyviolation", event => {
@@ -36,6 +41,7 @@ async function main() {
   page.on("pageerror", error => pageErrors.push({ message: error.message, stack: error.stack }));
 
   try {
+    checkpoint("login: open");
     const loginResponse = await page.goto(baseURL + "/login");
     assert.equal(loginResponse.status(), 200, "login page must load");
     await page.getByLabel("Email address").fill(email);
@@ -45,6 +51,7 @@ async function main() {
     await page.locator("#logout-button").waitFor();
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
+    checkpoint("login: complete");
     // Exercise the real personal Quill editor before entering the admin UI.
     // This verifies that the rich-text surface remains functional under the
     // report-only CSP and that edits are synchronized to the source textarea.
@@ -60,12 +67,14 @@ async function main() {
     assert.match(await personalEditor.innerHTML(), /<strong>B<\/strong>/,
       "Quill formatting must remain functional with the current report-only CSP");
 
-    const personal = await page.request.get(baseURL + "/api/my-signature");
+    checkpoint("personal editor: complete");
+    const personal = await page.request.get(baseURL + "/api/my-signature", { timeout: 15000 });
     assert.equal(personal.status(), 200, "signed-in administrator can load personal signature");
 
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor();
 
+    checkpoint("admin: open");
     const sections = [
       { tab: "Identity Providers", heading: "Identity Providers" },
       { tab: "Domains", heading: "Managed Domains" },
@@ -83,6 +92,7 @@ async function main() {
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();
 
+    checkpoint("admin sections: complete");
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
     const exportButton = exportPanel.getByRole("button", { name: "Download selected components" });
@@ -105,6 +115,7 @@ async function main() {
     const exportBytes = fs.readFileSync(exportPath);
     assert.equal(exportBytes.subarray(0, 4).toString("hex"), "504b0304", "download must be a ZIP archive");
 
+    checkpoint("export: complete");
     // Validate the downloaded archive through the real import UI. Existing matching
     // domains/providers should be reusable and the preview must not write anything.
     await page.getByRole("button", { name: "Imports", exact: true }).click();
@@ -129,6 +140,7 @@ async function main() {
     assert.equal(await importPanel.getByText("New: 0 · Reused: 3").count(), 1,
       "preview should identify all matching built-in signature groups as reusable");
 
+    checkpoint("import preview: complete");
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
@@ -147,6 +159,7 @@ async function main() {
       return row && row.children[3].textContent.trim() === "2";
     });
 
+    checkpoint("signature create/update: complete");
     const groupPanel = page.locator('[x-data="signatureGroupManager"]');
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
     await groupPanel.getByRole("button", { name: "+ Add Group" }).click();
@@ -160,6 +173,7 @@ async function main() {
     await groupPanel.getByRole("button", { name: "Add", exact: true }).click();
     await groupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" }).waitFor();
 
+    checkpoint("group create/membership: complete");
     const rulesPanel = page.locator('[x-data="ruleManager"]');
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();
@@ -190,6 +204,7 @@ async function main() {
         && row.children[3].textContent.includes("example.test");
     });
 
+    checkpoint("rule create/update: complete");
     // Return to the group tab before interacting with its hidden Alpine panel.
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
 
@@ -231,6 +246,7 @@ async function main() {
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
+    checkpoint("group/signature updates: complete");
     // Remove the rule and group again so this test also covers destructive UI paths.
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     page.once("dialog", dialog => dialog.accept());
@@ -246,6 +262,7 @@ async function main() {
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
+    checkpoint("rule/group deletion: complete");
     // Exercise the complete domain lifecycle through the administrator UI.
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     const domainPanel = page.locator('[x-data="domainManager"]');
@@ -262,10 +279,11 @@ async function main() {
     await createDomainResponse;
     let domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.waitFor();
-    let domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    let domainRecords = await (await page.request.get(baseURL + "/domains/", { timeout: 15000 })).json();
     let createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
     assert.ok(createdDomain, "new domain must be persisted by the create workflow");
 
+    checkpoint("domain create: complete");
     // A profile provider is deliberately available without a configured login provider.
     const profileProviderSelect = domainRow.locator("select").nth(0);
     const providerAssignmentResponse = page.waitForResponse(response =>
@@ -280,10 +298,12 @@ async function main() {
       identity_provider_id: "browser-smoke-profile-provider"
     }, "profile provider assignment endpoint must acknowledge the persisted provider");
 
+    checkpoint("provider assignment: complete");
     // Verify persistence through Playwright's API client rather than a page
     // wait predicate. This avoids leaving the browser smoke test blocked on a
     // renderer-side fetch while still reading a fresh server response.
     const persistedDomainsResponse = await page.request.get(baseURL + "/domains/", {
+      timeout: 15000,
       headers: { "Cache-Control": "no-cache" }
     });
     assert.equal(persistedDomainsResponse.status(), 200,
@@ -301,6 +321,7 @@ async function main() {
       authentication_provider_id: null
     }, "profile provider assignment must persist independently of the login provider");
 
+    checkpoint("provider persistence: complete");
     // Disable and re-enable the domain through the confirmation dialog.
     const domainStatus = domainRow.locator("td").nth(1).locator("span");
     await domainStatus.waitFor({ state: "visible" });
@@ -331,6 +352,7 @@ async function main() {
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
 
+    checkpoint("domain status lifecycle: complete");
     // Save domain policy settings, reload the UI, and verify persistence.
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
@@ -371,6 +393,7 @@ async function main() {
       .locator('input[type="checkbox"]').isChecked(), true);
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
 
+    checkpoint("domain settings: complete");
     // Delete the test domain and verify it is removed from persistence and the UI.
     await domainRow.getByRole("button", { name: "Delete", exact: true }).click();
     const deleteDomainResponse = page.waitForResponse(response =>
@@ -390,6 +413,7 @@ async function main() {
       .some(item => item.domain_name === "browser-smoke-domain.test"), false,
       "deleted domain must no longer be returned by the API");
 
+    checkpoint("domain lifecycle: complete");
     // Exercise normal-user authorization with signed, non-admin browser sessions.
     // The CI workflow signs these sessions with the same secret used by SessionMiddleware.
     const normalContext = await browser.newContext();
@@ -423,6 +447,7 @@ async function main() {
     assert.equal((await savedSignature.json()).html_content, "<p>Normal user browser signature</p>");
     await normalContext.close();
 
+    checkpoint("normal-user authorization: complete");
     const restrictedContext = await browser.newContext();
     await restrictedContext.addCookies([{
       name: "opensigweave-session",
@@ -464,7 +489,7 @@ async function main() {
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
     await page.getByLabel("Email address").waitFor();
-    const protectedPage = await page.request.get(baseURL + "/");
+    const protectedPage = await page.request.get(baseURL + "/", { timeout: 15000 });
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
     process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, export ZIP download and import preview, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
