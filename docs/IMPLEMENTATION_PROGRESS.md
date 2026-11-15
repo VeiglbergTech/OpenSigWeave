@@ -3,7 +3,7 @@
 **Project:** OpenSigWeave standalone preview  
 **Working branch:** `architecture/refactor-foundation`  
 **Status:** First Docker-testable revision; not a production release  
-**Last documentation review:** 2026-11-14
+**Last documentation review:** 2026-11-15
 
 This document describes the current branch state. It is not a promise that deferred work is complete.
 
@@ -38,7 +38,7 @@ This document describes the current branch state. It is not a promise that defer
 - Scheduled backup automation: systemd service and daily timer create full encrypted backups on a separately mounted remote filesystem, enforce a remote-filesystem allowlist, prevent overlapping runs and apply verified retention. A CI smoke test now verifies that unmounted targets and local filesystems are rejected before the backup CLI runs, that an approved remote filesystem runs backup creation followed by retention, and that symlinked lock files are refused without modifying their targets. The systemd unit creates a private `/run/opensigweave` runtime directory for the lock.
 - Fresh-deployment restore: verifies the encrypted archive before creating target data, refuses existing Compose projects/volumes/directories, restores exact application image and PostgreSQL dump into new volumes, restores encrypted configuration, checks the restored Alembic revision and compares SHA-256 inventories of both restored data volumes against the backup manifest. Existing deployments are never overwritten.
 - Selective administrator export and additive import are implemented. Versioned ZIP archives include selected signatures and all HTML versions, domains and original templates, groups, rules and identity-provider metadata with SHA-256 asset checksums. Import validates archive paths, entry types, duplicate names, format version, file counts, compressed/uncompressed size bounds and every asset checksum. The UI provides a dry-run preview and requires an explicit apply action. Existing signatures, rules and non-identical groups/domains/providers are never overwritten; exact matching domains, providers and groups can be reused. Conflicts block the transaction and must be resolved manually. Database changes are committed transactionally and newly written signature assets are cleaned up on failure. Provider credentials, application secrets, personal overrides and identity caches are excluded; imported provider records contain metadata only and require local credential configuration. Rule conditions may contain identifiers; the UI warns before sharing.
-- Cross-host restore drill, destructive in-place restore and real NFS/SMB validation remain outstanding. Scheduled remote-mount backup, verified retention, systemd service/timer, mountpoint enforcement and filesystem allowlisting are implemented; a real NFS/SMB host test is still required.
+- Cross-host restore drill, destructive in-place restore and real NFS/SMB validation remain outstanding. The operator runbook now includes explicit source/destination isolation checks, concrete NFS/SMB mount/read-write/verification/unmount-refusal acceptance steps and a structured evidence record. Scheduled remote-mount backup, verified retention, systemd service/timer, mountpoint enforcement and filesystem allowlisting are implemented; a real two-host drill and real NFS/SMB host test are still required.
 - Rule persistence and evaluation by priority, with AND-combined sender/domain/group/claim/attribute conditions.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL` and `NONE`.
 - Server-side HTML sanitization and automatic escaping of dynamic profile values.
@@ -115,7 +115,7 @@ The latest full CI runs `43690774775` (push) and `43690777952` (pull request) bo
 
 ### Operations
 
-- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. Selective administrator export and additive import are implemented; imports never overwrite existing records and conflicting records require manual resolution. A real cross-host restore drill, destructive in-place restore and real NFS/SMB validation remain outstanding. See [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+- Docker-aware full backup and initial fresh-deployment restore are implemented. Restore validates the database migration revision and the SHA-256 inventory of the signature and IDP volumes. Verified retention and a scheduled systemd backup to a separately mounted remote filesystem are implemented. Selective administrator export and additive import are implemented; imports never overwrite existing records and conflicting records require manual resolution. The cross-host runbook now defines host-isolation acceptance, remote NFS/SMB validation and a reusable evidence worksheet; none of those real-host checks has yet been executed. Destructive in-place restore remains unsupported. See [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md) and [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md).
 - Historical CI failures involving archive inventory and migration compatibility have been corrected and superseded by the successful current full CI runs listed above.
 - Rate-limit thresholds, especially the engine endpoint threshold, need validation against realistic mail throughput.
 - A dynamic penetration test and realistic load test have not been performed.
@@ -124,7 +124,7 @@ The latest full CI runs `43690774775` (push) and `43690777952` (pull request) bo
 
 1. Expand real-browser coverage to normal-user authorization, domain-specific workflows and identity-provider sign-in; core administrator CRUD paths are already smoke-tested.
 2. Review browser CSP reports and fix actual violations; do not enable enforcement until verified.
-3. Complete a documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage. Only after that consider destructive in-place restore.
+3. Execute and retain evidence for the documented cross-host restore drill covering PostgreSQL, the recorded Alembic revision, signature files, IDP credentials and deployment configuration. Validate the scheduled workflow against real NFS/SMB storage using the new acceptance steps. Only after that consider destructive in-place restore.
 4. Test Rspamd only in a disposable environment, including sender authorization, MIME fixtures, idempotency and DKIM validation.
 5. Rotate the historical Rspamd engine credential anywhere it may have been deployed. Its old value remains in Git history; history has not been rewritten.
 6. Validate rate-limit thresholds and run a focused security review.
