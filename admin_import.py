@@ -40,6 +40,9 @@ from signature_storage import MAX_SIGNATURE_BYTES, SignatureFileStore, Signature
 
 MAX_IMPORT_ENTRIES = 512
 MAX_MANIFEST_BYTES = 2 * 1024 * 1024
+MAX_COMPONENT_ROWS = 10000
+PROVIDER_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+GROUP_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 MODE_VALUES = frozenset({"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"})
@@ -135,6 +138,9 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
             data = _object(manifest.get("data"), "manifest data")
             if set(data) != set(components):
                 raise AdminImportError("Manifest data does not match its component selection")
+            for component, rows in data.items():
+                if not isinstance(rows, list) or len(rows) > MAX_COMPONENT_ROWS:
+                    raise AdminImportError(f"Import component {component} has an invalid number of records")
             declared_assets = manifest.get("assets")
             if not isinstance(declared_assets, list) or len(declared_assets) != len(entries) - 1:
                 raise AdminImportError("Manifest asset list does not match the archive")
@@ -206,6 +212,8 @@ def inspect_admin_import(
         for row in data["identity_providers"]:
             row = _object(row, "identity provider")
             provider_id = _string(row.get("id"), "identity provider id", 64)
+            if not PROVIDER_ID_PATTERN.fullmatch(provider_id):
+                raise AdminImportError("Identity provider id is not a valid provider slug")
             if provider_id in imported_providers:
                 conflicts.append(f"Duplicate identity provider id: {provider_id}")
                 continue
@@ -237,11 +245,14 @@ def inspect_admin_import(
                 provider_id = row.get(key)
                 if provider_id is not None:
                     _string(provider_id, key, 64)
+                    if not PROVIDER_ID_PATTERN.fullmatch(provider_id):
+                        raise AdminImportError("Domain references an invalid identity provider id")
                     if provider_id not in imported_providers and db.get(IdentityProviderDB, provider_id) is None:
                         conflicts.append(f"Domain references unavailable identity provider: {provider_id}")
 
     if "domains" in components:
         imported_domain_ids = set()
+        imported_domain_names = set()
         for row in data["domains"]:
             row = _object(row, "domain")
             source_id = _integer(row.get("id"), "domain id", 1)
@@ -250,6 +261,9 @@ def inspect_admin_import(
                 continue
             imported_domain_ids.add(source_id)
             name = _string(row.get("domain_name"), "domain name", 253).strip().casefold().rstrip(".")
+            if name in imported_domain_names:
+                conflicts.append(f"Duplicate domain name: {name}")
+            imported_domain_names.add(name)
             labels = name.split(".")
             if len(labels) < 2 or any(
                 not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
@@ -279,9 +293,13 @@ def inspect_admin_import(
 
     if "signatures" in components:
         seen_names = set()
+        seen_signature_ids = set()
         for row in data["signatures"]:
             row = _object(row, "signature")
             signature_id = _identifier(row.get("id"), "signature id")
+            if signature_id in seen_signature_ids:
+                conflicts.append(f"Duplicate signature id: {signature_id}")
+            seen_signature_ids.add(signature_id)
             name = _string(row.get("name"), "signature name", 255).strip()
             folded = name.casefold()
             if folded in seen_names:
@@ -290,6 +308,10 @@ def inspect_admin_import(
             if db.get(SignatureDB, signature_id) or db.query(SignatureDB).filter(func.lower(SignatureDB.name) == folded).first():
                 conflicts.append(f"Signature id or name already exists: {name}")
             else:
+                try:
+                    store.ensure_name_available(name)
+                except SignatureStorageError:
+                    conflicts.append(f"Signature storage name is already in use: {name}")
                 additions["signatures"] += 1
                 signature_ids.add(signature_id)
             if row.get("scope") not in SCOPE_VALUES or row.get("mode") not in MODE_VALUES:
@@ -300,6 +322,8 @@ def inspect_admin_import(
             if not isinstance(domain_ids, list) or any(isinstance(value, bool) or not isinstance(value, int) for value in domain_ids):
                 conflicts.append(f"Signature domain assignments are invalid: {name}")
             else:
+                if len(set(domain_ids)) != len(domain_ids):
+                    conflicts.append(f"Signature has duplicate domain assignments: {name}")
                 for source_domain_id in domain_ids:
                     if source_domain_id not in domain_map:
                         target = db.get(DomainDB, source_domain_id)
@@ -348,6 +372,8 @@ def inspect_admin_import(
             row = _object(row, "signature group")
             group_id = _identifier(row.get("id"), "group id")
             slug = _string(row.get("slug"), "group slug", 64)
+            if not GROUP_SLUG_PATTERN.fullmatch(slug):
+                raise AdminImportError("Group slug is invalid")
             name = _string(row.get("name"), "group name", 255)
             if group_id in seen_group_ids or slug in seen_group_slugs:
                 conflicts.append(f"Duplicate group id or slug in import: {slug}")
@@ -363,6 +389,8 @@ def inspect_admin_import(
             if not isinstance(domain_ids, list) or not isinstance(members, list):
                 conflicts.append(f"Group assignments are invalid: {slug}")
                 continue
+            if len(set(domain_ids)) != len(domain_ids):
+                conflicts.append(f"Group contains duplicate domain assignments: {slug}")
             resolved_domains = []
             for source_domain_id in domain_ids:
                 _integer(source_domain_id, "group domain id", 1)
@@ -417,10 +445,14 @@ def inspect_admin_import(
             group_ids.add(group_id)
 
     if "rules" in components:
+        seen_rule_ids = set()
         for row in data["rules"]:
             row = _object(row, "signature rule")
             rule_id = _identifier(row.get("id"), "rule id")
             name = _string(row.get("name"), "rule name", 255)
+            if rule_id in seen_rule_ids:
+                conflicts.append(f"Duplicate rule id: {rule_id}")
+            seen_rule_ids.add(rule_id)
             if db.get(SignatureRuleDB, rule_id):
                 conflicts.append(f"Rule id already exists: {name}")
             else:
