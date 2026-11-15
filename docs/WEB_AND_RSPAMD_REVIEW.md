@@ -116,11 +116,11 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest successful push and pull-request CI runs both target commit `e4521b6de0722dee0a643841518ef87ad85ec997`:
+The latest successful push and pull-request CI runs both target documentation-only commit `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`:
 
-- Push run #1832 (`43764251176`): success.
-- Pull-request run #1833 (`43764253965`): success.
-- Both current-head `unit` jobs completed without failed steps.
+- Push run #1839 (`43765332773`): success.
+- Pull-request run #1840 (`43765338070`): success.
+- Both current-head `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
 - The preceding full regression run #1822/#1823 passed all 244 regression tests, including PostgreSQL 17 concurrency coverage.
 - Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks and Alpine CSP evaluator passed.
 - PostgreSQL and SQLite migrations passed.

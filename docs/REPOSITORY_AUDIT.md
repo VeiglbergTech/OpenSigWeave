@@ -73,11 +73,11 @@ These findings drove the work on the current branch. The current status is in th
 
 ## 6. CI evidence
 
-The latest successful push and pull-request CI runs both target documentation-only commit `66fcbdbebddc7f50ad8af5841ab4a2b2a52c0909`:
+The latest successful push and pull-request CI runs both target documentation-only commit `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`:
 
-- Push run #1837 (`43764798215`): success.
-- Pull-request run #1838 (`43764800594`): success.
-- Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Changes since that full regression run were documentation and browser-diagnostic cleanup; no application behavior changed.
+- Push run #1839 (`43765332773`): success.
+- Pull-request run #1840 (`43765338070`): success.
+- Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Changes since that full regression run were documentation-only; no application behavior changed.
 - Full-history Gitleaks scan and dependency audit passed.
 - Python, JavaScript and Lua syntax checks and the Alpine CSP evaluator passed.
 - PostgreSQL 17 and SQLite migrations passed.
