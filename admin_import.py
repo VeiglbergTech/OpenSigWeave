@@ -462,22 +462,38 @@ def inspect_admin_import(
                 additions["rules"] += 1
             if row.get("action_mode") not in RULE_ACTIONS:
                 conflicts.append(f"Rule action is unsupported: {name}")
-            _integer(row.get("priority"), "rule priority", -2147483648)
+            _integer(row.get("priority"), "rule priority", -100000)
+            if row["priority"] > 100000:
+                conflicts.append(f"Rule priority is outside the supported range: {name}")
             _boolean(row.get("is_enabled"), "rule enabled state")
             signature_id = row.get("signature_id")
-            if signature_id is not None and signature_id not in signature_ids and db.get(SignatureDB, signature_id) is None:
-                conflicts.append(f"Rule {name} references a signature not included in the import")
+            if signature_id is not None:
+                signature_id = _identifier(signature_id, "rule signature id")
+                if signature_id not in signature_ids and db.get(SignatureDB, signature_id) is None:
+                    conflicts.append(f"Rule {name} references a signature not included in the import")
+                target_signature = db.get(SignatureDB, signature_id)
+                if target_signature is not None and target_signature.mode != row["action_mode"]:
+                    conflicts.append(f"Rule {name} action mode does not match its signature")
             group_id = row.get("group_id")
-            if group_id is not None and group_id not in group_ids and db.get(SignatureGroupDB, group_id) is None:
-                conflicts.append(f"Rule {name} references a group not included in the import")
-            if not isinstance(row.get("conditions"), list):
+            if group_id is not None:
+                group_id = _identifier(group_id, "rule group id")
+                if group_id not in group_ids and db.get(SignatureGroupDB, group_id) is None:
+                    conflicts.append(f"Rule {name} references a group not included in the import")
+            if row["action_mode"] == "GROUP":
+                if group_id is None or signature_id is not None:
+                    conflicts.append(f"GROUP rule {name} must target a group only")
+            elif group_id is not None:
+                conflicts.append(f"Non-GROUP rule {name} cannot target a group")
+            if not isinstance(row.get("conditions"), list) or len(row["conditions"]) > 64:
                 conflicts.append(f"Rule conditions are invalid: {name}")
             else:
                 for condition in row["conditions"]:
                     condition = _object(condition, "rule condition")
-                    _string(condition.get("kind"), "condition kind", 64)
+                    kind = _string(condition.get("kind"), "condition kind", 64)
+                    if kind not in {"sender_equals", "domain_equals", "group_contains", "claim_equals", "attribute_equals"}:
+                        conflicts.append(f"Rule {name} contains an unsupported condition")
                     _string(condition.get("key"), "condition key", 255, empty=True)
-                    _string(condition.get("value"), "condition value", 4096, empty=True)
+                    _string(condition.get("value"), "condition value", 4096)
 
     return {
         "format": EXPORT_FORMAT,
