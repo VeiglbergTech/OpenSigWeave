@@ -86,6 +86,9 @@ provider_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/
 provider_dir_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap)"
 [[ "$provider_mode" == "600" && "$provider_dir_mode" == "700" ]] || { echo "Restored IDP configuration permissions are not restrictive" >&2; exit 1; }
 
+# Load the restored provider through the application's real registry.
+"${RESTORE_COMPOSE[@]}" exec -T opensigweave python -c 'from pathlib import Path; from identity.registry import IdentityProviderRegistry; r = IdentityProviderRegistry(Path("/app/.idp")); p = r.get("ci-ldap"); cfg = r.get_config("ci-ldap"); assert p is not None and type(p).__name__ == "LDAPAttributeProvider"; assert p.url == "ldaps://directory.example.test"; assert p.bind_dn == "cn=opensigweave,ou=svc,dc=example,dc=test"; assert p.bind_password == "restore-secret-probe"; assert p.base_dn == "dc=example,dc=test"; assert cfg["LDAP_BIND_PASSWORD"] == "restore-secret-probe"; print("Restored LDAP provider registry load passed")'
+
 # Exercise retention with real age-encrypted archives. The preview must not
 # delete anything; applying retention must verify all archives and keep newest.
 RETENTION_DIR="$WORK/retention"
