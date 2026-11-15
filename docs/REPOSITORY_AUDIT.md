@@ -73,11 +73,11 @@ These findings drove the work on the current branch. The current status is in th
 
 ## 6. CI evidence
 
-The latest successful push and pull-request CI runs both target commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`:
+The latest successful push and pull-request CI runs both target commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`:
 
-- Push run #1796 (`43752194740`): success.
-- Pull-request run #1797 (`43752199398`): success.
-- 243 regression tests passed.
+- Push run #1822 (`43763421813`): success.
+- Pull-request run #1823 (`43763427297`): success.
+- 244 regression tests passed.
 - Full-history Gitleaks scan and dependency audit passed.
 - Python, JavaScript and Lua syntax checks and the Alpine CSP evaluator passed.
 - PostgreSQL 17 and SQLite migrations passed.
