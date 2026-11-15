@@ -211,9 +211,12 @@ def inspect_admin_import(
                 continue
             if row.get("credentials_included") is not False:
                 conflicts.append(f"Identity provider {provider_id} has invalid credential metadata")
+            provider_type = _string(row.get("provider_type"), "provider type", 32)
+            if provider_type not in {"ldap", "authentik", "oidc"}:
+                raise AdminImportError("Identity provider type is unsupported")
             expected = (
                 _string(row.get("display_name"), "provider display name", 120),
-                _string(row.get("provider_type"), "provider type", 32),
+                provider_type,
                 _boolean(row.get("is_enabled"), "provider enabled state"),
             )
             existing = db.get(IdentityProviderDB, provider_id)
@@ -247,6 +250,13 @@ def inspect_admin_import(
                 continue
             imported_domain_ids.add(source_id)
             name = _string(row.get("domain_name"), "domain name", 253).strip().casefold().rstrip(".")
+            labels = name.split(".")
+            if len(labels) < 2 or any(
+                not label or len(label) > 63 or label.startswith("-") or label.endswith("-")
+                or not all(char.isascii() and (char.isalnum() or char == "-") for char in label)
+                for label in labels
+            ):
+                raise AdminImportError("Domain name is invalid")
             expected = (
                 _boolean(row.get("is_active"), "domain active state"),
                 _boolean(row.get("allow_overrides"), "domain override policy"),
@@ -308,6 +318,8 @@ def inspect_admin_import(
                 numbers.add(number)
                 _identifier(version.get("id"), "version id")
                 path = _string(version.get("asset"), "version asset path", 512)
+                if not path.startswith("assets/signatures/") or not path.endswith(".html"):
+                    conflicts.append(f"Signature version asset path is invalid: {name}")
                 if path not in assets:
                     conflicts.append(f"Signature version asset is missing: {name}")
                 elif hashlib.sha256(assets[path]).hexdigest() != version.get("sha256") or len(assets[path]) != version.get("size_bytes"):
@@ -339,8 +351,13 @@ def inspect_admin_import(
             else:
                 additions["groups"] += 1
                 group_ids.add(group_id)
+            _string(row.get("name"), "group name", 255)
+            if row.get("selection_policy") != "WEIGHTED_RANDOM_NO_REPEAT":
+                conflicts.append(f"Group selection policy is unsupported: {slug}")
+            _boolean(row.get("is_active"), "group active state")
             if not isinstance(row.get("domain_ids", []), list) or not isinstance(row.get("members", []), list):
                 conflicts.append(f"Group assignments are invalid: {slug}")
+                continue
             for source_domain_id in row.get("domain_ids", []):
                 if source_domain_id not in domain_map and db.get(DomainDB, source_domain_id) is None:
                     conflicts.append(f"Group {slug} references a domain not included in the import")
@@ -363,6 +380,8 @@ def inspect_admin_import(
                 additions["rules"] += 1
             if row.get("action_mode") not in RULE_ACTIONS:
                 conflicts.append(f"Rule action is unsupported: {name}")
+            _integer(row.get("priority"), "rule priority", -2147483648)
+            _boolean(row.get("is_enabled"), "rule enabled state")
             signature_id = row.get("signature_id")
             if signature_id is not None and signature_id not in signature_ids and db.get(SignatureDB, signature_id) is None:
                 conflicts.append(f"Rule {name} references a signature not included in the import")
