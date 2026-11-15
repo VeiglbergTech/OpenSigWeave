@@ -293,35 +293,21 @@ async function main() {
     await profileProviderSelect.selectOption("browser-smoke-profile-provider");
     const providerAssignment = await providerAssignmentResponse;
     assert.equal(providerAssignment.status(), 200, "profile provider assignment request must succeed");
-    assert.deepEqual(await providerAssignment.json(), {
-      domain_id: createdDomain.id,
-      identity_provider_id: "browser-smoke-profile-provider"
-    }, "profile provider assignment endpoint must acknowledge the persisted provider");
+    // The endpoint's status is the immediate request assertion. Verify the
+    // persisted state after a full page reload through the actual admin UI;
+    // this avoids reading a response body from the intercepted browser event.
+    await page.reload();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
+    await domainRow.waitFor();
+    assert.equal(await domainRow.locator("select").nth(0).inputValue(),
+      "browser-smoke-profile-provider",
+      "profile provider assignment must persist independently of the login provider");
+    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "",
+      "assigning a profile provider must not configure a login provider");
 
-    checkpoint("provider assignment: complete");
-    // Verify persistence through Playwright's API client rather than a page
-    // wait predicate. This avoids leaving the browser smoke test blocked on a
-    // renderer-side fetch while still reading a fresh server response.
-    const persistedDomainsResponse = await page.request.get(baseURL + "/domains/", {
-      timeout: 15000,
-      headers: { "Cache-Control": "no-cache" }
-    });
-    assert.equal(persistedDomainsResponse.status(), 200,
-      "domain list API must remain available after provider assignment");
-    const persistedDomains = await persistedDomainsResponse.json();
-    const persistedDomain = persistedDomains.find(
-      item => item.domain_name === "browser-smoke-domain.test"
-    );
-    const assignedProviders = persistedDomain ? {
-      identity_provider_id: persistedDomain.identity_provider_id,
-      authentication_provider_id: persistedDomain.authentication_provider_id
-    } : null;
-    assert.deepEqual(assignedProviders, {
-      identity_provider_id: "browser-smoke-profile-provider",
-      authentication_provider_id: null
-    }, "profile provider assignment must persist independently of the login provider");
-
-    checkpoint("provider persistence: complete");
+    checkpoint("provider assignment and persistence: complete");
     // Disable and re-enable the domain through the confirmation dialog.
     const domainStatus = domainRow.locator("td").nth(1).locator("span");
     await domainStatus.waitFor({ state: "visible" });
