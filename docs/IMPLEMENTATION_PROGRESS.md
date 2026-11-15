@@ -74,10 +74,10 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-Latest verification for commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`:
+Latest verification for commit `313bf142fe208a3a69ecc11f31904bef5ee3a20b`:
 
-- Push CI run #1822 (`43763421813`): **success**.
-- Pull-request CI run #1823 (`43763427297`): **success**.
+- Push CI run #1822 (`43763421813`): **success** (244 regression tests).
+- Pull-request CI run #1823 (`43763427297`): **success** (244 regression tests).
 - All 244 regression tests passed.
 - Full-history Gitleaks scan and Python dependency audit passed.
 - Python compilation, browser JavaScript syntax, Lua syntax and Alpine CSP evaluator checks passed.
@@ -87,6 +87,8 @@ Latest verification for commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`:
 - Encrypted Docker backup, fresh-deployment restore and archive verification passed.
 - Chromium/Playwright exercised the local administrator login, personal signature API, all seven administration areas, signature and group CRUD, group membership and weights, GROUP rules, export download, import preview, authorization boundaries, domain override policies, logout and session invalidation.
 - The browser smoke test also typed into the existing Quill editor, applied bold formatting and verified that the resulting HTML reached the raw-source textarea.
+
+The latest push CI run #1829 (`43763864399`) and pull-request CI run #1830 (`43763868443`) both passed on commit `313bf142fe208a3a69ecc11f31904bef5ee3a20b`. Both completed the `unit` job successfully with no failed steps. The earlier #1822/#1823 runs also passed all 244 regression tests on the preceding implementation commit. The latest changes after that were documentation and browser-diagnostic cleanup; no application behavior changed.
 
 The two successful CI runs validate the same commit. They provide automated regression and local-container evidence; they do **not** prove live authentication against external identity providers, a real cross-host recovery, production NFS/SMB behavior, SMTP delivery, DKIM correctness or production deployment readiness.
 
