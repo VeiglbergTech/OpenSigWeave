@@ -1,7 +1,7 @@
 # Web application and Rspamd security review
 
 **Branch:** `architecture/refactor-foundation`  
-**Review date:** 2026-11-13  
+**Review date:** 2026-11-15  
 **Status:** Code-level review of the standalone preview; not a penetration test.
 
 ## 1. Web application
