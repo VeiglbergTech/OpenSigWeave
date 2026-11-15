@@ -74,11 +74,11 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-Latest verification for commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`:
+Latest verification for commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`:
 
-- Push CI run #1796 (`43752194740`): **success**.
-- Pull-request CI run #1797 (`43752199398`): **success**.
-- All 243 regression tests passed.
+- Push CI run #1822 (`43763421813`): **success**.
+- Pull-request CI run #1823 (`43763427297`): **success**.
+- All 244 regression tests passed.
 - Full-history Gitleaks scan and Python dependency audit passed.
 - Python compilation, browser JavaScript syntax, Lua syntax and Alpine CSP evaluator checks passed.
 - PostgreSQL 17 and SQLite migrations passed.
