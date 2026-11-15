@@ -930,6 +930,26 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
                 response = self.client.get(path)
                 self.assertEqual(response.status_code, 200, response.text)
 
+    def test_admin_import_preview_requires_admin_and_session_csrf(self):
+        self.authenticate({"email": "user@example.org", "groups": ["signature-users"]})
+        headers = {"Content-Type": "application/zip", "X-CSRF-Token": "csrf-test-token"}
+        denied = self.client.post("/api/admin/imports/preview", content=b"not a zip", headers=headers)
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(denied.json(), {"detail": "Admins only"})
+
+        self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
+        missing_csrf = self.client.post(
+            "/api/admin/imports/preview", content=b"not a zip",
+            headers={"Content-Type": "application/zip"},
+        )
+        self.assertEqual(missing_csrf.status_code, 403)
+        self.assertEqual(missing_csrf.json(), {"detail": "CSRF validation failed"})
+
+        invalid_archive = self.client.post(
+            "/api/admin/imports/preview", content=b"not a zip", headers=headers,
+        )
+        self.assertEqual(invalid_archive.status_code, 422)
+
 
 if __name__ == "__main__":
     unittest.main()
