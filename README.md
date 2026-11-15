@@ -23,7 +23,7 @@ Self-hosted email-signature management with a web portal, rule and rendering eng
 - Local administrator email and scrypt password hash for emergency access.
 - Authentik OIDC or LDAP/Active Directory if users should authenticate through a managed directory.
 
-The application listens on TCP `8085` inside the container and Compose binds it to `127.0.0.1:8085`. PostgreSQL is not published to the host. Compose uses `postgres:17-alpine`.
+The application listens on TCP `8085` inside the container. Compose binds it to `APP_BIND_ADDRESS` (default `127.0.0.1`); PostgreSQL is not published to the host. Compose uses `postgres:17-alpine`.
 
 ## Quick start
 
@@ -95,7 +95,8 @@ Defaults are defined in [`.env.example`](.env.example).
 | `LOGIN_RATE_LIMIT` | `10` |
 | `AUTH_CALLBACK_RATE_LIMIT` | `20` |
 | `ENGINE_RATE_LIMIT` | `1800` |
-| `TRUSTED_PROXY_CIDRS` | Empty; configure only for known immediate reverse-proxy peers |
+| `APP_BIND_ADDRESS` | `127.0.0.1`; set to the application host private IP only for a remote proxy |
+| `TRUSTED_PROXY_CIDRS` | Empty; set to the exact trusted reverse-proxy source address (`/32` or `/128`) |
 
 Managed provider credentials do **not** belong in the root `.env`. The portal stores them in `/app/.idp/{provider-id}/.env` on the persistent `opensigweave-idp-data` volume. Provider directories use mode `0700`, files mode `0600`; secrets are not returned by the management API. Leaving a password/token field empty during an edit preserves its existing secret.
 
@@ -158,7 +159,7 @@ signature.example.org {
 }
 ```
 
-If the proxy runs in another container/network or host, `127.0.0.1` is not the OpenSigWeave host. Bind the application only to a private interface, restrict it with the host firewall to the proxy, and set `TRUSTED_PROXY_CIDRS` only to the actual trusted proxy CIDRs. Never expose port `8085` publicly or trust arbitrary forwarded headers. Preserve the canonical Host header; the application validates it against `APP_ALLOWED_HOSTS` (legacy global OIDC also derives its canonical host from `OIDC_REDIRECT_URI`).
+For a **separate reverse-proxy server**, configure `APP_BIND_ADDRESS` in `.env` to the application server private-interface IP (not `0.0.0.0`), recreate the application container, and configure the application host firewall to allow inbound TCP/8085 **only from the reverse-proxy private IP**. Deny all other sources, including the public interface. Set `TRUSTED_PROXY_CIDRS` to the exact proxy source address as `/32` (IPv4) or `/128` (IPv6), not an entire LAN unless every host in it is trusted. The application uses this setting only to resolve client addresses for rate limiting; it does not make the proxy network boundary for you. Preserve the canonical Host header. Never expose port `8085` publicly or trust arbitrary forwarded headers. If proxy and application communicate over an untrusted network, use an authenticated encrypted tunnel or TLS for the upstream connection.
 
 Open `https://signature.example.org/` after HTTPS is configured.
 
@@ -267,7 +268,7 @@ Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user doe
 | OIDC callback failure | Check provider enabled, HTTPS discovery reachability, client credentials, exact registered callback, canonical Host, verified email and groups array. |
 | Login succeeds but no portal access | Check exact `signature-users` / `signature-admins` group mapping. |
 | Empty profile fields | Check profile-provider assignment, Authentik URL/token and read permission, or LDAP service-bind access; inspect application logs. Failed lookup returns empty attributes unless a same-provider cache entry is available. |
-| Proxy cannot connect | Port is loopback-bound. A separate proxy container cannot reach the host's loopback; use a private-interface binding and firewall rule, not public exposure. |
+| Proxy cannot connect | Check `APP_BIND_ADDRESS`, host firewall allowance from the proxy IP, routing/tunnel and TCP/8085. Do not solve this by exposing the port publicly. |
 
 ## Documentation
 
