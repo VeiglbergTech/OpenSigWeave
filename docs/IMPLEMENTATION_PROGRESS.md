@@ -74,7 +74,7 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-Latest verification for commit `313bf142fe208a3a69ecc11f31904bef5ee3a20b`:
+Latest full regression baseline: commit `e49f8ce6322224cb7feda48764fe4810d2e0701f` (push #1822 / PR #1823). The current documentation-only head is `66fcbdbebddc7f50ad8af5841ab4a2b2a52c0909`.
 
 - Push CI run #1822 (`43763421813`): **success** (244 regression tests).
 - Pull-request CI run #1823 (`43763427297`): **success** (244 regression tests).
@@ -88,7 +88,7 @@ Latest verification for commit `313bf142fe208a3a69ecc11f31904bef5ee3a20b`:
 - Chromium/Playwright exercised the local administrator login, personal signature API, all seven administration areas, signature and group CRUD, group membership and weights, GROUP rules, export download, import preview, authorization boundaries, domain override policies, logout and session invalidation.
 - The browser smoke test also typed into the existing Quill editor, applied bold formatting and verified that the resulting HTML reached the raw-source textarea.
 
-The latest push CI run #1829 (`43763864399`) and pull-request CI run #1830 (`43763868443`) both passed on commit `313bf142fe208a3a69ecc11f31904bef5ee3a20b`. Both completed the `unit` job successfully with no failed steps. The earlier #1822/#1823 runs also passed all 244 regression tests on the preceding implementation commit. The latest changes after that were documentation and browser-diagnostic cleanup; no application behavior changed.
+The latest push CI run #1837 (`43764798215`) and pull-request CI run #1838 (`43764800594`) both passed on documentation-only commit `66fcbdbebddc7f50ad8af5841ab4a2b2a52c0909`. Both completed the `unit` job successfully with no failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Subsequent changes were documentation refreshes; no application behavior changed.
 
 The two successful CI runs validate the same commit. They provide automated regression and local-container evidence; they do **not** prove live authentication against external identity providers, a real cross-host recovery, production NFS/SMB behavior, SMTP delivery, DKIM correctness or production deployment readiness.
 
