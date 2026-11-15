@@ -26,7 +26,7 @@ async function main() {
     // Keep genuine network failures in CI logs without reporting these as faults.
     if (failure && failure.errorText === "net::ERR_ABORTED") return;
     process.stderr.write("[browser-smoke] request failed: " + request.method() + " " + request.url()
-      + (failure ? " (" + failure.errorText + ")" : "") + "\\n");
+      + (failure ? " (" + failure.errorText + ")" : "") + "\n");
   });
   const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
   await page.addInitScript(() => {
