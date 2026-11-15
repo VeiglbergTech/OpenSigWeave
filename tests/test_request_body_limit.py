@@ -3,6 +3,7 @@ import unittest
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 
@@ -19,11 +20,15 @@ class RequestBodyLimitTests(unittest.TestCase):
         async def archive_endpoint(request: Request):
             return {"size": len(await request.body())}
 
+        async def pass_through(request, call_next):
+            return await call_next(request)
+
         app.add_middleware(
             PathAwareRequestBodyLimitMiddleware,
             default_max_body_size=4,
             path_limits={"/archive": 8},
         )
+        app.add_middleware(BaseHTTPMiddleware, dispatch=pass_through)
         self.client = TestClient(app)
 
     def test_default_routes_keep_the_small_request_limit(self):
