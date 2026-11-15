@@ -58,11 +58,15 @@ async function main() {
       { tab: "Signature Groups", heading: "Signature Groups" },
       { tab: "Rules", heading: "Signature Rules" },
       { tab: "Exports", heading: "Configuration exports" },
+      { tab: "Imports", heading: "Configuration imports" },
     ];
     for (const section of sections) {
       await page.getByRole("button", { name: section.tab, exact: true }).click();
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
+
+    // Return to Exports after visiting every administrator section.
+    await page.getByRole("button", { name: "Exports", exact: true }).click();
 
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
@@ -85,6 +89,16 @@ async function main() {
     assert.ok(exportPath, "administrator export must produce a downloadable file");
     const exportBytes = fs.readFileSync(exportPath);
     assert.equal(exportBytes.subarray(0, 4).toString("hex"), "504b0304", "download must be a ZIP archive");
+
+    // Validate the downloaded archive through the real import UI. Existing matching
+    // domains/providers should be reusable and the preview must not write anything.
+    await page.getByRole("button", { name: "Imports", exact: true }).click();
+    const importPanel = page.locator('[x-data="adminImportManager"]');
+    await importPanel.locator("#admin-import-file").setInputFiles(exportPath);
+    await importPanel.getByRole("button", { name: "Validate and preview" }).click();
+    await importPanel.getByText("Archive validated. No conflicts detected.", { exact: true }).waitFor();
+    assert.equal(await importPanel.getByText("New: 0 · Reused: 2").count(), 2,
+      "preview should identify the matching domains and identity-provider metadata as reusable");
 
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
@@ -397,7 +411,7 @@ async function main() {
     const protectedPage = await page.request.get(baseURL + "/");
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
-    process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, export ZIP download, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
+    process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, export ZIP download and import preview, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
   } finally {
     await browser.close();
   }
