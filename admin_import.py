@@ -425,7 +425,7 @@ def apply_admin_import(
         if "domains" in components:
             for row in data["domains"]:
                 source_id = row["id"]
-                existing = db.query(DomainDB).filter(DomainDB.domain_name.ilike(row["domain_name"].strip().casefold().rstrip(".")).first()
+                existing = db.query(DomainDB).filter(DomainDB.domain_name.ilike(row["domain_name"].strip().casefold().rstrip("."))).first()
                 if existing:
                     domain_map[source_id] = existing.id
                     continue
