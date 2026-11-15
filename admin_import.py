@@ -126,7 +126,13 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
             manifest_bytes = archive.read(manifest_info)
             manifest = json.loads(manifest_bytes.decode("utf-8"), object_pairs_hook=_unique_json_object)
             manifest = _object(manifest, "manifest")
-            if manifest.get("format") != EXPORT_FORMAT or manifest.get("format_version") != EXPORT_VERSION:
+            format_version = manifest.get("format_version")
+            if (
+                manifest.get("format") != EXPORT_FORMAT
+                or isinstance(format_version, bool)
+                or not isinstance(format_version, int)
+                or format_version != EXPORT_VERSION
+            ):
                 raise AdminImportError("Unsupported OpenSigWeave export format or version")
             components = manifest.get("components")
             if (
@@ -152,6 +158,8 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
                 path = _string(item.get("path"), "asset path", 512)
                 if path == "manifest.json" or path in declared_paths:
                     raise AdminImportError("Manifest contains duplicate or reserved asset paths")
+                if not path.startswith("assets/signatures/") or not path.endswith(".html"):
+                    raise AdminImportError("Import archive contains an unsupported asset path")
                 declared_paths.add(path)
                 if path not in names:
                     raise AdminImportError("A declared asset is missing from the archive")
@@ -165,6 +173,10 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
                 if total_uncompressed > MAX_EXPORT_BYTES:
                     raise AdminImportError("Import archive exceeds the 20 MiB uncompressed size limit")
                 content = archive.read(info)
+                try:
+                    content.decode("utf-8")
+                except UnicodeDecodeError as exc:
+                    raise AdminImportError("A signature asset is not valid UTF-8") from exc
                 if hashlib.sha256(content).hexdigest() != expected_hash:
                     raise AdminImportError("An import asset failed its SHA-256 integrity check")
                 assets[path] = content
