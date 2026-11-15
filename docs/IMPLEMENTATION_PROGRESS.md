@@ -1,7 +1,7 @@
 # Implementation progress
 
 **Project:** OpenSigWeave standalone preview  
-**Working branch:** `architecture/refactor-foundation`  
+**Development baseline:** `architecture/refactor-foundation`  
 **Status:** Automated preview validation passed; external acceptance remains; not a production release  
 **Last documentation review:** 2026-11-15
 
@@ -88,7 +88,7 @@ Latest full regression baseline: commit `e49f8ce6322224cb7feda48764fe4810d2e0701
 - Chromium/Playwright exercised the local administrator login, personal signature API, all seven administration areas, signature and group CRUD, group membership and weights, GROUP rules, export download, import preview, authorization boundaries, domain override policies, logout and session invalidation.
 - The browser smoke test also typed into the existing Quill editor, applied bold formatting and verified that the resulting HTML reached the raw-source textarea.
 
-The latest push CI run #1839 (`43765332773`) and pull-request CI run #1840 (`43765338070`) both passed on documentation-only commit `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`. Both completed the `unit` job successfully with no failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Subsequent changes were documentation refreshes; no application behavior changed.
+The latest push CI run #1843 (`43766145281`) and pull-request CI run #1844 (`43766152801`) both passed on README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`. Both completed the `unit` job successfully with no failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. The changes since that full regression were documentation-only; no application behavior changed.
 
 The two successful CI runs validate the same commit. They provide automated regression and local-container evidence; they do **not** prove live authentication against external identity providers, a real cross-host recovery, production NFS/SMB behavior, SMTP delivery, DKIM correctness or production deployment readiness.
 

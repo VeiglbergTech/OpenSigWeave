@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: ["architecture/refactor-foundation"]
+    branches: ["architecture/refactor-foundation", "cleanup/repository-optimization"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:

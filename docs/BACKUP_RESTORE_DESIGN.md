@@ -149,14 +149,14 @@ A documented restore drill against a clean, disposable host is a release require
 
 1. ~~Complete Docker-aware snapshot orchestration around the implemented versioned archive, age encryption and verification primitives.~~
 2. ~~Implement safe restore into a fresh deployment.~~ Add cross-host restore drills, deeper post-restore validation and, only later, destructive restore with safety snapshots.
-3. ~~Document the two-host restore drill and acceptance evidence.~~ Execute and record the two-host drill; add automated cross-host restore tests where CI infrastructure permits.
+3. Execute and record the two-host drill; add automated cross-host restore tests where CI infrastructure permits.
 4. ~~Add selective administrator UI exports as a separate layer over the same backup components.~~
 5. ~~Add verified retention and scheduled off-host destination support.~~ Validate the scheduled workflow against a real NFS/SMB target and document operational recovery.
 
 Until these steps are complete, the Compose volumes are persistent storage, not a backup solution.
 
 
-## 8. Verified retention CLI
+## 10. Verified retention CLI
 
 The console supports a retention preview and an explicit deletion mode:
 
@@ -168,7 +168,7 @@ The command considers only direct regular .age files in the selected directory. 
 Retention is not, by itself, off-host protection. The repository now includes a systemd service/timer that writes to a dedicated mounted remote filesystem and applies verified retention. The mount must be configured by the operator; the script refuses to write when the target is not mounted or its filesystem type is not allowlisted. Replication to object storage is not implemented.
 
 
-## 9. Scheduled off-host backup
+## 11. Scheduled off-host backup
 
 A systemd service and daily timer are provided for deployments that mount remote storage (for example NFS or SMB) at /mnt/opensigweave-backups. The script refuses to run unless that exact directory is a mount point on an approved remote filesystem type (NFS, SMB/CIFS or supported FUSE remote mounts), preventing a disconnected share or a local disk from silently being treated as off-host protection. It creates a full encrypted backup, then applies verified retention.
 

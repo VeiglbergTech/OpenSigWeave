@@ -2,6 +2,7 @@ venv/
 *.db
 *.sqlite
 signatures/
+signatur/
 .env
 .env.*
 !.env.example

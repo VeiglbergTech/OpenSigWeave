@@ -6,12 +6,14 @@ State-changing browser requests require the session CSRF token in the `X-CSRF-To
 
 ## Authentication and authorization
 
-- `GET /login`: starts the OIDC Authorization Code flow when `OIDC_ENABLED=true`; serves the local administrator login form when `false`.
-- `POST /login`: local administrator login; available only when `OIDC_ENABLED=false`. Requires the one-time CSRF token from the login form.
-- `GET /auth`: OIDC callback, registered only when `OIDC_ENABLED=true`. The UserInfo response must include a subject, a valid email, `email_verified: true` (JSON boolean), and a `groups` array.
-- `POST /logout`: clears the local session and returns the appropriate redirect URL (Authentik end-session URL in OIDC mode, `/login` in local-only mode).
+- `GET /login`: renders the local administrator form, LDAP email/password login and buttons for configured managed OIDC providers.
+- `POST /login`: authenticates the local administrator or the LDAP provider assigned to the submitted email domain; for a managed OIDC domain it starts that provider's Authorization Code flow. Requires the one-time login CSRF token.
+- `GET /login/oidc/{provider_id}`: starts managed OIDC login for the selected provider.
+- `GET /auth/{provider_id}`: managed OIDC callback. UserInfo must include a subject, valid email, `email_verified: true` (JSON boolean) and a `groups` array; the email domain must still be assigned to that provider.
+- `GET /auth`: legacy global OIDC callback, registered only when `OIDC_ENABLED=true`.
+- `POST /logout`: clears the session; managed OIDC sessions use the provider's HTTPS end-session endpoint when available, otherwise the user returns to `/login`.
 
-OIDC is enabled by default and requires valid HTTPS discovery, client credentials and an HTTPS redirect URI ending in `/auth`. Set `OIDC_ENABLED=false` to disable OIDC configuration checks and callback registration. Local-only mode requires `LOCAL_ADMIN_EMAIL`, a scrypt `LOCAL_ADMIN_PASSWORD_HASH`, and explicit `APP_ALLOWED_HOSTS`; Authentik settings may be omitted. The local administrator is assigned `signature-admins` and `signature-users`. Local-only mode returns empty external identity attributes.
+The example configuration sets `OIDC_ENABLED=false`. Managed identity providers are configured in the administrator portal and assigned independently per email domain: LDAP uses LDAPS password authentication; Authentik/generic OIDC uses managed callbacks at `/auth/{provider_id}`. The local administrator is an independent emergency account and is assigned `signature-admins` and `signature-users`. The legacy root-level OIDC client is compatibility-only: set `OIDC_ENABLED=true`, configure HTTPS discovery/client credentials and an HTTPS redirect URI ending in `/auth`. Local-only mode requires `LOCAL_ADMIN_EMAIL`, a scrypt `LOCAL_ADMIN_PASSWORD_HASH` and explicit `APP_ALLOWED_HOSTS`.
 
 For Authentik, the default `profile` scope mapping provides group membership. The custom `opensigweave` scope mapping must provide `email_verified` as a JSON boolean and an `attributes` object. Authentik 2025.10 and newer no longer assert email verification by default; see the README for the required mapping and user attribute configuration.
 

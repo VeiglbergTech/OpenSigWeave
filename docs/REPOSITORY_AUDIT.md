@@ -1,7 +1,7 @@
 # Repository and security audit
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
-**Reviewed branch:** `architecture/refactor-foundation`  
+**Development baseline:** `architecture/refactor-foundation`  
 **Review date:** 2026-11-15  
 **Purpose:** Engineering review of the current standalone preview. This is not a security certification or penetration test.
 
@@ -73,10 +73,10 @@ These findings drove the work on the current branch. The current status is in th
 
 ## 6. CI evidence
 
-The latest successful push and pull-request CI runs both target documentation-only commit `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`:
+The latest successful push and pull-request CI runs before this cleanup target README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`:
 
-- Push run #1839 (`43765332773`): success.
-- Pull-request run #1840 (`43765338070`): success.
+- Push run #1843 (`43766145281`): success.
+- Pull-request run #1844 (`43766152801`): success.
 - Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`. Changes since that full regression run were documentation-only; no application behavior changed.
 - Full-history Gitleaks scan and dependency audit passed.
 - Python, JavaScript and Lua syntax checks and the Alpine CSP evaluator passed.

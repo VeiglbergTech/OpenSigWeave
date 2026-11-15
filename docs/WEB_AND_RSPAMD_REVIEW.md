@@ -1,6 +1,6 @@
 # Web application and Rspamd security review
 
-**Branch:** `architecture/refactor-foundation`  
+**Development baseline:** `architecture/refactor-foundation`  
 **Review date:** 2026-11-15  
 **Status:** Code-level review of the standalone preview; not a penetration test.
 
@@ -116,16 +116,13 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest successful push and pull-request CI runs both target documentation-only commit `14c6e60f5a01fb2b7b1af810b09a7fe410c19a54`:
+The latest successful push and pull-request CI runs before this cleanup target README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`:
 
-- Push run #1839 (`43765332773`): success.
-- Pull-request run #1840 (`43765338070`): success.
-- Both current-head `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
-- The preceding full regression run #1822/#1823 passed all 244 regression tests, including PostgreSQL 17 concurrency coverage.
-- Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks and Alpine CSP evaluator passed.
-- PostgreSQL and SQLite migrations passed.
-- Docker build, Compose startup/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards, encrypted Docker backup and fresh restore passed.
+- Push run #1843 (`43766145281`): success.
+- Pull-request run #1844 (`43766152801`): success.
+- Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
+- Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks, PostgreSQL and SQLite migrations, Docker build/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards and encrypted backup/fresh restore are covered by the successful regression history.
 
-The current-head changes after the full regression run were documentation and browser-diagnostic cleanup; the #1832/#1833 jobs independently completed successfully on the current head.
+The current-head changes after the full regression run were documentation-only; no application behavior changed.
 
 This is automated regression and local-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, SMTP integration test, DKIM verification or production security certification.

@@ -1,8 +1,7 @@
 # OpenSigWeave – architecture and implementation boundaries
 
 **Document status:** Current preview architecture with explicit future boundaries  
-**Branch:** `architecture/refactor-foundation`  
-**Last reviewed:** 2026-11-12
+**Last reviewed:** 2026-11-15
 
 ## 1. Product boundary
 
