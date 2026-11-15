@@ -49,7 +49,7 @@ INSERT INTO backup_restore_probe (id, payload) VALUES (1, 'roundtrip-ok');
 SQL
 
 docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T opensigweave sh -c \
-  'mkdir -p /data/signatures /app/.idp && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt'
+  'mkdir -p /data/signatures /app/.idp/ci-ldap && umask 077 && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt && printf "%s\\n" "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test" > /app/.idp/ci-ldap/.env'
 
 python "$SOURCE/backup_cli.py" create \
   --project-dir "$SOURCE" \
@@ -77,6 +77,14 @@ signature_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /data/signat
 
 idp_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/restore-probe.txt)"
 [[ "$idp_value" == "idp-volume-roundtrip" ]] || { echo "Restored IDP volume does not match" >&2; exit 1; }
+
+provider_config="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/ci-ldap/.env)"
+expected_provider_config="$(printf '%s\\n' "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test")"
+[[ "$provider_config" == "$expected_provider_config" ]] || { echo "Restored LDAP provider configuration or credential does not match" >&2; exit 1; }
+
+provider_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap/.env)"
+provider_dir_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap)"
+[[ "$provider_mode" == "600" && "$provider_dir_mode" == "700" ]] || { echo "Restored IDP configuration permissions are not restrictive" >&2; exit 1; }
 
 # Exercise retention with real age-encrypted archives. The preview must not
 # delete anything; applying retention must verify all archives and keep newest.
