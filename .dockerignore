@@ -22,3 +22,9 @@ branding/favicon.ico
 branding/settings.json
 
 .idp/
+
+# Local backup artifacts
+backups
+*.age
+*.tar.gz
+*.dump

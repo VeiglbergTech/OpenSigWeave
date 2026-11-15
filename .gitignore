@@ -20,3 +20,9 @@ secrets/
 
 # Identity provider credentials (never commit)
 .idp/
+
+# Local backup artifacts (may contain application data or encrypted secrets)
+backups/
+*.age
+*.tar.gz
+*.dump
