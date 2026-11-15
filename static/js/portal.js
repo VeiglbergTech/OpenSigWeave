@@ -668,6 +668,67 @@ function adminExportManager() {
     };
 }
 
+function adminImportManager() {
+    return {
+        file: null,
+        busy: false,
+        error: "",
+        preview: null,
+        result: null,
+        selectFile(event) {
+            this.file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
+            this.preview = null;
+            this.result = null;
+            this.error = "";
+        },
+        async submit(path) {
+            if (!this.file) throw new Error("Select an OpenSigWeave ZIP export first.");
+            if (this.file.size > 20 * 1024 * 1024) throw new Error("The archive exceeds the 20 MiB limit.");
+            const response = await fetch(path, {
+                method: "POST",
+                headers: { "Content-Type": "application/zip", "Accept": "application/json" },
+                credentials: "same-origin",
+                body: await this.file.arrayBuffer()
+            });
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(result.detail || "Import request failed.");
+            return result;
+        },
+        async previewImport() {
+            if (this.busy || !this.file) return;
+            this.busy = true;
+            this.error = "";
+            this.result = null;
+            try {
+                this.preview = await this.submit("/api/admin/imports/preview");
+            } catch (error) {
+                this.preview = null;
+                this.error = error instanceof Error ? error.message : "Import preview failed.";
+            } finally {
+                this.busy = false;
+            }
+        },
+        async applyImport() {
+            if (this.busy || !this.file || !this.preview || !this.preview.can_apply) return;
+            if (!window.confirm("Import the reviewed configuration now? Existing records will never be overwritten.")) return;
+            this.busy = true;
+            this.error = "";
+            try {
+                this.result = await this.submit("/api/admin/imports/apply");
+                this.preview = null;
+                this.file = null;
+                const input = document.getElementById("admin-import-file");
+                if (input) input.value = "";
+                notify("Configuration import completed.", "success");
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : "Import failed.";
+            } finally {
+                this.busy = false;
+            }
+        }
+    };
+}
+
 document.addEventListener("alpine:init", () => {
     Alpine.data("portalShell", portalShell);
     Alpine.data("htmlEditorToggle", htmlEditorToggle);
@@ -678,6 +739,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("signatureGroupManager", signatureGroupManager);
     Alpine.data("ruleManager", ruleManager);
     Alpine.data("adminExportManager", adminExportManager);
+    Alpine.data("adminImportManager", adminImportManager);
     Alpine.data("toastManager", toastManager);
     Alpine.data("sanitizerModal", sanitizerModal);
     Alpine.data("previewModal", previewModal);
