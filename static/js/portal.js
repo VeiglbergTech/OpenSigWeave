@@ -679,6 +679,13 @@ function adminImportManager() {
         preview: { can_apply: false, components: [], additions: {}, reusable: {}, conflicts: [], excluded: [] },
         importComplete: false,
         resultComponents: "",
+        componentLabels: {
+            signatures: "Signatures",
+            domains: "Domains",
+            groups: "Signature groups",
+            rules: "Rules",
+            identity_providers: "Identity providers"
+        },
         selectFile(event) {
             this.file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
             this.fileName = this.file ? this.file.name : "";
