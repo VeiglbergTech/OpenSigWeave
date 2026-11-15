@@ -42,6 +42,10 @@ Reverse proxies must preserve the canonical Host header. Only configure trusted 
 
 The jsdom smoke test covers the CSP evaluator and checks the actual template for unsupported Alpine expression patterns. It does not replace a real-browser walkthrough. Before enforcing CSP, inspect actual browser reports, preview behavior and Quill's runtime style behavior. Do not add broad `unsafe-eval` or `unsafe-inline` directives merely to silence violations.
 
+The current Chromium/Playwright CI flow goes beyond the jsdom check: it signs in through the local administrator form, exercises all seven administration areas, creates/updates/deletes signatures, groups, memberships and GROUP rules, downloads an export, previews it through the import UI, checks normal-user/admin authorization boundaries and domain override policy, then logs out and confirms session invalidation. A follow-up assertion types into the existing Quill personal editor, applies bold formatting and verifies the resulting HTML in the raw-source textarea. This is still a local test environment; it does not replace live identity-provider or email-client acceptance.
+
+The current browser report-only run observes exactly two `style-src-attr` violations originating in vendored Quill 1.3.7 and no script-policy violations. Do not broaden the policy to `unsafe-inline` to silence them. The editor replacement and CSP remediation are intentionally deferred together until the email-HTML preservation requirements are settled.
+
 ## 2. Authentik attribute provider
 
 The attribute provider:
@@ -112,6 +116,13 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest verified CI runs `43573306357` (push) and `43573310299` (pull request) on commit `f3bbb3f151b01f43a90ad9684f7f275f56b84c2d` both passed. The PostgreSQL 17-backed regression suite ran 218 tests, including both 12-worker no-repeat concurrency stress tests for variant and group selection. The automated suite still does not replace live-provider integration or a real-browser walkthrough.
+The latest successful push and pull-request CI runs both target commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`:
 
-This is automated regression and deployment-smoke evidence only. It is not a dynamic penetration test, real-browser acceptance test, SMTP integration test or production security certification.
+- Push run #1796 (`43752194740`): success.
+- Pull-request run #1797 (`43752199398`): success.
+- 243 regression tests passed, including PostgreSQL 17 concurrency coverage.
+- Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks and Alpine CSP evaluator passed.
+- PostgreSQL and SQLite migrations passed.
+- Docker build, Compose startup/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards, encrypted Docker backup and fresh restore passed.
+
+This is automated regression and local-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, SMTP integration test, DKIM verification or production security certification.
