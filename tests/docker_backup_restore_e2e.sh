@@ -49,7 +49,7 @@ INSERT INTO backup_restore_probe (id, payload) VALUES (1, 'roundtrip-ok');
 SQL
 
 docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T opensigweave sh -c \
-  'mkdir -p /data/signatures /app/.idp/ci-ldap && umask 077 && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt && printf "%s\\n" "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test" > /app/.idp/ci-ldap/.env'
+  'mkdir -p /data/signatures /app/.idp/ci-ldap && umask 077 && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt && printf "%s\n" "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test" > /app/.idp/ci-ldap/.env'
 
 python "$SOURCE/backup_cli.py" create \
   --project-dir "$SOURCE" \
@@ -79,7 +79,7 @@ idp_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/restore-
 [[ "$idp_value" == "idp-volume-roundtrip" ]] || { echo "Restored IDP volume does not match" >&2; exit 1; }
 
 provider_config="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/ci-ldap/.env)"
-expected_provider_config="$(printf '%s\\n' "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test")"
+expected_provider_config="$(printf '%s\n' "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test")"
 [[ "$provider_config" == "$expected_provider_config" ]] || { echo "Restored LDAP provider configuration or credential does not match" >&2; exit 1; }
 
 provider_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap/.env)"
