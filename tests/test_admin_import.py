@@ -19,7 +19,7 @@ from core.modes import SignatureMode
 from database import Base
 from models import DomainDB, SignatureDB, SignatureVersionDB
 from signature_catalog import create_signature
-from signature_storage import SignatureFileStore
+from signature_storage import SignatureFileStore, SignatureStorageError
 import uuid
 
 
@@ -190,6 +190,48 @@ class AdminImportTests(unittest.TestCase):
                 apply_admin_import(target, target_store, archive)
             self.assertEqual(target.query(DomainDB).count(), 0)
             self.assertEqual(target.query(SignatureDB).count(), 0)
+        finally:
+            target.close()
+            target_engine.dispose()
+            target_dir.cleanup()
+
+    def test_partial_filesystem_write_is_cleaned_up_when_import_rolls_back(self):
+        self.make_export()
+        domain = self.db.query(DomainDB).filter_by(domain_name="source.example.test").one()
+        create_signature(
+            self.db,
+            self.store,
+            name="Second signature",
+            domain_ids=[domain.id],
+            mode=SignatureMode.AUTO,
+            html_content="<p>Second HTML</p>",
+            created_by="admin@example.test",
+        )
+        archive = build_admin_export(self.db, self.store, ["domains", "signatures"])[0]
+
+        class FailingStore(SignatureFileStore):
+            def __init__(self, root):
+                super().__init__(root)
+                self.write_count = 0
+
+            def write(self, version_id, signature_name, html):
+                self.write_count += 1
+                if self.write_count == 2:
+                    raise SignatureStorageError("simulated write failure")
+                return super().write(version_id, signature_name, html)
+
+        target_dir = tempfile.TemporaryDirectory()
+        target_store = FailingStore(target_dir.name)
+        target_engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(target_engine)
+        TargetSession = sessionmaker(bind=target_engine, expire_on_commit=False)
+        target = TargetSession()
+        try:
+            with self.assertRaises(AdminImportError):
+                apply_admin_import(target, target_store, archive)
+            self.assertEqual(target.query(DomainDB).count(), 0)
+            self.assertEqual(target.query(SignatureDB).count(), 0)
+            self.assertEqual(list(target_store.signatures_root.iterdir()), [])
         finally:
             target.close()
             target_engine.dispose()
