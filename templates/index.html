@@ -460,7 +460,7 @@
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <label class="block text-sm font-medium text-gray-200" for="admin-import-file">OpenSigWeave export archive</label>
                 <input id="admin-import-file" type="file" accept=".zip,application/zip" @change="selectFile($event)" :disabled="busy" class="block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white">
-                <p class="text-xs text-gray-400" x-show="file" x-text="file ? file.name + ' · ' + (file.size / 1024 / 1024).toFixed(2) + ' MiB' : ''"></p>
+                <p class="text-xs text-gray-400" x-show="fileName" x-text="fileName + ' · ' + fileSize + ' MiB'"></p>
                 <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
                     Imports are additive: existing records are never overwritten. Matching domains and identity providers are reused only when their metadata matches exactly. Provider credentials, personal overrides and identity caches are not imported. Newly imported identity providers have no credentials and must be configured separately.
                 </div>
@@ -469,28 +469,28 @@
                     <button @click="previewImport()" :disabled="busy || !file" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium" x-text="busy ? 'Validating…' : 'Validate and preview'"></button>
                 </div>
             </div>
-            <div x-show="preview" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="hasPreview" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <h3 class="font-semibold text-white">Import preview</h3>
-                <p class="text-sm" :class="preview && preview.can_apply ? 'text-green-300' : 'text-red-300'" x-text="preview && preview.can_apply ? 'Archive validated. No conflicts detected.' : 'Import blocked until conflicts are resolved.'"></p>
+                <p class="text-sm" :class="preview.can_apply ? 'text-green-300' : 'text-red-300'" x-text="preview.can_apply ? 'Archive validated. No conflicts detected.' : 'Import blocked until conflicts are resolved.'"></p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <template x-for="component in preview ? preview.components : []" :key="component">
                         <div class="rounded bg-gray-900 p-3">
-                            <div class="font-medium capitalize" x-text="component.replaceAll('_', ' ')"></div>
+                            <div class="font-medium" x-text="componentLabels[component]"></div>
                             <div class="text-gray-300" x-text="'New: ' + (preview.additions[component] || 0) + ' · Reused: ' + (preview.reusable[component] || 0)"></div>
                         </div>
                     </template>
                 </div>
-                <div x-show="preview && preview.conflicts.length" class="space-y-2">
+                <div x-show="preview.conflicts.length" class="space-y-2">
                     <h4 class="text-sm font-semibold text-red-300">Conflicts</h4>
                     <ul class="list-disc pl-5 text-sm text-red-200"><template x-for="(conflict, index) in preview.conflicts" :key="index"><li x-text="conflict"></li></template></ul>
                 </div>
-                <ul class="list-disc pl-5 text-xs text-gray-400"><template x-for="(item, index) in preview ? preview.excluded : []" :key="index"><li x-text="item"></li></template></ul>
+                <ul class="list-disc pl-5 text-xs text-gray-400"><template x-for="(item, index) in preview.excluded" :key="index"><li x-text="item"></li></template></ul>
                 <div class="flex justify-end">
                     <button @click="applyImport()" :disabled="busy || !preview || !preview.can_apply" class="px-4 py-2 rounded bg-green-700 hover:bg-green-600 disabled:opacity-50 text-sm font-medium">Apply reviewed import</button>
                 </div>
             </div>
-            <div x-show="result" x-cloak class="rounded border border-green-700 bg-green-950/30 p-4 text-sm text-green-200">
-                Configuration imported successfully. <span x-text="result ? result.components.join(', ') : ''"></span>
+            <div x-show="importComplete" x-cloak class="rounded border border-green-700 bg-green-950/30 p-4 text-sm text-green-200">
+                Configuration imported successfully. <span x-text="resultComponents"></span>
             </div>
         </div>
         </div>
