@@ -116,13 +116,16 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest successful push and pull-request CI runs both target commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`:
+The latest successful push and pull-request CI runs both target commit `e4521b6de0722dee0a643841518ef87ad85ec997`:
 
-- Push run #1796 (`43752194740`): success.
-- Pull-request run #1797 (`43752199398`): success.
-- 243 regression tests passed, including PostgreSQL 17 concurrency coverage.
+- Push run #1832 (`43764251176`): success.
+- Pull-request run #1833 (`43764253965`): success.
+- Both current-head `unit` jobs completed without failed steps.
+- The preceding full regression run #1822/#1823 passed all 244 regression tests, including PostgreSQL 17 concurrency coverage.
 - Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks and Alpine CSP evaluator passed.
 - PostgreSQL and SQLite migrations passed.
 - Docker build, Compose startup/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards, encrypted Docker backup and fresh restore passed.
+
+The current-head changes after the full regression run were documentation and browser-diagnostic cleanup; the #1832/#1833 jobs independently completed successfully on the current head.
 
 This is automated regression and local-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, SMTP integration test, DKIM verification or production security certification.
