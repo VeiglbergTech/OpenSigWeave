@@ -671,14 +671,22 @@ function adminExportManager() {
 function adminImportManager() {
     return {
         file: null,
+        fileName: "",
+        fileSize: "",
         busy: false,
         error: "",
-        preview: null,
-        result: null,
+        hasPreview: false,
+        preview: { can_apply: false, components: [], additions: {}, reusable: {}, conflicts: [], excluded: [] },
+        importComplete: false,
+        resultComponents: "",
         selectFile(event) {
             this.file = event.target.files && event.target.files[0] ? event.target.files[0] : null;
-            this.preview = null;
-            this.result = null;
+            this.fileName = this.file ? this.file.name : "";
+            this.fileSize = this.file ? (this.file.size / 1024 / 1024).toFixed(2) : "";
+            this.hasPreview = false;
+            this.preview = { can_apply: false, components: [], additions: {}, reusable: {}, conflicts: [], excluded: [] };
+            this.importComplete = false;
+            this.resultComponents = "";
             this.error = "";
         },
         async submit(path) {
@@ -698,25 +706,30 @@ function adminImportManager() {
             if (this.busy || !this.file) return;
             this.busy = true;
             this.error = "";
-            this.result = null;
+            this.importComplete = false;
             try {
                 this.preview = await this.submit("/api/admin/imports/preview");
+                this.hasPreview = true;
             } catch (error) {
-                this.preview = null;
+                this.hasPreview = false;
                 this.error = error instanceof Error ? error.message : "Import preview failed.";
             } finally {
                 this.busy = false;
             }
         },
         async applyImport() {
-            if (this.busy || !this.file || !this.preview || !this.preview.can_apply) return;
+            if (this.busy || !this.file || !this.hasPreview || !this.preview.can_apply) return;
             if (!window.confirm("Import the reviewed configuration now? Existing records will never be overwritten.")) return;
             this.busy = true;
             this.error = "";
             try {
-                this.result = await this.submit("/api/admin/imports/apply");
-                this.preview = null;
+                const result = await this.submit("/api/admin/imports/apply");
+                this.resultComponents = result.components.join(", ");
+                this.importComplete = true;
+                this.hasPreview = false;
                 this.file = null;
+                this.fileName = "";
+                this.fileSize = "";
                 const input = document.getElementById("admin-import-file");
                 if (input) input.value = "";
                 notify("Configuration import completed.", "success");
