@@ -74,20 +74,23 @@ This document describes the current branch state. It is not a promise that defer
 
 ## 2. Verification completed
 
-CI run `43230589615` on commit `f407333ffe86489f4409810fa65b503b3c0d7b91` passed:
+Latest verification for commit `2ee308fc44e1d36d741c5daf17c9f61f95f980fa`:
 
-- Full-history Gitleaks scan and Python dependency audit.
-- Python compilation, browser JavaScript syntax and Lua syntax checks.
-- Alpine CSP evaluator smoke test.
-- PostgreSQL and SQLite Alembic migrations.
-- Docker image build, Compose configuration and stack startup.
-- PostgreSQL readiness, application healthchecks and Alembic migration execution.
-- Authenticated signature-engine API request against the running PostgreSQL-backed application.
-- All 146 regression tests, including LDAP bind authentication, managed OIDC discovery validation, domain-based LDAP/OIDC routing, separate OIDC provider buttons, callback validation and managed OIDC logout URL construction.
+- Push CI run #1796 (`43752194740`): **success**.
+- Pull-request CI run #1797 (`43752199398`): **success**.
+- All 243 regression tests passed.
+- Full-history Gitleaks scan and Python dependency audit passed.
+- Python compilation, browser JavaScript syntax, Lua syntax and Alpine CSP evaluator checks passed.
+- PostgreSQL 17 and SQLite migrations passed.
+- Standalone Docker image build, Compose startup, application healthcheck and browser smoke test passed.
+- Scheduled-backup remote-filesystem guards passed, including rejection of unmounted/local targets and symlinked lock files.
+- Encrypted Docker backup, fresh-deployment restore and archive verification passed.
+- Chromium/Playwright exercised the local administrator login, personal signature API, all seven administration areas, signature and group CRUD, group membership and weights, GROUP rules, export download, import preview, authorization boundaries, domain override policies, logout and session invalidation.
+- The browser smoke test also typed into the existing Quill editor, applied bold formatting and verified that the resulting HTML reached the raw-source textarea.
 
-The CI run validates the code paths with test doubles and a local-only Docker stack. It does not prove successful interactive login or logout against a live Authentik or Active Directory server, full browser behavior or end-to-end email delivery.
+The two successful CI runs validate the same commit. They provide automated regression and local-container evidence; they do **not** prove live authentication against external identity providers, a real cross-host recovery, production NFS/SMB behavior, SMTP delivery, DKIM correctness or production deployment readiness.
 
-Commit `95bb5348a1e4e83abb913b1fe424816e7f1542c2` passed PR CI run #1791 (`43749747147`): all 243 regression tests passed, PostgreSQL/SQLite migrations and Docker/backup/restore checks passed, and the full Chromium browser flow completed successfully. The browser reported exactly two `style-src-attr` violations, both from vendored Quill 1.3.7. The subsequent commit adds a direct rich-text editing/formatting assertion to the browser smoke test; its CI result is pending.\n\nThe latest code and test commit `460bf6995bc82148179f66cc60dbecba047e23c7` passed push CI run #1786 (`43746580664`) and PR CI run #1787 (`43746585762`). The PostgreSQL 17-backed regression suite ran 243 tests; both concurrent no-repeat stress tests passed. Authorization is exercised through actual FastAPI HTTP routes with signed browser sessions: anonymous requests are denied, regular users can access only their personal signature endpoint, administrators can read protected management APIs, and state-changing admin requests require the session-bound CSRF token. Chromium/Playwright signs in through the real login form, opens the personal API, visits all seven administration sections (identity providers, domains, signatures, signature groups, rules, exports and imports), creates and updates a signature without adding an unintended HTML version, creates and renames a signature group while preserving membership, updates member weight, creates and updates a `GROUP` rule, deletes the rule and group, downloads a real export ZIP, previews that archive through the import UI and confirms exact-match domains, providers and built-in groups are reusable, signs out and confirms session invalidation. The expanded browser flow caught and fixed stale Playwright locators after group renaming and null-state access in hidden import controls. CI also includes full-history secret scanning, dependency audit, Python/JavaScript/Lua checks, Alpine CSP DOM smoke test, PostgreSQL and SQLite migrations, Docker build and smoke test, scheduled-backup remote-filesystem guard tests (including symlinked lock-file rejection), encrypted Docker backup and fresh restore, verified retention, and all 243 regression tests. Administrator export/import tests cover archive integrity, path traversal rejection, checksum tampering, UTF-8 validation, domain-ID remapping, exact domain/group reuse, no-overwrite conflicts, partial filesystem-write cleanup after transaction rollback, route authorization and CSRF. Restore preflight tests also prove that existing Compose project containers and named volumes are rejected before target creation; the named-volume collision test now uses actual newline-delimited Docker output so it exercises the intended collision branch. The backup/restore integration remains a same-host CI exercise, not a cross-host disaster-recovery drill.
+The browser's report-only CSP instrumentation currently observes two `style-src-attr` violations originating from vendored Quill 1.3.7 and no script-policy violations. CSP therefore remains report-only. The editor replacement is deliberately deferred; no broad `unsafe-inline` exception has been added.
 
 ## 3. Current limitations
 
