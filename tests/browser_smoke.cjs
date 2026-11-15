@@ -261,11 +261,22 @@ async function main() {
       return item && item.identity_provider_id === "browser-smoke-profile-provider"
         && item.authentication_provider_id === null;
     });
-    domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
-    createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
-    assert.equal(createdDomain.identity_provider_id, "browser-smoke-profile-provider");
-    assert.equal(createdDomain.authentication_provider_id, null,
-      "profile provider assignment must not implicitly configure the login provider");
+    // The in-page fetch above is the authoritative browser-session check.
+    // Keep the initially created record (and its stable ID) rather than issuing
+    // a second APIRequestContext request that can observe a different session/cache.
+    const assignedProviders = await page.evaluate(async () => {
+      const response = await fetch("/domains/", { cache: "no-store" });
+      const domains = await response.json();
+      const item = domains.find(domain => domain.domain_name === "browser-smoke-domain.test");
+      return item ? {
+        identity_provider_id: item.identity_provider_id,
+        authentication_provider_id: item.authentication_provider_id
+      } : null;
+    });
+    assert.deepEqual(assignedProviders, {
+      identity_provider_id: "browser-smoke-profile-provider",
+      authentication_provider_id: null
+    }, "profile provider assignment must persist independently of the login provider");
 
     // Disable and re-enable the domain through the confirmation dialog.
     const domainStatus = domainRow.locator("td").nth(1).locator("span");
