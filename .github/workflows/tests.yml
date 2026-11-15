@@ -17,6 +17,7 @@ concurrency:
 jobs:
   unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:17
@@ -104,6 +105,7 @@ jobs:
       - name: Install Playwright test client
         run: npm install --no-save --package-lock=false playwright@1.56.0
       - name: Build and smoke-test standalone Docker stack
+        timeout-minutes: 20
         run: |
           postgres_password='ci-password'
           session_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
@@ -122,7 +124,21 @@ jobs:
           LOCAL_ADMIN_EMAIL=admin@example.test
           LOCAL_ADMIN_PASSWORD_HASH='$local_admin_hash'
           EOF
-          trap 'docker compose down --volumes' EXIT
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Docker Compose status after smoke-test failure"
+              docker compose ps || true
+              echo "::endgroup::"
+              echo "::group::Docker Compose logs after smoke-test failure"
+              docker compose logs --no-color --tail=250 || true
+              echo "::endgroup::"
+            fi
+            docker compose down --volumes || true
+            exit "$status"
+          }
+          trap cleanup EXIT
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
           docker compose exec -T opensigweave alembic current
@@ -138,7 +154,7 @@ jobs:
           response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           printf 'Signature engine smoke response: %s\n' "$response"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert "Best Regards" in result["html"]; assert "<strong>Smoke </strong>" in result["html"]' "$response"
-          docker run --rm --init --ipc=host --network host -v "$PWD:/work" -w /work -e BROWSER_TEST_EMAIL="admin@example.test" -e BROWSER_TEST_PASSWORD="ci-local-admin-password" -e BROWSER_TEST_NORMAL_USER_SESSION="$normal_user_session" -e BROWSER_TEST_RESTRICTED_USER_SESSION="$restricted_user_session" mcr.microsoft.com/playwright:v1.56.0-noble node tests/browser_smoke.cjs
+          timeout --signal=TERM --kill-after=30s 12m docker run --rm --init --ipc=host --network host -v "$PWD:/work" -w /work -e BROWSER_TEST_EMAIL="admin@example.test" -e BROWSER_TEST_PASSWORD="ci-local-admin-password" -e BROWSER_TEST_NORMAL_USER_SESSION="$normal_user_session" -e BROWSER_TEST_RESTRICTED_USER_SESSION="$restricted_user_session" mcr.microsoft.com/playwright:v1.56.0-noble node tests/browser_smoke.cjs
       - name: Install age for backup integration
         run: |
           sudo apt-get update
