@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Working branch:** `architecture/refactor-foundation`  
-**Status:** First Docker-testable revision; not a production release  
+**Status:** Automated preview validation passed; external acceptance remains; not a production release  
 **Last documentation review:** 2026-11-15
 
 This document describes the current branch state. It is not a promise that deferred work is complete.
