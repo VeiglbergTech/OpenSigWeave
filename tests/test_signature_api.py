@@ -832,7 +832,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
 class AuthorizationHttpRouteTests(unittest.TestCase):
     """Exercise authorization through ASGI routing and signed browser sessions."""
 
-    COOKIE_NAME = "__Host-opensigweave-session"
+    COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "__Host-opensigweave-session")
 
     def setUp(self):
         self.engine = create_engine(
@@ -868,7 +868,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
                 separators=(",", ":"),
             ).encode("utf-8")
         )
-        signed = TimestampSigner(os.environ["SECRET_KEY"]).sign(payload).decode("utf-8")
+        signed = TimestampSigner(main.session_secret).sign(payload).decode("utf-8")
         self.client.cookies.set(self.COOKIE_NAME, signed)
         return csrf_token
 
