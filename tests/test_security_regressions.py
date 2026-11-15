@@ -296,7 +296,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('APP_BIND_ADDRESS="127.0.0.1"', env_example)
         self.assertIn("private-interface IP", readme)
         self.assertIn("only from the reverse-proxy private IP", readme)
-        self.assertIn("not a substitute for the firewall", readme)
+        self.assertIn("does not make the proxy network boundary for you", readme)
         self.assertIn("TRUSTED_PROXY_CIDRS", architecture)
 
         postgres_service = compose.split("  postgres:", 1)[1].split("  opensigweave:", 1)[0]
