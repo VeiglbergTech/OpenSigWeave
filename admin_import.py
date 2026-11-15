@@ -389,11 +389,14 @@ def inspect_admin_import(
             if not isinstance(domain_ids, list) or not isinstance(members, list):
                 conflicts.append(f"Group assignments are invalid: {slug}")
                 continue
-            if len(set(domain_ids)) != len(domain_ids):
+            validated_domain_ids = [
+                _integer(source_domain_id, "group domain id", 1)
+                for source_domain_id in domain_ids
+            ]
+            if len(set(validated_domain_ids)) != len(validated_domain_ids):
                 conflicts.append(f"Group contains duplicate domain assignments: {slug}")
             resolved_domains = []
-            for source_domain_id in domain_ids:
-                _integer(source_domain_id, "group domain id", 1)
+            for source_domain_id in validated_domain_ids:
                 if source_domain_id not in domain_map and db.get(DomainDB, source_domain_id) is None:
                     conflicts.append(f"Group {slug} references a domain not included in the import")
                 resolved_domains.append(domain_map.get(source_domain_id, source_domain_id))
