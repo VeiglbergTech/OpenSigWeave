@@ -2,7 +2,7 @@ name: Tests
 
 on:
   push:
-    branches: ["beta"]
+    branches: ["beta", "security/**"]
   pull_request:
     branches: ["main"]
   workflow_dispatch:
