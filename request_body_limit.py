@@ -49,7 +49,7 @@ class PathAwareRequestBodyLimitMiddleware:
                 message = messages[index]
                 index += 1
                 return message
-            return {"type": "http.disconnect"}
+            return await receive()
 
         await self.app(scope, replay_receive, send)
 
