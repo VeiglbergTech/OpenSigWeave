@@ -342,32 +342,79 @@ def inspect_admin_import(
                     _boolean(variant.get("is_enabled"), "variant enabled state")
 
     if "groups" in components:
+        seen_group_ids = set()
+        seen_group_slugs = set()
         for row in data["groups"]:
             row = _object(row, "signature group")
             group_id = _identifier(row.get("id"), "group id")
             slug = _string(row.get("slug"), "group slug", 64)
-            if db.get(SignatureGroupDB, group_id) or db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug).first():
-                conflicts.append(f"Group id or slug already exists: {slug}")
-            else:
-                additions["groups"] += 1
-                group_ids.add(group_id)
-            _string(row.get("name"), "group name", 255)
-            if row.get("selection_policy") != "WEIGHTED_RANDOM_NO_REPEAT":
+            name = _string(row.get("name"), "group name", 255)
+            if group_id in seen_group_ids or slug in seen_group_slugs:
+                conflicts.append(f"Duplicate group id or slug in import: {slug}")
+                continue
+            seen_group_ids.add(group_id)
+            seen_group_slugs.add(slug)
+            selection_policy = row.get("selection_policy")
+            if selection_policy != "WEIGHTED_RANDOM_NO_REPEAT":
                 conflicts.append(f"Group selection policy is unsupported: {slug}")
-            _boolean(row.get("is_active"), "group active state")
-            if not isinstance(row.get("domain_ids", []), list) or not isinstance(row.get("members", []), list):
+            is_active = _boolean(row.get("is_active"), "group active state")
+            domain_ids = row.get("domain_ids", [])
+            members = row.get("members", [])
+            if not isinstance(domain_ids, list) or not isinstance(members, list):
                 conflicts.append(f"Group assignments are invalid: {slug}")
                 continue
-            for source_domain_id in row.get("domain_ids", []):
+            resolved_domains = []
+            for source_domain_id in domain_ids:
+                _integer(source_domain_id, "group domain id", 1)
                 if source_domain_id not in domain_map and db.get(DomainDB, source_domain_id) is None:
                     conflicts.append(f"Group {slug} references a domain not included in the import")
-            for member in row.get("members", []):
+                resolved_domains.append(domain_map.get(source_domain_id, source_domain_id))
+            expected_members = []
+            for member in members:
                 member = _object(member, "group member")
                 signature_id = _identifier(member.get("signature_id"), "group member signature id")
                 if signature_id not in signature_ids and db.get(SignatureDB, signature_id) is None:
                     conflicts.append(f"Group {slug} references a signature not included in the import")
-                _integer(member.get("weight"), "group member weight", 1)
-                _boolean(member.get("is_enabled"), "group member enabled state")
+                expected_members.append((
+                    signature_id,
+                    _integer(member.get("weight"), "group member weight", 1),
+                    _boolean(member.get("is_enabled"), "group member enabled state"),
+                ))
+            if len({item[0] for item in expected_members}) != len(expected_members):
+                conflicts.append(f"Group contains duplicate signature members: {slug}")
+            existing_by_id = db.get(SignatureGroupDB, group_id)
+            existing_by_slug = db.query(SignatureGroupDB).filter(SignatureGroupDB.slug == slug).first()
+            if existing_by_id or existing_by_slug:
+                if existing_by_id is None or existing_by_slug is not existing_by_id:
+                    conflicts.append(f"Group id or slug already exists with different identity: {slug}")
+                    continue
+                existing_domains = [
+                    item.domain_id for item in db.query(SignatureGroupDomainDB)
+                    .filter(SignatureGroupDomainDB.group_id == group_id)
+                    .order_by(SignatureGroupDomainDB.domain_id.asc()).all()
+                ]
+                existing_members = [
+                    (item.signature_id, item.weight, item.is_enabled)
+                    for item in db.query(SignatureGroupMemberDB)
+                    .filter(SignatureGroupMemberDB.group_id == group_id)
+                    .order_by(SignatureGroupMemberDB.signature_id.asc()).all()
+                ]
+                expected_core = (name, slug, selection_policy, is_active)
+                existing_core = (
+                    existing_by_id.name, existing_by_id.slug,
+                    existing_by_id.selection_policy, existing_by_id.is_active,
+                )
+                if (
+                    existing_core != expected_core
+                    or existing_domains != sorted(resolved_domains)
+                    or existing_members != sorted(expected_members)
+                ):
+                    conflicts.append(f"Group already exists with different settings: {slug}")
+                    continue
+                reusable["groups"] += 1
+            else:
+                additions["groups"] += 1
+            group_ids.add(group_id)
 
     if "rules" in components:
         for row in data["rules"]:
@@ -497,6 +544,8 @@ def apply_admin_import(
 
         if "groups" in components:
             for row in data["groups"]:
+                if db.get(SignatureGroupDB, row["id"]) is not None:
+                    continue
                 group = SignatureGroupDB(
                     id=row["id"], name=row["name"], slug=row["slug"],
                     selection_policy=row["selection_policy"], is_active=row["is_active"],
