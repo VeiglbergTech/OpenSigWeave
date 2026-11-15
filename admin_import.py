@@ -12,6 +12,7 @@ import re
 import uuid
 import zipfile
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from admin_export import (
@@ -158,7 +159,7 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
                 if total_uncompressed > MAX_EXPORT_BYTES:
                     raise AdminImportError("Import archive exceeds the 20 MiB uncompressed size limit")
                 content = archive.read(info)
-                if not hashlib.sha256(content).hexdigest() == expected_hash:
+                if hashlib.sha256(content).hexdigest() != expected_hash:
                     raise AdminImportError("An import asset failed its SHA-256 integrity check")
                 assets[path] = content
             if declared_paths != set(names) - {"manifest.json"}:
@@ -226,9 +227,8 @@ def inspect_admin_import(
             imported_providers[provider_id] = expected
             provider_ids.add(provider_id)
 
-    for component, field in (("domains", "identity_provider_id"),):
-        if component in components:
-            for row in data[component]:
+    if "domains" in components:
+        for row in data["domains"]:
                 row = _object(row, "domain")
                 for key in ("identity_provider_id", "authentication_provider_id"):
                     provider_id = row.get(key)
@@ -256,7 +256,7 @@ def inspect_admin_import(
                 _string(row.get("template_html"), "domain template", 65536, empty=True),
                 row.get("identity_provider_id"), row.get("authentication_provider_id"),
             )
-            existing = db.query(DomainDB).filter(DomainDB.domain_name.ilike(name)).first()
+            existing = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == name).first()
             if existing:
                 if _domain_signature(existing) != expected:
                     conflicts.append(f"Domain already exists with different settings: {name}")
@@ -277,7 +277,7 @@ def inspect_admin_import(
             if folded in seen_names:
                 conflicts.append(f"Duplicate signature name: {name}")
             seen_names.add(folded)
-            if db.get(SignatureDB, signature_id) or db.query(SignatureDB).filter(func_lower(SignatureDB.name) == folded).first():
+            if db.get(SignatureDB, signature_id) or db.query(SignatureDB).filter(func.lower(SignatureDB.name) == folded).first():
                 conflicts.append(f"Signature id or name already exists: {name}")
             else:
                 additions["signatures"] += 1
@@ -310,6 +310,8 @@ def inspect_admin_import(
                 path = _string(version.get("asset"), "version asset path", 512)
                 if path not in assets:
                     conflicts.append(f"Signature version asset is missing: {name}")
+                elif hashlib.sha256(assets[path]).hexdigest() != version.get("sha256") or len(assets[path]) != version.get("size_bytes"):
+                    conflicts.append(f"Signature version metadata does not match its asset: {name}")
                 size = _integer(version.get("size_bytes"), "version size")
                 if size > MAX_SIGNATURE_BYTES:
                     conflicts.append(f"Signature version exceeds the HTML size limit: {name}")
@@ -392,12 +394,6 @@ def inspect_admin_import(
     }
 
 
-def func_lower(column):
-    # Keep SQLAlchemy's func import out of the public module namespace.
-    from sqlalchemy import func
-    return func.lower(column)
-
-
 def apply_admin_import(
     db: Session,
     store: SignatureFileStore,
@@ -425,7 +421,7 @@ def apply_admin_import(
         if "domains" in components:
             for row in data["domains"]:
                 source_id = row["id"]
-                existing = db.query(DomainDB).filter(DomainDB.domain_name.ilike(row["domain_name"].strip().casefold().rstrip("."))).first()
+                existing = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == row["domain_name"].strip().casefold().rstrip(".")).first()
                 if existing:
                     domain_map[source_id] = existing.id
                     continue
