@@ -52,7 +52,7 @@ async function main() {
     await personalEditor.waitFor({ state: "visible" });
     await personalEditor.fill("CSP editor smoke");
     await personalEditor.press("Control+A");
-    await page.locator("#quill-editor .ql-bold").click();
+    await page.locator(".ql-toolbar .ql-bold").first().click();
     await personalEditor.press("B");
     await page.waitForFunction(() =>
       document.querySelector("#raw-html-editor").value.includes("<strong>B</strong>")
