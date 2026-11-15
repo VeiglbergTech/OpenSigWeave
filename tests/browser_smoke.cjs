@@ -95,7 +95,17 @@ async function main() {
     await page.getByRole("button", { name: "Imports", exact: true }).click();
     const importPanel = page.locator('[x-data="adminImportManager"]');
     await importPanel.locator("#admin-import-file").setInputFiles(exportPath);
-    await importPanel.getByRole("button", { name: "Validate and preview" }).click();
+    const importPreviewButton = importPanel.getByRole("button", { name: "Validate and preview" });
+    assert.equal(await importPreviewButton.isDisabled(), false, "import preview button must be enabled after selecting a file");
+    const importResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/admin/imports/preview")
+    );
+    await importPreviewButton.click();
+    const importResponse = await importResponsePromise;
+    const importResponseBody = await importResponse.text();
+    assert.equal(importResponse.status(), 200, "import preview API failed: " + importResponseBody);
+    const importPreviewData = JSON.parse(importResponseBody);
+    assert.equal(importPreviewData.can_apply, true, JSON.stringify(importPreviewData));
     await importPanel.getByText("Archive validated. No conflicts detected.", { exact: true }).waitFor();
     assert.equal(await importPanel.getByText("New: 0 · Reused: 2").count(), 1,
       "preview should identify both matching domains as reusable");
