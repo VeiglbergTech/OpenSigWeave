@@ -76,16 +76,16 @@ window.fetch = (resource, options = {}) => {
             });
         }
         function checkAllLocks() {
-            toggleLock('user-quill-lock', 'raw-html-editor');
-            toggleLock('domain-quill-lock', 'domain-raw-html-editor');
-            toggleLock('admin-quill-lock', 'admin-raw-html-editor');
+            toggleLock('user-rich-editor-lock', 'raw-html-editor');
+            toggleLock('domain-rich-editor-lock', 'domain-raw-html-editor');
+            toggleLock('admin-rich-editor-lock', 'admin-raw-html-editor');
             checkOutlookMarkupWarnings();
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
             const userRawEditor = document.getElementById('raw-html-editor');
-            if (!document.getElementById('quill-editor') || !userRawEditor) return;
-            userRichEditor = await mountRichEditor('quill-editor', 'raw-html-editor', {
+            if (!document.getElementById('user-rich-editor') || !userRawEditor) return;
+            userRichEditor = await mountRichEditor('user-rich-editor', 'raw-html-editor', {
                 readOnly: document.body.dataset.canEdit !== "true"
             });
             const res = await fetch('/api/my-signature');
@@ -458,7 +458,7 @@ function identityProviderManager() { return {
                     await this.$nextTick();
                     const rawEditor = document.getElementById('domain-raw-html-editor');
                     if (rawEditor) rawEditor.value = domainData.template_html || "";
-                    domainRichEditor = await mountRichEditor('domain-quill-editor', 'domain-raw-html-editor');
+                    domainRichEditor = await mountRichEditor('domain-rich-editor', 'domain-raw-html-editor');
                     if (domainRichEditor) domainRichEditor.setData(domainData.template_html || "");
                     checkAllLocks();
                 },
@@ -497,7 +497,7 @@ function identityProviderManager() { return {
                         this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
                     }
                     await this.$nextTick();
-                    adminRichEditor = await mountRichEditor('admin-quill-editor', 'admin-raw-html-editor');
+                    adminRichEditor = await mountRichEditor('admin-rich-editor', 'admin-raw-html-editor');
                     if (adminRichEditor) adminRichEditor.setData(document.getElementById('admin-raw-html-editor').value);
                     checkAllLocks();
                 },
