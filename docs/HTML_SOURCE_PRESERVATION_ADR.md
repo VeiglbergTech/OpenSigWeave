@@ -1,6 +1,6 @@
 # HTML source preservation and safe signature rendering
 
-- **Status:** Implemented; automated CI validation passed on `beta` (merge commit `2d316fee9cb314a315997833e544487f9d869f06`)
+- **Status:** Implemented; automated regression coverage is included. Current branch-specific CI evidence is maintained in [implementation progress](IMPLEMENTATION_PROGRESS.md).
 - **Scope:** Personal overrides, domain templates, administrator overrides, versioned signatures
 - **Related:** `signature_sanitizer.py`, `signature_renderer.py`, `signature_catalog.py`, `signature_storage.py`
 
@@ -17,7 +17,7 @@ Implemented on the working branch:
 - All three raw-HTML editors display an Outlook-markup warning explaining that conditional comments and VML are preserved in source but removed from sanitized output.
 - Automated tests cover source round-trips, sanitizer behavior, API delivery paths and migration compatibility.
 
-The latest successful push run [#1869](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813160634) and pull-request run [#1870](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813165867) both passed on merge commit `2d316fee9cb314a315997833e544487f9d869f06`. CI includes source-preservation regression coverage, PostgreSQL/SQLite migrations, Docker/browser smoke and encrypted backup/fresh restore.
+CI includes source-preservation regression coverage, PostgreSQL/SQLite migrations, Docker/browser smoke and encrypted backup/fresh restore. Current branch-specific CI evidence is maintained in [implementation progress](IMPLEMENTATION_PROGRESS.md).
 
 Remaining acceptance work is real-browser coverage of all three source-editing surfaces and verification of actual email-client rendering. The current Playwright flow exercises Quill typing/formatting and raw-source synchronization in the personal editor; it does not yet prove round-trip behavior in all three editors. Outlook conditional comments and VML are preserved in stored source but removed from sanitized output, so this implementation does not make Outlook VML available in delivered signatures.
 
