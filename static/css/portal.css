@@ -40,3 +40,38 @@
         max-height: calc(100vh - 2rem);
     }
 }
+
+
+/* CKEditor 5: light email canvas inside the dark administration interface. */
+.ck.ck-toolbar {
+    background: #374151 !important;
+    border-color: #4b5563 !important;
+}
+.ck.ck-toolbar .ck-button,
+.ck.ck-toolbar .ck-dropdown__button {
+    color: #e5e7eb !important;
+}
+.ck.ck-toolbar .ck-button:hover,
+.ck.ck-toolbar .ck-button.ck-on {
+    background: #1f2937 !important;
+}
+.ck.ck-editor__main > .ck-editor__editable {
+    min-height: 240px;
+    max-height: 520px;
+    overflow-y: auto;
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #4b5563 !important;
+}
+.ck.ck-editor__editable_inline {
+    padding: 1rem 1.25rem !important;
+}
+.ck-content table {
+    border-collapse: collapse;
+}
+.ck-content table td,
+.ck-content table th {
+    border: 1px solid #9ca3af;
+    min-width: 2em;
+    padding: .25em;
+}
