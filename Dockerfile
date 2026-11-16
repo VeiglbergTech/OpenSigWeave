@@ -5,7 +5,8 @@ WORKDIR /build
 COPY static/js/ckeditor-entry.js ./ckeditor-entry.js
 RUN npm install --prefix /tmp/ckeditor5 --no-save --no-package-lock ckeditor5@49.1.0 esbuild@0.24.2 \
     && mkdir -p /assets \
-    && /tmp/ckeditor5/node_modules/.bin/esbuild /build/ckeditor-entry.js --bundle --format=iife --node-path=/tmp/ckeditor5/node_modules --outfile=/assets/ckeditor5.js \
+    && ln -s /tmp/ckeditor5/node_modules /build/node_modules \
+    && /tmp/ckeditor5/node_modules/.bin/esbuild /build/ckeditor-entry.js --bundle --format=iife --outfile=/assets/ckeditor5.js \
     && cp /tmp/ckeditor5/node_modules/ckeditor5/LICENSE.md /assets/LICENSE.md
 
 FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
