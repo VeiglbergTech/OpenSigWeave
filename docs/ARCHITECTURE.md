@@ -13,7 +13,7 @@ The intended long-term product boundary is:
 - **Mail adapters:** separate integrations such as Rspamd. They consume a stable engine API and must not make the core depend on a particular mail server.
 - **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
 
-Managed identity providers are the default. New installations use `OIDC_ENABLED=false`, configure an independent local administrator emergency account and create providers in the portal. Each provider's settings and secrets live in `.idp/{provider-id}/.env`. Domains select a login provider and a profile-attribute provider independently. The previous root-level OIDC configuration remains available only as an opt-in compatibility path with `OIDC_ENABLED=true`.
+Managed identity providers are the only external authentication path. Installations configure an independent local administrator emergency account and create providers in the portal. Each provider's settings and secrets live in `.idp/{provider-id}/.env`. Domains select a login provider and a profile-attribute provider independently. No root-level/global OIDC compatibility path exists.
 
 ## 2. Current runtime components
 
@@ -34,7 +34,7 @@ Managed identity-provider configuration is stored outside PostgreSQL under `.idp
 
 The profile provider is used independently by the portal and signature engine. Authentik and LDAP profile providers retrieve active user attributes and selected claims; generic OIDC uses verified callback claims cached for up to 24 hours. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
 
-The local administrator account uses a salted scrypt hash and remains independent of external provider availability. New installations default to managed providers; root-level global OIDC is retained only for explicit compatibility mode. Managed OIDC logout uses the provider's discovery-based HTTPS end-session endpoint and an optional post-logout redirect URI. The legacy global OIDC compatibility path still uses its Authentik-specific logout URL.
+The local administrator account uses a salted scrypt hash and remains independent of external provider availability. Managed OIDC logout uses the provider's discovery-based HTTPS end-session endpoint and an optional post-logout redirect URI.
 
 ### Signature and rule services
 
@@ -71,9 +71,9 @@ The current rewrite path is limited to non-multipart messages. No production mai
 
 ### Browser identity
 
-The browser login page lists one sign-in box per configured Authentik OIDC provider. Selecting a box starts that provider's Authorization Code flow; the callback verifies the email and checks that its domain is still assigned to the selected provider. LDAP users and the local administrator use the email/password form. LDAP routing is selected by the email domain. The legacy global OIDC callback at `/auth` is registered only when `OIDC_ENABLED=true`.
+The browser login page lists one sign-in box per configured Authentik or generic OIDC provider. Selecting a box starts that provider's Authorization Code flow; the callback verifies the email and checks that its domain is still assigned to the selected provider. LDAP users and the local administrator use the email/password form. LDAP routing is selected by the email domain.
 
-When legacy global OIDC is enabled, the canonical hostname is derived from its `OIDC_REDIRECT_URI`. In managed-provider mode, `APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected in both modes.
+`APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected.
 
 ### Portal permissions
 
@@ -135,7 +135,7 @@ Current implementation includes:
 - Per-provider OIDC callback validation and per-domain login-provider revalidation.
 - Secure, HttpOnly, SameSite session cookies with a one-hour lifetime. Starlette's current signed client-side session cookie is not immediately revocable: clearing it on logout removes it from that browser, but a copied cookie can remain usable until expiry. Role/group changes likewise may not affect an already-issued cookie immediately. Treat this as a known limitation; do not claim server-side session revocation.
 - Session-bound CSRF checks for state-changing browser requests.
-- Trusted Host validation using explicit allowed hostnames; legacy OIDC also validates its configured callback hostname.
+- Trusted Host validation using explicit allowed hostnames.
 - Security response headers and a global request-body size limit.
 - Server-side HTML sanitization, sandboxed previews and autoescaped template variables.
 - File-store path/symlink checks, atomic writes and SHA-256 integrity validation.

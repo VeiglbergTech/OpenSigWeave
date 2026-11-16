@@ -57,7 +57,6 @@ Set at least:
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `SECRET_KEY` | Session-cookie signing secret |
 | `ENGINE_API_KEY` | Rspamd engine API authentication |
-| `OIDC_ENABLED` | `false` for managed providers and local login; `true` only for legacy global OIDC |
 | `APP_ALLOWED_HOSTS` | Explicit portal hostnames; required in local/managed-provider mode |
 | `LOCAL_ADMIN_EMAIL` | Local emergency administrator |
 | `LOCAL_ADMIN_PASSWORD_HASH` | Salted scrypt hash; never store the plaintext password |
@@ -70,7 +69,7 @@ Generate the local administrator hash:
 python scripts/hash_password.py
 ```
 
-Enter the complete output in `LOCAL_ADMIN_PASSWORD_HASH`, enclosed in single quotes. Use a password of at least 12 characters. In managed-provider mode, set `OIDC_ENABLED="false"`; the local administrator receives both `signature-admins` and `signature-users`.
+Enter the complete output in `LOCAL_ADMIN_PASSWORD_HASH`, enclosed in single quotes. Use a password of at least 12 characters. The local administrator receives both `signature-admins` and `signature-users`.
 
 ### Environment reference
 
@@ -84,11 +83,6 @@ Defaults are defined in [`.env.example`](.env.example).
 | `DATABASE_URL` | Compose overrides it for the application using the PostgreSQL service |
 | `SIGNATURE_STORAGE_PATH` | `/data/signatures` |
 | `SECRET_KEY`, `ENGINE_API_KEY` | Required independent random secrets |
-| `OIDC_ENABLED` | `false` in the example; `true` enables legacy global OIDC |
-| `OIDC_DISCOVERY_URL` | Legacy OIDC discovery URL; only used when enabled |
-| `OIDC_REDIRECT_URI` | Legacy OIDC callback URI; only used when enabled |
-| `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET` | Legacy OIDC client credentials |
-| `OIDC_SCOPES` | `openid email profile opensigweave` |
 | `APP_ALLOWED_HOSTS` | Empty in example; set explicit hostnames, comma-separated, no wildcard/scheme/port/path |
 | `LOCAL_ADMIN_EMAIL` | `admin@example.com` |
 | `LOCAL_ADMIN_PASSWORD_HASH` | Empty in example; required for local login |
@@ -124,7 +118,7 @@ References: [Authentik OIDC provider](https://docs.goauthentik.io/add-secure-app
 
 TLS certificate verification is mandatory; do not use `ldap://`, disable validation or bind as a domain administrator. Login requires an enabled AD account, an exact `mail` match and direct `memberOf` membership mapped to `signature-users` or `signature-admins`; nested group expansion is not implemented. The login flow searches with the service account, then verifies the password with a separate bind as the user's DN.
 
-For managed providers, `APP_ALLOWED_HOSTS` must contain at least one explicit hostname. The legacy root-level OIDC configuration is compatibility-only and requires `OIDC_ENABLED="true"`; its callback is `/auth`. Managed OIDC callbacks use `/auth/{provider-id}`.
+`APP_ALLOWED_HOSTS` must contain at least one explicit hostname. All external OIDC providers are configured under **Administration → Identity Providers** and use callbacks at `/auth/{provider-id}`. There is no global OIDC configuration or `/auth` compatibility callback.
 
 ### Start and check
 
@@ -264,7 +258,6 @@ Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user doe
 |---|---|
 | Application restarts | `docker compose ps`; `docker compose logs --tail=200 opensigweave`; check independent `SECRET_KEY` and `ENGINE_API_KEY` values (at least 32 characters) and remove placeholders. |
 | PostgreSQL password error | Check `docker compose config` and matching `POSTGRES_PASSWORD`/database URL. Changing the environment variable does not rotate credentials in an initialized database; use a PostgreSQL password-rotation procedure, never delete the volume. |
-| Invalid Host | Use a hostname in `APP_ALLOWED_HOSTS`; legacy OIDC also uses the hostname in `OIDC_REDIRECT_URI`. |
 | OIDC callback failure | Check provider enabled, HTTPS discovery reachability, client credentials, exact registered callback, canonical Host, verified email and groups array. |
 | Login succeeds but no portal access | Check exact `signature-users` / `signature-admins` group mapping. |
 | Empty profile fields | Check profile-provider assignment, Authentik URL/token and read permission, or LDAP service-bind access; inspect application logs. Failed lookup returns empty attributes unless a same-provider cache entry is available. |

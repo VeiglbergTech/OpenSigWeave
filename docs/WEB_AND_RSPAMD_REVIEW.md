@@ -8,14 +8,14 @@
 
 ### Authentication and authorization
 
-- Legacy global OIDC uses discovery metadata and an explicit HTTPS callback URI only when `OIDC_ENABLED=true`. `OIDC_ENABLED=false` disables that legacy client; managed OIDC providers and their `/auth/{provider_id}` callbacks remain available. The local emergency administrator uses a salted scrypt hash.
+- External OIDC authentication is available only through managed identity providers and their `/auth/{provider_id}` callbacks. The local emergency administrator uses a salted scrypt hash.
 - The callback requires a subject, a syntactically valid email, `email_verified` as the JSON boolean `true`, and a well-formed groups array.
 - The previous session is cleared before the authenticated user object is stored.
 - The session stores only the application-required identity fields and selected profile attributes.
 - Administrator routes check the `signature-admins` group server-side.
 - Personal signature routes require `signature-users` or `signature-admins`.
 - State-changing browser requests require a session-bound CSRF token. Logout uses POST and is covered by CSRF validation.
-- Legacy `/auth` and managed `/auth/{provider_id}` OIDC callbacks share the database-backed callback rate-limit policy.
+- Managed `/auth/{provider_id}` OIDC callbacks use the database-backed callback rate-limit policy.
 
 **Provider distinctions:** Authentik remains the provider with dedicated account lookup through its API. Generic OIDC login and logout use standard discovery metadata; the verified callback claims are cached for profile use (currently up to 24 hours) because generic OIDC does not define a portable account-status or profile-management API. Consequently, group or account changes at a generic provider may not take effect until cache expiry. Do not describe generic OIDC as providing immediate account revocation. When no managed provider is assigned, the local administrator remains available independently; requests without an assigned profile provider return empty external identity attributes.
 
@@ -23,7 +23,7 @@
 
 - Startup rejects missing, short and known-placeholder session/engine secrets.
 - Session cookie is Secure, HttpOnly, SameSite=Lax, uses the `__Host-` prefix and has a one-hour lifetime.
-- TrustedHostMiddleware derives the canonical hostname from `OIDC_REDIRECT_URI` in OIDC mode. Local-only mode requires explicit `APP_ALLOWED_HOSTS`. Wildcards are rejected.
+- TrustedHostMiddleware validates explicit hostnames from `APP_ALLOWED_HOSTS`; wildcards are rejected.
 - Security response headers include content-type/frame restrictions, HSTS and other hardening headers.
 - A global request-body limit rejects oversized/chunked requests; HTML fields and signature files have their own limits.
 - Database-backed rate limiting is shared across workers. The application fails closed if the limiter database is unavailable.
