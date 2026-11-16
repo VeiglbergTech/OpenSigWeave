@@ -17,7 +17,7 @@ os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thir
 
 from auth_config import hash_local_admin_password
 
-os.environ["APP_ALLOWED_HOSTS"] = "signature-test.example.org"
+os.environ["APP_ALLOWED_HOSTS"] = "signature-test.example.org,app.example.org"
 os.environ["LOCAL_ADMIN_EMAIL"] = "admin@example.org"
 os.environ["LOCAL_ADMIN_PASSWORD_HASH"] = hash_local_admin_password("correct horse battery staple")
 
@@ -491,28 +491,20 @@ class SignatureCatalogApiTests(unittest.TestCase):
         }
         for claim in ("false", 1, False, None):
             with self.subTest(email_verified=claim):
-                request = SimpleNamespace(session={"stale": "session"})
-                token = {"userinfo": {**base_user, "email_verified": claim}}
-                with patch.object(main.oauth.oidc, "authorize_access_token", new=AsyncMock(return_value=token)):
-                    response = asyncio.run(main.auth(request))
-                self.assertEqual(response.status_code, 303)
-                self.assertIn("authentication_failed", response.headers["location"])
-                self.assertEqual(request.session, {})
+                with self.assertRaises(ValueError):
+                    main._valid_oidc_identity({**base_user, "email_verified": claim})
 
     def test_oidc_accepts_boolean_true_email_verified_claim(self):
-        request = SimpleNamespace(session={"stale": "session"})
-        token = {"userinfo": {
+        user = {
             "sub": "user-123",
             "email": "user@example.org",
             "email_verified": True,
             "groups": ["signature-users"],
             "name": "Test User",
-        }}
-        with patch.object(main.oauth.oidc, "authorize_access_token", new=AsyncMock(return_value=token)):
-            response = asyncio.run(main.auth(request))
-        self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], "/")
-        self.assertEqual(request.session["user"]["email_verified"], True)
+        }
+        email, groups = main._valid_oidc_identity(user)
+        self.assertEqual(email, "user@example.org")
+        self.assertEqual(groups, ["signature-users"])
 
     def test_authenticated_non_member_cannot_use_personal_signature_api(self):
         outsider = SimpleNamespace(

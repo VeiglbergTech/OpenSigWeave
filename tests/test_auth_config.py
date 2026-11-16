@@ -22,7 +22,7 @@ from auth_config import (
     is_valid_password_hash,
     verify_local_admin_password,
 )
-os.environ["APP_ALLOWED_HOSTS"] = "signature-test.example.org"
+os.environ["APP_ALLOWED_HOSTS"] = "signature-test.example.org,app.example.org"
 os.environ["LOCAL_ADMIN_EMAIL"] = "admin@example.org"
 os.environ["LOCAL_ADMIN_PASSWORD_HASH"] = hash_local_admin_password("correct horse battery staple")
 

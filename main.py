@@ -35,6 +35,7 @@ from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, Sig
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template, prepare_group_placeholders, strip_group_placeholders
+from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
@@ -63,41 +64,58 @@ LOCAL_ADMIN_CONFIGURED = bool(LOCAL_ADMIN_EMAIL or LOCAL_ADMIN_PASSWORD_HASH)
 
 identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
+# Temporary profile-attribute bridge for one-time migration of older Authentik setups.
+attribute_provider = AuthentikAttributeProvider(
+    base_url=os.environ.get("AUTHENTIK_URL", ""),
+    api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
+)
+
 async def get_identity_attributes(db: Session, email: str, provider_id: str | None = None) -> IdentityAttributes:
     normalized_email = email.strip().casefold()
-    if not provider_id:
-        return IdentityAttributes()
-    meta = db.get(IdentityProviderDB, provider_id)
-    if meta is None or not meta.is_enabled:
-        return IdentityAttributes()
-    cache_key = f"{provider_id}:{normalized_email}"
-    if meta.provider_type == "oidc":
-        cached = db.get(IdentityCacheDB, cache_key)
-        if cached is None or cached.updated_at is None:
+    if provider_id:
+        meta = db.get(IdentityProviderDB, provider_id)
+        if meta is None or not meta.is_enabled:
             return IdentityAttributes()
-        cache_updated = cached.updated_at
-        if cache_updated.tzinfo is None:
-            cache_updated = cache_updated.replace(tzinfo=timezone.utc)
-        if (datetime.now(timezone.utc) - cache_updated).total_seconds() > 86400:
-            return IdentityAttributes()
-        return IdentityAttributes(
-            principal_id=cached.principal_id or "",
-            first_name=cached.first_name or "",
-            last_name=cached.last_name or "",
-            title=cached.title or "",
-            phone=cached.phone or "",
-            groups=frozenset(cached.groups or []),
-            claims=cached.claims or {},
-            attributes=cached.attributes or {},
-        )
-    try:
-        provider = identity_provider_registry.get(provider_id)
+        cache_key = f"{provider_id}:{normalized_email}"
+        if meta.provider_type == "oidc":
+            cached = db.get(IdentityCacheDB, cache_key)
+            if cached is None or cached.updated_at is None:
+                return IdentityAttributes()
+            cache_updated = cached.updated_at
+            if cache_updated.tzinfo is None:
+                cache_updated = cache_updated.replace(tzinfo=timezone.utc)
+            # Generic OIDC providers do not expose a portable account-status API.
+            # Expire cached claims after 24 hours so removed memberships do not live forever.
+            if (datetime.now(timezone.utc) - cache_updated).total_seconds() > 86400:
+                return IdentityAttributes()
+            return IdentityAttributes(
+                principal_id=cached.principal_id or "",
+                first_name=cached.first_name or "",
+                last_name=cached.last_name or "",
+                title=cached.title or "",
+                phone=cached.phone or "",
+                groups=frozenset(cached.groups or []),
+                claims=cached.claims or {},
+                attributes=cached.attributes or {},
+            )
+    else:
+        # Profile-only compatibility bridge; it never authenticates users.
+        provider = attribute_provider
+        cache_key = normalized_email
         if provider is None:
             return IdentityAttributes()
+    try:
+        if provider_id:
+            provider = identity_provider_registry.get(provider_id)
+            if provider is None:
+                return IdentityAttributes()
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Unsupported identity result")
-        fresh = replace(fresh, principal_id=f"{provider_id}:{fresh.principal_id}" if fresh.principal_id else "")
+        if provider_id and fresh.principal_id:
+            fresh = replace(fresh, principal_id=f"{provider_id}:{fresh.principal_id}")
+        else:
+            fresh = replace(fresh, principal_id="")
         cached = db.get(IdentityCacheDB, cache_key)
         values = {
             "principal_id": fresh.principal_id or None,
@@ -118,7 +136,7 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id, type(exc).__name__)
+        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id or "legacy-profile", type(exc).__name__)
         cached = db.get(IdentityCacheDB, cache_key)
         if cached is None:
             return IdentityAttributes()
@@ -225,7 +243,7 @@ def migrate_legacy_identity_provider_configuration():
     with SessionLocal() as db:
         if db.query(IdentityProviderDB).count():
             return
-        legacy_type = os.environ.get("IDENTITY_PROVIDER", "none").strip().casefold()
+        legacy_type = os.environ.get("IDENTITY_PROVIDER", "authentik" if os.environ.get("AUTHENTIK_API_TOKEN") else "none").strip().casefold()
         settings = {}
         if legacy_type == "authentik":
             settings = {
@@ -259,6 +277,13 @@ def migrate_legacy_identity_provider_configuration():
         except Exception:
             db.rollback()
             logger.exception("Could not migrate legacy identity provider configuration; administrator setup remains available")
+
+
+@app.on_event("startup")
+def disable_legacy_profile_attribute_fallback():
+    """After migration, profile lookups use domain-assigned providers only."""
+    global attribute_provider
+    attribute_provider = None
 
 session_secret = os.environ.get("SECRET_KEY", "")
 if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secure_random_string_here", "fallback-secret", "replace_with_random_secret_at_least_32_characters"}:
@@ -322,8 +347,7 @@ app.add_middleware(
     https_only=os.getenv("SESSION_COOKIE_SECURE", "true").strip().lower() not in {"0", "false", "no"},
     max_age=3600,
 )
-# Validate explicit hostnames before accepting requests. In local-only mode there is
-# no OIDC redirect URI from which to derive the canonical host.
+# Validate explicit hostnames before accepting requests.
 extra_allowed_hosts = [
     host.strip().lower()
     for host in os.environ.get("APP_ALLOWED_HOSTS", "").split(",")

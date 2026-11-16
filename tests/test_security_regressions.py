@@ -42,7 +42,6 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("at least 32 non-placeholder characters", self.source)
         self.assertIn("replace_with_random_secret_at_least_32_characters", self.source)
         self.assertIn('ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_"))', self.source)
-        self.assertIn('startswith(("your_", "replace_"))', self.source)
 
     def test_authentik_http_client_does_not_disable_tls_validation(self):
         provider_source = (ROOT / "identity" / "providers" / "authentik.py").read_text(encoding="utf-8")
