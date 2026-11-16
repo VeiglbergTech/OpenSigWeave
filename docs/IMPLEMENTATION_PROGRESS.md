@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Automated preview validation passed; external acceptance remains. Not production-ready.  
-**Verified baseline:** `f5f197c3b1c0740527f7e307525cd5fe1db11932`
+**Verified baseline:** `2d316fee9cb314a315997833e544487f9d869f06` (`dev` and `beta`)  
 
 ## Implemented
 
@@ -20,12 +20,12 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Full regression baseline: push #1822 and PR #1823 passed **244 tests** on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
-- Latest pre-cleanup CI: push #1843 and PR #1844 passed on README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`.
+- Latest branch validation: push run #1869 and PR run #1870 both passed on merge commit `2d316fee9cb314a315997833e544487f9d869f06` (`beta`).
+- The successful workflow includes full-history Gitleaks, dependency audit, Bandit, Python/JavaScript/Lua syntax checks, Alpine CSP evaluator and SRI verification, PostgreSQL and SQLite migrations, Docker startup and Playwright browser smoke tests, scheduled-backup checks, encrypted backup/fresh restore and the regression suite.
 - CI covers full-history Gitleaks scanning, dependency audit, Python/JavaScript/Lua syntax, Alpine CSP evaluator, PostgreSQL and SQLite migrations, Docker build/startup/health, Chromium/Playwright browser workflows, scheduled-backup guards, encrypted backup/fresh restore and the Python regression suite.
 - PostgreSQL 17 tests include 12-worker concurrency checks for variant and group selection. Browser coverage includes local login, authorization boundaries, signature/group/rule CRUD, export/import preview, domain override policy, logout and Quill editor synchronization.
 
-The later changes through the verified baseline were documentation-only. Passing CI does not establish production readiness or replace live integration tests.
+The latest verified baseline includes the proxy-boundary hardening merge. Passing CI does not establish production readiness or replace live integration tests.
 
 ## Outstanding external acceptance
 
@@ -44,7 +44,7 @@ The later changes through the verified baseline were documentation-only. Passing
 - Keep OpenSigWeave independent of Mailcow; native Mailcow UI/authentication is a separate future project.
 - Do not enable production mail flow until the disposable SMTP/DKIM acceptance tests pass.
 - Do not enable enforced CSP until real-browser reports have been resolved.
-- The current pull request remains Draft; do not merge or deploy to production without explicit approval.
+- PR #2 (`beta` → `main`) remains Draft. Do not merge it or update `main` until the owner confirms successful real-environment testing.
 
 ## Signature storage layout
 
