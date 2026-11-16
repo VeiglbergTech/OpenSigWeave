@@ -11,8 +11,45 @@ window.fetch = (resource, options = {}) => {
     return originalFetch(resource, options);
 };
 
-        var quill, domainQuill, adminQuill;
+        var userRichEditor, domainRichEditor, adminRichEditor, signatureRichEditor;
         const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
+
+        async function mountRichEditor(hostId, rawId, options = {}) {
+            const host = document.getElementById(hostId);
+            const raw = document.getElementById(rawId);
+            if (!host || !raw || !window.OpenSigWeaveEditor) return null;
+            if (host.__openSigWeaveEditor) {
+                host.__openSigWeaveEditor.setData(raw.value);
+                host.__openSigWeaveEditor.setReadOnly(!!options.readOnly);
+                return host.__openSigWeaveEditor;
+            }
+            const adapter = await window.OpenSigWeaveEditor.create(host, {
+                initialData: raw.value,
+                readOnly: !!options.readOnly,
+                onChange: html => {
+                    raw.value = html;
+                    if (typeof options.onChange === "function") options.onChange(html);
+                    checkAllLocks();
+                }
+            });
+            host.__openSigWeaveEditor = adapter;
+            if (!raw.dataset.richEditorSyncBound) {
+                raw.addEventListener("input", () => {
+                    if (host.__openSigWeaveEditor) host.__openSigWeaveEditor.setData(raw.value);
+                    checkAllLocks();
+                });
+                raw.dataset.richEditorSyncBound = "true";
+            }
+            return adapter;
+        }
+
+        async function initSignatureRichEditor(manager) {
+            const source = document.getElementById("signature-html-source");
+            if (source) source.value = manager.form.html_content || "";
+            signatureRichEditor = await mountRichEditor("signature-template-editor", "signature-html-source", {
+                onChange: html => { manager.form.html_content = html; }
+            });
+        }
 
         // THE SMART LOCK ENGINE
         function toggleLock(lockId, rawId) {
@@ -46,31 +83,16 @@ window.fetch = (resource, options = {}) => {
         }
 
         document.addEventListener('DOMContentLoaded', async function() {
-            const userEditor = document.getElementById('quill-editor');
             const userRawEditor = document.getElementById('raw-html-editor');
-            if (!userEditor || !userRawEditor || !window.Quill) return;
-
-            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
-            quill = new Quill(userEditor, { theme: 'snow', modules: { toolbar: tb }});
-
-            quill.on('text-change', (d, old, source) => { if (source === 'user') { userRawEditor.value = quill.root.innerHTML; checkAllLocks(); } });
-            userRawEditor.addEventListener('input', function() { quill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-
-            const domainEditor = document.getElementById('domain-quill-editor');
-            const domainRawEditor = document.getElementById('domain-raw-html-editor');
-            if (domainEditor && domainRawEditor) {
-                domainQuill = new Quill(domainEditor, { theme: 'snow', modules: { toolbar: tb }});
-                domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { domainRawEditor.value = domainQuill.root.innerHTML; checkAllLocks(); } });
-                domainRawEditor.addEventListener('input', function() { domainQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
-            }
-
-            if (document.body.dataset.canEdit !== "true") quill.disable();
-
+            if (!document.getElementById('quill-editor') || !userRawEditor) return;
+            userRichEditor = await mountRichEditor('quill-editor', 'raw-html-editor', {
+                readOnly: document.body.dataset.canEdit !== "true"
+            });
             const res = await fetch('/api/my-signature');
-            if(res.ok) {
+            if (res.ok) {
                 const data = await res.json();
-                userRawEditor.value = data.html_content;
-                quill.clipboard.dangerouslyPasteHTML(data.html_content);
+                userRawEditor.value = data.html_content || "";
+                if (userRichEditor) userRichEditor.setData(userRawEditor.value);
                 checkAllLocks();
             }
         });
@@ -86,13 +108,13 @@ window.fetch = (resource, options = {}) => {
 
             if (target === 'personal') {
                 document.getElementById('raw-html-editor').value = cleanHtml;
-                quill.clipboard.dangerouslyPasteHTML(cleanHtml);
+                if (userRichEditor) userRichEditor.setData(cleanHtml);
             } else if (target === 'domain') {
                 document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                domainQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
+                if (domainRichEditor) domainRichEditor.setData(cleanHtml);
             } else if (target === 'admin') {
                 document.getElementById('admin-raw-html-editor').value = cleanHtml;
-                if(adminQuill) adminQuill.clipboard.dangerouslyPasteHTML(cleanHtml);
+                if (adminRichEditor) adminRichEditor.setData(cleanHtml);
             }
             checkAllLocks();
             notify("HTML imported. Review the source before saving.");
@@ -192,6 +214,11 @@ function identityProviderManager() { return {
                 insertGroupTag(slug, editor) {
                     if (!slug) { notify('Select a signature group first.', 'error'); return; }
                     const token = '{{ group:' + slug + ' }}';
+                    if (signatureRichEditor) {
+                        signatureRichEditor.insertText(token);
+                        this.form.html_content = signatureRichEditor.getData();
+                        return;
+                    }
                     const start = editor ? editor.selectionStart : this.form.html_content.length;
                     const end = editor ? editor.selectionEnd : start;
                     this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
@@ -226,14 +253,17 @@ function identityProviderManager() { return {
                 newSignature() {
                     this.form = { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 };
                     this.editing = true;
+                    this.$nextTick(() => initSignatureRichEditor(this));
                 },
                 editSignature(signature) {
                     this.form = { id: signature.id, name: signature.name, mode: signature.mode,
                         domain_ids: Array.isArray(signature.domain_ids) ? signature.domain_ids.map(Number) : (signature.domain_id == null ? [] : [Number(signature.domain_id)]),
                         is_active: signature.is_active, html_content: '', weight: 1 };
                     this.editing = true;
+                    this.$nextTick(() => initSignatureRichEditor(this));
                 },
                 async saveSignature() {
+                    if (signatureRichEditor) this.form.html_content = signatureRichEditor.getData();
                     if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
                     const domainIds = [...new Set(this.form.domain_ids.map(Number))];
                     if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
@@ -428,19 +458,18 @@ function identityProviderManager() { return {
                     
                     setTimeout(() => { 
                         document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        domainQuill.clipboard.dangerouslyPasteHTML(domainData.template_html); 
+                        if (domainRichEditor) domainRichEditor.setData(domainData.template_html); 
                         checkAllLocks();
                     }, 50);
                     
-                    if(!adminQuill) {
-                        adminQuill = new Quill('#admin-quill-editor', { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], ['link', 'image'], ['clean']] }});
-                        adminQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('admin-raw-html-editor').value = adminQuill.root.innerHTML; checkAllLocks(); } });
-                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.clipboard.dangerouslyPasteHTML(this.value); checkAllLocks(); });
+                    if (domainData && document.getElementById('domain-quill-editor')) {
+                        domainRichEditor = await mountRichEditor('domain-quill-editor', 'domain-raw-html-editor');
                     }
                 },
-                openUsers() {
+                async openUsers() {
                     this.modalTab = 'users';
-                    this.fetchOverrides();
+                    await this.fetchOverrides();
+                    adminRichEditor = await mountRichEditor('admin-quill-editor', 'admin-raw-html-editor');
                 },
                 saveSettings() {
                     window.dispatchEvent(new CustomEvent('save-domain-settings', { detail: {
@@ -463,13 +492,13 @@ function identityProviderManager() { return {
                     
                     if (directHtml !== null) { 
                         document.getElementById('admin-raw-html-editor').value = directHtml;
-                        adminQuill.clipboard.dangerouslyPasteHTML(directHtml); 
+                        if (adminRichEditor) adminRichEditor.setData(directHtml); 
                         this.editingUserDisabled = isDisabled;
                     } else {
                         const existingUser = this.userOverrides.find(u => u.user_email === email);
                         const content = existingUser ? existingUser.html_content : '';
                         document.getElementById('admin-raw-html-editor').value = content;
-                        adminQuill.clipboard.dangerouslyPasteHTML(content);
+                        if (adminRichEditor) adminRichEditor.setData(content);
                         this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
                     }
                     checkAllLocks();
@@ -503,7 +532,7 @@ function identityProviderManager() { return {
                 const res = await fetch('/api/my-signature', { method: 'DELETE' });
                 if(res.ok) {
                     document.getElementById('raw-html-editor').value = '';
-                    quill.setText(''); 
+                    if (userRichEditor) userRichEditor.setData(''); 
                     checkAllLocks();
                     notify("Signature cleared and removed from database!");
                 } else { notify("Failed to clear signature.", "error"); }
