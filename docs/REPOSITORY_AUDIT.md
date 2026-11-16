@@ -1,7 +1,7 @@
 # Repository and security audit
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
-**Review date:** 2026-11-15  
+**Review date:** 2026-11-16  
 **Scope:** Current standalone preview. This is an engineering review, not a penetration test or security certification.
 
 ## Current implementation
@@ -33,8 +33,7 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Full regression runs #1822/#1823 passed 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
-- Push #1843 and PR #1844 passed on documentation-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`.
+- Latest branch validation: push run #1869 and PR run #1870 both passed on merge commit `2d316fee9cb314a315997833e544487f9d869f06` (`beta`).
 - CI covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
 
 Automated local CI is not live LDAP/OIDC validation, a cross-host restore drill, real NFS/SMB testing, SMTP/DKIM integration, a dynamic penetration test or production certification.
