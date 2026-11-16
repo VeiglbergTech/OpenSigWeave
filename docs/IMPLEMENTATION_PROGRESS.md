@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Automated preview validation passed; external acceptance remains. Not production-ready.  
-**Verified baseline:** `562c25dfe132f47ae932136ec879088be48af0ed` (`dev` and `beta`; `main` remains unchanged)  
+**Verified baseline:** `29c86d5ba9371e067319867bf93b8ea820c0f71b` (`dev` and `beta`; `main` remains unchanged)  
 
 ## Implemented
 
@@ -20,8 +20,9 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Latest `dev` validation: push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993) passed on `562c25dfe132f47ae932136ec879088be48af0ed`.
-- `beta` was fast-forwarded to the same commit; its validation is running as [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508). Do not treat it as passed until GitHub reports success.
+- Latest `dev` validation: push run [#1884](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815243995) passed on `29c86d5ba9371e067319867bf93b8ea820c0f71b`.
+- `beta` is fast-forwarded to the same commit; push run [#1885](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815757212) and Draft PR validation [#1886](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815762725) both passed.
+- All three runs completed successfully. `main` remains unchanged; PR #2 is still Draft and unmerged.
 - CI covers full-history Gitleaks scanning, dependency audit, Python/JavaScript/Lua syntax, Alpine CSP evaluator, PostgreSQL and SQLite migrations, Docker build/startup/health, Chromium/Playwright browser workflows, scheduled-backup guards, encrypted backup/fresh restore and the Python regression suite.
 - PostgreSQL 17 tests include 12-worker concurrency checks for variant and group selection. Browser coverage includes local login, authorization boundaries, signature/group/rule CRUD, export/import preview, domain override policy, logout and Quill editor synchronization.
 
