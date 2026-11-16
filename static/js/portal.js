@@ -23,7 +23,8 @@ window.fetch = (resource, options = {}) => {
                 host.__openSigWeaveEditor.setReadOnly(!!options.readOnly);
                 return host.__openSigWeaveEditor;
             }
-            const adapter = await window.OpenSigWeaveEditor.create(host, {
+            const target = host.querySelector("[data-editor-target]") || host;
+            const adapter = await window.OpenSigWeaveEditor.create(target, {
                 initialData: raw.value,
                 readOnly: !!options.readOnly,
                 onChange: html => {
