@@ -453,18 +453,13 @@ function identityProviderManager() { return {
         function domainSettingsModal() {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
-                open(domainData) {
+                async open(domainData) {
                     this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
-                    
-                    setTimeout(() => { 
-                        document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        if (domainRichEditor) domainRichEditor.setData(domainData.template_html); 
-                        checkAllLocks();
-                    }, 50);
-                    
-                    if (domainData && document.getElementById('domain-quill-editor')) {
-                        domainRichEditor = await mountRichEditor('domain-quill-editor', 'domain-raw-html-editor');
-                    }
+                    const rawEditor = document.getElementById('domain-raw-html-editor');
+                    if (rawEditor) rawEditor.value = domainData.template_html || "";
+                    domainRichEditor = await mountRichEditor('domain-quill-editor', 'domain-raw-html-editor');
+                    if (domainRichEditor) domainRichEditor.setData(domainData.template_html || "");
+                    checkAllLocks();
                 },
                 async openUsers() {
                     this.modalTab = 'users';
