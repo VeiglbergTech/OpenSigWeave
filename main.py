@@ -1987,8 +1987,7 @@ async def get_rspamd_signature(
                 # Group nesting is intentionally one level deep to prevent recursive templates.
                 nested_html = strip_group_placeholders(nested_html)
                 rendered_group = render_signature_template(nested_html, profile_values)
-                # nosec B704: nested_html was allowlist-sanitized before rendering; the sandbox autoescapes profile values. Markup is required only to preserve that sanitized HTML fragment when inserted into the outer template.
-                group_values[template_key] = Markup(rendered_group)
+                group_values[template_key] = Markup(rendered_group)  # nosec B704: nested_html is allowlist-sanitized before rendering; profile values are autoescaped.
             except (SignatureStorageError, ValueError, TypeError):
                 raise HTTPException(status_code=503, detail="Group signature asset unavailable")
         parsed = render_signature_template(raw_template, {**profile_values, **group_values})
