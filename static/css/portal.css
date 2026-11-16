@@ -15,3 +15,28 @@
         .animate-toast { animation: slideUpFade 3s forwards ease-in-out; }
 
 [x-cloak] { display: none !important; }
+
+
+/* Floating create/edit workspaces keep the overview visible behind the form. */
+.form-dialog {
+    position: fixed;
+    z-index: 80;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(94vw, 48rem);
+    max-height: min(90vh, 56rem);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    box-shadow: 0 0 0 100vmax rgba(3, 7, 18, 0.78), 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.form-dialog-wide { width: min(96vw, 72rem); }
+@media (max-width: 640px) {
+    .form-dialog {
+        top: 1rem;
+        left: 1rem;
+        transform: none;
+        width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+    }
+}
