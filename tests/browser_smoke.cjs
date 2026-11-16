@@ -29,6 +29,29 @@ async function main() {
       + (failure ? " (" + failure.errorText + ")" : "") + "\n");
   });
   const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
+  async function assertFloatingDialog(dialog, label) {
+    await dialog.waitFor({ state: "visible" });
+    const layout = await dialog.evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return {
+        position: window.getComputedStyle(element).position,
+        width: rect.width,
+        height: rect.height,
+        left: rect.left,
+        right: rect.right,
+        top: rect.top,
+        bottom: rect.bottom,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      };
+    });
+    assert.equal(layout.position, "fixed", label + " must be a floating dialog, not an inline form");
+    assert.ok(layout.width > 0 && layout.height > 0, label + " must have visible dimensions");
+    assert.ok(layout.left >= -1 && layout.right <= layout.viewportWidth + 1,
+      label + " must fit horizontally inside the viewport: " + JSON.stringify(layout));
+    assert.ok(layout.top >= -1 && layout.bottom <= layout.viewportHeight + 1,
+      label + " must fit vertically inside the viewport: " + JSON.stringify(layout));
+  }
   await page.addInitScript(() => {
     window.__cspViolations = [];
     window.addEventListener("securitypolicyviolation", event => {
@@ -100,6 +123,17 @@ async function main() {
     await page.getByRole("button", { name: "Exports", exact: true }).click();
 
     checkpoint("admin sections: complete");
+    // Every create/edit workspace must float above the overview instead of
+    // expanding the current page. Also verify the provider dialog can be cancelled.
+    await page.getByRole("button", { name: "Identity Providers", exact: true }).click();
+    const providerPanel = page.locator('[x-data="identityProviderManager"]');
+    await providerPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
+    const providerDialog = providerPanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(providerDialog, "identity provider editor");
+    await providerDialog.press("Escape");
+    await providerDialog.waitFor({ state: "hidden" });
+    await page.getByRole("button", { name: "Exports", exact: true }).click();
+
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
     const exportButton = exportPanel.getByRole("button", { name: "Download selected components" });
@@ -151,6 +185,8 @@ async function main() {
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
+    const signatureDialog = signaturePanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(signatureDialog, "signature editor");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
@@ -170,12 +206,15 @@ async function main() {
     const groupPanel = page.locator('[x-data="signatureGroupManager"]');
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
     await groupPanel.getByRole("button", { name: "+ Add Group" }).click();
+    const groupDialog = groupPanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(groupDialog, "signature group editor");
     await groupPanel.getByLabel("Name").fill("Browser Smoke Group");
     await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
     const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: page.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCard.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor();
     await groupPanel.getByRole("button", { name: "+ Add Signature to Group", exact: true }).click();
     const memberDialog = groupPanel.locator('div[x-show="memberEditor"]');
+    await assertFloatingDialog(memberDialog, "group membership editor");
     await memberDialog.locator('select[x-model="memberForm.group_id"]').selectOption({ label: "Browser Smoke Group" });
     await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
     await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
@@ -185,6 +224,8 @@ async function main() {
     const rulesPanel = page.locator('[x-data="ruleManager"]');
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();
+    const ruleDialog = rulesPanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(ruleDialog, "signature rule editor");
     await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
     await rulesPanel.getByLabel("Action").selectOption("GROUP");
     const ruleGroupSelect = rulesPanel.getByLabel("Signature Group");
