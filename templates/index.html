@@ -136,7 +136,7 @@
                     </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
                 </table>
             </div>
-            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak @keydown.escape.window="editing = false" role="dialog" aria-modal="true" class="form-dialog bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <h2 class="text-lg font-semibold" x-text="form.original_id ? 'Edit Identity Provider' : 'Add Identity Provider'"></h2>
                 <div class="grid md:grid-cols-2 gap-4">
                     <label class="text-sm">Folder name / ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
@@ -245,7 +245,7 @@
                 </table>
             </div>
 
-            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak @keydown.escape.window="editing = false" role="dialog" aria-modal="true" class="form-dialog bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
@@ -285,7 +285,7 @@
                 <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
             </div>
 
-            <div x-show="variantEditor" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="variantEditor" x-cloak @keydown.escape.window="variantEditor = false" role="dialog" aria-modal="true" class="form-dialog form-dialog-wide bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature ? variantSignature.name : ''"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="space-y-3">
                     <template x-for="variant in variants" :key="variant.id">
@@ -335,7 +335,7 @@
                     </div>
                 </template>
             </div>
-            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak @keydown.escape.window="editing = false" role="dialog" aria-modal="true" class="form-dialog bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex justify-between items-center"><h3 class="font-semibold" x-text="form.id ? 'Edit Group' : 'Create Group'"></h3><button @click="editing=false" class="text-gray-400">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <label class="text-sm">Name<input x-model="form.name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
@@ -387,7 +387,7 @@
                 </table>
             </div>
 
-            <div x-show="editing" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+            <div x-show="editing" x-cloak @keydown.escape.window="editing = false" role="dialog" aria-modal="true" class="form-dialog bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature Rule' : 'Create Signature Rule'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
