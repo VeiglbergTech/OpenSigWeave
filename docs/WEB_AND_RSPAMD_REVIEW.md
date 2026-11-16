@@ -1,7 +1,7 @@
 # Web application and Rspamd security review
 
 **Development baseline:** `dev` (CI-validated candidate: `beta`)  
-**Review date:** 2026-11-15  
+**Review date:** 2026-11-16  
 **Status:** Code-level review of the standalone preview; not a penetration test.
 
 ## 1. Web application
@@ -116,13 +116,14 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-The latest successful push and pull-request CI runs before this cleanup target README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`:
+Latest CI evidence:
 
-- Push run #1869 (`43813160634`): success.
-- Pull-request run #1870 (`43813165867`): success.
-- Both `unit` jobs completed without failed steps on merge commit `2d316fee9cb314a315997833e544487f9d869f06`.
-- Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks, PostgreSQL and SQLite migrations, Docker build/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards and encrypted backup/fresh restore are covered by the successful regression history.
+- `beta` push run [#1869](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813160634): success.
+- `beta` pull-request run [#1870](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813165867): success.
+- Both runs validated merge commit `2d316fee9cb314a315997833e544487f9d869f06`.
+- The subsequent documentation and CI-trigger updates are being validated on `dev` by push run [#1877](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813866811). At the time of this review, the Docker/browser smoke tests and static checks had passed; encrypted backup/restore and the final regression suite were still running.
+- The workflow now runs on pushes to both `dev` and `beta`, as well as pull requests targeting `main`.
 
-The current-head changes after the full regression run were documentation-only; no application behavior changed.
+The current `dev` changes in this review are documentation and CI configuration only; no application behavior changed. A successful CI run remains automated preview validation, not live integration acceptance.
 
 This is automated regression and local-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, SMTP integration test, DKIM verification or production security certification.
