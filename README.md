@@ -32,7 +32,7 @@ The commands deploy the development preview branch and do not change Mailcow or 
 ```bash
 sudo mkdir -p /opt/opensigweave
 sudo chown "$USER":"$USER" /opt/opensigweave
-git clone --branch architecture/refactor-foundation https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
+git clone --branch dev https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
 cd /opt/opensigweave
 cp .env.example .env
 chmod 600 .env
@@ -282,7 +282,7 @@ Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user doe
 - [Rich-text editor decision](docs/EDITOR_DECISION.md)
 - [Signature groups design](docs/SIGNATURE_GROUPS_DESIGN.md)
 
-Development is on `architecture/refactor-foundation`; the pull request remains a draft, not a production release. Native Mailcow UI/integration is a separate future project.
+Development takes place on `dev`. The `beta` branch is the GitHub-CI-validated candidate for deployment testing; `main` is reserved for the version accepted after real-environment testing. Do not deploy `main` or connect production mail flow until the outstanding acceptance checks pass. Native Mailcow UI/integration is a separate future project.
 
 ## License
 
