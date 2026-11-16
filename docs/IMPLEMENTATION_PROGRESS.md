@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Automated preview validation passed; external acceptance remains. Not production-ready.  
-**Verified baseline:** `29c86d5ba9371e067319867bf93b8ea820c0f71b` (`dev` and `beta`; `main` remains unchanged)  
+**Last fully CI-validated baseline:** `29c86d5ba9371e067319867bf93b8ea820c0f71b` (both `dev` and `beta` passed at this revision). Current `dev` contains documentation-only follow-up commits awaiting CI; `beta` remains at this validated baseline. `main` remains unchanged.  
 
 ## Implemented
 
@@ -26,7 +26,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 - CI covers full-history Gitleaks scanning, dependency audit, Python/JavaScript/Lua syntax, Alpine CSP evaluator, PostgreSQL and SQLite migrations, Docker build/startup/health, Chromium/Playwright browser workflows, scheduled-backup guards, encrypted backup/fresh restore and the Python regression suite.
 - PostgreSQL 17 tests include 12-worker concurrency checks for variant and group selection. Browser coverage includes local login, authorization boundaries, signature/group/rule CRUD, export/import preview, domain override policy, logout and Quill editor synchronization.
 
-The latest verified development commit contains documentation and CI-trigger changes only; no application source behavior changed in that commit. Passing CI does not establish production readiness or replace live integration tests.
+The latest `dev` follow-up changes documentation only; no application source behavior changed. Its CI validation is tracked separately from the last fully validated baseline. Passing CI does not establish production readiness or replace live integration tests. Passing CI does not establish production readiness or replace live integration tests.
 
 ## Outstanding external acceptance
 
