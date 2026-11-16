@@ -171,7 +171,7 @@ function identityProviderManager() { return {
     form: {id:'', original_id:null, display_name:'', provider_type:'authentik', is_enabled:true, settings:{}},
     async fetchAll() {
         const response = await fetch('/api/admin/identity-providers');
-        if (response.ok) { this.providers = await response.json(); if (this.providers.length === 0) this.newProvider(); }
+        if (response.ok) { this.providers = await response.json(); }
         else notify('Could not load identity providers.', 'error');
     },
     newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5'}}; this.editing=true; },
@@ -307,7 +307,7 @@ function identityProviderManager() { return {
 
         function signatureGroupManager() {
             return {
-                groups: [], signatures: [], domains: [], editing: false, previewDomainId: '',
+                groups: [], signatures: [], domains: [], editing: false, memberEditor: false, previewDomainId: '',
                 form: { id: null, name: '', slug: '', domain_ids: [], is_active: true },
                 memberForm: { group_id: '', signature_id: '', weight: 1 },
                 async fetchAll() {
@@ -329,6 +329,10 @@ function identityProviderManager() { return {
                     this.form.domain_ids = checked
                         ? [...new Set([...this.form.domain_ids.map(Number), value])]
                         : this.form.domain_ids.filter(item => Number(item) !== value);
+                },
+                openMemberEditor(groupId) {
+                    this.memberForm = { group_id: groupId ? String(groupId) : '', signature_id: '', weight: 1 };
+                    this.memberEditor = true;
                 },
                 newGroup() {
                     this.form = { id: null, name: '', slug: '', domain_ids: [], is_active: true };
@@ -360,7 +364,9 @@ function identityProviderManager() { return {
                         body: JSON.stringify({ signature_id: this.memberForm.signature_id, weight: Number(this.memberForm.weight), is_enabled: true })
                     });
                     if (!response.ok) { notify('Could not add signature: ' + (await response.text()), 'error'); return; }
-                    this.memberForm.signature_id = ''; notify('Signature added to group.'); await this.fetchAll();
+                    this.memberEditor = false;
+                    this.memberForm = { group_id: '', signature_id: '', weight: 1 };
+                    notify('Signature added to group.'); await this.fetchAll();
                 },
                 async saveMember(group, member) {
                     const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id) + '/members/' + encodeURIComponent(member.signature_id), {

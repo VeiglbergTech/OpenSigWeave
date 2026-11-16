@@ -172,10 +172,11 @@ async function main() {
     await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
     const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: page.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCard.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor();
-    const memberSelectors = groupPanel.locator("select");
-    await memberSelectors.nth(1).selectOption({ label: "Browser Smoke Group" });
-    await memberSelectors.nth(2).selectOption({ label: "Browser Smoke Signature" });
-    await groupPanel.getByRole("button", { name: "Add", exact: true }).click();
+    await groupPanel.getByRole("button", { name: "+ Add Signature to Group", exact: true }).click();
+    const memberDialog = groupPanel.locator('div[x-show="memberEditor"]');
+    await memberDialog.locator('select[x-model="memberForm.group_id"]').selectOption({ label: "Browser Smoke Group" });
+    await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
+    await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
     await groupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" }).waitFor();
 
     checkpoint("group create/membership: complete");

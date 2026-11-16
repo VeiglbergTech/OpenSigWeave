@@ -28,7 +28,15 @@
     max-height: min(90vh, 56rem);
     overflow-y: auto;
     overscroll-behavior: contain;
-    box-shadow: 0 0 0 100vmax rgba(3, 7, 18, 0.78), 0 24px 60px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.form-dialog::before {
+    content: "";
+    position: fixed;
+    inset: -100vmax;
+    z-index: -1;
+    background: rgba(3, 7, 18, 0.78);
+    pointer-events: auto;
 }
 .form-dialog-wide { width: min(96vw, 72rem); }
 @media (max-width: 640px) {

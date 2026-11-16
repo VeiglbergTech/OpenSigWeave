@@ -1,16 +1,23 @@
 # Rich-text editor decision
 
-**Decision:** Keep the vendored Quill 1.3.7 editor. Do not replace it until a self-hosted CKEditor 5 GPL proof of concept passes the email-HTML compatibility tests.
+**Decision:** Use the self-hosted CKEditor 5 GPL build for the portal's rich-text editing surfaces.
 
-The editor must:
-- Work without a third-party CDN at runtime.
-- Preserve email-compatible HTML and existing signature source.
-- Keep backend sanitization authoritative.
-- Avoid commercial-only features, metering and incompatible licensing.
-- Retain the raw HTML source editor for markup the visual editor cannot represent.
+The application pins CKEditor 5 to **49.1.0**. The Dockerfile builds the browser bundle in a Node 22 Alpine stage with esbuild and copies the generated JavaScript, CSS and license into the application image. CKEditor is served locally from `/static/vendor/ckeditor5/49.1.0/`; there is no runtime dependency on a CKEditor CDN or cloud service.
 
-CKEditor 5's self-hosted GPL 2+ distribution is a candidate for this GPL-3.0-or-later project. Do not use its cloud CDN build with the GPL key. Quill remains the current editor; the two observed `style-src-attr` CSP reports are not grounds for adding broad `unsafe-inline` permissions.
+The shared `OpenSigWeaveEditor` adapter is used by:
+- The user's personal signature editor.
+- The administrator's signature template editor.
+- Domain master-template and user-override editors.
 
-**Next step:** Build a separate CKEditor prototype and validate all three editor surfaces, HTML round trips, sanitizer behavior, Outlook-specific markup, group-token insertion, offline operation and licensing before any migration.
+The toolbar includes headings, font family/size/color, bold/italic/underline, links, lists, alignment, tables, block quotes and horizontal rules. General HTML Support is configured for the email-oriented elements and attributes used by signatures. The source HTML textarea remains available as an advanced fallback; backend sanitization remains authoritative.
 
-See [EDITOR_MIGRATION_PLAN.md](EDITOR_MIGRATION_PLAN.md) for the integration design, compatibility corpus, acceptance criteria and known sanitizer blocker.
+Compatibility safeguards:
+- Existing advanced/table-based layouts in the personal and domain override editors are visually locked to avoid accidental data loss.
+- Outlook conditional comments and VML are detected and warned about; users must retain and review the raw HTML source for Outlook-specific markup.
+- The editor must never be treated as a sanitizer or security boundary.
+- Signature group tokens can be inserted at the current editor selection.
+- Browser smoke tests verify self-hosted asset loading, formatting, synchronization to the source HTML and signature create/update flows under the current Content Security Policy.
+
+The distribution is licensed under GPL 2+ and is compatible with this GPL-3.0-or-later project. Keep the exact CKEditor license file in the image and repository notices.
+
+Future editor changes must preserve offline operation, email-compatible HTML, source round trips, sanitizer behavior, Outlook warnings and all three editor surfaces. Any CKEditor upgrade must be version-pinned and pass the full CI and real-browser acceptance suite before beta deployment.
