@@ -118,10 +118,10 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 Latest CI evidence:
 
-- `dev` push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993): success on commit `562c25dfe132f47ae932136ec879088be48af0ed`.
-- `beta` was fast-forwarded to the same commit; push run [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508) is pending.
+- `dev` push run [#1884](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815243995): success on commit `29c86d5ba9371e067319867bf93b8ea820c0f71b`.
+- `beta` push run [#1885](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815757212) and Draft PR validation [#1886](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815762725): both successful on the same commit.
 - The latest commit changes documentation and CI configuration only; no application source behavior changed.
-- The workflow runs on pushes to `dev` and `beta`, as well as pull requests targeting `main`.
+- The workflow runs on pushes to `dev` and `beta`, as well as pull requests targeting `main`. `main` remains unchanged.
 
 The current `dev` changes in this review are documentation and CI configuration only; no application behavior changed. A successful CI run remains automated preview validation, not live integration acceptance.
 
