@@ -33,8 +33,9 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Latest `dev` validation: push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993) passed on `562c25dfe132f47ae932136ec879088be48af0ed`.
-- `beta` was fast-forwarded to that same commit; push run [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508) is pending and must pass before `beta` is called CI-validated at this baseline.
+- Latest `dev` validation: push run [#1884](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815243995) passed on `29c86d5ba9371e067319867bf93b8ea820c0f71b`.
+- `beta` is fast-forwarded to the same commit; push run [#1885](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815757212) and Draft PR validation [#1886](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815762725) both passed.
+- `main` remains unchanged; PR #2 is still Draft and unmerged.
 - The workflow covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
 - The latest `dev` commit changes documentation and CI configuration only; application behavior is unchanged.
 
