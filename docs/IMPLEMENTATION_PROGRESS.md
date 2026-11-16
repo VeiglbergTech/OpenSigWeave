@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Automated preview validation passed; external acceptance remains. Not production-ready.  
-**Verified baseline:** `2d316fee9cb314a315997833e544487f9d869f06` (`dev` and `beta`)  
+**Verified baseline:** `562c25dfe132f47ae932136ec879088be48af0ed` (`dev` and `beta`; `main` remains unchanged)  
 
 ## Implemented
 
@@ -20,12 +20,12 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Latest branch validation: push run #1869 and PR run #1870 both passed on merge commit `2d316fee9cb314a315997833e544487f9d869f06` (`beta`).
-- The successful workflow includes full-history Gitleaks, dependency audit, Bandit, Python/JavaScript/Lua syntax checks, Alpine CSP evaluator and SRI verification, PostgreSQL and SQLite migrations, Docker startup and Playwright browser smoke tests, scheduled-backup checks, encrypted backup/fresh restore and the regression suite.
+- Latest `dev` validation: push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993) passed on `562c25dfe132f47ae932136ec879088be48af0ed`.
+- `beta` was fast-forwarded to the same commit; its validation is running as [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508). Do not treat it as passed until GitHub reports success.
 - CI covers full-history Gitleaks scanning, dependency audit, Python/JavaScript/Lua syntax, Alpine CSP evaluator, PostgreSQL and SQLite migrations, Docker build/startup/health, Chromium/Playwright browser workflows, scheduled-backup guards, encrypted backup/fresh restore and the Python regression suite.
 - PostgreSQL 17 tests include 12-worker concurrency checks for variant and group selection. Browser coverage includes local login, authorization boundaries, signature/group/rule CRUD, export/import preview, domain override policy, logout and Quill editor synchronization.
 
-The latest verified baseline includes the proxy-boundary hardening merge. Passing CI does not establish production readiness or replace live integration tests.
+The latest verified development commit contains documentation and CI-trigger changes only; no application source behavior changed in that commit. Passing CI does not establish production readiness or replace live integration tests.
 
 ## Outstanding external acceptance
 

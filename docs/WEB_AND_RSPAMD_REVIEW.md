@@ -118,11 +118,10 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 Latest CI evidence:
 
-- `beta` push run [#1869](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813160634): success.
-- `beta` pull-request run [#1870](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813165867): success.
-- Both runs validated merge commit `2d316fee9cb314a315997833e544487f9d869f06`.
-- The subsequent documentation and CI-trigger updates are being validated on `dev` by push run [#1877](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43813866811). At the time of this review, the Docker/browser smoke tests and static checks had passed; encrypted backup/restore and the final regression suite were still running.
-- The workflow now runs on pushes to both `dev` and `beta`, as well as pull requests targeting `main`.
+- `dev` push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993): success on commit `562c25dfe132f47ae932136ec879088be48af0ed`.
+- `beta` was fast-forwarded to the same commit; push run [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508) is pending.
+- The latest commit changes documentation and CI configuration only; no application source behavior changed.
+- The workflow runs on pushes to `dev` and `beta`, as well as pull requests targeting `main`.
 
 The current `dev` changes in this review are documentation and CI configuration only; no application behavior changed. A successful CI run remains automated preview validation, not live integration acceptance.
 

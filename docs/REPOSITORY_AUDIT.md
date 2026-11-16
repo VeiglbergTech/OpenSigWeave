@@ -33,8 +33,10 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Latest branch validation: push run #1869 and PR run #1870 both passed on merge commit `2d316fee9cb314a315997833e544487f9d869f06` (`beta`).
-- CI covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
+- Latest `dev` validation: push run [#1878](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814178993) passed on `562c25dfe132f47ae932136ec879088be48af0ed`.
+- `beta` was fast-forwarded to that same commit; push run [#1879](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43814609508) is pending and must pass before `beta` is called CI-validated at this baseline.
+- The workflow covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
+- The latest `dev` commit changes documentation and CI configuration only; application behavior is unchanged.
 
 Automated local CI is not live LDAP/OIDC validation, a cross-host restore drill, real NFS/SMB testing, SMTP/DKIM integration, a dynamic penetration test or production certification.
 
