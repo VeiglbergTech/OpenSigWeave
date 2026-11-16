@@ -93,7 +93,11 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertNotIn("{{ domain_template | safe }}", template)
         portal_js = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
         self.assertNotIn("root.innerHTML =", portal_js)
-        self.assertIn("clipboard.dangerouslyPasteHTML", portal_js)
+        self.assertIn("window.OpenSigWeaveEditor", portal_js)
+        editor_adapter = (ROOT / "static" / "js" / "rich-editor.js").read_text(encoding="utf-8")
+        self.assertIn("ClassicEditor.create", editor_adapter)
+        self.assertIn("editor.getData()", editor_adapter)
+        self.assertNotIn("clipboard.dangerouslyPasteHTML", portal_js)
 
     def test_rspamd_credentials_are_external_and_http_is_bounded(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
