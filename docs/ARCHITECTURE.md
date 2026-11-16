@@ -101,10 +101,10 @@ The application container:
 - Uses a read-only root filesystem and a bounded `/tmp` tmpfs.
 - Drops all Linux capabilities and enables `no-new-privileges`.
 - Waits for PostgreSQL health and applies Alembic migrations before starting Uvicorn.
-- Exposes port 8085 only on host loopback by default.
+- Exposes port 8085 on host loopback by default; a remote reverse proxy requires an explicit private-interface bind via `APP_BIND_ADDRESS` and a host-firewall allowlist for the proxy IP only.
 - Persists signature assets in a separate named volume.
 
-The deployment requires a reverse proxy for browser-facing HTTPS. A proxy on the same host can use `http://127.0.0.1:8085`. A proxy in a separate container or host requires a deliberately configured private network path and firewall restriction; do not expose the application port to the public internet.
+The deployment requires a reverse proxy for browser-facing HTTPS. A proxy on the same host can use `http://127.0.0.1:8085`. A proxy on a separate host requires `APP_BIND_ADDRESS` set to the application host private-interface IP, an inbound host-firewall rule allowing TCP/8085 only from the proxy private IP, and `TRUSTED_PROXY_CIDRS` restricted to that exact proxy source (`/32` or `/128`). This CIDR is used only for client-IP resolution in rate limiting; it is not a substitute for the firewall. Use an authenticated encrypted tunnel or TLS for the upstream if the path is not already trusted and encrypted. Do not expose the application port to the public internet.
 
 The Compose stack does not install Rspamd, change Mailcow, or configure a mail server.
 
@@ -133,7 +133,7 @@ Current implementation includes:
 - HTTPS-only OIDC discovery and Authentik API URL validation.
 - TLS certificate verification for Authentik API requests and LDAPS connections.
 - Per-provider OIDC callback validation and per-domain login-provider revalidation.
-- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime.
+- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime. Starlette's current signed client-side session cookie is not immediately revocable: clearing it on logout removes it from that browser, but a copied cookie can remain usable until expiry. Role/group changes likewise may not affect an already-issued cookie immediately. Treat this as a known limitation; do not claim server-side session revocation.
 - Session-bound CSRF checks for state-changing browser requests.
 - Trusted Host validation using explicit allowed hostnames; legacy OIDC also validates its configured callback hostname.
 - Security response headers and a global request-body size limit.

@@ -700,7 +700,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.SignatureCreateRequest(
                 name="Group Engine Signature",
                 mode="AUTO",
-                html_content="<p>Group engine selected</p>",
+                html_content='<p>Group engine selected</p><img src="https://example.test/pixel.png" onerror="alert(1)"><script>alert(2)</script>',
             ),
             self.admin_request,
             self.db,
@@ -733,6 +733,8 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 db=self.db,
             ))
         self.assertIn("Group engine selected", result["html"])
+        self.assertNotIn("<script", result["html"])
+        self.assertNotIn("onerror", result["html"])
 
     def test_admin_can_create_group_add_members_and_target_group_from_rule(self):
         signature = main.create_signature_endpoint(

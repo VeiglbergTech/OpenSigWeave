@@ -29,7 +29,7 @@
 - Database-backed rate limiting is shared across workers. The application fails closed if the limiter database is unavailable.
 - Forwarded client IP headers are ignored unless the immediate peer belongs to a CIDR in `TRUSTED_PROXY_CIDRS`.
 
-Reverse proxies must preserve the canonical Host header. Only configure trusted proxy CIDRs for proxies under administrative control. Do not trust client-supplied forwarding headers.
+Reverse proxies must preserve the canonical Host header. The supported deployment model assumes the reverse proxy and application may run on separate hosts: bind Compose port 8085 to the application host's private interface using `APP_BIND_ADDRESS`, then use the application host firewall to allow TCP/8085 only from the proxy's exact private source IP. Keep the port closed on public interfaces. Configure `TRUSTED_PROXY_CIDRS` with only the immediate proxy peer (`/32` or `/128`); this setting affects rate-limit client identification only and does not enforce network access. The application does not trust forwarding headers from an untrusted peer. If the proxy-to-application path is not already encrypted and authenticated, use TLS or a private authenticated tunnel.
 
 ### HTML, templates and browser rendering
 

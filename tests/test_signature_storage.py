@@ -74,7 +74,8 @@ class SignatureFileStoreTests(unittest.TestCase):
 
     def test_storage_root_permissions_are_restricted(self):
         with tempfile.TemporaryDirectory() as directory:
-            os.chmod(directory, 0o755)
+            # Deliberately create a permissive fixture to verify the store hardens it.
+            os.chmod(directory, 0o755)  # nosec B103
             store = SignatureFileStore(directory)
             self.assertEqual(store.root.stat().st_mode & 0o777, 0o700)
 

@@ -286,6 +286,38 @@ class SecurityRegressionTests(unittest.TestCase):
 
 
 
+    def test_remote_reverse_proxy_requires_private_bind_and_firewall_boundary(self):
+        compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+
+        self.assertIn('${APP_BIND_ADDRESS:-127.0.0.1}:8085:8085', compose)
+        self.assertIn('APP_BIND_ADDRESS="127.0.0.1"', env_example)
+        self.assertIn("private-interface IP", readme)
+        self.assertIn("only from the reverse-proxy private IP", readme)
+        self.assertIn("does not make the proxy network boundary for you", readme)
+        self.assertIn("TRUSTED_PROXY_CIDRS", architecture)
+
+        postgres_service = compose.split("  postgres:", 1)[1].split("  opensigweave:", 1)[0]
+        self.assertNotIn("\n    ports:", postgres_service)
+
+    def test_forwarded_client_ip_is_ignored_for_untrusted_direct_peers(self):
+        from unittest.mock import patch
+        import ipaddress
+        from starlette.requests import Request
+        from rate_limiter import client_identity
+
+        request = Request({
+            "type": "http", "method": "GET", "path": "/",
+            "headers": [(b"x-forwarded-for", b"198.51.100.99")],
+            "client": ("10.20.30.40", 54321),
+            "server": ("app", 8085), "scheme": "http", "query_string": b"",
+        })
+        with patch("rate_limiter.TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("10.0.0.0/24"),)):
+            self.assertEqual(client_identity(request), "10.20.30.40")
+
+
 if __name__ == "__main__":
     unittest.main()
 

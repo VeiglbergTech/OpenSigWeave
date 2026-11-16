@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    # Pin the multi-platform image index; Dependabot tracks digest updates.
+    image: postgres:17-alpine@sha256:d3244e8ce3f165ee3c93d9c4a4b1d0fe48b3a89e2287b717fdcbbde92d405065
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-opensigweave}
@@ -31,7 +32,8 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "127.0.0.1:8085:8085"
+      # Same-host proxy: keep 127.0.0.1. Remote proxy: set APP_BIND_ADDRESS to the app host private IP.
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:8085:8085"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8085), timeout=3).close()"]
       interval: 30s
