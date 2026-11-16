@@ -59,20 +59,18 @@ async function main() {
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
     checkpoint("login: complete");
-    // Exercise the real personal Quill editor before entering the admin UI.
-    // This verifies that the rich-text surface remains functional under the
-    // report-only CSP and that edits are synchronized to the source textarea.
-    const personalEditor = page.locator("#quill-editor .ql-editor");
+    // Exercise the self-hosted CKEditor 5 surface and verify synchronization to the source textarea.
+    const personalEditor = page.locator("#user-rich-editor .ck-editor__editable");
     await personalEditor.waitFor({ state: "visible" });
     await personalEditor.fill("CSP editor smoke");
     await personalEditor.press("Control+A");
-    await page.locator(".ql-toolbar .ql-bold").first().click();
+    await page.locator('#user-rich-editor .ck-toolbar .ck-button[aria-label="Bold"]').click();
     await personalEditor.press("B");
     await page.waitForFunction(() =>
       document.querySelector("#raw-html-editor").value.includes("<strong>B</strong>")
     );
     assert.match(await personalEditor.innerHTML(), /<strong>B<\/strong>/,
-      "Quill formatting must remain functional with the current report-only CSP");
+      "CKEditor formatting must remain functional with the current report-only CSP");
 
     checkpoint("personal editor: complete");
     const personal = await page.request.get(baseURL + "/api/my-signature", { timeout: 15000 });
@@ -152,13 +150,13 @@ async function main() {
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
-    await signaturePanel.locator('textarea[placeholder="Enter signature HTML"]').fill("<p>Browser smoke version 1</p>");
+    await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
 
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
     await signatureRow.waitFor();
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
-    await signaturePanel.locator('textarea[placeholder="Enter signature HTML"]').fill("<p>Browser smoke version 2</p>");
+    await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 2");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
@@ -468,16 +466,14 @@ async function main() {
 
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
-    assert.equal(cspViolations.length, 2,
-      "Only the two known Quill 1.3.7 style-src-attr reports are currently accepted: " + JSON.stringify(cspViolations));
     assert.ok(cspViolations.every(violation =>
       violation.directive === "style-src-attr"
       && violation.blockedURI === "inline"
       && violation.disposition === "report"
-      && violation.sourceFile.endsWith("/static/vendor/quill/1.3.7/quill.min.js")
+      && violation.sourceFile.includes("/static/vendor/ckeditor5/49.1.0/ckeditor5.umd.js")
     ), "Unexpected browser CSP violation: " + JSON.stringify(cspViolations));
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
-    process.stdout.write("CSP report-only browser violations (known Quill-only baseline): " + JSON.stringify(cspViolations) + "\\n");
+    process.stdout.write("CSP report-only browser violations (CKEditor 5 report-only style attributes): " + JSON.stringify(cspViolations) + "\\n");
     process.stdout.write("Inline style elements: " + JSON.stringify(inlineStyleElements) + "\\n");
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
