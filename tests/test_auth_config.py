@@ -13,35 +13,25 @@ from unittest.mock import AsyncMock, Mock, patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-os.environ["OIDC_ENABLED"] = "true"
 os.environ.setdefault("SECRET_KEY", "test-secret-key-with-more-than-thirty-two-characters")
 os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thirty-two-characters")
-os.environ.setdefault("OIDC_DISCOVERY_URL", "https://idp.example/application/o/opensigweave/.well-known/openid-configuration")
-os.environ.setdefault("OIDC_REDIRECT_URI", "https://app.example.org/auth")
-os.environ.setdefault("OIDC_CLIENT_ID", "opensigweave-test")
-os.environ.setdefault("OIDC_CLIENT_SECRET", "opensigweave-test-client-secret")
 
 from auth_config import (
     hash_local_admin_password,
     is_valid_email,
     is_valid_password_hash,
-    oidc_enabled_from_env,
     verify_local_admin_password,
 )
+os.environ.setdefault("APP_ALLOWED_HOSTS", "signature-test.example.org")
+os.environ.setdefault("LOCAL_ADMIN_EMAIL", "admin@example.org")
+os.environ.setdefault("LOCAL_ADMIN_PASSWORD_HASH", hash_local_admin_password("correct horse battery staple"))
+
 import main
 from database import Base
 from models import IdentityCacheDB, IdentityProviderDB
 
 
 class AuthenticationConfigurationTests(unittest.TestCase):
-    def test_oidc_flag_accepts_explicit_boolean_values(self):
-        self.assertTrue(oidc_enabled_from_env("true"))
-        self.assertTrue(oidc_enabled_from_env("YES"))
-        self.assertFalse(oidc_enabled_from_env("false"))
-        self.assertFalse(oidc_enabled_from_env("0"))
-        with self.assertRaises(RuntimeError):
-            oidc_enabled_from_env("sometimes")
-
     def test_local_admin_password_uses_scrypt_hash(self):
         encoded = hash_local_admin_password("correct horse battery staple")
         self.assertTrue(is_valid_password_hash(encoded))
@@ -68,7 +58,6 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             }).encode("utf-8")),
         )
         with (
-            patch.object(main, "OIDC_ENABLED", False),
             patch.object(main, "LOCAL_ADMIN_EMAIL", "admin@example.org"),
             patch.object(main, "LOCAL_ADMIN_PASSWORD_HASH", password_hash),
             patch.object(main, "LOCAL_ADMIN_CONFIGURED", True),
@@ -112,22 +101,20 @@ class AuthenticationConfigurationTests(unittest.TestCase):
                 "password": "irrelevant",
             }).encode("utf-8")),
         )
-        with patch.object(main, "OIDC_ENABLED", False):
-            with self.assertRaises(main.HTTPException) as raised:
-                asyncio.run(main.login_submit(request))
+        with self.assertRaises(main.HTTPException) as raised:
+            asyncio.run(main.login_submit(request))
         self.assertEqual(raised.exception.status_code, 403)
 
-    def test_import_without_oidc_configuration_registers_no_oidc_callback(self):
+    def test_import_has_no_global_oidc_compatibility_callback(self):
         password_hash = hash_local_admin_password("correct horse battery staple")
         env = os.environ.copy()
         for name in (
-            "OIDC_DISCOVERY_URL", "OIDC_REDIRECT_URI", "OIDC_CLIENT_ID",
-            "OIDC_CLIENT_SECRET", "CLIENT_ID", "CLIENT_SECRET",
-            "AUTHENTIK_URL", "AUTHENTIK_SLUG", "AUTHENTIK_API_TOKEN",
+            "OIDC_ENABLED", "OIDC_DISCOVERY_URL", "OIDC_REDIRECT_URI",
+            "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "CLIENT_ID", "CLIENT_SECRET",
+            "AUTHENTIK_SLUG",
         ):
-            env[name] = ""
+            env.pop(name, None)
         env.update({
-            "OIDC_ENABLED": "false",
             "LOCAL_ADMIN_EMAIL": "admin@example.org",
             "LOCAL_ADMIN_PASSWORD_HASH": password_hash,
             "APP_ALLOWED_HOSTS": "signature-test.example.org",
@@ -137,9 +124,10 @@ class AuthenticationConfigurationTests(unittest.TestCase):
         })
         code = (
             "import main; "
-            "assert main.OIDC_ENABLED is False; "
-            "assert main.attribute_provider is None; "
-            "assert not any(getattr(route, 'path', None) == '/auth' for route in main.app.routes)"
+            "assert not hasattr(main, 'OIDC_ENABLED'); "
+            "assert not hasattr(main, 'oauth'); "
+            "assert not any(getattr(route, 'path', None) == '/auth' for route in main.app.routes); "
+            "assert any(getattr(route, 'path', None) == '/auth/{provider_id}' for route in main.app.routes)"
         )
         result = subprocess.run(
             [sys.executable, "-c", code],
@@ -295,12 +283,11 @@ class ManagedLogoutTests(unittest.TestCase):
         self.assertIn("post_logout_redirect_uri=https%3A%2F%2Fsignatures.example.org%2Flogin", response["logout_url"])
         self.assertEqual(request.session, {})
 
-    def test_local_administrator_logout_does_not_redirect_to_legacy_oidc(self):
+    def test_local_administrator_logout_returns_to_login_without_provider_redirect(self):
         request = SimpleNamespace(session={
             "user": {"auth_source": "local", "email": "admin@example.org"}
         })
-        with patch.object(main, "OIDC_ENABLED", True):
-            response = asyncio.run(main.logout(request))
+        response = asyncio.run(main.logout(request))
         self.assertEqual(response, {"logout_url": "/login"})
         self.assertEqual(request.session, {})
 

@@ -35,7 +35,6 @@ from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, Sig
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template, prepare_group_placeholders, strip_group_placeholders
-from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
@@ -53,75 +52,52 @@ from admin_import import AdminImportError, inspect_admin_import, apply_admin_imp
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
 from auth_config import (
-    is_valid_email, is_valid_password_hash, oidc_enabled_from_env,
+    is_valid_email, is_valid_password_hash,
     verify_local_admin_password,
 )
 logger = logging.getLogger(__name__)
 
-oauth = OAuth()
-OIDC_ENABLED = oidc_enabled_from_env()
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 LOCAL_ADMIN_CONFIGURED = bool(LOCAL_ADMIN_EMAIL or LOCAL_ADMIN_PASSWORD_HASH)
 
 identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
-# Compatibility handle for older integrations/tests. Domain-assigned providers
-# always take precedence; this handle is not used to select a provider for a domain.
-attribute_provider = (
-    AuthentikAttributeProvider(
-        base_url=os.environ.get("AUTHENTIK_URL", ""),
-        api_token=os.environ.get("AUTHENTIK_API_TOKEN", ""),
-    ) if OIDC_ENABLED else None
-)
-
-
 async def get_identity_attributes(db: Session, email: str, provider_id: str | None = None) -> IdentityAttributes:
     normalized_email = email.strip().casefold()
-    if provider_id:
-        meta = db.get(IdentityProviderDB, provider_id)
-        if meta is None or not meta.is_enabled:
+    if not provider_id:
+        return IdentityAttributes()
+    meta = db.get(IdentityProviderDB, provider_id)
+    if meta is None or not meta.is_enabled:
+        return IdentityAttributes()
+    cache_key = f"{provider_id}:{normalized_email}"
+    if meta.provider_type == "oidc":
+        cached = db.get(IdentityCacheDB, cache_key)
+        if cached is None or cached.updated_at is None:
             return IdentityAttributes()
-        cache_key = f"{provider_id}:{normalized_email}"
-        if meta.provider_type == "oidc":
-            cached = db.get(IdentityCacheDB, cache_key)
-            if cached is None or cached.updated_at is None:
-                return IdentityAttributes()
-            cache_updated = cached.updated_at
-            if cache_updated.tzinfo is None:
-                cache_updated = cache_updated.replace(tzinfo=timezone.utc)
-            # Generic OIDC providers do not expose a portable account-status API.
-            # Expire cached claims after 24 hours so removed memberships do not live forever.
-            if (datetime.now(timezone.utc) - cache_updated).total_seconds() > 86400:
-                return IdentityAttributes()
-            return IdentityAttributes(
-                principal_id=cached.principal_id or "",
-                first_name=cached.first_name or "",
-                last_name=cached.last_name or "",
-                title=cached.title or "",
-                phone=cached.phone or "",
-                groups=frozenset(cached.groups or []),
-                claims=cached.claims or {},
-                attributes=cached.attributes or {},
-            )
-    else:
-        # Compatibility path for older callers without a domain assignment.
-        provider = attribute_provider
-        cache_key = normalized_email
+        cache_updated = cached.updated_at
+        if cache_updated.tzinfo is None:
+            cache_updated = cache_updated.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - cache_updated).total_seconds() > 86400:
+            return IdentityAttributes()
+        return IdentityAttributes(
+            principal_id=cached.principal_id or "",
+            first_name=cached.first_name or "",
+            last_name=cached.last_name or "",
+            title=cached.title or "",
+            phone=cached.phone or "",
+            groups=frozenset(cached.groups or []),
+            claims=cached.claims or {},
+            attributes=cached.attributes or {},
+        )
+    try:
+        provider = identity_provider_registry.get(provider_id)
         if provider is None:
             return IdentityAttributes()
-    try:
-        if provider_id:
-            provider = identity_provider_registry.get(provider_id)
-            if provider is None:
-                return IdentityAttributes()
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
             raise IdentityProviderUnavailable("Unsupported identity result")
-        if provider_id and fresh.principal_id:
-            fresh = replace(fresh, principal_id=f"{provider_id}:{fresh.principal_id}")
-        else:
-            fresh = replace(fresh, principal_id="")
+        fresh = replace(fresh, principal_id=f"{provider_id}:{fresh.principal_id}" if fresh.principal_id else "")
         cached = db.get(IdentityCacheDB, cache_key)
         values = {
             "principal_id": fresh.principal_id or None,
@@ -142,7 +118,7 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id or "legacy", type(exc).__name__)
+        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id, type(exc).__name__)
         cached = db.get(IdentityCacheDB, cache_key)
         if cached is None:
             return IdentityAttributes()
@@ -249,7 +225,7 @@ def migrate_legacy_identity_provider_configuration():
     with SessionLocal() as db:
         if db.query(IdentityProviderDB).count():
             return
-        legacy_type = os.environ.get("IDENTITY_PROVIDER", "authentik" if OIDC_ENABLED else "none").strip().casefold()
+        legacy_type = os.environ.get("IDENTITY_PROVIDER", "none").strip().casefold()
         settings = {}
         if legacy_type == "authentik":
             settings = {
@@ -283,15 +259,6 @@ def migrate_legacy_identity_provider_configuration():
         except Exception:
             db.rollback()
             logger.exception("Could not migrate legacy identity provider configuration; administrator setup remains available")
-
-@app.on_event("startup")
-def disable_legacy_provider_fallback():
-    """After one-time migration, runtime lookups must use domain assignments only."""
-    global attribute_provider
-    attribute_provider = None
-
-
-
 
 session_secret = os.environ.get("SECRET_KEY", "")
 if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secure_random_string_here", "fallback-secret", "replace_with_random_secret_at_least_32_characters"}:
@@ -362,55 +329,20 @@ extra_allowed_hosts = [
     for host in os.environ.get("APP_ALLOWED_HOSTS", "").split(",")
     if host.strip()
 ]
-canonical_host = (urlsplit(os.environ.get("OIDC_REDIRECT_URI", "")).hostname or "").lower()
-allowed_hosts = list(dict.fromkeys(([canonical_host] if OIDC_ENABLED and canonical_host else []) + extra_allowed_hosts))
+allowed_hosts = extra_allowed_hosts
 if not allowed_hosts or any(
     host == "*" or "/" in host or "@" in host or not host
     for host in allowed_hosts
 ):
     raise RuntimeError("Configure APP_ALLOWED_HOSTS with explicit hostnames; wildcard hosts are not allowed")
-if OIDC_ENABLED:
-    oidc_discovery_url = os.environ.get("OIDC_DISCOVERY_URL") or (
-        f"{os.environ.get('AUTHENTIK_URL', '').rstrip('/')}/application/o/"
-        f"{os.environ.get('AUTHENTIK_SLUG', '')}/.well-known/openid-configuration"
-    )
-    oidc_client_id = os.environ.get("OIDC_CLIENT_ID") or os.environ.get("CLIENT_ID")
-    oidc_client_secret = os.environ.get("OIDC_CLIENT_SECRET") or os.environ.get("CLIENT_SECRET")
-    oidc_redirect_uri = os.environ.get("OIDC_REDIRECT_URI", "")
-    redirect_parts = urlsplit(oidc_redirect_uri)
-    if (
-        not isinstance(oidc_discovery_url, str)
-        or not oidc_discovery_url.startswith("https://")
-        or not oidc_client_id
-        or not oidc_client_secret
-        or str(oidc_client_id).lower().startswith(("your_", "replace_"))
-        or str(oidc_client_secret).lower().startswith(("your_", "replace_"))
-        or redirect_parts.scheme != "https"
-        or not redirect_parts.hostname
-        or redirect_parts.username is not None
-        or redirect_parts.password is not None
-        or redirect_parts.query
-        or redirect_parts.fragment
-        or not redirect_parts.path.endswith("/auth")
-    ):
-        raise RuntimeError("Configure HTTPS OIDC discovery, client credentials and an explicit OIDC_REDIRECT_URI ending in /auth")
-    oauth.register(
-        name="oidc",
-        server_metadata_url=oidc_discovery_url,
-        client_id=oidc_client_id,
-        client_secret=oidc_client_secret,
-        client_kwargs={"scope": os.environ.get("OIDC_SCOPES", "openid email profile groups")}
-    )
-else:
-    redirect_parts = urlsplit("")
 
 if LOCAL_ADMIN_CONFIGURED:
     if not is_valid_email(LOCAL_ADMIN_EMAIL):
         raise RuntimeError("LOCAL_ADMIN_EMAIL must be a valid email address when local administrator access is configured")
     if not is_valid_password_hash(LOCAL_ADMIN_PASSWORD_HASH):
         raise RuntimeError("LOCAL_ADMIN_PASSWORD_HASH must be a valid scrypt hash when local administrator access is configured")
-elif not OIDC_ENABLED:
-    raise RuntimeError("Configure local administrator credentials when OIDC_ENABLED=false")
+else:
+    raise RuntimeError("Configure local administrator credentials; managed identity providers are configured in the administrator portal")
 
 # Host validation runs before rate limiting so invalid Host requests cannot consume buckets.
 app.add_middleware(RateLimitMiddleware)
@@ -664,49 +596,8 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         request.session.clear()
         return login_page(request, True, 401, db)
 
-    # Compatibility path for installations that still use the original global OIDC client.
-    if OIDC_ENABLED:
-        request.session["pending_legacy_login_email"] = submitted_email
-        return await oauth.oidc.authorize_redirect(request, os.environ["OIDC_REDIRECT_URI"])
-
     request.session.clear()
     return login_page(request, True, 401, db)
-
-
-async def auth(request: Request, db: Session = Depends(get_db)):
-    try:
-        token = await oauth.oidc.authorize_access_token(request)
-        pending_email = request.session.pop("pending_legacy_login_email", None)
-        expected_email = pending_email if isinstance(pending_email, str) else None
-        user = token.get("userinfo")
-        email, groups = _valid_oidc_identity(user, expected_email)
-        if hasattr(db, "query"):
-            domain = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == email.rsplit("@", 1)[1]).first()
-            if domain and domain.authentication_provider_id:
-                raise ValueError("Domain now uses a different authentication provider")
-        raw_attributes = user.get("attributes")
-        if not isinstance(raw_attributes, dict):
-            raw_attributes = {}
-        safe_attributes = {
-            key: value[:256] if isinstance(value, str) else ""
-            for key in ("phone", "title")
-            if isinstance((value := raw_attributes.get(key)), str)
-        }
-        request.session.clear()
-        request.session["user"] = {
-            "sub": str(user["sub"])[:255],
-            "email": email,
-            "email_verified": True,
-            "name": str(user.get("name") or "")[:256],
-            "groups": groups,
-            "attributes": safe_attributes,
-            "auth_source": "oidc",
-        }
-    except Exception as exc:
-        logger.warning("Legacy OIDC callback rejected (%s)", type(exc).__name__)
-        request.session.clear()
-        return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
-    return RedirectResponse(url="/", status_code=303)
 
 
 async def managed_oidc_callback(provider_id: str, request: Request, db: Session = Depends(get_db)):
@@ -794,8 +685,6 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
     return RedirectResponse(url="/", status_code=303)
 
 
-if OIDC_ENABLED:
-    app.add_api_route("/auth", auth, methods=["GET"], name="oidc_callback")
 app.add_api_route("/auth/{provider_id}", managed_oidc_callback, methods=["GET"], name="managed_oidc_callback")
 
 
@@ -825,16 +714,7 @@ async def logout(request: Request):
             logger.warning("Managed OIDC logout could not be prepared for provider %s (%s)", provider_id, type(exc).__name__)
             return {"logout_url": "/login"}
 
-    if auth_source != "oidc" or not OIDC_ENABLED:
-        return {"logout_url": "/login"}
-    authentik_url = os.environ.get("AUTHENTIK_URL", "").rstrip("/")
-    slug = os.environ.get("AUTHENTIK_SLUG", "")
-    return_url = urlunsplit((
-        redirect_parts.scheme, redirect_parts.netloc,
-        redirect_parts.path[:-len("auth")], "", "",
-    ))
-    logout_url = f"{authentik_url}/application/o/{slug}/end-session/?post_logout_redirect_uri={return_url}"
-    return {"logout_url": logout_url}
+    return {"logout_url": "/login"}
 
 
 @app.get("/")
@@ -918,10 +798,7 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
 
     return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
-        "user": user, "is_admin": is_admin, "authentik_settings_url": (
-            f"{os.environ.get('AUTHENTIK_URL', '')}/if/user/#/settings"
-            if OIDC_ENABLED else None
-        ),
+        "user": user, "is_admin": is_admin,
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
         "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
         "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0

@@ -2,7 +2,6 @@
 import base64
 import hashlib
 import hmac
-import os
 import re
 import secrets
 
@@ -11,16 +10,6 @@ _SCRYPT_R = 8
 _SCRYPT_P = 1
 _SCRYPT_DKLEN = 64
 _EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s.]+(?:\.[^@\s.]+)+$")
-
-
-def oidc_enabled_from_env(value: str | None = None) -> bool:
-    raw = os.environ.get("OIDC_ENABLED", "false") if value is None else value
-    normalized = str(raw).strip().casefold()
-    if normalized in {"true", "1", "yes", "on"}:
-        return True
-    if normalized in {"false", "0", "no", "off"}:
-        return False
-    raise RuntimeError("OIDC_ENABLED must be true or false")
 
 
 def is_valid_email(value: str) -> bool:
