@@ -94,20 +94,20 @@ body { background: var(--osw-black) !important; color: #f4f4f5; }
 .bg-gray-900 { background-color: var(--osw-charcoal) !important; }
 .bg-gray-800 { background-color: var(--osw-panel) !important; }
 .bg-gray-700 { background-color: var(--osw-panel-raised) !important; }
-.hover\\:bg-gray-800:hover { background-color: #303036 !important; }
-.hover\\:bg-gray-700:hover { background-color: #393940 !important; }
+.hover\:bg-gray-800:hover { background-color: #303036 !important; }
+.hover\:bg-gray-700:hover { background-color: #393940 !important; }
 .border-gray-800, .border-gray-700, .border-gray-600 { border-color: var(--osw-border) !important; }
 .text-gray-500 { color: #92929c !important; }
 .text-gray-400 { color: #b0b0b8 !important; }
 .text-gray-300 { color: #d4d4d8 !important; }
 .text-blue-300, .text-blue-400, .text-blue-500 { color: #ff8752 !important; }
-.hover\\:text-blue-300:hover, .hover\\:text-blue-400:hover { color: #ffab78 !important; }
+.hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: #ffab78 !important; }
 .bg-blue-600, .bg-blue-700 { background-color: var(--osw-red) !important; }
-.hover\\:bg-blue-500:hover, .hover\\:bg-blue-700:hover { background-color: var(--osw-orange) !important; }
+.hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-orange) !important; }
 .bg-green-700, .bg-green-600 { background-color: #bd3d2d !important; }
-.hover\\:bg-green-600:hover { background-color: var(--osw-orange) !important; }
+.hover\:bg-green-600:hover { background-color: var(--osw-orange) !important; }
 .border-blue-500, .border-blue-600, .border-green-600 { border-color: #e65a3b !important; }
-.focus\\:border-blue-500:focus, .focus\\:ring-blue-500:focus { --tw-ring-color: var(--osw-orange) !important; border-color: var(--osw-orange) !important; }
+.focus\:border-blue-500:focus, .focus\:ring-blue-500:focus { --tw-ring-color: var(--osw-orange) !important; border-color: var(--osw-orange) !important; }
 .app-brand { color: #ff7043; }
 .form-dialog { border-color: #45454d; background-color: var(--osw-panel); }
 .ck.ck-toolbar { background: #242428 !important; border-color: var(--osw-border) !important; }
