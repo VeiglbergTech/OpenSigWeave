@@ -119,17 +119,16 @@ class SecurityRegressionTests(unittest.TestCase):
         protocol_source = (ROOT / "identity" / "providers" / "base.py").read_text(encoding="utf-8")
         self.assertIn("class AttributeProvider(Protocol)", protocol_source)
 
-    def test_oidc_login_uses_provider_discovery_configuration(self):
-        self.assertIn('name="oidc"', self.source)
-        self.assertIn('os.environ.get("OIDC_DISCOVERY_URL")', self.source)
-        self.assertIn('not oidc_discovery_url.startswith("https://")', self.source)
-        self.assertIn("explicit OIDC_REDIRECT_URI ending in /auth", self.source)
-        self.assertNotIn("oauth.authentik.", self.source)
+    def test_oidc_login_uses_managed_provider_configuration_only(self):
+        self.assertIn('client = OAuth()', self.source)
+        self.assertIn('server_metadata_url=config["OIDC_DISCOVERY_URL"]', self.source)
+        self.assertIn('client_id=config["OIDC_CLIENT_ID"]', self.source)
+        self.assertIn('app.add_api_route("/auth/{provider_id}"', self.source)
         self.assertNotIn("pending_legacy_login_email", self.source)
         self.assertNotIn("OIDC_ENABLED", self.source)
         self.assertNotIn('app.add_api_route("/auth",', self.source)
-        self.assertIn("oauth.oidc.authorize_redirect", self.source)
-        self.assertIn("oauth.oidc.authorize_access_token", self.source)
+        self.assertIn("return await client.authorize_redirect", self.source)
+        self.assertIn("await client.authorize_access_token(request)", self.source)
 
     def test_signature_management_api_routes_require_admin(self):
         self.assertIn('@app.get("/api/admin/signatures")', self.source)

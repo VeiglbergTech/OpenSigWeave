@@ -81,7 +81,6 @@ class AuthenticationConfigurationTests(unittest.TestCase):
             }).encode("utf-8")),
         )
         with (
-            patch.object(main, "OIDC_ENABLED", False),
             patch.object(main, "LOCAL_ADMIN_EMAIL", "admin@example.org"),
             patch.object(main, "LOCAL_ADMIN_PASSWORD_HASH", password_hash),
             patch.object(main, "LOCAL_ADMIN_CONFIGURED", True),
