@@ -64,7 +64,9 @@ async function main() {
     await personalEditor.waitFor({ state: "visible" });
     await personalEditor.fill("CSP editor smoke");
     await personalEditor.press("Control+A");
-    await page.locator('#user-rich-editor .ck-toolbar .ck-button[aria-label="Bold"]').click();
+    // Use CKEditor's keyboard shortcut instead of a localized toolbar label.
+    // Toolbar aria-labels may differ across CKEditor builds and translations.
+    await personalEditor.press("Control+B");
     await personalEditor.press("B");
     await page.waitForFunction(() =>
       document.querySelector("#raw-html-editor").value.includes("<strong>B</strong>")
