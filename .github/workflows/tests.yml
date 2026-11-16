@@ -73,7 +73,7 @@ jobs:
       - name: Static Python security analysis
         run: |
           python -m pip install bandit==1.9.2
-          bandit -r -ll -ii -x tests,.venv .
+          bandit -r -ll -ii .
       - name: Check browser JavaScript syntax
         run: |
           node --check static/js/portal.js
