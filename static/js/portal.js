@@ -465,8 +465,6 @@ function identityProviderManager() { return {
                 async openUsers() {
                     this.modalTab = 'users';
                     await this.fetchOverrides();
-                    await this.$nextTick();
-                    adminRichEditor = await mountRichEditor('admin-quill-editor', 'admin-raw-html-editor');
                 },
                 saveSettings() {
                     window.dispatchEvent(new CustomEvent('save-domain-settings', { detail: {
@@ -483,7 +481,7 @@ function identityProviderManager() { return {
                     const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
                     if(res.ok) this.userOverrides = await res.json();
                 },
-                loadAdminEditor(email, directHtml = null, isDisabled = false) {
+                async loadAdminEditor(email, directHtml = null, isDisabled = false) {
                     if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }
                     this.editingUserEmail = email; 
                     
@@ -498,6 +496,9 @@ function identityProviderManager() { return {
                         if (adminRichEditor) adminRichEditor.setData(content);
                         this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
                     }
+                    await this.$nextTick();
+                    adminRichEditor = await mountRichEditor('admin-quill-editor', 'admin-raw-html-editor');
+                    if (adminRichEditor) adminRichEditor.setData(document.getElementById('admin-raw-html-editor').value);
                     checkAllLocks();
                 },
                 async saveAdminOverride() {
