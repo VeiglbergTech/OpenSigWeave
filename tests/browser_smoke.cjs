@@ -470,7 +470,7 @@ async function main() {
       violation.directive === "style-src-attr"
       && violation.blockedURI === "inline"
       && violation.disposition === "report"
-      && violation.sourceFile.includes("/static/vendor/ckeditor5/49.1.0/ckeditor5.umd.js")
+      && violation.sourceFile.includes("/static/vendor/ckeditor5/49.1.0/ckeditor5.js")
     ), "Unexpected browser CSP violation: " + JSON.stringify(cspViolations));
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
     process.stdout.write("CSP report-only browser violations (CKEditor 5 report-only style attributes): " + JSON.stringify(cspViolations) + "\\n");
