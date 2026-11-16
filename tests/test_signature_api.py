@@ -17,9 +17,9 @@ os.environ.setdefault("ENGINE_API_KEY", "test-engine-api-key-with-more-than-thir
 
 from auth_config import hash_local_admin_password
 
-os.environ.setdefault("APP_ALLOWED_HOSTS", "signature-test.example.org")
-os.environ.setdefault("LOCAL_ADMIN_EMAIL", "admin@example.org")
-os.environ.setdefault("LOCAL_ADMIN_PASSWORD_HASH", hash_local_admin_password("correct horse battery staple"))
+os.environ["APP_ALLOWED_HOSTS"] = "signature-test.example.org"
+os.environ["LOCAL_ADMIN_EMAIL"] = "admin@example.org"
+os.environ["LOCAL_ADMIN_PASSWORD_HASH"] = hash_local_admin_password("correct horse battery staple")
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
