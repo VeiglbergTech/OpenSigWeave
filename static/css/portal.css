@@ -1,11 +1,3 @@
-        .ql-toolbar { background-color: #374151; border-color: #4b5563 !important; border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; color: #d1d5db; }
-        .ql-toolbar .ql-stroke { stroke: #d1d5db; }
-        .ql-toolbar .ql-fill { fill: #d1d5db; }
-        .ql-toolbar .ql-picker { color: #d1d5db; }
-        .ql-container { border-color: #4b5563 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; border-bottom-left-radius: 0.5rem !important; border-bottom-right-radius: 0.5rem !important; font-family: inherit; font-size: 1rem; background-color: #ffffff; color: #000000; overflow: hidden !important; }
-        .ql-editor { overflow-y: auto; height: 100%; padding: 1rem 1.5rem 2.5rem 1.5rem !important; }
-        .ql-snow.ql-toolbar button:hover .ql-stroke, .ql-snow .ql-toolbar button:focus .ql-stroke, .ql-snow.ql-toolbar button.ql-active .ql-stroke, .ql-snow .ql-toolbar button.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item.ql-selected .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item.ql-selected .ql-stroke { stroke: #60a5fa; }
-        
         @keyframes slideUpFade {
             0% { transform: translateY(100%); opacity: 0; }
             10% { transform: translateY(0); opacity: 1; }
@@ -83,3 +75,43 @@
     min-width: 2em;
     padding: .25em;
 }
+
+
+/* OpenSigWeave visual identity: charcoal surfaces with red/orange accents. */
+:root {
+    color-scheme: dark;
+    --osw-black: #09090b;
+    --osw-charcoal: #171719;
+    --osw-panel: #202024;
+    --osw-panel-raised: #29292f;
+    --osw-border: #3b3b43;
+    --osw-muted: #a1a1aa;
+    --osw-red: #e04436;
+    --osw-orange: #f07832;
+}
+body { background: var(--osw-black) !important; color: #f4f4f5; }
+.bg-gray-950 { background-color: var(--osw-black) !important; }
+.bg-gray-900 { background-color: var(--osw-charcoal) !important; }
+.bg-gray-800 { background-color: var(--osw-panel) !important; }
+.bg-gray-700 { background-color: var(--osw-panel-raised) !important; }
+.hover\\:bg-gray-800:hover { background-color: #303036 !important; }
+.hover\\:bg-gray-700:hover { background-color: #393940 !important; }
+.border-gray-800, .border-gray-700, .border-gray-600 { border-color: var(--osw-border) !important; }
+.text-gray-500 { color: #92929c !important; }
+.text-gray-400 { color: #b0b0b8 !important; }
+.text-gray-300 { color: #d4d4d8 !important; }
+.text-blue-300, .text-blue-400, .text-blue-500 { color: #ff8752 !important; }
+.hover\\:text-blue-300:hover, .hover\\:text-blue-400:hover { color: #ffab78 !important; }
+.bg-blue-600, .bg-blue-700 { background-color: var(--osw-red) !important; }
+.hover\\:bg-blue-500:hover, .hover\\:bg-blue-700:hover { background-color: var(--osw-orange) !important; }
+.bg-green-700, .bg-green-600 { background-color: #bd3d2d !important; }
+.hover\\:bg-green-600:hover { background-color: var(--osw-orange) !important; }
+.border-blue-500, .border-blue-600, .border-green-600 { border-color: #e65a3b !important; }
+.focus\\:border-blue-500:focus, .focus\\:ring-blue-500:focus { --tw-ring-color: var(--osw-orange) !important; border-color: var(--osw-orange) !important; }
+.app-brand { color: #ff7043; }
+.form-dialog { border-color: #45454d; background-color: var(--osw-panel); }
+.ck.ck-toolbar { background: #242428 !important; border-color: var(--osw-border) !important; }
+.ck.ck-toolbar .ck-button:hover, .ck.ck-toolbar .ck-button.ck-on { background: #3a2524 !important; color: #ff9566 !important; }
+.ck.ck-toolbar .ck-button:focus, .ck.ck-toolbar .ck-dropdown__button:focus { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 2px rgba(240, 120, 50, .25) !important; }
+.ck.ck-editor__main > .ck-editor__editable { border-color: var(--osw-border) !important; }
+.ck.ck-editor__main > .ck-editor__editable.ck-focused { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 1px var(--osw-orange) !important; }

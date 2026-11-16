@@ -321,6 +321,20 @@ class SecurityRegressionTests(unittest.TestCase):
         with patch("rate_limiter.TRUSTED_PROXY_NETWORKS", (ipaddress.ip_network("10.0.0.0/24"),)):
             self.assertEqual(client_identity(request), "10.20.30.40")
 
+    def test_only_ckeditor_is_shipped_as_rich_text_editor(self):
+        template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        portal_css = (ROOT / "static" / "css" / "portal.css").read_text(encoding="utf-8")
+        editor_adapter = (ROOT / "static" / "js" / "rich-editor.js").read_text(encoding="utf-8")
+        self.assertIn("/static/vendor/ckeditor5/49.1.0/ckeditor5.js", template)
+        self.assertIn("ClassicEditor.create", editor_adapter)
+        self.assertNotIn("quill", template.lower())
+        self.assertNotIn(".ql-", portal_css)
+        self.assertFalse((ROOT / "static" / "vendor" / "quill").exists())
+
+    def test_portal_uses_charcoal_red_orange_brand_palette(self):
+        portal_css = (ROOT / "static" / "css" / "portal.css").read_text(encoding="utf-8")
+        for token in ("--osw-black", "--osw-charcoal", "--osw-red", "--osw-orange"):
+            self.assertIn(token, portal_css)
 
 if __name__ == "__main__":
     unittest.main()
