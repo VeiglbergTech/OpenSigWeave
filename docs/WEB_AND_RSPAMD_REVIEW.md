@@ -1,6 +1,6 @@
 # Web application and Rspamd security review
 
-**Development baseline:** `architecture/refactor-foundation`  
+**Development baseline:** `dev` (CI-validated candidate: `beta`)  
 **Review date:** 2026-11-15  
 **Status:** Code-level review of the standalone preview; not a penetration test.
 
@@ -118,9 +118,9 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 The latest successful push and pull-request CI runs before this cleanup target README-only commit `f5f197c3b1c0740527f7e307525cd5fe1db11932`:
 
-- Push run #1843 (`43766145281`): success.
-- Pull-request run #1844 (`43766152801`): success.
-- Both `unit` jobs completed without failed steps. The preceding full regression runs #1822/#1823 passed all 244 tests on implementation commit `e49f8ce6322224cb7feda48764fe4810d2e0701f`.
+- Push run #1869 (`43813160634`): success.
+- Pull-request run #1870 (`43813165867`): success.
+- Both `unit` jobs completed without failed steps on merge commit `2d316fee9cb314a315997833e544487f9d869f06`.
 - Full-history Gitleaks scan, Python dependency audit, Python/JavaScript/Lua syntax checks, PostgreSQL and SQLite migrations, Docker build/healthchecks, Chromium/Playwright browser smoke, scheduled-backup guards and encrypted backup/fresh restore are covered by the successful regression history.
 
 The current-head changes after the full regression run were documentation-only; no application behavior changed.
