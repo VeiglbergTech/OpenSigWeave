@@ -36,6 +36,51 @@ from models import IdentityCacheDB
 
 
 class SignatureCatalogApiTests(unittest.TestCase):
+    def test_stalwart_hook_rejects_missing_or_invalid_bearer_token(self):
+        request = SimpleNamespace(json=AsyncMock(return_value={}))
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}):
+            with self.assertRaises(HTTPException) as missing:
+                asyncio.run(main.stalwart_mta_hook(request, None, self.db))
+            self.assertEqual(missing.exception.status_code, 401)
+            with self.assertRaises(HTTPException) as invalid:
+                asyncio.run(main.stalwart_mta_hook(
+                    request, "Bearer wrong-token", self.db
+                ))
+            self.assertEqual(invalid.exception.status_code, 401)
+
+    def test_stalwart_hook_accepts_unauthenticated_inbound_without_injection(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": ""}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {"headers": [], "contents": "Hello"},
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}):
+            response = asyncio.run(main.stalwart_mta_hook(
+                request, "Bearer expected-token", self.db
+            ))
+        self.assertEqual(response, {"action": "accept"})
+
+    def test_stalwart_hook_uses_authenticated_envelope_sender_and_shared_engine(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
+            "envelope": {"from": {"address": "alias@example.org"}},
+            "message": {
+                "headers": [["From", " forged@example.net\\r\\n"]],
+                "contents": "Hello",
+            },
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with (
+            patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
+            patch.object(main, "get_rspamd_signature", new=AsyncMock(return_value={"html": ""})) as engine,
+        ):
+            response = asyncio.run(main.stalwart_mta_hook(
+                request, "bEaReR expected-token", self.db
+            ))
+        self.assertEqual(response, {"action": "accept"})
+        self.assertEqual(engine.await_args.args[0], "alias@example.org")
+
     def test_engine_api_exposes_versioned_adapter_neutral_route_and_legacy_rspamd_alias(self):
         routes = {
             route.path: route.methods
