@@ -166,7 +166,7 @@ jobs:
           postconf -e 'myhostname = localhost.localdomain'
           postconf -e 'mydestination = localhost, localhost.localdomain'
           postconf -e 'local_recipient_maps ='
-          postconf -e 'home_mailbox = Maildir/'
+          postconf -e 'mailbox_command = /usr/bin/python3 /tmp/capture_mail.py'
           postconf -e 'inet_interfaces = 127.0.0.1'
           postconf -e 'inet_protocols = ipv4'
           postconf -e 'mynetworks = 192.0.2.0/24'
@@ -198,7 +198,15 @@ jobs:
           test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
 
           install -d -o root -g root -m 755 /var/spool/postfix
-          install -d -o root -g root -m 700 /root/Maildir/cur /root/Maildir/new /root/Maildir/tmp
+          mkdir -p /tmp/delivered
+          cat > /tmp/capture_mail.py <<'PY'
+          import os
+          import sys
+          import uuid
+          os.makedirs('/tmp/delivered', exist_ok=True)
+          with open(f"/tmp/delivered/{uuid.uuid4().hex}.eml", "wb") as output:
+              output.write(sys.stdin.buffer.read())
+          PY
           postfix check
 
           python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
@@ -287,13 +295,13 @@ jobs:
 
           delivered = []
           for attempt in range(40):
-              paths = glob.glob("/root/Maildir/new/*")
+              paths = glob.glob("/tmp/delivered/*.eml")
               if len(paths) >= 2:
                   delivered = [BytesParser(policy=policy.default).parsebytes(open(path, "rb").read()) for path in paths]
                   break
               time.sleep(0.5)
 
-          assert len(delivered) == 2, f"Expected two delivered messages, found {len(delivered)}"
+          assert len(delivered) == 2, f"Expected two delivered messages, found {len(delivered)}; queue={__import__('subprocess').run(['postqueue', '-p'], capture_output=True, text=True).stdout}; maillog={open('/var/log/maillog').read() if __import__('os').path.exists('/var/log/maillog') else 'no maillog'}"
           for message in delivered:
               assert message["X-OpenSigWeave-CI"] == "real-postfix-milter-ok", message
               assert message["Subject"] == "OpenSigWeave header mutation verified", message["Subject"]
