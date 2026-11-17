@@ -131,6 +131,12 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             for child in part.iter_parts():
                 yield from iter_message_parts(child)
 
+    # The stdlib parser records malformed multipart boundaries and other
+    # structural defects. Do not reserialize a message whose outer MIME tree
+    # could not be parsed reliably.
+    if any(part.defects for part in iter_message_parts(parsed)):
+        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+
     if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED
            for part in iter_message_parts(parsed)):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
