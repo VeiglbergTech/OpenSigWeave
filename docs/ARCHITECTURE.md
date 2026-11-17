@@ -10,7 +10,7 @@ OpenSigWeave is developed first as an independent, self-hosted application. Its 
 The intended long-term product boundary is:
 
 - **OpenSigWeave core:** signature catalog, versions, variants, rules, rendering, identity abstraction, management API and web UI.
-- **Mail adapters:** separate integrations such as Rspamd. They consume a stable engine API and must not make the core depend on a particular mail server.
+- **Mail adapters:** independently deployable integrations for Rspamd, Postfix/Milter, Stalwart, Exim, Haraka, OpenSMTPD, Exchange and other compatible systems. They consume the versioned adapter-neutral engine API and must not make the core depend on a particular mail server. Availability depends on each product’s supported extension points; a planned adapter is not a supported integration until it has implementation and end-to-end tests.
 - **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
 
 Managed identity providers are the only external authentication path. Installations configure an independent local administrator emergency account and create providers in the portal. Each provider's settings and secrets live in `.idp/{provider-id}/.env`. Domains select a login provider and a profile-attribute provider independently. No root-level/global OIDC compatibility path exists.
