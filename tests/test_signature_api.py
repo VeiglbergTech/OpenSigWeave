@@ -66,7 +66,12 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
             "envelope": {"from": {"address": "alias@example.org"}},
             "message": {
-                "headers": [["From", " forged@example.net\\r\\n"]],
+                "headers": [
+                    ["From", " forged@example.net\\r\\n"],
+                    ["x-opensigweave-mode", "professional"],
+                    ["X-OpenSigWeave-Signature", "Sales"],
+                    ["X-OpenSigWeave-Signature-Code", "a1b2"],
+                ],
                 "contents": "Hello",
             },
         }
@@ -80,6 +85,11 @@ class SignatureCatalogApiTests(unittest.TestCase):
             ))
         self.assertEqual(response, {"action": "accept"})
         self.assertEqual(engine.await_args.args[0], "alias@example.org")
+        self.assertEqual(engine.await_args.args[2], main.ENGINE_API_KEY)
+        self.assertEqual(engine.await_args.args[3], "professional")
+        self.assertEqual(engine.await_args.args[4], "Sales")
+        self.assertEqual(engine.await_args.args[5], "a1b2")
+        self.assertIs(engine.await_args.args[6], self.db)
 
     def test_engine_api_exposes_versioned_adapter_neutral_route_and_legacy_rspamd_alias(self):
         routes = {
