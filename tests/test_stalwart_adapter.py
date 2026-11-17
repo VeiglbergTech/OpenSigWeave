@@ -28,8 +28,8 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_reports_top_level_mime_header_changes(self):
         payload = request(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/html; charset=utf-8\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/html; charset=utf-8\r\n"]],
             "<html><body>Grüße</body></html>",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signatur äöü</p>"})
