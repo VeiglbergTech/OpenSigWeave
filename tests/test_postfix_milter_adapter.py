@@ -1,6 +1,8 @@
+import json
 import quopri
 import unittest
 import urllib.request
+from unittest.mock import patch
 from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, _NoRedirectHandler, fetch_signature, rewrite_message
 
 class PostfixMilterAdapterTests(unittest.TestCase):
@@ -67,6 +69,96 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertIsNone(handler.redirect_request(
             request, None, 302, "Found", {}, "http://attacker.example/collect"
         ))
+
+
+    def test_engine_client_uses_versioned_endpoint_and_selection_contract(self):
+        payload = {
+            "html": "<p>Signature</p>",
+            "inject_on_replies": True,
+            "trim_whitespace": False,
+            "strip_device_signatures": True,
+        }
+
+        class Response:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, limit):
+                return json.dumps(payload).encode("utf-8")
+
+        class Opener:
+            def __init__(self):
+                self.request = None
+                self.timeout = None
+            def open(self, request, timeout):
+                self.request = request
+                self.timeout = timeout
+                return Response()
+
+        opener = Opener()
+        with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=opener):
+            result = fetch_signature(
+                "https://engine.example/",
+                "k" * 40,
+                "User+tag@Example.org",
+                mode="PROFESSIONAL",
+                signature_name="Sales",
+                signature_code="A1B2",
+                timeout=3.5,
+            )
+
+        self.assertEqual(result, payload)
+        self.assertEqual(
+            opener.request.full_url,
+            "https://engine.example/api/v1/engine/signatures/User%2Btag%40Example.org",
+        )
+        headers = {name.casefold(): value for name, value in opener.request.header_items()}
+        self.assertEqual(headers["x-engine-key"], "k" * 40)
+        self.assertEqual(headers["x-opensigweave-mode"], "PROFESSIONAL")
+        self.assertEqual(headers["x-opensigweave-signature"], "Sales")
+        self.assertEqual(headers["x-opensigweave-signature-code"], "A1B2")
+        self.assertEqual(headers["accept"], "application/json")
+        self.assertEqual(opener.timeout, 3.5)
+
+    def test_engine_client_rejects_invalid_response_contract(self):
+        class Response:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, limit):
+                return b'{"html": 42}'
+
+        class Opener:
+            def open(self, request, timeout):
+                return Response()
+
+        with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=Opener()):
+            with self.assertRaises(EngineRequestError):
+                fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
+
+    def test_engine_client_rejects_oversized_response(self):
+        from adapters.postfix_milter import MAX_ENGINE_RESPONSE_BYTES
+
+        class Response:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, limit):
+                return b"x" * limit
+
+        class Opener:
+            def open(self, request, timeout):
+                return Response()
+
+        with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=Opener()):
+            with self.assertRaises(EngineRequestError):
+                fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
 
     def test_message_size_is_bounded(self):
         with self.assertRaises(ValueError):
