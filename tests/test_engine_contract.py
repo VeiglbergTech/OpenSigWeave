@@ -2,7 +2,13 @@
 
 import unittest
 
-from dataclasses import FrozenInstanceError\n\nfrom core.engine_contract import (\n    SignatureEngineError,\n    SignatureEngineResult,\n    normalize_engine_request,\n)
+from dataclasses import FrozenInstanceError
+
+from core.engine_contract import (
+    SignatureEngineError,
+    SignatureEngineResult,
+    normalize_engine_request,
+)
 
 
 class EngineRequestContractTests(unittest.TestCase):
@@ -36,6 +42,29 @@ class EngineRequestContractTests(unittest.TestCase):
             with self.subTest(sender=sender):
                 with self.assertRaisesRegex(ValueError, "Invalid sender email"):
                     normalize_engine_request(sender)
+
+
+    def test_engine_result_serializes_stable_transport_neutral_fields(self):
+        result = SignatureEngineResult(
+            html="<p>Hello</p>",
+            inject_on_replies=True,
+            trim_whitespace=False,
+            strip_device_signatures=True,
+        )
+        self.assertEqual(result.to_payload(), {
+            "html": "<p>Hello</p>",
+            "inject_on_replies": True,
+            "trim_whitespace": False,
+            "strip_device_signatures": True,
+        })
+        with self.assertRaises(FrozenInstanceError):
+            result.html = "changed"
+
+    def test_engine_error_exposes_stable_code_and_safe_message(self):
+        error = SignatureEngineError("ASSET_UNAVAILABLE", "Signature asset unavailable")
+        self.assertEqual(error.code, "ASSET_UNAVAILABLE")
+        self.assertEqual(error.safe_message, "Signature asset unavailable")
+        self.assertEqual(str(error), "Signature asset unavailable")
 
 
 if __name__ == "__main__":
