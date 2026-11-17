@@ -1079,3 +1079,39 @@ class AuthorizationEndpointTests(unittest.TestCase):
         self.assertEqual(main.read_domains(self.admin_request, self.db), [])
         self.assertEqual(main.list_identity_providers(self.admin_request, self.db), [])
 
+
+
+    def test_stalwart_hook_rejects_missing_and_invalid_bearer_tokens(self):
+        async def payload():
+            return {}
+
+        request = SimpleNamespace(json=payload)
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "stalwart-test-token"}):
+            for authorization in (None, "Bearer wrong-token", "Basic stalwart-test-token"):
+                with self.subTest(authorization=authorization):
+                    with self.assertRaises(HTTPException) as denied:
+                        asyncio.run(main.stalwart_mta_hook(request, authorization, self.db))
+                    self.assertEqual(denied.exception.status_code, 401)
+
+    def test_stalwart_hook_accepts_case_insensitive_bearer_scheme(self):
+        async def payload():
+            return {"context": {"stage": "data"}}
+
+        request = SimpleNamespace(json=payload)
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "stalwart-test-token"}):
+            result = asyncio.run(
+                main.stalwart_mta_hook(request, "bEaReR stalwart-test-token", self.db)
+            )
+        self.assertEqual(result, {"action": "accept"})
+
+    def test_stalwart_hook_rejects_unsupported_stage_after_authentication(self):
+        async def payload():
+            return {"context": {"stage": "mail"}}
+
+        request = SimpleNamespace(json=payload)
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "stalwart-test-token"}):
+            with self.assertRaises(HTTPException) as denied:
+                asyncio.run(
+                    main.stalwart_mta_hook(request, "Bearer stalwart-test-token", self.db)
+                )
+        self.assertEqual(denied.exception.status_code, 400)
