@@ -1775,18 +1775,19 @@ async def stalwart_mta_hook(
     signature_name = signature_values[0] if len(signature_values) == 1 else None
     signature_code = code_values[0] if len(code_values) == 1 else None
 
-    engine_response = Response()
-    signature_data = await get_engine_signature(
-        sender,
-        engine_response,
-        ENGINE_API_KEY,
-        mode,
-        signature_name,
-        signature_code,
-        db,
-    )
     try:
-        return build_stalwart_hook_response(payload, signature_data)
+        engine_request = normalize_engine_request(
+            sender, mode, signature_name, signature_code
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        engine_result = await resolve_signature_engine(db, engine_request)
+    except SignatureEngineError as exc:
+        raise _engine_http_exception(exc)
+
+    try:
+        return build_stalwart_hook_response(payload, engine_result.to_payload())
     except (TypeError, ValueError):
         logger.warning("Rejected malformed Stalwart MTA hook message")
         raise HTTPException(status_code=400, detail="Invalid Stalwart message structure")
