@@ -1099,7 +1099,8 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             ),
         )
         engine.assert_awaited_once()
-        self.assertEqual(engine.await_args.args[0], "sender@example.org")
+        self.assertIs(engine.await_args.args[0], self.db)
+        self.assertEqual(engine.await_args.args[1].sender_email, "sender@example.org")
 
     def test_anonymous_http_requests_cannot_read_admin_or_personal_apis(self):
         for path in (
