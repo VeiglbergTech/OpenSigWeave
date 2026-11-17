@@ -124,7 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y epel-release
-          dnf --disablerepo=crb install -y postfix postfix-hash python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
+          dnf --disablerepo=crb install -y postfix postfix-lmdb python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
       - name: Run disposable Postfix SMTP transaction through a real Milter
         shell: bash
         run: |
@@ -175,7 +175,7 @@ jobs:
           postconf -e 'smtpd_sasl_path = smtpd'
           postconf -e 'smtpd_sasl_security_options = noanonymous'
           postconf -e 'smtpd_sasl_local_domain = localhost'
-          postconf -e 'smtpd_sender_login_maps = hash:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
           postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
 
           install -d -o root -g root -m 755 /var/spool/postfix
@@ -191,7 +191,7 @@ jobs:
           chmod 640 /etc/sasldb2
 
           printf 'ci-user@localhost ci-user@localhost\\n' > /etc/postfix/sender_login
-          postmap hash:/etc/postfix/sender_login
+          postmap lmdb:/etc/postfix/sender_login
           postfix check
 
           python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
