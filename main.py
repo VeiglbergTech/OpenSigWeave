@@ -52,6 +52,7 @@ from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
+from adapters.stalwart import build_stalwart_hook_response
 from auth_config import (
     is_valid_email, is_valid_password_hash,
     verify_local_admin_password,
@@ -1906,3 +1907,73 @@ async def get_rspamd_signature(
         "trim_whitespace": domain_obj.trim_whitespace,
         "strip_device_signatures": domain_obj.strip_device_signatures,
     }
+
+
+# ==========================================
+# STALWART MTA HOOK ADAPTER
+# ==========================================
+@app.post("/api/v1/adapters/stalwart/mta-hook", name="stalwart_mta_hook")
+async def stalwart_mta_hook(
+    request: Request,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    db: Session = Depends(get_db),
+):
+    hook_token = os.environ.get("STALWART_HOOK_TOKEN", "")
+    supplied_token = authorization[7:].strip() if isinstance(authorization, str) and authorization.startswith("Bearer ") else ""
+    if not hook_token or not hmac.compare_digest(supplied_token, hook_token):
+        raise HTTPException(status_code=401, detail="Unauthorized Stalwart hook request")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Stalwart hook JSON")
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Invalid Stalwart hook payload")
+
+    context = payload.get("context")
+    envelope = payload.get("envelope")
+    message = payload.get("message")
+    if not isinstance(context, dict) or context.get("stage") != "data":
+        raise HTTPException(status_code=400, detail="Only Stalwart DATA-stage requests are supported")
+    sasl = context.get("sasl")
+    if not isinstance(sasl, dict) or not isinstance(sasl.get("login"), str) or not sasl["login"].strip():
+        # Do not inject into unauthenticated inbound mail. Stalwart must also
+        # enforce authenticated sender/alias authorization in its SMTP policy.
+        return {"action": "accept"}
+    if not isinstance(envelope, dict) or not isinstance(envelope.get("from"), dict):
+        raise HTTPException(status_code=400, detail="Missing Stalwart envelope sender")
+    sender = envelope["from"].get("address")
+    if not isinstance(sender, str) or not sender.strip():
+        return {"action": "accept"}
+    if not isinstance(message, dict) or not isinstance(message.get("headers"), list):
+        raise HTTPException(status_code=400, detail="Missing Stalwart message")
+
+    def header_values(name: str) -> list[str]:
+        values = []
+        for item in message["headers"]:
+            if isinstance(item, list) and len(item) == 2 and item[0].casefold() == name.casefold() and isinstance(item[1], str):
+                values.append(item[1].strip())
+        return values
+
+    mode_values = header_values("X-OpenSigWeave-Mode")
+    signature_values = header_values("X-OpenSigWeave-Signature")
+    code_values = header_values("X-OpenSigWeave-Signature-Code")
+    mode = mode_values[0] if len(mode_values) == 1 else None
+    signature_name = signature_values[0] if len(signature_values) == 1 else None
+    signature_code = code_values[0] if len(code_values) == 1 else None
+
+    engine_response = Response()
+    signature_data = await get_rspamd_signature(
+        sender,
+        engine_response,
+        ENGINE_API_KEY,
+        mode,
+        signature_name,
+        signature_code,
+        db,
+    )
+    try:
+        return build_stalwart_hook_response(payload, signature_data)
+    except (TypeError, ValueError):
+        logger.warning("Rejected malformed Stalwart MTA hook message")
+        raise HTTPException(status_code=400, detail="Invalid Stalwart message structure")
