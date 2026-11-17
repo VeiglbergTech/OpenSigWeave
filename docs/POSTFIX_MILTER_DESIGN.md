@@ -1,6 +1,6 @@
 # Postfix Milter adapter — technical design
 
-**Status:** PyMilter 1.0.6 runtime/API smoke test passed; real Postfix protocol integration pending  
+**Status:** PyMilter 1.0.6 runtime/API and unauthenticated Postfix SMTP/Milter protocol smoke tests passed; authenticated sender-identity verification is in CI  
 **Target branch:** `dev`  
 **Scope:** Design the Postfix integration boundary without adding an unverified Milter runtime dependency.
 
@@ -12,7 +12,7 @@ The first implementation should be a small, independently deployable Milter side
 
 **Leading library candidate: PyMilter 1.0.6, not yet approved for production.** PyMilter wraps Sendmail's native `libmilter` API and provides a Python object-oriented callback interface. The PyPI project page still exposes 1.0.5 (uploaded in 2021), while current distribution packaging has moved to 1.0.6 and includes Python 3.12 builds. This is encouraging evidence, but it is not proof that the exact Python 3.12-slim container used by OpenSigWeave can build, import and run the library correctly. The 1.0.6 distribution packages also require the native `libmilter` shared library. PyMilter is GPL-2.0-or-later, which must be reviewed for the separately distributed sidecar.
 
-The isolated CI spike now installs the EPEL 10 package `python3-pymilter-1.0.6-14.el10_2` on Python 3.12.16. It verifies imports of `Milter` and the native `milter` extension, checks that the extension resolves `libmilter.so.1.0`, and exercises the envelope sender, header, body, SASL macro lookup (`{auth_authen}`) and end-of-message body-replacement API against a fake libmilter context. These checks passed in Actions run #44134884333. This is an API/runtime smoke test only: it does **not** prove a real Milter handshake, Postfix callback delivery, macro configuration or SMTP end-to-end behavior. The next gate is a disposable Postfix instance with the sidecar connected over a private socket. Do not add PyMilter to the main application's `requirements.txt`.
+The isolated CI spike installs the EPEL 10 package `python3-pymilter-1.0.6-14.el10_2` on Python 3.12.16. It verifies imports of `Milter` and the native `milter` extension, checks that the extension resolves `libmilter.so.1.0`, and exercises the envelope sender, header, body, SASL macro lookup and end-of-message body-replacement API against a fake libmilter context. The runtime/API checks passed in Actions run #44135395448. The same run also started a disposable Postfix instance, connected PyMilter over TCP, submitted an SMTP message and verified real `envfrom`, `header`, `body` and `eom` callbacks plus `addheader`. This first protocol test was unauthenticated and therefore did not yet prove SMTP AUTH macro delivery. A follow-up CI test now enables Cyrus SASL, requests `{auth_authen}` via `@Milter.symlist`, and checks Postfix sender-login enforcement; that additional gate must pass before implementation is approved. Do not add PyMilter to the main application's `requirements.txt`.
 
 The Go `andybalholm/milter` package remains an alternative only if the Python/native dependency route proves unsuitable. A custom protocol implementation is not the default fallback: the Milter wire protocol, negotiation flags, chunk framing and failure semantics are security-sensitive. Prefer a maintained implementation with tests over maintaining a protocol stack ourselves.
 
@@ -37,7 +37,7 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
 
 The SMTP envelope sender is the authoritative address for signature lookup, but it is not by itself proof that the authenticated principal may send as that address.
 
-Before enabling injection, configure Postfix to expose the authenticated SASL identity to the Milter using the appropriate Milter macro configuration for the supported Postfix version. The adapter must compare that authenticated identity with an explicit authorization policy for the envelope sender, including aliases and delegated send-as. If the SASL identity is absent, ambiguous or unauthorized, accept unchanged. Do not infer authorization from the message's `From:` header.
+Before enabling injection, configure Postfix to expose the authenticated SASL identity to the Milter using `milter_mail_macros` and request `{auth_authen}` at the MAIL FROM stage with PyMilter's `@Milter.symlist('{auth_authen}')`. The adapter must require a non-empty authenticated identity. Enforce envelope-sender ownership in Postfix with `smtpd_sender_login_maps` and `reject_authenticated_sender_login_mismatch`; the map must include approved aliases and delegated send-as owners. This keeps SMTP authorization in the MTA's policy layer instead of duplicating it in the adapter. If the SASL identity is absent, accept unchanged. Do not infer authorization from the message's `From:` header.
 
 Inbound unauthenticated mail must remain unchanged. Local/non-SMTP submission is out of scope for the first version because Postfix uses a separate `non_smtpd_milters` path with different capabilities and identity context.
 
@@ -56,7 +56,7 @@ Inbound unauthenticated mail must remain unchanged. Local/non-SMTP submission is
 
 ### Library/runtime spike
 - Build and import PyMilter 1.0.6 in a Python 3.12 container with the required `libmilter` development/runtime packages; record the exact source and package versions.
-- Verify real protocol negotiation and envelope sender, SASL macro visibility, header, body-chunk and end-of-message callbacks against a disposable Postfix instance. The existing fake-context smoke test is not a substitute.
+- Verify real protocol negotiation and envelope sender, SASL macro visibility, header, body-chunk and end-of-message callbacks against a disposable Postfix instance. Verify `smtpd_sender_login_maps` rejects an authenticated but unauthorized envelope sender. The existing fake-context smoke test is not a substitute.
 - Test clean startup/shutdown, socket permissions, concurrency and bounded memory under large messages.
 - Review GPL-2.0-or-later distribution implications and dependency maintenance before adoption.
 
