@@ -167,6 +167,7 @@ jobs:
           postconf -e 'mydestination = localhost, localhost.localdomain'
           postconf -e 'local_recipient_maps ='
           postconf -e 'mailbox_command = /usr/bin/python3 /tmp/capture_mail.py'
+          newaliases
           postconf -e 'inet_interfaces = 127.0.0.1'
           postconf -e 'inet_protocols = ipv4'
           postconf -e 'mynetworks = 192.0.2.0/24'
@@ -198,6 +199,7 @@ jobs:
           test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
 
           install -d -o root -g root -m 755 /var/spool/postfix
+          useradd --create-home testuser
           mkdir -p /tmp/delivered
           cat > /tmp/capture_mail.py <<'PY'
           import os
@@ -251,7 +253,7 @@ jobs:
 
           # Unauthenticated local SMTP must still reach the Milter without a SASL identity.
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
-              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["root@localhost"])
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["testuser@localhost"])
           print("Unauthenticated SMTP transaction accepted; no identity expected")
 
           # Authenticated submission must expose the actual Cyrus SASL identity to the Milter.
@@ -266,7 +268,7 @@ jobs:
               code, response = smtp.mail("spoofed@example.org")
               assert code == 250, (code, response)
               # Postfix delays sender restrictions until RCPT TO by default.
-              code, response = smtp.rcpt("root@localhost")
+              code, response = smtp.rcpt("testuser@localhost")
               assert code in (550, 553), (code, response)
               print(f"Unauthorized envelope sender rejected: {code} {response!r}")
           PY
