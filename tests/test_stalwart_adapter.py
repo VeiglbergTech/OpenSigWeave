@@ -26,6 +26,22 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("<p>Signature</p>", body)
         self.assertIn("X-OpenSigWeave-Injected", [item.get("name") for item in changes])
 
+    def test_reports_top_level_mime_header_changes(self):
+        payload = request(
+            [["From", " sender@example.org\\r\\n"],
+             ["Content-Type", " text/html; charset=utf-8\\r\\n"]],
+            "<html><body>Grüße</body></html>",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signatur äöü</p>"})
+        changes = result["modifications"]
+        added_headers = {
+            item["name"].casefold(): item["value"]
+            for item in changes
+            if item["type"] == "addHeader"
+        }
+        self.assertEqual(added_headers["content-transfer-encoding"], "8bit")
+        self.assertEqual(added_headers["mime-version"], "1.0")
+
     def test_injects_into_both_multipart_alternative_text_parts(self):
         payload = request(
             [
