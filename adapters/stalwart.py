@@ -13,6 +13,8 @@ from html.parser import HTMLParser
 from io import BytesIO
 from typing import Any
 
+from core.signature_placement import insert_signature
+
 
 _HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
 _CONTROL_HEADERS = {
@@ -154,18 +156,13 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         if not isinstance(body, str):
             continue
         if content_type == "text/html":
-            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
+            if re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", body, re.I):
                 continue
-            fragment = "<br><br>" + html_signature
-            closing_body = re.search(r"</body\s*>", body, re.I)
-            if closing_body:
-                body = body[:closing_body.start()] + fragment + body[closing_body.start():]
-            else:
-                body += fragment
+            body, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
             if not plain:
                 continue
-            body = body.rstrip() + "\n\n" + plain
+            body, _quote_detected = insert_signature(body, plain, html=False)
         charset = part.get_content_charset() or "utf-8"
         transfer_encoding = part.get("Content-Transfer-Encoding", "quoted-printable").casefold()
         cte = transfer_encoding if transfer_encoding in {"7bit", "8bit", "quoted-printable", "base64"} else "quoted-printable"
