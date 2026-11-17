@@ -266,7 +266,7 @@ The Stalwart adapter is not enabled automatically. It exposes `POST /api/v1/adap
 4. Configure `tempFailOnError` deliberately. Enabling it makes transient hook failures return a temporary SMTP failure so the sending client can retry.
 5. Do not place another body-mutating hook after OpenSigWeave. Validate the complete filter order and DKIM signing with a disposable Stalwart instance before any real mail flow.
 
-The hook request body is limited to 20 MiB. The adapter preserves supported multipart structures and skips signed/encrypted messages, but it remains experimental: there is no live Stalwart SMTP/DKIM end-to-end certification. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. Do not connect it to production mail flow.
+The hook request body is limited to 20 MiB. The adapter preserves supported multipart structures and skips signed/encrypted messages as well as malformed outer MIME trees, but it remains experimental: there is no live Stalwart SMTP/DKIM end-to-end certification. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. Do not connect it to production mail flow.
 
 ## Troubleshooting
 
