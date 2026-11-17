@@ -112,6 +112,66 @@ class SignatureCatalogApiTests(unittest.TestCase):
         legacy = next(route for route in main.app.routes if getattr(route, "path", None) == "/api/signature/{email}")
         self.assertIs(versioned.endpoint, legacy.endpoint)
 
+    def test_engine_route_requires_key_and_sets_private_no_store_cache(self):
+        response = Response()
+        with patch.object(main, "ENGINE_API_KEY", "engine-secret"):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(main.get_engine_signature(
+                    "sender@example.org", response, None, None, None, None, self.db
+                ))
+        self.assertEqual(raised.exception.status_code, 401)
+        self.assertEqual(response.headers.get("cache-control"), "no-store, private")
+
+    def test_engine_route_normalizes_request_and_returns_shared_result_payload(self):
+        response = Response()
+        result = SignatureEngineResult(
+            "<p>Rendered</p>", True, False, True
+        )
+        with (
+            patch.object(main, "ENGINE_API_KEY", "engine-secret"),
+            patch.object(
+                main, "resolve_signature_engine", new=AsyncMock(return_value=result)
+            ) as engine,
+        ):
+            payload = asyncio.run(main.get_engine_signature(
+                " User@Example.ORG ", response, "engine-secret",
+                "professional", "Sales", "a1b2", self.db
+            ))
+
+        self.assertEqual(payload, result.to_payload())
+        self.assertEqual(response.headers.get("cache-control"), "no-store, private")
+        engine_request = engine.await_args.args[1]
+        self.assertEqual(engine_request.sender_email, "user@example.org")
+        self.assertEqual(engine_request.mode, "PROFESSIONAL")
+        self.assertTrue(engine_request.explicit_mode)
+        self.assertEqual(engine_request.signature_name, "Sales")
+        self.assertEqual(engine_request.signature_code, "a1b2")
+
+    def test_engine_route_maps_service_errors_to_stable_http_statuses(self):
+        cases = (
+            ("INVALID_TEMPLATE", "Invalid signature template", 422),
+            ("INVALID_STORED_RULE", "A stored signature rule has an invalid action", 500),
+            ("SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable", 503),
+        )
+        for code, safe_message, expected_status in cases:
+            with self.subTest(code=code):
+                response = Response()
+                with (
+                    patch.object(main, "ENGINE_API_KEY", "engine-secret"),
+                    patch.object(
+                        main, "resolve_signature_engine",
+                        new=AsyncMock(side_effect=main.SignatureEngineError(code, safe_message)),
+                    ),
+                ):
+                    with self.assertRaises(HTTPException) as raised:
+                        asyncio.run(main.get_engine_signature(
+                            "sender@example.org", response, "engine-secret",
+                            None, None, None, self.db
+                        ))
+                self.assertEqual(raised.exception.status_code, expected_status)
+                self.assertEqual(raised.exception.detail, safe_message)
+                self.assertEqual(response.headers.get("cache-control"), "no-store, private")
+
     def setUp(self):
         self.engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(self.engine)
