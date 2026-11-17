@@ -5,34 +5,33 @@ import re
 from html.parser import HTMLParser
 
 _PLAIN = (
-    re.compile(r"(?im)^\\s*[-_]{2,}\\s*(?:original message|forwarded message)\\s*[-_]{2,}\\s*$"),
-    re.compile(r"(?im)^\\s*On .{1,240}\\bwrote:\\s*$"),
-    re.compile(r"(?im)^\\s*Am .{1,240}\\bschrieb .{1,160}:\\s*$"),
-    re.compile(r"(?im)^\\s*Le .{1,240}\\bécrit\\s*:\\s*$"),
-    re.compile(r"(?im)^\\s*El .{1,240}\\bescribió:\\s*$"),
-    re.compile(r"(?im)^\\s*From:\\s*.+\\n(?:Sent|Date):\\s*.+\\nTo:\\s*.+"),
-    re.compile(r"(?im)^\\s*_{5,}\\s*\\n\\s*From:\\s*.+"),
-    re.compile(r"(?m)^\\s*>"),
+    re.compile(r"(?im)^\s*[-_]{2,}\s*(?:original message|forwarded message)\s*[-_]{2,}\s*$"),
+    re.compile(r"(?im)^\s*On .{1,240}\bwrote:\s*$"),
+    re.compile(r"(?im)^\s*Am .{1,240}\bschrieb .{1,160}:\s*$"),
+    re.compile(r"(?im)^\s*Le .{1,240}\bécrit\s*:\s*$"),
+    re.compile(r"(?im)^\s*El .{1,240}\bescribió:\s*$"),
+    re.compile(r"(?im)^\s*(?:From|Von):\s*.+\n(?:Sent|Gesendet|Date|Datum):\s*.+\n(?:To|An):\s*.+"),
+    re.compile(r"(?im)^\s*_{5,}\s*\n\s*(?:From|Von):\s*.+"),
+    re.compile(r"(?m)^\s*>"),
 )
 _HTML = (
-    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*gmail_quote'''),
-    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*yahoo_quoted'''),
-    re.compile(r'''(?is)<div\\b[^>]*id\\s*=\\s*['"]divRplyFwdMsg['"]'''),
-    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*moz-cite-prefix'''),
-    re.compile(r'''(?is)<div\\b[^>]*data-marker\\s*=\\s*['"]__QUOTED_TEXT__'''),
-    re.compile(r'''(?is)<span\\b[^>]*id\\s*=\\s*['"]OLK_SRC_BODY_SECTION['"]'''),
-    re.compile(r"(?is)<blockquote\\b"),
-    re.compile(r"(?is)<hr\\b"),
-    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*(?:quote|quoted|reply-forward)'''),
+    re.compile(r'''(?is)<div\b[^>]*class\s*=\s*['"][^'"]*gmail_quote'''),
+    re.compile(r'''(?is)<div\b[^>]*class\s*=\s*['"][^'"]*yahoo_quoted'''),
+    re.compile(r'''(?is)<div\b[^>]*id\s*=\s*['"]divRplyFwdMsg['"]'''),
+    re.compile(r'''(?is)<div\b[^>]*class\s*=\s*['"][^'"]*moz-cite-prefix'''),
+    re.compile(r'''(?is)<div\b[^>]*data-marker\s*=\s*['"]__QUOTED_TEXT__'''),
+    re.compile(r'''(?is)<span\b[^>]*id\s*=\s*['"]OLK_SRC_BODY_SECTION['"]'''),
+    re.compile(r"(?is)<blockquote\b"),
+    re.compile(r"(?is)<hr\b"),
+    re.compile(r'''(?is)<div\b[^>]*class\s*=\s*['"][^'"]*(?:quote|quoted|reply-forward)'''),
 )
 
 
 class _QuoteParser(HTMLParser):
     def __init__(self, source: str) -> None:
         super().__init__(convert_charrefs=False)
-        self.source = source
         self.line_offsets = [0]
-        self.line_offsets.extend(match.end() for match in re.finditer("\\n", source))
+        self.line_offsets.extend(match.end() for match in re.finditer("\n", source))
         self.boundaries: list[int] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
@@ -69,13 +68,13 @@ def insert_signature(body: str, signature: str, *, html: bool) -> tuple[str, boo
     boundary = find_html_quote_boundary(body) if html else find_plain_quote_boundary(body)
     if boundary is None:
         if html:
-            match = re.search(r"</body\\s*>", body, re.I)
+            match = re.search(r"</body\s*>", body, re.I)
             fragment = "<br><br>" + signature
             if match:
                 return body[:match.start()] + fragment + body[match.start():], False
             return body + fragment, False
-        return body.rstrip() + "\\n\\n" + signature, False
+        return body.rstrip() + "\n\n" + signature, False
     before, after = body[:boundary].rstrip(), body[boundary:].lstrip()
     if html:
         return before + "<br><br>" + signature + "<br><br>" + after, True
-    return before + "\\n\\n" + signature + "\\n\\n" + after, True
+    return before + "\n\n" + signature + "\n\n" + after, True
