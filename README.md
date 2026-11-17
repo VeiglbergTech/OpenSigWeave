@@ -181,7 +181,7 @@ Example HTML:
 
 ## Signature selection and engine API
 
-The Rspamd engine endpoint is `GET /api/signature/{email}`; it requires `X-Engine-Key` matching `ENGINE_API_KEY`. See [API reference](docs/API.md) for management endpoints, permissions, payloads and selection precedence.
+The versioned, mail-server-neutral engine endpoint is `GET /api/v1/engine/signatures/{email}`; it requires `X-Engine-Key` matching `ENGINE_API_KEY`. The older `/api/signature/{email}` path remains available as a compatibility alias. See [API reference](docs/API.md) for management endpoints, permissions, payloads and selection precedence.
 
 Supported modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`. A valid `X-OpenSigWeave-Mode` header takes precedence over the body marker. The explicit marker format is:
 
@@ -251,7 +251,7 @@ Restore refuses existing target directories/volumes and retains newly created re
 
 ## Optional Rspamd integration
 
-Not included in standalone installation. Adapter files: `rspamd/opensigweave.lua` and `rspamd/opensigweave.conf.example`. Configure the HTTPS engine URL ending in `/api/signature/` and the same `ENGINE_API_KEY` in protected Rspamd configuration; never put the key in Lua source.
+Not included in standalone installation. Adapter files: `rspamd/opensigweave.lua` and `rspamd/opensigweave.conf.example`. Configure the HTTPS engine URL ending in `/api/v1/engine/signatures/` and the same `ENGINE_API_KEY` in protected Rspamd configuration; never put the key in Lua source.
 
 Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user does not by itself prove authorization to use the envelope sender. Verify Rspamd processing order and final DKIM after mutation in a disposable Mailcow environment. No production mail-flow, sender-authorization or DKIM-order test has passed. See [web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
 
