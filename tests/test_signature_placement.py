@@ -15,7 +15,7 @@ class SignaturePlacementTests(unittest.TestCase):
 
     def test_english_reply_separator_is_detected(self):
         body = "Thanks for your message.\n\nOn Monday, Max wrote:\n> Old text"
-        self.assertTrue(body.startswith(body[:find_plain_quote_boundary(body)]))
+        self.assertEqual(body[find_plain_quote_boundary(body):], "On Monday, Max wrote:\\n> Old text")
 
     def test_plain_quoted_lines_are_detected(self):
         body = "New answer\n\n> quoted text"
@@ -26,7 +26,7 @@ class SignaturePlacementTests(unittest.TestCase):
     def test_gmail_quote_container_is_detected(self):
         body = '<div>New answer</div><div class="gmail_quote">Old answer</div>'
         boundary = find_html_quote_boundary(body)
-        self.assertEqual(body[boundary:boundary + 24], '<div class="gmail_quote"')
+        self.assertTrue(body.startswith('<div class="gmail_quote"', boundary))
 
     def test_blockquote_is_detected_case_insensitively(self):
         body = "<div>New answer</div><BLOCKQUOTE>Old answer</BLOCKQUOTE>"
