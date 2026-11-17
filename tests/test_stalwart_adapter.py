@@ -68,6 +68,25 @@ class StalwartAdapterTests(unittest.TestCase):
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
         self.assertEqual(result, {"action": "accept"})
 
+    def test_signed_attachment_does_not_block_outer_message_injection(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+            ],
+            "--outer\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nHello\\r\\n"
+            "--outer\\r\\nContent-Type: application/pkcs7-mime; name=signature.p7m\\r\\n"
+            "Content-Disposition: attachment; filename=signature.p7m\\r\\n"
+            "Content-Transfer-Encoding: base64\\r\\n\\r\\nQUJDRA==\\r\\n"
+            "--outer--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        changes = result.get("modifications", [])
+        self.assertIn("replaceContents", [item["type"] for item in changes])
+        body = next(item["value"] for item in changes if item["type"] == "replaceContents")
+        self.assertIn("QUJDRA==", body)
+
     def test_does_not_duplicate_when_marker_header_exists(self):
         payload = request(
             [["From", " sender@example.org\r\n"],
