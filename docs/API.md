@@ -149,7 +149,7 @@ The adapter uses the shared signature engine and returns Stalwart's `accept` act
 
 ## Rspamd engine endpoint
 
-`GET /api/signature/{email}` (legacy path; new adapters use `/api/v1/engine/signatures/{email}`)
+`GET /api/v1/engine/signatures/{email}` (recommended versioned path; mail-server-neutral contract). The older `GET /api/signature/{email}` route remains available as a backwards-compatible alias for existing Rspamd installations.
 
 Requires the `X-Engine-Key` header. The key must match the application's `ENGINE_API_KEY`. The response includes rendered HTML and domain policy flags and is marked `Cache-Control: no-store, private`.
 
