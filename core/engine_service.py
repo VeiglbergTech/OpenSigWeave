@@ -49,7 +49,11 @@ class SignatureEngineService:
         self.file_store = file_store
 
     async def resolve(
-        self, db: Session, request: SignatureEngineRequest
+        self,
+        db: Session,
+        request: SignatureEngineRequest,
+        *,
+        commit_selection: bool = True,
     ) -> SignatureEngineResult:
         normalized_email = request.sender_email
         domain_part = normalized_email.rsplit("@", 1)[-1]
@@ -366,7 +370,7 @@ class SignatureEngineService:
                 "INVALID_TEMPLATE", "Invalid signature template"
             )
 
-        if selected_from_variant or selected_from_group:
+        if commit_selection and (selected_from_variant or selected_from_group):
             db.commit()
 
         return SignatureEngineResult(
