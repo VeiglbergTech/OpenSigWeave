@@ -147,5 +147,35 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("cGRmLWRhdGE=", body)
 
 
+    def test_does_not_modify_attached_forwarded_messages(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+            ],
+            "--outer\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body>Outer message</body></html>\\r\\n"
+            "--outer\\r\\n"
+            "Content-Type: message/rfc822\\r\\n"
+            "Content-Disposition: attachment; filename=forwarded.eml\\r\\n\\r\\n"
+            "From: colleague@example.org\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body>Forwarded message</body></html>\\r\\n"
+            "--outer--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        body = next(
+            item["value"] for item in result["modifications"]
+            if item["type"] == "replaceContents"
+        )
+        self.assertIn("Outer message", body)
+        self.assertIn("<p>Signature</p>", body)
+        self.assertIn("Forwarded message", body)
+        forwarded = body.split("Content-Type: message/rfc822", 1)[1]
+        self.assertNotIn("<p>Signature</p>", forwarded)
+
+
 if __name__ == "__main__":
     unittest.main()
