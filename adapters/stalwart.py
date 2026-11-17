@@ -63,7 +63,7 @@ def _build_raw_message(headers: Any, contents: Any) -> bytes:
         value = item[1]
         # Stalwart documents raw values with a leading space and CRLF. Reject
         # embedded new header lines rather than accepting header injection.
-        if "\r\n" in value[:-2] or "\n" in value.replace("\r\n", ""):
+        if re.search(r"\r\n(?![ \t])", value.rstrip("\r\n")) or "\n" in value.replace("\r\n", ""):
             raise ValueError("Invalid Stalwart header value")
         lines.append((item[0] + ":" + value.rstrip("\r\n")).encode("utf-8"))
     return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
@@ -85,19 +85,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         raise ValueError("Invalid Stalwart message headers")
 
     # Remove OpenSigWeave control headers even when no signature is selected.
-    for header in headers:
-        if (isinstance(header, list) and len(header) == 2
-                and isinstance(header[0], str)
-                and header[0].casefold() in _CONTROL_HEADERS):
-            modifications.append({
-                "type": "deleteHeader",
-                "name": header[0],
-                "index": sum(
-                    1 for prior in headers[:headers.index(header)]
-                    if isinstance(prior, list) and len(prior) == 2
-                    and prior[0].casefold() == header[0].casefold()
-                ),
-            })
+    seen_control_headers: dict[str, int] = {}\n    for header in headers:\n        if (isinstance(header, list) and len(header) == 2\n                and isinstance(header[0], str)\n                and header[0].casefold() in _CONTROL_HEADERS):\n            normalized_name = header[0].casefold()\n            index = seen_control_headers.get(normalized_name, 0)\n            seen_control_headers[normalized_name] = index + 1\n            modifications.append({\n                "type": "deleteHeader",\n                "name": header[0],\n                "index": index,\n            })
 
     html_signature = signature_data.get("html")
     if not isinstance(html_signature, str) or not html_signature:
