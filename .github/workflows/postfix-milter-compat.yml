@@ -185,10 +185,10 @@ jobs:
           mech_list: PLAIN LOGIN
           sasldb_path: /etc/sasldb2
           SASL
-          printf 'ci-password\\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost authuser
+          printf 'ci-password\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost authuser
           chown root:postfix /etc/sasldb2
           chmod 640 /etc/sasldb2
-          printf 'sender@example.org authuser@localhost\\n' > /etc/postfix/sender_login
+          printf 'sender@example.org authuser@localhost\n' > /etc/postfix/sender_login
           postmap /etc/postfix/sender_login
 
           install -d -o root -g root -m 755 /var/spool/postfix
