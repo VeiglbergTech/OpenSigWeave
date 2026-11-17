@@ -192,100 +192,105 @@ def run():
     if not api_url.startswith("https://") or len(api_key) < 32:
         raise RuntimeError("Configure HTTPS OPENSIGWEAVE_ENGINE_URL and ENGINE_API_KEY (32+ characters)")
 
-    class OpenSigWeaveMilter(Milter.Base):
-        @Milter.symlist("{auth_authen}")
-        def envfrom(self, sender, *args):
-            self.sender = _sender_address(sender)
-            self.authenticated_user = self.getsymval("{auth_authen}")
-            self.headers = []
-            self.body_file = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
-            self.body_size = 0
-            return Milter.CONTINUE
-        def header(self, field, value):
-            if not HEADER_NAME.fullmatch(field):
-                return Milter.REJECT
-            self.headers.append((field, value.strip("\r\n")))
-            return Milter.CONTINUE
-        def body(self, chunk):
-            self.body_size += len(chunk)
-            if self.body_size > MAX_MESSAGE_BYTES:
-                return Milter.TEMPFAIL
-            self.body_file.write(chunk)
-            return Milter.CONTINUE
-        def eom(self):
-            try:
-                # Capture selector headers before removing all adapter control headers.
-                mode_values = [value.strip().upper() for name, value in self.headers
-                               if name.casefold() == "x-opensigweave-mode"]
-                signature_values = [value.strip() for name, value in self.headers
-                                    if name.casefold() == "x-opensigweave-signature"]
-                code_values = [value.strip() for name, value in self.headers
-                               if name.casefold() == "x-opensigweave-signature-code"]
-                mode = mode_values[0] if len(mode_values) == 1 and mode_values[0] in VALID_MODES else None
-                signature_name = signature_values[0] if len(signature_values) == 1 else None
-                signature_code = code_values[0] if len(code_values) == 1 else None
-
-                # Remove client-supplied control headers even when no signature is selected.
-                control_names = {}
-                for name, _value in self.headers:
-                    if name.casefold() in CONTROL_HEADERS:
-                        control_names.setdefault(name.casefold(), name)
-                for folded_name, original_name in control_names.items():
-                    indexes = [index for index, (name, _value) in enumerate(self.headers, start=1)
-                               if name.casefold() == folded_name]
-                    for index in reversed(indexes):
-                        self.chgheader(original_name, index, None)
-
-                # Postfix sender_login_maps remains responsible for send-as authorization.
-                if not self.authenticated_user or not self.sender:
-                    return Milter.CONTINUE
-                self.body_file.seek(0)
-                original_body = self.body_file.read(MAX_MESSAGE_BYTES + 1)
-                if len(original_body) > MAX_MESSAGE_BYTES:
-                    return Milter.TEMPFAIL
-                result = fetch_signature(
-                    api_url, api_key, self.sender, mode=mode,
-                    signature_name=signature_name, signature_code=signature_code,
-                    timeout=timeout,
-                )
-                if not result["html"]:
-                    return Milter.CONTINUE
-                rewritten = rewrite_message(
-                    self.headers, original_body, result["html"],
-                    inject_on_replies=bool(result.get("inject_on_replies", False)),
-                )
-                if not rewritten.changed:
-                    return Milter.CONTINUE
-                for change in rewritten.header_changes:
-                    self.chgheader(change.name, change.index, change.value)
-                self.addheader("X-OpenSigWeave-Injected", "true")
-                for offset in range(0, len(rewritten.body), BODY_REPLACEMENT_CHUNK):
-                    self.replacebody(rewritten.body[offset:offset + BODY_REPLACEMENT_CHUNK])
-                return Milter.CONTINUE
-            except Exception:
-                LOGGER.exception("Postfix Milter failed to process message")
-                return Milter.TEMPFAIL
-            finally:
-                try:
-                    self.body_file.close()
-                except Exception:
-                    pass
-        def abort(self):
-            try:
-                self.body.close()
-            except Exception:
-                pass
-        def close(self):
-            try:
-                self.body.close()
-            except Exception:
-                pass
-            return Milter.CONTINUE
-
-    Milter.factory = OpenSigWeaveMilter
+    Milter.factory = build_milter_class(Milter, api_url, api_key, timeout)
     Milter.set_flags(Milter.ADDHDRS | Milter.CHGHDRS | Milter.MODBODY)
     LOGGER.info("Starting OpenSigWeave Postfix Milter on %s", socket_name)
     Milter.runmilter("opensigweave", socket_name, 30)
+
+def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=fetch_signature):
+    """Build the real Milter callback class; injection point supports isolated integration tests."""
+class OpenSigWeaveMilter(Milter.Base):
+    @Milter.symlist("{auth_authen}")
+    def envfrom(self, sender, *args):
+        self.sender = _sender_address(sender)
+        self.authenticated_user = self.getsymval("{auth_authen}")
+        self.headers = []
+        self.body_file = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
+        self.body_size = 0
+        return Milter.CONTINUE
+    def header(self, field, value):
+        if not HEADER_NAME.fullmatch(field):
+            return Milter.REJECT
+        self.headers.append((field, value.strip("\r\n")))
+        return Milter.CONTINUE
+    def body(self, chunk):
+        self.body_size += len(chunk)
+        if self.body_size > MAX_MESSAGE_BYTES:
+            return Milter.TEMPFAIL
+        self.body_file.write(chunk)
+        return Milter.CONTINUE
+    def eom(self):
+        try:
+            # Capture selector headers before removing all adapter control headers.
+            mode_values = [value.strip().upper() for name, value in self.headers
+                           if name.casefold() == "x-opensigweave-mode"]
+            signature_values = [value.strip() for name, value in self.headers
+                                if name.casefold() == "x-opensigweave-signature"]
+            code_values = [value.strip() for name, value in self.headers
+                           if name.casefold() == "x-opensigweave-signature-code"]
+            mode = mode_values[0] if len(mode_values) == 1 and mode_values[0] in VALID_MODES else None
+            signature_name = signature_values[0] if len(signature_values) == 1 else None
+            signature_code = code_values[0] if len(code_values) == 1 else None
+
+            # Remove client-supplied control headers even when no signature is selected.
+            control_names = {}
+            for name, _value in self.headers:
+                if name.casefold() in CONTROL_HEADERS:
+                    control_names.setdefault(name.casefold(), name)
+            for folded_name, original_name in control_names.items():
+                indexes = [index for index, (name, _value) in enumerate(self.headers, start=1)
+                           if name.casefold() == folded_name]
+                for index in reversed(indexes):
+                    self.chgheader(original_name, index, None)
+
+            # Postfix sender_login_maps remains responsible for send-as authorization.
+            if not self.authenticated_user or not self.sender:
+                return Milter.CONTINUE
+            self.body_file.seek(0)
+            original_body = self.body_file.read(MAX_MESSAGE_BYTES + 1)
+            if len(original_body) > MAX_MESSAGE_BYTES:
+                return Milter.TEMPFAIL
+            result = signature_fetcher(
+                api_url, api_key, self.sender, mode=mode,
+                signature_name=signature_name, signature_code=signature_code,
+                timeout=timeout,
+            )
+            if not result["html"]:
+                return Milter.CONTINUE
+            rewritten = rewrite_message(
+                self.headers, original_body, result["html"],
+                inject_on_replies=bool(result.get("inject_on_replies", False)),
+            )
+            if not rewritten.changed:
+                return Milter.CONTINUE
+            for change in rewritten.header_changes:
+                self.chgheader(change.name, change.index, change.value)
+            self.addheader("X-OpenSigWeave-Injected", "true")
+            for offset in range(0, len(rewritten.body), BODY_REPLACEMENT_CHUNK):
+                self.replacebody(rewritten.body[offset:offset + BODY_REPLACEMENT_CHUNK])
+            return Milter.CONTINUE
+        except Exception:
+            LOGGER.exception("Postfix Milter failed to process message")
+            return Milter.TEMPFAIL
+        finally:
+            try:
+                self.body_file.close()
+            except Exception:
+                pass
+    def abort(self):
+        try:
+            self.body.close()
+        except Exception:
+            pass
+    def close(self):
+        try:
+            self.body.close()
+        except Exception:
+            pass
+        return Milter.CONTINUE
+
+    return OpenSigWeaveMilter
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
