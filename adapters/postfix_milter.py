@@ -175,6 +175,9 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_nam
         raise EngineRequestError("Signature engine returned invalid JSON") from exc
     if not isinstance(result, dict) or not isinstance(result.get("html"), str):
         raise EngineRequestError("Signature engine response has an invalid contract")
+    for field in ("inject_on_replies", "trim_whitespace", "strip_device_signatures"):
+        if not isinstance(result.get(field), bool):
+            raise EngineRequestError(f"Signature engine response field {field} must be boolean")
     return result
 
 def _sender_address(value):
@@ -265,7 +268,7 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                     return Milter.CONTINUE
                 rewritten = rewrite_message(
                     self.headers, original_body, result["html"],
-                    inject_on_replies=bool(result.get("inject_on_replies", False)),
+                    inject_on_replies=result["inject_on_replies"],
                 )
                 if not rewritten.changed:
                     return Milter.CONTINUE
