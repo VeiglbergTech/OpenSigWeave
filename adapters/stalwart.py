@@ -113,7 +113,20 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         raise
     parsed = BytesParser(policy=policy.default).parsebytes(raw)
 
-    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in parsed.walk()):
+    def iter_message_parts(part):
+        # Inspect and edit only the outer message. Attached files and embedded
+        # forwarded messages must not affect the outer message's MIME policy.
+        if part.get_content_type().lower() == "message/rfc822":
+            return
+        if part.get_content_disposition() == "attachment" or part.get_filename():
+            return
+        yield part
+        if part.is_multipart():
+            for child in part.iter_parts():
+                yield from iter_message_parts(child)
+
+    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED
+           for part in iter_message_parts(parsed)):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     header_names = [item[0].casefold() for item in headers]
@@ -129,20 +142,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     plain = _plain_signature(html_signature)
     changed = False
 
-    def editable_text_parts(part):
-        # Never descend into attached or embedded messages: doing so would
-        # rewrite a forwarded .eml instead of only the outer message body.
-        if part.get_content_type().lower() == "message/rfc822":
-            return
-        if part.get_content_disposition() == "attachment" or part.get_filename():
-            return
+    for part in iter_message_parts(parsed):
         if part.is_multipart():
-            for child in part.iter_parts():
-                yield from editable_text_parts(child)
-            return
-        yield part
-
-    for part in editable_text_parts(parsed):
+            continue
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
             continue
