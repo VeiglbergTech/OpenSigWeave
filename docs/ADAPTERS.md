@@ -1,6 +1,6 @@
 # OpenSigWeave adapter architecture
 
-**Status:** Initial adapter contract, development preview  
+**Status:** Adapter contract plus experimental Stalwart MTA-hook adapter, development preview  
 **Scope:** Mail-server integration boundary; this document does not claim that planned adapters are implemented.
 
 ## Design rule
@@ -61,7 +61,7 @@ Every adapter implementation must document and test:
 |---|---|---|
 | Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
 | Postfix | Milter or dedicated content-filter service | Planned |
-| Stalwart | Native SMTP/MTA hook where message mutation is supported | Planned; validate hook API and event ordering against target Stalwart release |
+| Stalwart | Native SMTP/MTA hook at DATA | Experimental adapter implemented; MIME and live SMTP validation still required |
 | Exim | ACL/system-filter integration or external content filter | Planned |
 | Haraka | Plugin | Planned |
 | OpenSMTPD | Filter API | Planned; validate mutation support |
@@ -78,3 +78,11 @@ The initial contract uses the existing `ENGINE_API_KEY` for backwards compatibil
 ## Release gates
 
 An adapter is releasable only after unit/contract tests, static analysis, supported-version documentation and an isolated SMTP end-to-end test covering plain text, HTML, multipart/alternative, attachments, inline Content-IDs, transfer encodings, replies, retries, duplicate prevention, sender spoofing rejection and final DKIM validation. Unsupported MIME cases must be skipped safely, not corrupted.
+
+## Stalwart MTA-hook adapter (experimental)
+
+OpenSigWeave exposes `POST /api/v1/adapters/stalwart/mta-hook`. Configure the Stalwart hook for the `data` stage only and use Bearer authentication with the `STALWART_HOOK_TOKEN` secret. The endpoint requires an authenticated SASL session; unauthenticated inbound mail is accepted unchanged. Stalwart must independently enforce envelope-sender authorization, including aliases and delegated send-as permissions.
+
+The adapter obtains the sender from the SMTP envelope, calls the shared versioned engine implementation internally, and translates the rendered signature into Stalwart `replaceContents` / header modifications. It supports text/plain, text/html and multipart/alternative-style MIME trees using Python's email parser. It skips S/MIME/PGP signed or encrypted structures and attachments. It removes the OpenSigWeave control headers and adds an idempotency header after successful insertion.
+
+**Important limitations:** this is an experimental first implementation, not yet a production-certified mail adapter. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. It has no live Stalwart SMTP/DKIM end-to-end test yet. Configure Stalwart's `tempFailOnError` deliberately and keep its HTTP timeout bounded. Do not run another body-mutating MTA hook after this adapter: Stalwart documents that non-empty hook modifications replace earlier milter body modifications. The adapter should therefore be ordered and tested with the complete filter chain.
