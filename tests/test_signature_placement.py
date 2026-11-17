@@ -47,5 +47,28 @@ class SignaturePlacementTests(unittest.TestCase):
         self.assertLess(result.index("Signature"), result.index("</body>"))
 
 
+    def test_thunderbird_html_cite_prefix_is_detected(self):
+        body = (
+            "<html><body><div>Neue Antwort</div>"
+            '<div class="moz-cite-prefix">Am Dienstag schrieb Max:</div>'
+            '<blockquote type="cite">Alte Nachricht</blockquote>'
+            "</body></html>"
+        )
+        result, detected = insert_signature(body, "<p>Signatur</p>", html=True)
+        self.assertTrue(detected)
+        self.assertLess(result.index("Signatur"), result.index('class="moz-cite-prefix"'))
+        self.assertLess(result.index("Signatur"), result.index("<blockquote type=\"cite\""))
+
+    def test_outlook_html_reply_container_is_detected(self):
+        body = (
+            "<html><body><div>Neue Antwort</div>"
+            '<div id="divRplyFwdMsg"><b>From:</b> Max<br>Sent: Monday</div>'
+            "</body></html>"
+        )
+        result, detected = insert_signature(body, "<p>Signatur</p>", html=True)
+        self.assertTrue(detected)
+        self.assertLess(result.index("Signatur"), result.index('id="divRplyFwdMsg"'))
+
+
 if __name__ == "__main__":
     unittest.main()
