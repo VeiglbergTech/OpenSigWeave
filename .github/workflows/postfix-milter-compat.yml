@@ -124,7 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y epel-release
-          dnf --disablerepo=crb install -y postfix python3 python3-pymilter
+          dnf --disablerepo=crb install -y postfix python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
       - name: Run disposable Postfix SMTP transaction through a real Milter
         shell: bash
         run: |
@@ -134,8 +134,11 @@ jobs:
           import Milter
 
           class ProbeMilter(Milter.Base):
+              @Milter.symlist('{auth_authen}')
               def envfrom(self, sender, *args):
+                  authenticated_user = self.getsymval('{auth_authen}')
                   print(f"CALLBACK_ENVFROM:{sender}", flush=True)
+                  print(f"CALLBACK_AUTH:{authenticated_user}", flush=True)
                   return Milter.CONTINUE
 
               def header(self, field, value):
@@ -167,7 +170,28 @@ jobs:
           postconf -e 'milter_protocol = 6'
           postconf -e 'milter_default_action = tempfail'
           postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          postconf -e 'smtpd_sasl_auth_enable = yes'
+          postconf -e 'smtpd_sasl_type = cyrus'
+          postconf -e 'smtpd_sasl_path = smtpd'
+          postconf -e 'smtpd_sasl_security_options = noanonymous'
+          postconf -e 'smtpd_sasl_local_domain = localhost'
+          postconf -e 'smtpd_sender_login_maps = hash:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
+
           install -d -o root -g root -m 755 /var/spool/postfix
+          install -d -m 755 /etc/sasl2
+          cat > /etc/sasl2/smtpd.conf <<'SASL'
+          pwcheck_method: auxprop
+          auxprop_plugin: sasldb
+          mech_list: PLAIN LOGIN
+          sasldb_path: /etc/sasldb2
+          SASL
+          printf 'ci-password\\nci-password\\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost ci-user
+          chown postfix:postfix /etc/sasldb2
+          chmod 640 /etc/sasldb2
+
+          printf 'ci-user@localhost ci-user@localhost\\n' > /etc/postfix/sender_login
+          postmap hash:/etc/postfix/sender_login
           postfix check
 
           python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
@@ -203,20 +227,31 @@ jobs:
           from email.message import EmailMessage
 
           message = EmailMessage()
-          message["From"] = "sender@example.org"
+          message["From"] = "ci-user@localhost"
           message["To"] = "root@localhost"
           message["Subject"] = "OpenSigWeave Milter protocol smoke test"
-          message.set_content("Protocol callback test")
+          message.set_content("Authenticated protocol callback test")
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.ehlo()
+              smtp.login("ci-user@localhost", "ci-password")
               smtp.send_message(message)
-          print("SMTP transaction accepted by Postfix")
+
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.ehlo()
+              smtp.login("ci-user@localhost", "ci-password")
+              code, response = smtp.mail("spoofed@localhost")
+              assert code >= 500, (code, response)
+              print(f"Unauthorized envelope sender rejected: {code} {response!r}")
+
+          print("Authenticated SMTP transaction accepted by Postfix")
           PY
 
           for attempt in $(seq 1 20); do
             if grep -q 'CALLBACK_EOM' /tmp/milter.log; then break; fi
             sleep 0.5
           done
-          grep -q 'CALLBACK_ENVFROM:<sender@example.org>' /tmp/milter.log
+          grep -q 'CALLBACK_ENVFROM:<ci-user@localhost>' /tmp/milter.log
+          grep -q 'CALLBACK_AUTH:ci-user@localhost' /tmp/milter.log
           grep -q 'CALLBACK_HEADER:Subject' /tmp/milter.log
           grep -q 'CALLBACK_BODY:' /tmp/milter.log
           grep -q 'CALLBACK_EOM' /tmp/milter.log
