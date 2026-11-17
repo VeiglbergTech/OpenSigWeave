@@ -286,6 +286,82 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(state.principal_id, "idp-immutable:ada-1")
         self.assertEqual(state.last_signature_id, signature.id)
 
+    def test_failed_variant_render_does_not_commit_rotation_state(self):
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        signature = self._add_versioned_signature(
+            "Broken professional", "PROFESSIONAL", "<p>{% if %}</p>"
+        )
+        self.db.add(SignatureVariantDB(
+            id=uuid.uuid4().hex,
+            signature_id=signature.id,
+            pool_name="PROFESSIONAL",
+            weight=1,
+            is_enabled=True,
+        ))
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>{% if %}</p>"
+        service, _, _ = self._service(file_store=store)
+        with self.assertRaises(SignatureEngineError) as raised:
+            asyncio.run(
+                service.resolve(
+                    self.db,
+                    normalize_engine_request("ada@example.org", "PROFESSIONAL"),
+                )
+            )
+
+        self.assertEqual(raised.exception.code, "INVALID_TEMPLATE")
+        # The service flushes the choice inside the caller's transaction, but
+        # only the successful-render path may commit it.
+        self.db.rollback()
+        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
+
+    def test_failed_group_render_does_not_commit_rotation_state(self):
+        domain = DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        signature = self._add_versioned_signature(
+            "Broken group member", "AUTO", "<p>{% if %}</p>"
+        )
+        group = SignatureGroupDB(
+            id=uuid.uuid4().hex,
+            name="Broken group",
+            slug="broken-group",
+            is_active=True,
+        )
+        rule = SignatureRuleDB(
+            id=uuid.uuid4().hex,
+            name="Broken group rule",
+            priority=10,
+            action_mode="GROUP",
+            group_id=group.id,
+            is_enabled=True,
+        )
+        member = SignatureGroupMemberDB(
+            group_id=group.id,
+            signature_id=signature.id,
+            weight=1,
+            is_enabled=True,
+        )
+        self.db.add_all([group, rule, member])
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>{% if %}</p>"
+        identity = IdentityAttributes(
+            principal_id="idp-immutable:ada-transaction-test",
+            first_name="Ada",
+        )
+        service, _, _ = self._service(identity, store)
+        with self.assertRaises(SignatureEngineError) as raised:
+            asyncio.run(
+                service.resolve(self.db, normalize_engine_request("ada@example.org"))
+            )
+
+        self.assertEqual(raised.exception.code, "INVALID_TEMPLATE")
+        self.db.rollback()
+        self.assertEqual(self.db.query(GroupSelectionStateDB).count(), 0)
+
     def test_unavailable_versioned_asset_returns_stable_engine_error(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         self._add_versioned_signature(
