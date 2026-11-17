@@ -42,7 +42,12 @@ from models import IdentityProviderDB
 from core.group_selection_repository import get_group_preview_signature
 from core.modes import SignatureMode
 from core.slug import slugify
-from core.engine_contract import SignatureEngineError, normalize_engine_request
+from core.engine_contract import (
+    SignatureEngineError,
+    SignatureEngineRequest,
+    SignatureEngineResult,
+    normalize_engine_request,
+)
 from core.engine_service import SignatureEngineService
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
@@ -1657,7 +1662,9 @@ def _signature_engine_service() -> SignatureEngineService:
     )
 
 
-async def resolve_signature_engine(db: Session, engine_request):
+async def resolve_signature_engine(
+    db: Session, engine_request: SignatureEngineRequest
+) -> SignatureEngineResult:
     """Resolve a normalized request through the single shared engine service."""
     return await _signature_engine_service().resolve(db, engine_request)
 
