@@ -36,6 +36,18 @@ from models import IdentityCacheDB
 
 
 class SignatureCatalogApiTests(unittest.TestCase):
+    def test_engine_api_exposes_versioned_adapter_neutral_route_and_legacy_rspamd_alias(self):
+        routes = {
+            (route.path, route.methods)
+            for route in main.app.routes
+            if getattr(route, "methods", None)
+        }
+        self.assertIn(("/api/v1/engine/signatures/{email}", {"GET"}), routes)
+        self.assertIn(("/api/signature/{email}", {"GET"}), routes)
+        versioned = next(route for route in main.app.routes if getattr(route, "path", None) == "/api/v1/engine/signatures/{email}")
+        legacy = next(route for route in main.app.routes if getattr(route, "path", None) == "/api/signature/{email}")
+        self.assertIs(versioned.endpoint, legacy.endpoint)
+
     def setUp(self):
         self.engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(self.engine)
