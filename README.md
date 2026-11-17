@@ -57,7 +57,8 @@ Set at least:
 |---|---|
 | `POSTGRES_PASSWORD` | PostgreSQL password |
 | `SECRET_KEY` | Session-cookie signing secret |
-| `ENGINE_API_KEY` | Rspamd engine API authentication |
+| `ENGINE_API_KEY` | Rspamd and internal engine API authentication |
+| `STALWART_HOOK_TOKEN` | Optional independent Bearer token for the Stalwart MTA hook |
 | `APP_ALLOWED_HOSTS` | Explicit portal hostnames; required in local/managed-provider mode |
 | `LOCAL_ADMIN_EMAIL` | Local emergency administrator |
 | `LOCAL_ADMIN_PASSWORD_HASH` | Salted scrypt hash; never store the plaintext password |
@@ -84,6 +85,7 @@ Defaults are defined in [`.env.example`](.env.example).
 | `DATABASE_URL` | Compose overrides it for the application using the PostgreSQL service |
 | `SIGNATURE_STORAGE_PATH` | `/data/signatures` |
 | `SECRET_KEY`, `ENGINE_API_KEY` | Required independent random secrets |
+| `STALWART_HOOK_TOKEN` | Optional; set a separate random secret when enabling the Stalwart adapter |
 | `APP_ALLOWED_HOSTS` | Empty in example; set explicit hostnames, comma-separated, no wildcard/scheme/port/path |
 | `LOCAL_ADMIN_EMAIL` | `admin@example.com` |
 | `LOCAL_ADMIN_PASSWORD_HASH` | Empty in example; required for local login |
@@ -252,6 +254,19 @@ Restore refuses existing target directories/volumes and retains newly created re
 Not included in standalone installation. Adapter files: `rspamd/opensigweave.lua` and `rspamd/opensigweave.conf.example`. Configure the HTTPS engine URL ending in `/api/signature/` and the same `ENGINE_API_KEY` in protected Rspamd configuration; never put the key in Lua source.
 
 Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user does not by itself prove authorization to use the envelope sender. Verify Rspamd processing order and final DKIM after mutation in a disposable Mailcow environment. No production mail-flow, sender-authorization or DKIM-order test has passed. See [web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
+
+
+## Optional Stalwart integration (experimental)
+
+The Stalwart adapter is not enabled automatically. It exposes `POST /api/v1/adapters/stalwart/mta-hook` and accepts only the DATA stage. To enable it:
+
+1. Generate a separate random token and set it as `STALWART_HOOK_TOKEN` in the OpenSigWeave `.env` file. Do not reuse `SECRET_KEY` or `ENGINE_API_KEY`.
+2. Configure a Stalwart MTA Hook that calls the HTTPS endpoint above, uses Bearer authentication with the same token, and runs at the `data` stage only. Keep TLS certificate verification enabled and set a bounded HTTP timeout and response-size limit.
+3. Keep Stalwart's authenticated sender and alias/delegated-send authorization enabled. The adapter checks that the SMTP session is authenticated, but Stalwart must enforce that the authenticated principal may use the envelope sender.
+4. Configure `tempFailOnError` deliberately. Enabling it makes transient hook failures return a temporary SMTP failure so the sending client can retry.
+5. Do not place another body-mutating hook after OpenSigWeave. Validate the complete filter order and DKIM signing with a disposable Stalwart instance before any real mail flow.
+
+The hook request body is limited to 20 MiB. The adapter preserves supported multipart structures and skips signed/encrypted messages, but it remains experimental: there is no live Stalwart SMTP/DKIM end-to-end certification. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. Do not connect it to production mail flow.
 
 ## Troubleshooting
 
