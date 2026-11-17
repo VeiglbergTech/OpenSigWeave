@@ -1,6 +1,6 @@
 # Engine service boundary
 
-**Status:** Implemented on `dev`; direct service tests and full CI verification are in progress  
+**Status:** Implemented on `dev`; CI status is tracked per commit in GitHub Actions  
 **Scope:** One framework-independent signature-selection and rendering service shared by every transport adapter.
 
 ## Current implementation
@@ -41,6 +41,8 @@ The extraction preserves the existing decision order and persistence boundaries:
 7. Sanitize stored HTML and nested group fragments before rendering; keep profile values autoescaped.
 8. Commit rotation changes only after successful rendering, as before.
 
+The selection repositories flush rotation updates but never commit them. The service commits only after the complete signature (including nested group fragments) has rendered successfully. On an exception, the request-scoped database dependency closes the session; SQLAlchemy rolls back the uncommitted transaction. Any non-request caller of the service must likewise roll back or close its session after an exception before reusing it. Direct service tests cover both variant and group rotation rollback after template-rendering failures.
+
 Do not change selector precedence, sanitization, template behavior or commit timing as part of adapter work. Any future change to these invariants requires explicit regression tests.
 
 ## Transport boundaries
@@ -75,7 +77,7 @@ Rspamd and other separate-process/host adapters use the versioned HTTP endpoint 
 ## Remaining verification and release gates
 
 - Keep direct service tests alongside HTTP-route and Stalwart contract tests.
-- Verify parity for default templates, explicit modes, body markers, user overrides, persisted rules, group/variant selection, missing assets and template failures.
+- Verify parity for default templates, explicit modes, body markers, user overrides, persisted rules, group/variant selection, missing assets, template failures and transaction rollback.
 - Run the complete CI suite, including static security checks, migrations, Docker smoke tests and encrypted backup/restore.
 - Stalwart remains experimental until isolated SMTP/DKIM end-to-end tests cover the complete filter chain, sender spoofing/alias authorization, MIME edge cases, retries and duplicate prevention.
 - Do not infer production readiness or deployment from CI success. No live deployment is part of this refactor.
