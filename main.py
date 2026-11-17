@@ -1649,11 +1649,11 @@ def delete_signature_rule(
     return {"status": "deleted"}
 
 # ==========================================
-# THE RSPAMD COMPILATION ENGINE
+# SHARED SIGNATURE ENGINE
 # ==========================================
 @app.get("/api/v1/engine/signatures/{email}", name="get_engine_signature_v1")
 @app.get("/api/signature/{email}", name="get_rspamd_signature_legacy")
-async def get_rspamd_signature(
+async def get_engine_signature(
     email: str,
     response: Response,
     x_engine_key: Optional[str] = Header(None),
@@ -1972,7 +1972,7 @@ async def stalwart_mta_hook(
     signature_code = code_values[0] if len(code_values) == 1 else None
 
     engine_response = Response()
-    signature_data = await get_rspamd_signature(
+    signature_data = await get_engine_signature(
         sender,
         engine_response,
         ENGINE_API_KEY,
