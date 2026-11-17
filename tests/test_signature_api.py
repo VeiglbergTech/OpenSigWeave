@@ -938,6 +938,55 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             response = self.client.post("/api/v1/adapters/stalwart/mta-hook", json=payload)
         self.assertEqual(response.status_code, 401)
 
+    def test_stalwart_http_route_rejects_invalid_json(self):
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            response = self.client.post(
+                "/api/v1/adapters/stalwart/mta-hook",
+                content=b"{not-json",
+                headers={"Authorization": "Bearer route-test-token", "Content-Type": "application/json"},
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_stalwart_http_route_rejects_non_data_stage(self):
+        payload = {"context": {"stage": "mail", "sasl": {"login": "sender@example.org"}}}
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            response = self.client.post(
+                "/api/v1/adapters/stalwart/mta-hook",
+                json=payload,
+                headers={"Authorization": "Bearer route-test-token"},
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_stalwart_http_route_rejects_missing_envelope_sender(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "sender@example.org"}},
+            "envelope": {"from": {}},
+            "message": {"headers": [], "contents": "Hello"},
+        }
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            response = self.client.post(
+                "/api/v1/adapters/stalwart/mta-hook",
+                json=payload,
+                headers={"Authorization": "Bearer route-test-token"},
+            )
+        self.assertEqual(response.status_code, 400)
+
+    def test_stalwart_http_route_rejects_malformed_message_headers(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "sender@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {"headers": [["Content-Type", " text/html\\r\\n"], ["Invalid"]], "contents": "<p>Hello</p>"},
+        }
+        signature = {"html": "<p>Signature</p>", "inject_on_replies": False}
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            with patch.object(main, "get_rspamd_signature", new=AsyncMock(return_value=signature)):
+                response = self.client.post(
+                    "/api/v1/adapters/stalwart/mta-hook",
+                    json=payload,
+                    headers={"Authorization": "Bearer route-test-token"},
+                )
+        self.assertEqual(response.status_code, 400)
+
     def test_stalwart_http_route_accepts_unauthenticated_inbound_without_injection(self):
         payload = {
             "context": {"stage": "data", "sasl": {}},
