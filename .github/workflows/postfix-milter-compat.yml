@@ -5,6 +5,9 @@ on:
     branches: ["dev"]
     paths:
       - "docs/POSTFIX_MILTER_DESIGN.md"
+      - "adapters/postfix_milter.py"
+      - "tests/test_postfix_milter_adapter.py"
+      - "tests/postfix_milter_e2e_server.py"
       - ".github/workflows/postfix-milter-compat.yml"
   workflow_dispatch:
 
@@ -119,6 +122,8 @@ jobs:
     container: almalinux:10
     timeout-minutes: 10
     steps:
+      - name: Check out OpenSigWeave
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
       - name: Install Postfix, PyMilter and Cyrus SASL
         shell: bash
         run: |
