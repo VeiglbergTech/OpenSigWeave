@@ -175,6 +175,7 @@ jobs:
           postconf -e 'smtpd_sasl_path = smtpd'
           postconf -e 'smtpd_sasl_local_domain = localhost'
           postconf -e 'smtpd_sasl_security_options = noanonymous'
+          postconf -e 'smtpd_sasl_exceptions_networks ='
           postconf -e 'smtpd_sender_login_maps = hash:/etc/postfix/sender_login'
           postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
 
@@ -240,13 +241,13 @@ jobs:
 
           # Authenticated submission must expose the actual Cyrus SASL identity to the Milter.
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
-              smtp.login("authuser", "ci-password")
+              smtp.login("authuser@localhost", "ci-password")
               smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["root@localhost"])
           print("Authenticated SMTP transaction accepted")
 
           # The same authenticated principal must not be able to submit an unowned envelope sender.
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
-              smtp.login("authuser", "ci-password")
+              smtp.login("authuser@localhost", "ci-password")
               code, response = smtp.mail("spoofed@example.org")
               assert code in (550, 553), (code, response)
               print(f"Unauthorized envelope sender rejected: {code} {response!r}")
