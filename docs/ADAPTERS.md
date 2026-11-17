@@ -11,7 +11,7 @@ No adapter may duplicate signature-selection or template-rendering logic. No ada
 
 ## Versioned engine contract
 
-New adapters MUST call:
+Adapters running as separate processes or on separate hosts MUST call:
 
 `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}`
 
@@ -38,7 +38,7 @@ The endpoint returns `Cache-Control: no-store, private` and JSON:
 
 An empty `html` means do not inject a signature. HTTP 401 means adapter credentials are invalid; 400 means malformed sender input; 422 means a stored template cannot be rendered; 503 means required signature assets are unavailable. Adapters must not interpret API errors as an empty signature: they must apply their explicitly configured fail-open/fail-closed policy and emit an operational log/metric.
 
-The legacy `GET /api/signature/{email}` endpoint remains an alias for existing Rspamd installations. New adapters MUST use the versioned path.
+The legacy `GET /api/signature/{email}` endpoint remains an alias for existing Rspamd installations. External adapters MUST use the versioned path. An adapter running inside the OpenSigWeave application may call the same engine implementation in-process, but it must preserve the same sender normalization, selection semantics, response fields and error behavior; it must not implement a second selection or rendering path.
 
 ## Adapter lifecycle
 
@@ -83,6 +83,6 @@ An adapter is releasable only after unit/contract tests, static analysis, suppor
 
 OpenSigWeave exposes `POST /api/v1/adapters/stalwart/mta-hook`. Configure the Stalwart hook for the `data` stage only and use Bearer authentication with the `STALWART_HOOK_TOKEN` secret. The endpoint requires an authenticated SASL session; unauthenticated inbound mail is accepted unchanged. Stalwart must independently enforce envelope-sender authorization, including aliases and delegated send-as permissions.
 
-The adapter obtains the sender from the SMTP envelope, calls the shared versioned engine implementation internally, and translates the rendered signature into Stalwart `replaceContents` / header modifications. It supports text/plain, text/html and multipart MIME trees using Python's email parser. Attachment and inline-image parts are not modified and are preserved when the message is serialized; signed or encrypted structures and malformed outer MIME trees are left unchanged. The hook request body is limited to 20 MiB. It removes the OpenSigWeave control headers and adds an idempotency header after successful insertion.
+The adapter obtains the sender from the SMTP envelope, invokes the shared engine handler in-process (rather than making a loopback HTTP request), and translates the rendered signature into Stalwart `replaceContents` / header modifications. This is an implementation optimization, not a separate engine contract; the handler and the external versioned HTTP endpoint share the same implementation. It supports text/plain, text/html and multipart MIME trees using Python's email parser. Attachment and inline-image parts are not modified and are preserved when the message is serialized; signed or encrypted structures and malformed outer MIME trees are left unchanged. The hook request body is limited to 20 MiB. It removes the OpenSigWeave control headers and adds an idempotency header after successful insertion.
 
 **Important limitations:** this is an experimental first implementation, not yet a production-certified mail adapter. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. It has no live Stalwart SMTP/DKIM end-to-end test yet. Configure Stalwart's `tempFailOnError` deliberately and keep its HTTP timeout bounded. Do not run another body-mutating MTA hook after this adapter: Stalwart documents that non-empty hook modifications replace earlier milter body modifications. The adapter should therefore be ordered and tested with the complete filter chain.
