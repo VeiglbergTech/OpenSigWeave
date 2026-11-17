@@ -119,12 +119,12 @@ jobs:
     container: almalinux:10
     timeout-minutes: 10
     steps:
-      - name: Install Postfix and PyMilter
+      - name: Install Postfix, PyMilter and Cyrus SASL
         shell: bash
         run: |
           set -euo pipefail
           dnf install -y epel-release
-          dnf --disablerepo=crb install -y postfix python3 python3-pymilter
+          dnf --disablerepo=crb install -y postfix python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
       - name: Run disposable Postfix SMTP transaction through a real Milter
         shell: bash
         run: |
@@ -170,6 +170,25 @@ jobs:
           postconf -e 'milter_protocol = 6'
           postconf -e 'milter_default_action = tempfail'
           postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          postconf -e 'smtpd_sasl_auth_enable = yes'
+          postconf -e 'smtpd_sasl_type = cyrus'
+          postconf -e 'smtpd_sasl_path = smtpd'
+          postconf -e 'smtpd_sasl_local_domain = localhost'
+          postconf -e 'smtpd_sasl_security_options = noanonymous'
+          postconf -e 'smtpd_sender_login_maps = hash:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
+
+          cat > /etc/sasl2/smtpd.conf <<'SASL'
+          pwcheck_method: auxprop
+          auxprop_plugin: sasldb
+          mech_list: PLAIN LOGIN
+          sasldb_path: /etc/sasldb2
+          SASL
+          printf 'ci-password\\nci-password\\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost authuser
+          chown root:postfix /etc/sasldb2
+          chmod 640 /etc/sasldb2
+          printf 'sender@example.org authuser@localhost\\n' > /etc/postfix/sender_login
+          postmap /etc/postfix/sender_login
 
           install -d -o root -g root -m 755 /var/spool/postfix
           postfix check
@@ -206,24 +225,42 @@ jobs:
           import smtplib
           from email.message import EmailMessage
 
-          message = EmailMessage()
-          message["From"] = "sender@example.org"
-          message["To"] = "root@localhost"
-          message["Subject"] = "OpenSigWeave Milter protocol smoke test"
-          message.set_content("Protocol callback test")
+          def message():
+              msg = EmailMessage()
+              msg["From"] = "sender@example.org"
+              msg["To"] = "root@localhost"
+              msg["Subject"] = "OpenSigWeave authenticated Milter test"
+              msg.set_content("Protocol callback test")
+              return msg
+
+          # Unauthenticated local SMTP must still reach the Milter without a SASL identity.
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
-              smtp.send_message(message)
-          print("SMTP transaction accepted by Postfix")
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["root@localhost"])
+          print("Unauthenticated SMTP transaction accepted; no identity expected")
+
+          # Authenticated submission must expose the actual Cyrus SASL identity to the Milter.
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.login("authuser", "ci-password")
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["root@localhost"])
+          print("Authenticated SMTP transaction accepted")
+
+          # The same authenticated principal must not be able to submit an unowned envelope sender.
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.login("authuser", "ci-password")
+              code, response = smtp.mail("spoofed@example.org")
+              assert code in (550, 553), (code, response)
+              print(f"Unauthorized envelope sender rejected: {code} {response!r}")
           PY
 
           for attempt in $(seq 1 20); do
-            if grep -q 'CALLBACK_EOM' /tmp/milter.log; then break; fi
+            if grep -q 'CALLBACK_AUTH:authuser@localhost' /tmp/milter.log; then break; fi
             sleep 0.5
           done
           grep -q 'CALLBACK_ENVFROM:<sender@example.org>' /tmp/milter.log
           grep -q 'CALLBACK_AUTH:None' /tmp/milter.log
+          grep -q 'CALLBACK_AUTH:authuser@localhost' /tmp/milter.log
           grep -q 'CALLBACK_HEADER:Subject' /tmp/milter.log
           grep -q 'CALLBACK_BODY:' /tmp/milter.log
           grep -q 'CALLBACK_EOM' /tmp/milter.log
           cat /tmp/milter.log
-          echo "Real Postfix-to-PyMilter SMTP protocol exchange: OK"
+          echo "Authenticated Postfix-to-PyMilter identity and sender authorization: OK"
