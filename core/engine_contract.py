@@ -30,6 +30,9 @@ def normalize_engine_request(
     normalized_email = email.strip().casefold()
     if normalized_email.count("@") != 1 or any(ch.isspace() for ch in normalized_email):
         raise ValueError("Invalid sender email")
+    local_part, domain = normalized_email.split("@", 1)
+    if not local_part or not domain:
+        raise ValueError("Invalid sender email")
 
     mode_candidate = mode.strip().upper() if isinstance(mode, str) else ""
     explicit_mode = mode_candidate in {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
