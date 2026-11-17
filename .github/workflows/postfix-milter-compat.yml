@@ -166,6 +166,7 @@ jobs:
           postconf -e 'myhostname = localhost.localdomain'
           postconf -e 'mydestination = localhost, localhost.localdomain'
           postconf -e 'local_recipient_maps ='
+          postconf -e 'home_mailbox = Maildir/'
           postconf -e 'inet_interfaces = 127.0.0.1'
           postconf -e 'inet_protocols = ipv4'
           postconf -e 'mynetworks = 192.0.2.0/24'
@@ -197,6 +198,7 @@ jobs:
           test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
 
           install -d -o root -g root -m 755 /var/spool/postfix
+          install -d -o root -g root -m 700 /root/Maildir/cur /root/Maildir/new /root/Maildir/tmp
           postfix check
 
           python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
@@ -274,4 +276,28 @@ jobs:
           grep -q 'CALLBACK_CHGHEADER' /tmp/milter.log
           grep -q 'CALLBACK_REPLACEBODY' /tmp/milter.log
           cat /tmp/milter.log
-          echo "Authenticated identity, sender authorization, and real-protocol header/body mutation calls: OK"
+
+          # Verify Postfix actually delivers the mutated message, not merely that
+          # the Milter callback methods were invoked.
+          python3 - <<'PY'
+          import glob
+          import time
+          from email import policy
+          from email.parser import BytesParser
+
+          delivered = []
+          for attempt in range(40):
+              paths = glob.glob("/root/Maildir/new/*")
+              if len(paths) >= 2:
+                  delivered = [BytesParser(policy=policy.default).parsebytes(open(path, "rb").read()) for path in paths]
+                  break
+              time.sleep(0.5)
+
+          assert len(delivered) == 2, f"Expected two delivered messages, found {len(delivered)}"
+          for message in delivered:
+              assert message["X-OpenSigWeave-CI"] == "real-postfix-milter-ok", message
+              assert message["Subject"] == "OpenSigWeave header mutation verified", message["Subject"]
+              assert message.get_content().strip() == "OpenSigWeave body mutation verified", message.get_content()
+          print("Delivered messages contain the mutated header, Subject and body: OK")
+          PY
+          echo "Authenticated identity, sender authorization, and delivered Postfix header/body mutation: OK"
