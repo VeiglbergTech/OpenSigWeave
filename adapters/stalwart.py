@@ -85,7 +85,19 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         raise ValueError("Invalid Stalwart message headers")
 
     # Remove OpenSigWeave control headers even when no signature is selected.
-    seen_control_headers: dict[str, int] = {}\n    for header in headers:\n        if (isinstance(header, list) and len(header) == 2\n                and isinstance(header[0], str)\n                and header[0].casefold() in _CONTROL_HEADERS):\n            normalized_name = header[0].casefold()\n            index = seen_control_headers.get(normalized_name, 0)\n            seen_control_headers[normalized_name] = index + 1\n            modifications.append({\n                "type": "deleteHeader",\n                "name": header[0],\n                "index": index,\n            })
+    seen_control_headers: dict[str, int] = {}
+    for header in headers:
+        if (isinstance(header, list) and len(header) == 2
+                and isinstance(header[0], str)
+                and header[0].casefold() in _CONTROL_HEADERS):
+            normalized_name = header[0].casefold()
+            index = seen_control_headers.get(normalized_name, 0)
+            seen_control_headers[normalized_name] = index + 1
+            modifications.append({
+                "type": "deleteHeader",
+                "name": header[0],
+                "index": index,
+            })
 
     html_signature = signature_data.get("html")
     if not isinstance(html_signature, str) or not html_signature:
