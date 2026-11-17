@@ -320,11 +320,11 @@ class SignatureEngineServiceTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "core" / "engine_service.py"
         ).read_text(encoding="utf-8")
 
-        self.assertNotRegex(source, r"(?m)^\\s*(?:from|import)\\s+fastapi")
+        self.assertNotRegex(source, r"(?m)^\s*(?:from|import)\s+fastapi")
         self.assertNotIn("HTTPException", source)
         self.assertNotIn("Response", source)
         # Match the standalone HTTP Request symbol, not SignatureEngineRequest.
-        self.assertNotRegex(source, r"\\bRequest\\b")
+        self.assertNotRegex(source, r"\bRequest\b")
         self.assertNotIn("os.environ", source)
         self.assertNotIn("os.getenv", source)
 
