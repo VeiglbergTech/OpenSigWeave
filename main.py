@@ -46,7 +46,7 @@ from core.modes import SignatureMode, resolve_mode
 from core.slug import slugify
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
-from core.engine_contract import normalize_engine_request
+from core.engine_contract import SignatureEngineResult, normalize_engine_request
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
@@ -1679,12 +1679,12 @@ async def get_engine_signature(
     x_signature_code = engine_request.signature_code
     domain_part = normalized_email.rsplit("@", 1)[-1]
     domain_obj = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_part).first()
-    empty_response = {
-        "html": "",
-        "inject_on_replies": bool(domain_obj and domain_obj.inject_on_replies),
-        "trim_whitespace": bool(domain_obj.trim_whitespace) if domain_obj else True,
-        "strip_device_signatures": bool(domain_obj.strip_device_signatures) if domain_obj else False,
-    }
+    empty_response = SignatureEngineResult(
+        html="",
+        inject_on_replies=bool(domain_obj and domain_obj.inject_on_replies),
+        trim_whitespace=bool(domain_obj.trim_whitespace) if domain_obj else True,
+        strip_device_signatures=bool(domain_obj.strip_device_signatures) if domain_obj else False,
+    ).to_payload()
     if not domain_obj or not domain_obj.is_active:
         return empty_response
 
@@ -1909,12 +1909,12 @@ async def get_engine_signature(
     if selected_from_variant or selected_from_group:
         db.commit()
 
-    return {
-        "html": parsed,
-        "inject_on_replies": domain_obj.inject_on_replies,
-        "trim_whitespace": domain_obj.trim_whitespace,
-        "strip_device_signatures": domain_obj.strip_device_signatures,
-    }
+    return SignatureEngineResult(
+        html=parsed,
+        inject_on_replies=domain_obj.inject_on_replies,
+        trim_whitespace=domain_obj.trim_whitespace,
+        strip_device_signatures=domain_obj.strip_device_signatures,
+    ).to_payload()
 
 
 # ==========================================
