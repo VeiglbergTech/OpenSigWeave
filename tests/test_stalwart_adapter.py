@@ -39,7 +39,7 @@ class StalwartAdapterTests(unittest.TestCase):
             for item in changes
             if item["type"] == "addHeader"
         }
-        self.assertEqual(added_headers["content-transfer-encoding"], "8bit")
+        self.assertEqual(added_headers["content-transfer-encoding"], "quoted-printable")
         self.assertEqual(added_headers["mime-version"], "1.0")
 
     def test_injects_into_both_multipart_alternative_text_parts(self):
