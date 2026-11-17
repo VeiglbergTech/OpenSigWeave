@@ -122,9 +122,26 @@ Supported condition kinds:
 
 `claim_equals` currently evaluates selected Authentik user fields (`username`, `email`, `name`, `is_active`, `uid`, `path`, `type`). `attribute_equals` evaluates custom Authentik attributes. A selected signature's mode must match the rule's action mode.
 
+## Adapter-neutral engine endpoint
+
+`GET /api/v1/engine/signatures/{email}` is the versioned, mail-server-neutral engine contract. It accepts the same authentication and selection headers as the Rspamd integration below and returns the same rendered signature and policy fields. New adapters MUST use this versioned path; the older `GET /api/signature/{email}` path remains as a backwards-compatible Rspamd alias for existing deployments.
+
+The shared response shape is JSON:
+
+```json
+{
+  "html": "<p>Rendered signature</p>",
+  "inject_on_replies": false,
+  "trim_whitespace": true,
+  "strip_device_signatures": false
+}
+```
+
+The endpoint is deliberately transport-neutral: it does not parse or mutate RFC 5322/MIME messages, inspect a mail-server queue, or decide where DKIM signing occurs. The adapter owns those responsibilities and MUST preserve message structure, enforce sender authorization, avoid duplicate insertion and run before DKIM signing.
+
 ## Rspamd engine endpoint
 
-`GET /api/signature/{email}`
+`GET /api/signature/{email}` (legacy path; new adapters use `/api/v1/engine/signatures/{email}`)
 
 Requires the `X-Engine-Key` header. The key must match the application's `ENGINE_API_KEY`. The response includes rendered HTML and domain policy flags and is marked `Cache-Control: no-store, private`.
 
