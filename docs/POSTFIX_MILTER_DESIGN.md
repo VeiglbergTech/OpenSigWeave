@@ -1,6 +1,6 @@
 # Postfix Milter adapter — technical design
 
-**Status:** Research complete; PyMilter 1.0.6 is the leading candidate, compatibility spike pending  
+**Status:** PyMilter 1.0.6 runtime/API smoke test passed; real Postfix protocol integration pending  
 **Target branch:** `dev`  
 **Scope:** Design the Postfix integration boundary without adding an unverified Milter runtime dependency.
 
@@ -12,7 +12,7 @@ The first implementation should be a small, independently deployable Milter side
 
 **Leading library candidate: PyMilter 1.0.6, not yet approved for production.** PyMilter wraps Sendmail's native `libmilter` API and provides a Python object-oriented callback interface. The PyPI project page still exposes 1.0.5 (uploaded in 2021), while current distribution packaging has moved to 1.0.6 and includes Python 3.12 builds. This is encouraging evidence, but it is not proof that the exact Python 3.12-slim container used by OpenSigWeave can build, import and run the library correctly. The 1.0.6 distribution packages also require the native `libmilter` shared library. PyMilter is GPL-2.0-or-later, which must be reviewed for the separately distributed sidecar.
 
-The next step is an isolated CI compatibility spike using Python 3.12 and `libmilter`. It must verify package provenance/version, compile/import, callback operation and actual Postfix protocol negotiation before the project pins the dependency. Do not add PyMilter to the main application's `requirements.txt`.
+The isolated CI spike now installs the EPEL 10 package `python3-pymilter-1.0.6-14.el10_2` on Python 3.12.16. It verifies imports of `Milter` and the native `milter` extension, checks that the extension resolves `libmilter.so.1.0`, and exercises the envelope sender, header, body, SASL macro lookup (`{auth_authen}`) and end-of-message body-replacement API against a fake libmilter context. These checks passed in Actions run #44134884333. This is an API/runtime smoke test only: it does **not** prove a real Milter handshake, Postfix callback delivery, macro configuration or SMTP end-to-end behavior. The next gate is a disposable Postfix instance with the sidecar connected over a private socket. Do not add PyMilter to the main application's `requirements.txt`.
 
 The Go `andybalholm/milter` package remains an alternative only if the Python/native dependency route proves unsuitable. A custom protocol implementation is not the default fallback: the Milter wire protocol, negotiation flags, chunk framing and failure semantics are security-sensitive. Prefer a maintained implementation with tests over maintaining a protocol stack ourselves.
 
@@ -56,7 +56,7 @@ Inbound unauthenticated mail must remain unchanged. Local/non-SMTP submission is
 
 ### Library/runtime spike
 - Build and import PyMilter 1.0.6 in a Python 3.12 container with the required `libmilter` development/runtime packages; record the exact source and package versions.
-- Verify protocol negotiation, envelope sender callback, SASL macro visibility, header callbacks, body chunk callbacks, end-of-message callback and body replacement against a disposable Postfix instance.
+- Verify real protocol negotiation and envelope sender, SASL macro visibility, header, body-chunk and end-of-message callbacks against a disposable Postfix instance. The existing fake-context smoke test is not a substitute.
 - Test clean startup/shutdown, socket permissions, concurrency and bounded memory under large messages.
 - Review GPL-2.0-or-later distribution implications and dependency maintenance before adoption.
 
