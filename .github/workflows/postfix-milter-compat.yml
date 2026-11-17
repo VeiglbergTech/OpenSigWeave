@@ -167,6 +167,7 @@ jobs:
           postconf -e 'mydestination = localhost, localhost.localdomain'
           postconf -e 'local_recipient_maps ='
           postconf -e 'mailbox_command = /usr/bin/python3 /tmp/capture_mail.py'
+          install -d -o root -g root -m 755 /var/spool/postfix
           newaliases
           postconf -e 'inet_interfaces = 127.0.0.1'
           postconf -e 'inet_protocols = ipv4'
@@ -198,9 +199,8 @@ jobs:
           postmap /etc/postfix/sender_login
           test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
 
-          install -d -o root -g root -m 755 /var/spool/postfix
           useradd --create-home testuser
-          mkdir -p /tmp/delivered
+          install -d -o testuser -g testuser -m 700 /tmp/delivered
           cat > /tmp/capture_mail.py <<'PY'
           import os
           import sys
@@ -246,7 +246,7 @@ jobs:
           def message():
               msg = EmailMessage()
               msg["From"] = "sender@example.org"
-              msg["To"] = "root@localhost"
+              msg["To"] = "testuser@localhost"
               msg["Subject"] = "OpenSigWeave authenticated Milter test"
               msg.set_content("Protocol callback test")
               return msg
@@ -259,7 +259,7 @@ jobs:
           # Authenticated submission must expose the actual Cyrus SASL identity to the Milter.
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
               smtp.login("authuser@localhost", "ci-password")
-              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["root@localhost"])
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["testuser@localhost"])
           print("Authenticated SMTP transaction accepted")
 
           # The same authenticated principal must not be able to submit an unowned envelope sender.
