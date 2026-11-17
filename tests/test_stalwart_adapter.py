@@ -369,21 +369,21 @@ class StalwartAdapterTests(unittest.TestCase):
         boundary = "OpenGroupware_org_NGMime-test"
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["User-Agent", " SOGoMail 5.12.9\\r\\n"],
-                ["MIME-Version", " 1.0\\r\\n"],
-                ["Content-Type", f' multipart/alternative; boundary="{boundary}"\\r\\n'],
+                ["From", " sender@example.org\r\n"],
+                ["User-Agent", " SOGoMail 5.12.9\r\n"],
+                ["MIME-Version", " 1.0\r\n"],
+                ["Content-Type", f' multipart/alternative; boundary="{boundary}"\r\n'],
             ],
-            f"--{boundary}\\r\\n"
-            "Content-Type: text/plain; charset=utf-8\\r\\n"
-            "Content-Transfer-Encoding: quoted-printable\\r\\n\\r\\n"
-            "Hallo Max,\\n\\ndanke für deine Nachricht.\\n\\n> Deine ursprüngliche Nachricht\\n"
-            f"--{boundary}\\r\\n"
-            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            f"--{boundary}\r\n"
+            "Content-Type: text/plain; charset=utf-8\r\n"
+            "Content-Transfer-Encoding: quoted-printable\r\n\r\n"
+            "Hallo Max,\n\ndanke für deine Nachricht.\n\n> Deine ursprüngliche Nachricht\n"
+            f"--{boundary}\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n\r\n"
             "<html><body><p>Hallo Max,</p><p>danke für deine Nachricht.</p>"
-            "<blockquote type=\\"cite\\">Deine ursprüngliche Nachricht</blockquote>"
-            "</body></html>\\r\\n"
-            f"--{boundary}--\\r\\n",
+            "<blockquote type=\"cite\">Deine ursprüngliche Nachricht</blockquote>"
+            "</body></html>\r\n"
+            f"--{boundary}--\r\n",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>SOGo-Signatur</p>"})
         body = next(
@@ -395,7 +395,7 @@ class StalwartAdapterTests(unittest.TestCase):
         plain_part = body[plain_start:html_start]
         html_part = body[html_start:]
         self.assertLess(plain_part.index("SOGo-Signatur"), plain_part.index("> Deine ursprüngliche Nachricht"))
-        self.assertLess(html_part.index("SOGo-Signatur"), html_part.index("<blockquote type=\\"cite\\""))
+        self.assertLess(html_part.index("SOGo-Signatur"), html_part.index("<blockquote type=\"cite\""))
 
 
 
