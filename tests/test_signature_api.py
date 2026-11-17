@@ -173,6 +173,39 @@ class SignatureCatalogApiTests(unittest.TestCase):
         commit.assert_not_called()
         rollback.assert_called_once()
 
+    def test_stalwart_hook_rolls_back_rotation_when_engine_rendering_fails(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {
+                "headers": [
+                    ["From", " sender@example.org\\r\\n"],
+                    ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
+                ],
+                "contents": "Hello",
+            },
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with (
+            patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(side_effect=main.SignatureEngineError(
+                    "INVALID_TEMPLATE", "Invalid signature template"
+                )),
+            ),
+            patch.object(self.db, "commit", wraps=self.db.commit) as commit,
+            patch.object(self.db, "rollback", wraps=self.db.rollback) as rollback,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(main.stalwart_mta_hook(
+                    request, "Bearer expected-token", self.db
+                ))
+
+        self.assertEqual(raised.exception.status_code, 422)
+        commit.assert_not_called()
+        rollback.assert_called_once()
+
     def test_stalwart_hook_rolls_back_rotation_when_mime_headers_are_invalid(self):
         payload = {
             "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
