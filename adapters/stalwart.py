@@ -51,22 +51,41 @@ def _plain_signature(html: str) -> str:
     return parser.text()
 
 
-def _build_raw_message(headers: Any, contents: Any) -> bytes:
-    if not isinstance(headers, list) or not isinstance(contents, str):
-        raise ValueError("Invalid Stalwart message structure")
-    lines: list[bytes] = []
+def _validate_headers(headers: Any) -> None:
+    if not isinstance(headers, list):
+        raise ValueError("Invalid Stalwart message headers")
     for item in headers:
         if (not isinstance(item, list) or len(item) != 2
                 or not isinstance(item[0], str) or not isinstance(item[1], str)
                 or not _HEADER_NAME.fullmatch(item[0])):
             raise ValueError("Invalid Stalwart header entry")
         value = item[1]
-        # Stalwart documents raw values with a leading space and CRLF. Reject
-        # embedded new header lines rather than accepting header injection.
-        if re.search(r"\r\n(?![ \t])", value.rstrip("\r\n")) or "\n" in value.replace("\r\n", ""):
+        value_without_terminator = value[:-2] if value.endswith("\r\n") else value
+        if "\r" in value_without_terminator or "\n" in value_without_terminator:
             raise ValueError("Invalid Stalwart header value")
-        lines.append((item[0] + ":" + value.rstrip("\r\n")).encode("utf-8"))
+
+
+def _build_raw_message(headers: Any, contents: Any) -> bytes:
+    if not isinstance(contents, str):
+        raise ValueError("Invalid Stalwart message structure")
+    _validate_headers(headers)
+    lines = [
+        (item[0] + ":" + (item[1][:-2] if item[1].endswith("\r\n") else item[1])).encode("utf-8")
+        for item in headers
+    ]
     return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
+
+
+def _safe_message_parts(root):
+    """Yield editable outer-message MIME parts, excluding attached messages/files."""
+    if root.get_content_type().lower() == "message/rfc822":
+        return
+    if root.get_content_disposition() == "attachment" or root.get_filename():
+        return
+    yield root
+    if root.is_multipart():
+        for child in root.iter_parts():
+            yield from _safe_message_parts(child)
 
 
 def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[str, Any]) -> dict[str, Any]:
@@ -81,8 +100,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
 
     modifications: list[dict[str, Any]] = []
     headers = message.get("headers")
-    if not isinstance(headers, list):
-        raise ValueError("Invalid Stalwart message headers")
+    _validate_headers(headers)
 
     # Remove OpenSigWeave control headers even when no signature is selected.
     seen_control_headers: dict[str, int] = {}
@@ -103,17 +121,12 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     if not isinstance(html_signature, str) or not html_signature:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
-    if any(not isinstance(item, list) or len(item) != 2 or not isinstance(item[0], str)
-           for item in headers):
-        raise ValueError("Invalid Stalwart message headers")
-
-    try:
-        raw = _build_raw_message(headers, message.get("contents"))
-    except (UnicodeEncodeError, ValueError):
-        raise
+    raw = _build_raw_message(headers, message.get("contents"))
     parsed = BytesParser(policy=policy.default).parsebytes(raw)
-
-    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in parsed.walk()):
+    safe_parts = list(_safe_message_parts(parsed))
+    if any(part.defects for part in safe_parts):
+        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in safe_parts):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     header_names = [item[0].casefold() for item in headers]
@@ -128,10 +141,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
                              for name in ("Content-Type", "Content-Transfer-Encoding", "MIME-Version")}
     plain = _plain_signature(html_signature)
     changed = False
-    for part in parsed.walk():
-        if part.is_multipart() or part.get_content_disposition() == "attachment":
-            continue
-        if part.get_filename():
+    for part in safe_parts:
+        if part.is_multipart():
             continue
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
@@ -156,7 +167,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
                 continue
             body = body.rstrip() + "\n\n" + plain
         charset = part.get_content_charset() or "utf-8"
-        part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset)
+        transfer_encoding = part.get("Content-Transfer-Encoding", "quoted-printable").casefold()
+        cte = transfer_encoding if transfer_encoding in {"7bit", "8bit", "quoted-printable", "base64"} else "quoted-printable"
+        part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset, cte=cte)
         changed = True
 
     if not changed:
