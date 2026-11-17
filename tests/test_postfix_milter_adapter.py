@@ -140,6 +140,54 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             with self.assertRaises(EngineRequestError):
                 fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
 
+    def test_engine_client_rejects_non_boolean_policy_fields(self):
+        for field in ("inject_on_replies", "trim_whitespace", "strip_device_signatures"):
+            payload = {
+                "html": "<p>Signature</p>",
+                "inject_on_replies": False,
+                "trim_whitespace": True,
+                "strip_device_signatures": False,
+            }
+            payload[field] = "false"
+
+            class Response:
+                status = 200
+                def __enter__(self):
+                    return self
+                def __exit__(self, *_args):
+                    return False
+                def read(self, limit):
+                    return json.dumps(payload).encode("utf-8")
+
+            class Opener:
+                def open(self, request, timeout):
+                    return Response()
+
+            with self.subTest(field=field):
+                with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=Opener()):
+                    with self.assertRaises(EngineRequestError):
+                        fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
+
+    def test_engine_client_rejects_missing_policy_fields(self):
+        payload = {"html": "<p>Signature</p>", "inject_on_replies": False}
+
+        class Response:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, limit):
+                return json.dumps(payload).encode("utf-8")
+
+        class Opener:
+            def open(self, request, timeout):
+                return Response()
+
+        with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=Opener()):
+            with self.assertRaises(EngineRequestError):
+                fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
+
     def test_engine_client_rejects_oversized_response(self):
         from adapters.postfix_milter import MAX_ENGINE_RESPONSE_BYTES
 
