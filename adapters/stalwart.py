@@ -51,10 +51,9 @@ def _plain_signature(html: str) -> str:
     return parser.text()
 
 
-def _build_raw_message(headers: Any, contents: Any) -> bytes:
-    if not isinstance(headers, list) or not isinstance(contents, str):
-        raise ValueError("Invalid Stalwart message structure")
-    lines: list[bytes] = []
+def _validate_headers(headers: Any) -> None:
+    """Validate every header before any early-return path can accept the message."""
+    _validate_headers(headers)
     for item in headers:
         if (not isinstance(item, list) or len(item) != 2
                 or not isinstance(item[0], str) or not isinstance(item[1], str)
@@ -67,9 +66,17 @@ def _build_raw_message(headers: Any, contents: Any) -> bytes:
                 or "\n" in value.replace("\r\n", "")
                 or "\r" in value.replace("\r\n", "")):
             raise ValueError("Invalid Stalwart header value")
-        lines.append((item[0] + ":" + value.rstrip("\r\n")).encode("utf-8"))
-    return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
 
+
+def _build_raw_message(headers: Any, contents: Any) -> bytes:
+    if not isinstance(contents, str):
+        raise ValueError("Invalid Stalwart message structure")
+    _validate_headers(headers)
+    lines = [
+        (item[0] + ":" + item[1].rstrip("\r\n")).encode("utf-8")
+        for item in headers
+    ]
+    return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
 
 def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[str, Any]) -> dict[str, Any]:
     """Translate a rendered OpenSigWeave signature into Stalwart MTA modifications."""
@@ -104,10 +111,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     html_signature = signature_data.get("html")
     if not isinstance(html_signature, str) or not html_signature:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-
-    if any(not isinstance(item, list) or len(item) != 2 or not isinstance(item[0], str)
-           for item in headers):
-        raise ValueError("Invalid Stalwart message headers")
 
     try:
         raw = _build_raw_message(headers, message.get("contents"))
