@@ -125,6 +125,19 @@ class StalwartAdapterTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
 
+    def test_rejects_malformed_headers_even_when_no_signature_is_selected(self):
+        invalid_headers = [
+            [["From", " sender@example.org\rInjected: yes\r\n"]],
+            [["Bad Header Name", " value\r\n"]],
+            [["From", " sender@example.org\nInjected: yes\n"]],
+            [["From", None]],
+        ]
+        for headers in invalid_headers:
+            with self.subTest(headers=headers):
+                payload = request(headers, "Hello")
+                with self.assertRaises(ValueError):
+                    build_stalwart_hook_response(payload, {"html": ""})
+
     def test_rejects_non_data_stage(self):
         payload = request([], "Hello")
         payload["context"]["stage"] = "mail"
