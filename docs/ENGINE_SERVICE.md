@@ -1,13 +1,15 @@
 # Engine service boundary
 
-**Status:** Architecture target; not yet implemented  
+**Status:** In progress — typed request/result/error contracts implemented; service extraction remains open  
 **Scope:** Extraction of signature selection and rendering from the FastAPI route so every mail adapter uses one application service.
 
 ## Current implementation
 
-The versioned endpoint `GET /api/v1/engine/signatures/{email}` and the legacy Rspamd alias currently share the same FastAPI handler, `get_engine_signature`. The Stalwart adapter calls that handler directly in-process and supplies a synthetic `Response`, the configured engine key and the SQLAlchemy session.
+`core/engine_contract.py` now defines immutable `SignatureEngineRequest` and `SignatureEngineResult` contracts plus a transport-neutral `SignatureEngineError` carrying a stable error code and safe message. The HTTP handler uses the request normalizer and serializes both empty and rendered results through `SignatureEngineResult`, while preserving the existing JSON response fields.
 
-This guarantees one selection/rendering path today, but it is an interim arrangement: an adapter is coupled to the HTTP handler's parameter order, FastAPI response type and API-key check. The Stalwart route must know the internal `ENGINE_API_KEY` even though it has already authenticated its own Bearer token. The service boundary below removes that coupling without duplicating business logic.
+The versioned endpoint `GET /api/v1/engine/signatures/{email}` and the legacy Rspamd alias still share the FastAPI handler `get_engine_signature`. The Stalwart adapter still calls that handler directly in-process and supplies a synthetic `Response`, the configured engine key and the SQLAlchemy session. The selection, rule evaluation, rotation, storage and rendering logic therefore remains in `main.py`; the typed error contract is defined but not yet used for service-level error mapping.
+
+This is an interim arrangement: an adapter is coupled to the HTTP handler's parameter order, FastAPI response type and API-key check. The Stalwart route must know the internal `ENGINE_API_KEY` even though it has already authenticated its own Bearer token. The remaining extraction must remove that coupling without duplicating business logic.
 
 ## Target responsibilities
 
