@@ -928,6 +928,66 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         self.client.cookies.set(self.COOKIE_NAME, signed)
         return csrf_token
 
+    def test_stalwart_http_route_rejects_missing_hook_token(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "sender@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {"headers": [], "contents": "Hello"},
+        }
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            response = self.client.post("/api/v1/adapters/stalwart/mta-hook", json=payload)
+        self.assertEqual(response.status_code, 401)
+
+    def test_stalwart_http_route_accepts_unauthenticated_inbound_without_injection(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {}},
+            "envelope": {"from": {"address": "external@example.net"}},
+            "message": {"headers": [], "contents": "Hello"},
+        }
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            with patch.object(main, "get_rspamd_signature", new=AsyncMock()) as engine:
+                response = self.client.post(
+                    "/api/v1/adapters/stalwart/mta-hook",
+                    json=payload,
+                    headers={"Authorization": "Bearer route-test-token"},
+                )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json(), {"action": "accept"})
+        engine.assert_not_awaited()
+
+    def test_stalwart_http_route_injects_using_authenticated_envelope_sender(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "sender@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {
+                "headers": [
+                    ["From", " sender@example.org\\r\\n"],
+                    ["Content-Type", " text/html; charset=utf-8\\r\\n"],
+                ],
+                "contents": "<html><body>Hello</body></html>",
+            },
+        }
+        signature = {"html": "<p>HTTP route signature</p>", "inject_on_replies": False}
+        with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
+            with patch.object(
+                main, "get_rspamd_signature", new=AsyncMock(return_value=signature)
+            ) as engine:
+                response = self.client.post(
+                    "/api/v1/adapters/stalwart/mta-hook",
+                    json=payload,
+                    headers={"Authorization": "Bearer route-test-token"},
+                )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertIn(
+            "HTTP route signature",
+            next(
+                item["value"] for item in response.json()["modifications"]
+                if item["type"] == "replaceContents"
+            ),
+        )
+        engine.assert_awaited_once()
+        self.assertEqual(engine.await_args.args[0], "sender@example.org")
+
     def test_anonymous_http_requests_cannot_read_admin_or_personal_apis(self):
         for path in (
             "/api/admin/signatures",
