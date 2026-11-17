@@ -112,6 +112,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     if is_reply and not bool(signature_data.get("inject_on_replies", False)):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
+    original_mime_headers = {name: [str(value) for value in parsed.get_all(name, [])]
+                             for name in ("Content-Type", "Content-Transfer-Encoding", "MIME-Version")}
     plain = _plain_signature(html_signature)
     changed = False
     for part in parsed.walk():
@@ -155,6 +157,17 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     _, found, new_body = serialized.partition(separator)
     if not found:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+
+    # The DATA hook receives headers separately from the body. set_content()
+    # may update top-level MIME metadata, so mirror those deltas explicitly.
+    for name, old_values in original_mime_headers.items():
+        new_values = [str(value) for value in parsed.get_all(name, [])]
+        if old_values == new_values:
+            continue
+        for _ in old_values:
+            modifications.append({"type": "deleteHeader", "name": name, "index": 0})
+        for value in new_values:
+            modifications.append({"type": "addHeader", "name": name, "value": value})
 
     modifications.extend([
         {"type": "replaceContents", "value": new_body.decode("utf-8", errors="replace")},
