@@ -30,6 +30,7 @@ jobs:
           set -euo pipefail
           python3 --version
           rpm -q --qf 'PyMilter RPM: %{VERSION}-%{RELEASE}\n' python3-pymilter
+          test "$(rpm -q --qf '%{VERSION}' python3-pymilter)" = "1.0.6"
           python3 - <<'PY'
           import sys
           import Milter
