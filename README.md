@@ -14,6 +14,7 @@ Self-hosted email-signature management with a web portal, rule and rendering eng
 - Server-side HTML sanitization, sandboxed previews, CSRF protection, secure sessions and trusted-host validation.
 - Encrypted full backups, fresh-deployment restore, verified retention and optional systemd scheduling to remote storage.
 - Separate Lua adapter for Rspamd; top-level `multipart/*` messages are deliberately left unchanged.
+- Experimental Stalwart MTA-hook adapter with authenticated DATA-stage integration and parser-based MIME updates; signed/encrypted messages are skipped.
 
 ## Requirements
 
