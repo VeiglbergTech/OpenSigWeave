@@ -15,7 +15,7 @@ class SignaturePlacementTests(unittest.TestCase):
 
     def test_english_reply_separator_is_detected(self):
         body = "Thanks for your message.\n\nOn Monday, Max wrote:\n> Old text"
-        self.assertEqual(body[find_plain_quote_boundary(body):], "On Monday, Max wrote:\\n> Old text")
+        self.assertEqual(body[find_plain_quote_boundary(body):], "On Monday, Max wrote:\n> Old text")
 
     def test_plain_quoted_lines_are_detected(self):
         body = "New answer\n\n> quoted text"
