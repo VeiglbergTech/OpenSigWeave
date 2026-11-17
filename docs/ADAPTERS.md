@@ -9,6 +9,10 @@ OpenSigWeave core owns signature catalog, identity resolution, policy/rules, var
 
 No adapter may duplicate signature-selection or template-rendering logic. No adapter may bypass sender authorization performed by the mail platform.
 
+## Engine service extraction
+
+The current in-process implementation and the planned framework-independent service boundary are documented in [ENGINE_SERVICE.md](ENGINE_SERVICE.md). The service extraction is not yet implemented; adapters must continue to follow the current shared-handler behavior until the documented parity tests pass.
+
 ## Versioned engine contract
 
 Adapters running as separate processes or on separate hosts MUST call:
