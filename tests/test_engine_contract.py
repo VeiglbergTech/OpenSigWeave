@@ -32,7 +32,7 @@ class EngineRequestContractTests(unittest.TestCase):
         self.assertIsNone(request.mode)
 
     def test_rejects_invalid_sender_addresses(self):
-        for sender in ("invalid", "a@@example.org", "a b@example.org", "@example.org"):
+        for sender in ("invalid", "a@@example.org", "a b@example.org", "@example.org", "user@"):
             with self.subTest(sender=sender):
                 with self.assertRaisesRegex(ValueError, "Invalid sender email"):
                     normalize_engine_request(sender)
