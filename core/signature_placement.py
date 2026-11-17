@@ -1,0 +1,81 @@
+"""Adapter-neutral detection of reply/quote boundaries."""
+from __future__ import annotations
+
+import re
+from html.parser import HTMLParser
+
+_PLAIN = (
+    re.compile(r"(?im)^\\s*[-_]{2,}\\s*(?:original message|forwarded message)\\s*[-_]{2,}\\s*$"),
+    re.compile(r"(?im)^\\s*On .{1,240}\\bwrote:\\s*$"),
+    re.compile(r"(?im)^\\s*Am .{1,240}\\bschrieb .{1,160}:\\s*$"),
+    re.compile(r"(?im)^\\s*Le .{1,240}\\bécrit\\s*:\\s*$"),
+    re.compile(r"(?im)^\\s*El .{1,240}\\bescribió:\\s*$"),
+    re.compile(r"(?im)^\\s*From:\\s*.+\\n(?:Sent|Date):\\s*.+\\nTo:\\s*.+"),
+    re.compile(r"(?im)^\\s*_{5,}\\s*\\n\\s*From:\\s*.+"),
+    re.compile(r"(?m)^\\s*>"),
+)
+_HTML = (
+    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*gmail_quote'''),
+    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*yahoo_quoted'''),
+    re.compile(r'''(?is)<div\\b[^>]*id\\s*=\\s*['"]divRplyFwdMsg['"]'''),
+    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*moz-cite-prefix'''),
+    re.compile(r'''(?is)<div\\b[^>]*data-marker\\s*=\\s*['"]__QUOTED_TEXT__'''),
+    re.compile(r'''(?is)<span\\b[^>]*id\\s*=\\s*['"]OLK_SRC_BODY_SECTION['"]'''),
+    re.compile(r"(?is)<blockquote\\b"),
+    re.compile(r"(?is)<hr\\b"),
+    re.compile(r'''(?is)<div\\b[^>]*class\\s*=\\s*['"][^'"]*(?:quote|quoted|reply-forward)'''),
+)
+
+
+class _QuoteParser(HTMLParser):
+    def __init__(self, source: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.source = source
+        self.line_offsets = [0]
+        self.line_offsets.extend(match.end() for match in re.finditer("\\n", source))
+        self.boundaries: list[int] = []
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        values = {key.casefold(): (value or "").casefold() for key, value in attrs}
+        classes = set(values.get("class", "").split())
+        if (tag.casefold() == "blockquote" or
+            classes.intersection({"gmail_quote", "yahoo_quoted", "quote", "moz-cite-prefix"}) or
+            values.get("id") in {"divrplyfwdmsg", "olk_src_body_section"} or
+            values.get("data-marker") == "__quoted_text__"):
+            line, column = self.getpos()
+            if line - 1 < len(self.line_offsets):
+                self.boundaries.append(self.line_offsets[line - 1] + column)
+
+
+def find_plain_quote_boundary(body: str) -> int | None:
+    positions = [m.start() for pattern in _PLAIN if (m := pattern.search(body))]
+    return min(positions) if positions else None
+
+
+def find_html_quote_boundary(body: str) -> int | None:
+    positions = [m.start() for pattern in _HTML if (m := pattern.search(body))]
+    try:
+        parser = _QuoteParser(body)
+        parser.feed(body)
+        parser.close()
+        positions.extend(parser.boundaries)
+    except (ValueError, AssertionError):
+        pass
+    return min(positions) if positions else None
+
+
+def insert_signature(body: str, signature: str, *, html: bool) -> tuple[str, bool]:
+    """Insert immediately before detected quoted history; otherwise append."""
+    boundary = find_html_quote_boundary(body) if html else find_plain_quote_boundary(body)
+    if boundary is None:
+        if html:
+            match = re.search(r"</body\\s*>", body, re.I)
+            fragment = "<br><br>" + signature
+            if match:
+                return body[:match.start()] + fragment + body[match.start():], False
+            return body + fragment, False
+        return body.rstrip() + "\\n\\n" + signature, False
+    before, after = body[:boundary].rstrip(), body[boundary:].lstrip()
+    if html:
+        return before + "<br><br>" + signature + "<br><br>" + after, True
+    return before + "\\n\\n" + signature + "\\n\\n" + after, True
