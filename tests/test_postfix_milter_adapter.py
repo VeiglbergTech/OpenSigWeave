@@ -1,6 +1,7 @@
 import quopri
 import unittest
-from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, fetch_signature, rewrite_message
+import urllib.request
+from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, _NoRedirectHandler, fetch_signature, rewrite_message
 
 class PostfixMilterAdapterTests(unittest.TestCase):
     def test_plain_text_signature_precedes_quote(self):
@@ -59,6 +60,13 @@ class PostfixMilterAdapterTests(unittest.TestCase):
     def test_engine_url_requires_https(self):
         with self.assertRaises(EngineRequestError):
             fetch_signature("http://engine.local", "x" * 40, "sender@example.org")
+
+    def test_engine_redirects_are_never_followed(self):
+        request = urllib.request.Request("https://engine.example/api")
+        handler = _NoRedirectHandler()
+        self.assertIsNone(handler.redirect_request(
+            request, None, 302, "Found", {}, "http://attacker.example/collect"
+        ))
 
     def test_message_size_is_bounded(self):
         with self.assertRaises(ValueError):
