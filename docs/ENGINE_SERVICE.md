@@ -41,7 +41,7 @@ The extraction preserves the existing decision order and persistence boundaries:
 7. Sanitize stored HTML and nested group fragments before rendering; keep profile values autoescaped.
 8. Commit rotation changes only after successful rendering, as before.
 
-The selection repositories flush rotation updates but never commit them. The service commits only after the complete signature (including nested group fragments) has rendered successfully. On an exception, the request-scoped database dependency closes the session; SQLAlchemy rolls back the uncommitted transaction. Any non-request caller of the service must likewise roll back or close its session after an exception before reusing it. Direct service tests cover both variant and group rotation rollback after template-rendering failures.
+The selection repositories flush rotation updates but never commit them. By default, the service commits only after the complete signature (including nested group fragments) has rendered successfully. Callers may pass `commit_selection=False` to keep rotation updates pending while an adapter performs its final message mutation. The Stalwart hook uses this mode and commits only when it returns a `replaceContents` modification; signed, malformed, already-injected or otherwise unchanged messages roll back the pending rotation. On an exception, the caller must roll back or close the session before reusing it. Direct service tests cover render-failure rollback and deferred commit ownership.
 
 Do not change selector precedence, sanitization, template behavior or commit timing as part of adapter work. Any future change to these invariants requires explicit regression tests.
 
@@ -66,7 +66,7 @@ Malformed sender input is rejected with HTTP 400 before service invocation. Unex
 
 `POST /api/v1/adapters/stalwart/mta-hook` validates `STALWART_HOOK_TOKEN`, requires DATA-stage context, and obtains the sender from the SMTP envelope. It normalizes the same request contract and invokes `resolve_signature_engine()` directly, then translates the result into Stalwart message modifications.
 
-The hook does not use `ENGINE_API_KEY`; its Bearer token authenticates the hook transport only. Presence of an authenticated SASL login is not proof that the principal may send as the envelope sender. Stalwart's SMTP authorization policy must enforce aliases and delegated send-as before the hook runs.
+The hook does not use `ENGINE_API_KEY`; its Bearer token authenticates the hook transport only. Presence of an authenticated SASL login is not proof that the principal may send as the envelope sender. Stalwart's SMTP authorization policy must enforce aliases and delegated send-as before the hook runs. Rotation changes remain uncommitted until MIME rewriting produces a `replaceContents` modification; otherwise the hook rolls them back.
 
 Engine errors are translated through the same safe error mapping as the HTTP adapter. They must never be mistaken for an empty signature.
 

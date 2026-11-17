@@ -94,11 +94,117 @@ class SignatureCatalogApiTests(unittest.TestCase):
             ],
         )
         self.assertIs(engine.await_args.args[0], self.db)
+        self.assertFalse(engine.await_args.kwargs["commit_selection"])
         engine_request = engine.await_args.args[1]
         self.assertEqual(engine_request.sender_email, "alias@example.org")
         self.assertEqual(engine_request.mode, "PROFESSIONAL")
         self.assertEqual(engine_request.signature_name, "Sales")
         self.assertEqual(engine_request.signature_code, "a1b2")
+
+    def test_stalwart_hook_commits_rotation_only_after_body_replacement(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {
+                "headers": [
+                    ["From", " sender@example.org\\r\\n"],
+                    ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
+                ],
+                "contents": "Hello",
+            },
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with (
+            patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(return_value=SignatureEngineResult(
+                    "<p>Signature</p>", False, True, False
+                )),
+            ) as engine,
+            patch.object(self.db, "commit", wraps=self.db.commit) as commit,
+            patch.object(self.db, "rollback", wraps=self.db.rollback) as rollback,
+        ):
+            response = asyncio.run(main.stalwart_mta_hook(
+                request, "Bearer expected-token", self.db
+            ))
+
+        self.assertIn(
+            "replaceContents",
+            [item["type"] for item in response["modifications"]],
+        )
+        self.assertFalse(engine.await_args.kwargs["commit_selection"])
+        commit.assert_called_once()
+        rollback.assert_not_called()
+
+    def test_stalwart_hook_rolls_back_rotation_when_signed_message_is_not_modified(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {
+                "headers": [
+                    ["From", " sender@example.org\\r\\n"],
+                    ["Content-Type", ' multipart/signed; boundary="b1"; protocol="application/pgp-signature"\\r\\n'],
+                ],
+                "contents": (
+                    "--b1\\r\\nContent-Type: text/plain\\r\\n\\r\\nHello\\r\\n"
+                    "--b1--\\r\\n"
+                ),
+            },
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with (
+            patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(return_value=SignatureEngineResult(
+                    "<p>Signature</p>", False, True, False
+                )),
+            ) as engine,
+            patch.object(self.db, "commit", wraps=self.db.commit) as commit,
+            patch.object(self.db, "rollback", wraps=self.db.rollback) as rollback,
+        ):
+            response = asyncio.run(main.stalwart_mta_hook(
+                request, "Bearer expected-token", self.db
+            ))
+
+        self.assertEqual(response, {"action": "accept"})
+        self.assertFalse(engine.await_args.kwargs["commit_selection"])
+        commit.assert_not_called()
+        rollback.assert_called_once()
+
+    def test_stalwart_hook_rolls_back_rotation_when_mime_headers_are_invalid(self):
+        payload = {
+            "context": {"stage": "data", "sasl": {"login": "user@example.org"}},
+            "envelope": {"from": {"address": "sender@example.org"}},
+            "message": {
+                "headers": [
+                    ["From", " sender@example.org\\rInjected: yes\\r\\n"],
+                    ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
+                ],
+                "contents": "Hello",
+            },
+        }
+        request = SimpleNamespace(json=AsyncMock(return_value=payload))
+        with (
+            patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(return_value=SignatureEngineResult(
+                    "<p>Signature</p>", False, True, False
+                )),
+            ),
+            patch.object(self.db, "commit", wraps=self.db.commit) as commit,
+            patch.object(self.db, "rollback", wraps=self.db.rollback) as rollback,
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(main.stalwart_mta_hook(
+                    request, "Bearer expected-token", self.db
+                ))
+
+        self.assertEqual(raised.exception.status_code, 400)
+        commit.assert_not_called()
+        rollback.assert_called_once()
 
     def test_engine_api_exposes_versioned_adapter_neutral_route_and_legacy_rspamd_alias(self):
         routes = {

@@ -5,7 +5,7 @@ import hashlib
 import uuid
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -303,7 +303,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         store = Mock()
         store.read.return_value = "<p>Deferred signature</p>"
         service, _, _ = self._service(file_store=store)
-        with unittest.mock.patch.object(
+        with patch.object(
             self.db, "commit", wraps=self.db.commit
         ) as commit:
             result = asyncio.run(
