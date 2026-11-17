@@ -359,6 +359,9 @@ jobs:
           postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
           postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
           install -d -o root -g root -m 755 /var/spool/postfix
+          printf 'root: root\n' > /etc/aliases
+          newaliases
+          test -s /etc/aliases.db
           cat > /etc/sasl2/smtpd.conf <<'SASL'
           pwcheck_method: auxprop
           auxprop_plugin: sasldb
