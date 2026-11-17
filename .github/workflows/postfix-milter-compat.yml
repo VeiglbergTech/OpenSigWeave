@@ -382,7 +382,7 @@ jobs:
           cleanup() { kill "$MILTER_PID" 2>/dev/null || true; postfix stop 2>/dev/null || true; }
           trap cleanup EXIT
           for attempt in $(seq 1 30); do
-            kill -0 "$MILTER_PID"
+            if ! kill -0 "$MILTER_PID"; then cat /tmp/opensigweave-milter.log; exit 1; fi
             if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",8899),1); s.close()' 2>/dev/null; then break; fi
             sleep 1
           done
