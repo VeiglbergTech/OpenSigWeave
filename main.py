@@ -336,7 +336,9 @@ app.add_middleware(
     path_limits={
         "/api/admin/imports/preview": MAX_EXPORT_BYTES,
         "/api/admin/imports/apply": MAX_EXPORT_BYTES,
-        # MTA hooks carry the complete message, including MIME attachments.\n        "/api/v1/adapters/stalwart/mta-hook": 20 * 1024 * 1024,\n    },
+        # MTA hooks carry the complete message, including MIME attachments.
+        "/api/v1/adapters/stalwart/mta-hook": 20 * 1024 * 1024,
+    },
 )
 app.add_middleware(CSRFProtectionMiddleware)
 app.add_middleware(
