@@ -206,6 +206,7 @@ jobs:
 
           useradd --create-home testuser
           install -d -o testuser -g testuser -m 700 /tmp/delivered
+          newaliases
           cat > /tmp/capture_mail.py <<'PY'
           import os
           import sys
