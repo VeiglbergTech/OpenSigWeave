@@ -240,57 +240,67 @@ class StalwartAdapterTests(unittest.TestCase):
             item["value"] for item in result["modifications"]
             if item["type"] == "replaceContents"
         )
+        effective_headers = [(name, value) for name, value in headers]
+        for change in result["modifications"]:
+            if change["type"] == "deleteHeader":
+                target = change["name"].casefold()
+                for index, (name, _) in enumerate(effective_headers):
+                    if name.casefold() == target:
+                        effective_headers.pop(index)
+                        break
+            elif change["type"] == "addHeader":
+                effective_headers.append((change["name"], " " + change["value"] + "\r\n"))
         raw_headers = "".join(
-            name + ":" + value.rstrip("\\r\\n") + "\\r\\n"
-            for name, value in headers
+            name + ":" + value.rstrip("\r\n") + "\r\n"
+            for name, value in effective_headers
         )
         parsed = BytesParser(policy=policy.default).parsebytes(
-            (raw_headers + "\\r\\n" + body).encode("utf-8")
+            (raw_headers + "\r\n" + body).encode("utf-8")
         )
         self.assertIn(expected_text, parsed.get_content())
 
     def test_decodes_and_reencodes_quoted_printable_text(self):
         self._round_trip_text_part(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
-             ["Content-Transfer-Encoding", " quoted-printable\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"],
+             ["Content-Transfer-Encoding", " quoted-printable\r\n"]],
             "Gr=C3=BC=C3=9Fe aus M=C3=BCnchen",
             "Grüße aus München",
         )
 
     def test_decodes_and_reencodes_base64_text(self):
         self._round_trip_text_part(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
-             ["Content-Transfer-Encoding", " base64\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"],
+             ["Content-Transfer-Encoding", " base64\r\n"]],
             "R3LDvMOfZSBhdXMgTcO8bmNoZW4=",
             "Grüße aus München",
         )
 
     def test_preserves_legacy_charset_when_injecting(self):
         self._round_trip_text_part(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=windows-1252\\r\\n"],
-             ["Content-Transfer-Encoding", " quoted-printable\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=windows-1252\r\n"],
+             ["Content-Transfer-Encoding", " quoted-printable\r\n"]],
             "Gr=FC=DFe aus M=FCnchen",
             "Grüße aus München",
         )
 
     def test_handles_nested_alternative_inside_mixed_message(self):
         headers = [
-            ["From", " sender@example.org\\r\\n"],
-            ["MIME-Version", " 1.0\\r\\n"],
-            ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+            ["From", " sender@example.org\r\n"],
+            ["MIME-Version", " 1.0\r\n"],
+            ["Content-Type", ' multipart/mixed; boundary="outer"\r\n'],
         ]
         contents = (
-            '--outer\\r\\nContent-Type: multipart/alternative; boundary="alt"\\r\\n\\r\\n'
-            "--alt\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nPlain body\\r\\n"
-            "--alt\\r\\nContent-Type: text/html; charset=utf-8\\r\\n\\r\\n<html><body>HTML body</body></html>\\r\\n"
-            "--alt--\\r\\n"
-            "--outer\\r\\nContent-Type: application/pdf\\r\\n"
-            "Content-Disposition: attachment; filename=report.pdf\\r\\n"
-            "Content-Transfer-Encoding: base64\\r\\n\\r\\n"
-            "cGRmLWRhdGE=\\r\\n--outer--\\r\\n"
+            '--outer\r\nContent-Type: multipart/alternative; boundary="alt"\r\n\r\n'
+            "--alt\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nPlain body\r\n"
+            "--alt\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><body>HTML body</body></html>\r\n"
+            "--alt--\r\n"
+            "--outer\r\nContent-Type: application/pdf\r\n"
+            "Content-Disposition: attachment; filename=report.pdf\r\n"
+            "Content-Transfer-Encoding: base64\r\n\r\n"
+            "cGRmLWRhdGE=\r\n--outer--\r\n"
         )
         result = build_stalwart_hook_response(request(headers, contents), {"html": "<p>Signature</p>"})
         body = next(
