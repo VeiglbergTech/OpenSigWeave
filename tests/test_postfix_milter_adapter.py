@@ -1,3 +1,4 @@
+import quopri
 import unittest
 from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, fetch_signature, rewrite_message
 
@@ -6,14 +7,16 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
             b"Antwort\n\nOn Monday Alice wrote:\n> previous", "<p>Viele Grüße</p>", inject_on_replies=True)
         self.assertTrue(result.changed)
-        self.assertLess(result.body.index("Viele Grüße".encode()), result.body.index(b"On Monday"))
+        decoded_body = quopri.decodestring(result.body)
+        self.assertLess(decoded_body.index("Viele Grüße".encode()), decoded_body.index(b"On Monday"))
 
     def test_html_signature_precedes_gmail_quote(self):
         result = rewrite_message([("Content-Type", "text/html; charset=utf-8")],
             b'<html><body><p>Reply</p><div class="gmail_quote">Old</div></body></html>',
             "<p>Signature</p>", inject_on_replies=True)
         self.assertTrue(result.changed)
-        self.assertLess(result.body.index(b"Signature"), result.body.index(b"gmail_quote"))
+        decoded_body = quopri.decodestring(result.body)
+        self.assertLess(decoded_body.index(b"Signature"), decoded_body.index(b"gmail_quote"))
 
     def test_reply_policy_skips_injection(self):
         result = rewrite_message([("Content-Type", "text/plain"), ("In-Reply-To", "<old@example.org>")],
