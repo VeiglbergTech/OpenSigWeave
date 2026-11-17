@@ -1947,7 +1947,7 @@ async def stalwart_mta_hook(
         raise HTTPException(status_code=400, detail="Missing Stalwart envelope sender")
     sender = envelope["from"].get("address")
     if not isinstance(sender, str) or not sender.strip():
-        return {"action": "accept"}
+        raise HTTPException(status_code=400, detail="Missing Stalwart envelope sender address")
     if not isinstance(message, dict) or not isinstance(message.get("headers"), list):
         raise HTTPException(status_code=400, detail="Missing Stalwart message")
 
