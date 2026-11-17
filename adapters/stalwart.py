@@ -128,11 +128,21 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
                              for name in ("Content-Type", "Content-Transfer-Encoding", "MIME-Version")}
     plain = _plain_signature(html_signature)
     changed = False
-    for part in parsed.walk():
-        if part.is_multipart() or part.get_content_disposition() == "attachment":
-            continue
-        if part.get_filename():
-            continue
+
+    def editable_text_parts(part):
+        # Never descend into attached or embedded messages: doing so would
+        # rewrite a forwarded .eml instead of only the outer message body.
+        if part.get_content_type().lower() == "message/rfc822":
+            return
+        if part.get_content_disposition() == "attachment" or part.get_filename():
+            return
+        if part.is_multipart():
+            for child in part.iter_parts():
+                yield from editable_text_parts(child)
+            return
+        yield part
+
+    for part in editable_text_parts(parsed):
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
             continue
