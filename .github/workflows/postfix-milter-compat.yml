@@ -166,6 +166,7 @@ jobs:
           postconf -e 'milter_protocol = 6'
           postconf -e 'milter_default_action = tempfail'
           postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          install -d -o root -g root -m 755 /var/spool/postfix
           postfix check
 
           python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
