@@ -2,7 +2,7 @@
 
 import unittest
 
-from core.engine_contract import normalize_engine_request
+from dataclasses import FrozenInstanceError\n\nfrom core.engine_contract import (\n    SignatureEngineError,\n    SignatureEngineResult,\n    normalize_engine_request,\n)
 
 
 class EngineRequestContractTests(unittest.TestCase):
