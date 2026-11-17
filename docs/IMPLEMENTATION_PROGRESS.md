@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Core application and automated preview validation are progressing; external acceptance remains. Not production-ready.  
-**Current validated candidate:** `77b06ba1f1ce071533491da7b8bd23915c79c02b` on `dev` and `beta`. CI run [#44161301106](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44161301106) passed completely. `main` remains unchanged; PR #2 remains Draft and unmerged.
+**Current validated candidate:** `3513f89fde51d0aa1a5ae32f1ff20c79a02d2473` on `dev`. Full CI run [#44167118901](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44167118901) and dedicated Postfix compatibility run [#44167118606](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44167118606) passed. Documentation refresh is now in progress; `beta` promotion is pending. `main` remains unchanged; PR #2 remains Draft and unmerged.
 
 ## Implemented
 
@@ -17,14 +17,15 @@
 - **Rspamd adapter:** Separate Lua integration using the versioned engine API. Top-level `multipart/*` messages are deliberately left unchanged.
 - **Stalwart adapter:** Experimental native DATA-stage hook. It uses the shared engine service, parses MIME with Python's email package, preserves attachments/inline parts, skips signed/encrypted or malformed messages, prevents duplicate insertion and now places signatures before recognized quoted-reply boundaries. It is not live SMTP/DKIM certified.
 - **Signature placement:** Shared Python helper for the Stalwart adapter supports common plain-text and HTML reply/forward boundaries. Rspamd retains its separate native Lua splitter; the two runtimes do not share one helper.
-- **Postfix/Milter:** PyMilter 1.0.6 runtime/API compatibility and unauthenticated Postfix protocol smoke tests have passed in an isolated CI spike. Authenticated SMTP AUTH macro visibility and enforcement of sender-login ownership against a real authenticated transaction remain release gates; the adapter itself is not implemented.
+- **Postfix/Milter:** PyMilter 1.0.6 runtime/API compatibility, real Postfix SMTP AUTH macro visibility, sender-login ownership rejection, and invocation of `addheader`, `chgheader` and `replacebody` in a real Postfix Milter transaction have passed isolated CI. Final delivered MIME bytes are not yet verified; the Postfix adapter itself is not implemented.
 
 Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [API](API.md), [adapters](ADAPTERS.md), [backup/restore](BACKUP_RESTORE_DESIGN.md), [security review](WEB_AND_RSPAMD_REVIEW.md) and [signature groups](SIGNATURE_GROUPS_DESIGN.md).
 
 ## Automated verification
 
-- Latest complete application CI: [run #44161301106](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44161301106), commit `77b06ba1`, result **success**. All workflow job steps completed successfully, including secret scan, dependency audit, Python compile/security checks, JavaScript and Lua syntax, PostgreSQL/SQLite migrations, Docker build/smoke test, encrypted backup/fresh restore and regression tests.
-- The validated `dev` commit was fast-forwarded to `beta`; `beta` now points to `77b06ba1f1ce071533491da7b8bd23915c79c02b`.
+- Latest complete application CI: [run #44167118901](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44167118901), commit `3513f89f`, result **success**. All workflow job steps completed successfully, including secret scan, dependency audit, Python compile/security checks, JavaScript and Lua syntax, PostgreSQL/SQLite migrations, Docker build/smoke test, encrypted backup/fresh restore and regression tests.
+- Dedicated Postfix compatibility CI: [run #44167118606](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44167118606), same commit, result **success**. It verifies PyMilter runtime, authenticated identity propagation, sender-login mismatch rejection and real-protocol header/body mutation callback invocation; final delivered MIME bytes remain unverified.
+- `beta` promotion is pending until the documentation refresh and its resulting CI checks complete; `main` remains unchanged.
 - The Postfix compatibility spike is tracked separately in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md). Its protocol test is not equivalent to an authenticated sender authorization acceptance test.
 - CI success does not establish production readiness or replace live mail-flow, identity-provider, email-client, restore or load tests.
 
@@ -38,7 +39,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 | Backup | Execute the documented two-host restore drill and test real NFS/SMB mount, disconnect and recovery behavior. |
 | Rspamd | In disposable Mailcow, verify sender authorization, supported non-multipart processing, idempotency, Rspamd order and final DKIM. Rotate the historical Rspamd key wherever deployed. |
 | Stalwart | Run isolated live SMTP/DKIM tests for reply placement, multipart/alternative, attachments, inline images, retries, idempotency and failure behavior. |
-| Postfix | Complete authenticated SMTP AUTH macro test and sender-login mismatch rejection on disposable Postfix; then implement the isolated sidecar and end-to-end DKIM test. |
+| Postfix | Implement the isolated sidecar; verify actual delivered MIME after header/body replacement, bounded buffering, engine timeouts/failure policy, retry/idempotency and final DKIM validation. |
 | Operations/security | Validate rate limits against real throughput and perform dynamic security/load testing. Verify canonical Host and trusted forwarded-header behavior on the intended reverse-proxy topology. |
 
 ## Scope boundaries
