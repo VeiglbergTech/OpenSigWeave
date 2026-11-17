@@ -46,3 +46,31 @@ def normalize_engine_request(
         marker_requested=marker_requested,
         explicit_mode=explicit_mode,
     )
+
+
+@dataclass(frozen=True)
+class SignatureEngineResult:
+    """Transport-neutral result shared by HTTP and in-process adapters."""
+
+    html: str
+    inject_on_replies: bool
+    trim_whitespace: bool
+    strip_device_signatures: bool
+
+    def to_payload(self) -> dict[str, object]:
+        """Serialize the stable public engine response without transport types."""
+        return {
+            "html": self.html,
+            "inject_on_replies": self.inject_on_replies,
+            "trim_whitespace": self.trim_whitespace,
+            "strip_device_signatures": self.strip_device_signatures,
+        }
+
+
+class SignatureEngineError(Exception):
+    """Safe, transport-neutral engine failure with a stable machine-readable code."""
+
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.safe_message = message
+        super().__init__(message)
