@@ -1,0 +1,96 @@
+"""Contract tests for the Stalwart MTA-hook adapter."""
+import unittest
+
+from adapters.stalwart import build_stalwart_hook_response
+
+
+def request(headers, contents):
+    return {
+        "context": {"stage": "data"},
+        "envelope": {"from": {"address": "sender@example.org"}, "to": []},
+        "message": {"headers": headers, "contents": contents, "size": len(contents)},
+    }
+
+
+class StalwartAdapterTests(unittest.TestCase):
+    def test_injects_into_simple_html_and_adds_idempotency_header(self):
+        payload = request(
+            [["From", " sender@example.org\r\n"], ["Content-Type", " text/html; charset=utf-8\r\n"]],
+            "<html><body>Hello</body></html>",
+        )
+        result = build_stalwart_hook_response(payload, {
+            "html": "<p>Signature</p>", "inject_on_replies": False,
+        })
+        changes = result["modifications"]
+        body = next(item["value"] for item in changes if item["type"] == "replaceContents")
+        self.assertIn("<p>Signature</p>", body)
+        self.assertIn("X-OpenSigWeave-Injected", [item.get("name") for item in changes])
+
+    def test_injects_into_both_multipart_alternative_text_parts(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\r\n"],
+                ["MIME-Version", " 1.0\r\n"],
+                ["Content-Type", ' multipart/alternative; boundary="b1"\r\n'],
+            ],
+            "--b1\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n"
+            "--b1\r\nContent-Type: text/html; charset=utf-8\r\n\r\n<html><body>Hello</body></html>\r\n"
+            "--b1--\r\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
+        self.assertIn("Signature", body)
+        self.assertIn("text/plain", body)
+        self.assertIn("text/html", body)
+
+    def test_leaves_signed_messages_unchanged(self):
+        payload = request(
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", ' multipart/signed; boundary="b1"; protocol="application/pgp-signature"\r\n']],
+            "--b1\r\nContent-Type: text/plain\r\n\r\nHello\r\n--b1--\r\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertEqual(result, {"action": "accept"})
+
+    def test_does_not_duplicate_when_marker_header_exists(self):
+        payload = request(
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"],
+             ["X-OpenSigWeave-Injected", " true\r\n"]],
+            "Hello",
+        )
+        self.assertEqual(
+            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"}),
+            {"action": "accept"},
+        )
+
+    def test_skips_replies_when_domain_policy_disables_reply_injection(self):
+        payload = request(
+            [["From", " sender@example.org\r\n"], ["In-Reply-To", " <message@example.org>\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"]],
+            "Reply",
+        )
+        self.assertEqual(
+            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>", "inject_on_replies": False}),
+            {"action": "accept"},
+        )
+
+    def test_removes_control_headers_when_no_signature_is_selected(self):
+        payload = request(
+            [["From", " sender@example.org\r\n"], ["X-OpenSigWeave-Mode", " PROFESSIONAL\r\n"]],
+            "Hello",
+        )
+        result = build_stalwart_hook_response(payload, {"html": ""})
+        self.assertEqual(result["modifications"], [
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0}
+        ])
+
+    def test_rejects_non_data_stage(self):
+        payload = request([], "Hello")
+        payload["context"]["stage"] = "mail"
+        with self.assertRaises(ValueError):
+            build_stalwart_hook_response(payload, {"html": ""})
+
+
+if __name__ == "__main__":
+    unittest.main()
