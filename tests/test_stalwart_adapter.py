@@ -59,6 +59,22 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("text/plain", body)
         self.assertIn("text/html", body)
 
+    def test_skips_malformed_multipart_without_closing_boundary(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\r\n"],
+                ["MIME-Version", " 1.0\r\n"],
+                ["Content-Type", ' multipart/alternative; boundary="broken"\r\n'],
+            ],
+            "--broken\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n\r\n"
+            "<html><body>Hello</body></html>\r\n",
+        )
+        self.assertEqual(
+            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"}),
+            {"action": "accept"},
+        )
+
     def test_leaves_signed_messages_unchanged(self):
         payload = request(
             [["From", " sender@example.org\r\n"],
