@@ -7,6 +7,7 @@ import uuid
 from jinja2 import TemplateError
 from markupsafe import Markup
 from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from core.engine_contract import (
     SignatureEngineError,
@@ -47,7 +48,9 @@ class SignatureEngineService:
         self.identity_resolver = identity_resolver
         self.file_store = file_store
 
-    async def resolve(self, db, request: SignatureEngineRequest) -> SignatureEngineResult:
+    async def resolve(
+        self, db: Session, request: SignatureEngineRequest
+    ) -> SignatureEngineResult:
         normalized_email = request.sender_email
         domain_part = normalized_email.rsplit("@", 1)[-1]
         domain_obj = db.query(DomainDB).filter(
