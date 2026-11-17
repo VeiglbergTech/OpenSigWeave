@@ -150,20 +150,20 @@ class StalwartAdapterTests(unittest.TestCase):
     def test_does_not_modify_attached_forwarded_messages(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["MIME-Version", " 1.0\\r\\n"],
-                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+                ["From", " sender@example.org\r\n"],
+                ["MIME-Version", " 1.0\r\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\r\n'],
             ],
-            "--outer\\r\\n"
-            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
-            "<html><body>Outer message</body></html>\\r\\n"
-            "--outer\\r\\n"
-            "Content-Type: message/rfc822\\r\\n"
-            "Content-Disposition: attachment; filename=forwarded.eml\\r\\n\\r\\n"
-            "From: colleague@example.org\\r\\n"
-            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
-            "<html><body>Forwarded message</body></html>\\r\\n"
-            "--outer--\\r\\n",
+            "--outer\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n\r\n"
+            "<html><body>Outer message</body></html>\r\n"
+            "--outer\r\n"
+            "Content-Type: message/rfc822\r\n"
+            "Content-Disposition: attachment; filename=forwarded.eml\r\n\r\n"
+            "From: colleague@example.org\r\n"
+            "Content-Type: text/html; charset=utf-8\r\n\r\n"
+            "<html><body>Forwarded message</body></html>\r\n"
+            "--outer--\r\n",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
         body = next(
