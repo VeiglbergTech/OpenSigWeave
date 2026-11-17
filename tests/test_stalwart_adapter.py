@@ -121,7 +121,7 @@ class StalwartAdapterTests(unittest.TestCase):
         ])
 
     def test_rejects_bare_carriage_return_in_header_value(self):
-        payload = request([["From", " sender@example.org\\rInjected: yes\\r\\n"]], "Hello")
+        payload = request([["From", " sender@example.org\rInjected: yes\r\n"]], "Hello")
         with self.assertRaises(ValueError):
             build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
 
