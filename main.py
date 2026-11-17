@@ -1648,7 +1648,8 @@ def delete_signature_rule(
 # ==========================================
 # THE RSPAMD COMPILATION ENGINE
 # ==========================================
-@app.get("/api/signature/{email}")
+@app.get("/api/v1/engine/signatures/{email}", name="get_engine_signature_v1")
+@app.get("/api/signature/{email}", name="get_rspamd_signature_legacy")
 async def get_rspamd_signature(
     email: str,
     response: Response,
