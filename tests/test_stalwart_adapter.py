@@ -71,15 +71,15 @@ class StalwartAdapterTests(unittest.TestCase):
     def test_signed_attachment_does_not_block_outer_message_injection(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["MIME-Version", " 1.0\\r\\n"],
-                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+                ["From", " sender@example.org\r\n"],
+                ["MIME-Version", " 1.0\r\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\r\n'],
             ],
-            "--outer\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nHello\\r\\n"
-            "--outer\\r\\nContent-Type: application/pkcs7-mime; name=signature.p7m\\r\\n"
-            "Content-Disposition: attachment; filename=signature.p7m\\r\\n"
-            "Content-Transfer-Encoding: base64\\r\\n\\r\\nQUJDRA==\\r\\n"
-            "--outer--\\r\\n",
+            "--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n"
+            "--outer\r\nContent-Type: application/pkcs7-mime; name=signature.p7m\r\n"
+            "Content-Disposition: attachment; filename=signature.p7m\r\n"
+            "Content-Transfer-Encoding: base64\r\n\r\nQUJDRA==\r\n"
+            "--outer--\r\n",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
         changes = result.get("modifications", [])
