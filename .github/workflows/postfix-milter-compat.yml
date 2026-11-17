@@ -124,7 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           dnf install -y epel-release
-          dnf install -y postfix python3 python3-pymilter
+          dnf --disablerepo=crb install -y postfix python3 python3-pymilter
       - name: Run disposable Postfix SMTP transaction through a real Milter
         shell: bash
         run: |
