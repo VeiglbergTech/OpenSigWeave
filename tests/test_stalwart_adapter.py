@@ -362,6 +362,42 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertEqual(normalized_body, "Einfacher neuer Text ohne Zitat\n\nSignatur")
 
 
+    def test_sogo_multipart_reply_places_signature_before_quoted_history(self):
+        # SOGo emits multipart/alternative messages with its OpenGroupware MIME
+        # boundary. Plain-text replies commonly quote prior lines with ">"; the
+        # HTML part uses a structural blockquote when that markup is present.
+        boundary = "OpenGroupware_org_NGMime-test"
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["User-Agent", " SOGoMail 5.12.9\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", f' multipart/alternative; boundary="{boundary}"\\r\\n'],
+            ],
+            f"--{boundary}\\r\\n"
+            "Content-Type: text/plain; charset=utf-8\\r\\n"
+            "Content-Transfer-Encoding: quoted-printable\\r\\n\\r\\n"
+            "Hallo Max,\\n\\ndanke für deine Nachricht.\\n\\n> Deine ursprüngliche Nachricht\\n"
+            f"--{boundary}\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body><p>Hallo Max,</p><p>danke für deine Nachricht.</p>"
+            "<blockquote type=\\"cite\\">Deine ursprüngliche Nachricht</blockquote>"
+            "</body></html>\\r\\n"
+            f"--{boundary}--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>SOGo-Signatur</p>"})
+        body = next(
+            item["value"] for item in result["modifications"]
+            if item["type"] == "replaceContents"
+        )
+        plain_start = body.index("Content-Type: text/plain")
+        html_start = body.index("Content-Type: text/html")
+        plain_part = body[plain_start:html_start]
+        html_part = body[html_start:]
+        self.assertLess(plain_part.index("SOGo-Signatur"), plain_part.index("> Deine ursprüngliche Nachricht"))
+        self.assertLess(html_part.index("SOGo-Signatur"), html_part.index("<blockquote type=\\"cite\\""))
+
+
 
 if __name__ == "__main__":
     unittest.main()
