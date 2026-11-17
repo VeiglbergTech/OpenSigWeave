@@ -186,7 +186,7 @@ jobs:
           sasldb_path: /etc/sasldb2
           SASL
           cp /etc/sasl2/smtpd.conf /usr/lib64/sasl2/smtpd.conf
-          printf 'ci-password\\nci-password\\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost ci-user
+          printf 'ci-password\\nci-password\\n' | saslpasswd2 -c -p -a smtpd -f /etc/sasldb2 -u localhost ci-user
           sasldblistusers2 -f /etc/sasldb2
           chown postfix:postfix /etc/sasldb2
           chmod 640 /etc/sasldb2
