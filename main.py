@@ -1919,7 +1919,8 @@ async def stalwart_mta_hook(
     db: Session = Depends(get_db),
 ):
     hook_token = os.environ.get("STALWART_HOOK_TOKEN", "")
-    supplied_token = authorization[7:].strip() if isinstance(authorization, str) and authorization.startswith("Bearer ") else ""
+    scheme, separator, credentials = authorization.partition(" ") if isinstance(authorization, str) else ("", "", "")
+    supplied_token = credentials.strip() if separator and scheme.casefold() == "bearer" else ""
     if not hook_token or not hmac.compare_digest(supplied_token, hook_token):
         raise HTTPException(status_code=401, detail="Unauthorized Stalwart hook request")
 
