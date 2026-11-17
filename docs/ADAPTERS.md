@@ -66,7 +66,7 @@ Every adapter implementation must document and test:
 | Adapter | Integration mechanism | Status |
 |---|---|---|
 | Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
-| Postfix | Milter sidecar using the versioned engine HTTP API | Design documented in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md); implementation pending |
+| Postfix | PyMilter sidecar using the versioned engine HTTP API | Experimental implementation on `dev`; isolated Postfix E2E verifies authenticated injection, unauthenticated no-op, control-header removal and final local delivery using a mock engine. Live engine HTTPS/API and DKIM-chain tests remain open |
 | Stalwart | Native SMTP/MTA hook at DATA | Experimental adapter implemented; MIME and live SMTP validation still required |
 | Exim | ACL/system-filter integration or external content filter | Planned |
 | Haraka | Plugin | Planned |
@@ -85,7 +85,7 @@ The initial contract uses the existing `ENGINE_API_KEY` for backwards compatibil
 
 An adapter is releasable only after unit/contract tests, static analysis, supported-version documentation and an isolated SMTP end-to-end test covering plain text, HTML, multipart/alternative, attachments, inline Content-IDs, transfer encodings, replies, retries, duplicate prevention, sender spoofing rejection and final DKIM validation. Unsupported MIME cases must be skipped safely, not corrupted.
 
-## Stalwart MTA-hook adapter (experimental)
+## Postfix Milter adapter (experimental)\n\n`adapters/postfix_milter.py` implements the SMTP Milter sidecar using PyMilter 1.0.6. It obtains the envelope sender from the Postfix transaction, requires a non-empty SASL identity, passes the optional mode/signature selectors to the versioned engine endpoint over HTTPS, and leaves sender/alias authorization to Postfix (`smtpd_sender_login_maps` plus `reject_authenticated_sender_login_mismatch`). It performs bounded MIME rewriting, preserves binary attachment payloads in tests, skips signed/encrypted messages, honors reply placement, removes client-supplied selector headers and adds an idempotency marker after successful injection. The isolated CI integration starts the real adapter callback class in PyMilter, connects a disposable Postfix SMTP server, and verifies final delivered MIME for authenticated and unauthenticated messages. The engine is stubbed in that test: real API credentials/TLS trust, DKIM ordering and a production Postfix deployment are not yet certified. See [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md).\n\n## Stalwart MTA-hook adapter (experimental)
 
 OpenSigWeave exposes `POST /api/v1/adapters/stalwart/mta-hook`. Configure the Stalwart hook for the `data` stage only and use Bearer authentication with the `STALWART_HOOK_TOKEN` secret. The endpoint requires an authenticated SASL session; unauthenticated inbound mail is accepted unchanged. Stalwart must independently enforce envelope-sender authorization, including aliases and delegated send-as permissions.
 
