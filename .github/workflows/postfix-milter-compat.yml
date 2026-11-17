@@ -250,6 +250,9 @@ jobs:
           with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
               smtp.login("authuser@localhost", "ci-password")
               code, response = smtp.mail("spoofed@example.org")
+              assert code == 250, (code, response)
+              # Postfix delays sender restrictions until RCPT TO by default.
+              code, response = smtp.rcpt("root@localhost")
               assert code in (550, 553), (code, response)
               print(f"Unauthorized envelope sender rejected: {code} {response!r}")
           PY
