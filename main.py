@@ -46,7 +46,8 @@ from core.modes import SignatureMode, resolve_mode
 from core.slug import slugify
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
-from core.engine_contract import SignatureEngineResult, normalize_engine_request
+from core.engine_contract import SignatureEngineError, SignatureEngineResult, normalize_engine_request
+from core.engine_service import SignatureEngineService
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
@@ -1652,6 +1653,38 @@ def delete_signature_rule(
 # ==========================================
 # SHARED SIGNATURE ENGINE
 # ==========================================
+def _signature_engine_service() -> SignatureEngineService:
+    """Build the shared service from application-owned collaborators."""
+    return SignatureEngineService(
+        identity_resolver=get_identity_attributes,
+        file_store=signature_file_store,
+    )
+
+
+async def resolve_signature_engine(db: Session, engine_request):
+    """Resolve a normalized request through the single shared engine service."""
+    return await _signature_engine_service().resolve(db, engine_request)
+
+
+_ENGINE_ERROR_HTTP_STATUS = {
+    "INVALID_MODE": 400,
+    "SIGNATURE_VERSION_METADATA_MISSING": 503,
+    "SIGNATURE_ASSET_UNAVAILABLE": 503,
+    "SELECTED_SIGNATURE_METADATA_MISSING": 503,
+    "INVALID_STORED_RULE": 500,
+    "GROUP_SIGNATURE_VERSION_METADATA_MISSING": 503,
+    "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
+    "INVALID_TEMPLATE": 422,
+}
+
+
+def _engine_http_exception(error: SignatureEngineError) -> HTTPException:
+    return HTTPException(
+        status_code=_ENGINE_ERROR_HTTP_STATUS.get(error.code, 500),
+        detail=error.safe_message,
+    )
+
+
 @app.get("/api/v1/engine/signatures/{email}", name="get_engine_signature_v1")
 @app.get("/api/signature/{email}", name="get_rspamd_signature_legacy")
 async def get_engine_signature(
@@ -1661,8 +1694,9 @@ async def get_engine_signature(
     x_signature_mode: Optional[str] = Header(None, alias="X-OpenSigWeave-Mode"),
     x_signature_name: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature"),
     x_signature_code: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature-Code"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
+    """HTTP transport wrapper; all selection and rendering lives in the service."""
     response.headers["Cache-Control"] = "no-store, private"
     if not ENGINE_API_KEY or not hmac.compare_digest(x_engine_key or "", ENGINE_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized Engine Request")
@@ -1673,248 +1707,12 @@ async def get_engine_signature(
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    normalized_email = engine_request.sender_email
-    x_signature_mode = engine_request.mode
-    x_signature_name = engine_request.signature_name
-    x_signature_code = engine_request.signature_code
-    domain_part = normalized_email.rsplit("@", 1)[-1]
-    domain_obj = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_part).first()
-    empty_response = SignatureEngineResult(
-        html="",
-        inject_on_replies=bool(domain_obj and domain_obj.inject_on_replies),
-        trim_whitespace=bool(domain_obj.trim_whitespace) if domain_obj else True,
-        strip_device_signatures=bool(domain_obj.strip_device_signatures) if domain_obj else False,
-    ).to_payload()
-    if not domain_obj or not domain_obj.is_active:
-        return empty_response
 
-    override = db.query(UserOverrideDB).filter(
-        func.lower(UserOverrideDB.user_email) == normalized_email
-    ).first()
-    if override and override.is_disabled:
-        return empty_response
-
-    selected_from_variant = False
-    selected_from_group = False
-    selected_group_id = None
-    selected_group_signature = None
-    signature_id = None
-    marker_requested = engine_request.marker_requested
-    explicit_mode = engine_request.explicit_mode
-    # Invalid mode headers are not fatal: continue with a body marker or automatic rules.
-    if marker_requested and not explicit_mode:
-        # A text marker is a selector, not an authentication mechanism. It is
-        # accepted only when its four-character SHA-256 check matches exactly.
-        marker_name = (x_signature_name or "").strip()
-        marker_code = (x_signature_code or "").strip().casefold()
-        expected_code = hashlib.sha256(marker_name.casefold().encode("utf-8")).hexdigest()[:4]
-        if (not marker_name or len(marker_name) > 255 or len(marker_code) != 4
-                or not hmac.compare_digest(marker_code, expected_code)):
-            return empty_response
-        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
-        matching_signatures = (
-            db.query(SignatureDB)
-            .filter(
-                SignatureDB.is_active.is_(True),
-                (SignatureDB.id.in_(db.query(SignatureDomainDB.signature_id).filter(SignatureDomainDB.domain_id == domain_obj.id)) | ~SignatureDB.id.in_(db.query(SignatureDomainDB.signature_id))),
-            )
-            .all()
-        )
-        matching_signatures = [
-            item for item in matching_signatures
-            if item.name.casefold() == marker_name.casefold()
-        ]
-        assigned_ids = {row.signature_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.domain_id == domain_obj.id).all()}
-        any_assigned_ids = {row.signature_id for row in db.query(SignatureDomainDB).all()}
-        domain_matches = [item for item in matching_signatures if item.id in assigned_ids]
-        global_matches = [item for item in matching_signatures if item.id not in any_assigned_ids]
-        # Prefer one exact-domain signature; otherwise accept exactly one global
-        # signature. Duplicate names are ambiguous and must not select arbitrarily.
-        candidates = domain_matches if domain_matches else global_matches
-        if len(candidates) != 1:
-            return empty_response
-        selected_signature = candidates[0]
-        latest_version = (
-            db.query(SignatureVersionDB)
-            .filter(SignatureVersionDB.signature_id == selected_signature.id)
-            .order_by(SignatureVersionDB.version_number.desc())
-            .first()
-        )
-        if latest_version is None:
-            raise HTTPException(status_code=503, detail="Signature version metadata is missing")
-        try:
-            raw_template = signature_file_store.read(selected_signature.name, uuid.UUID(hex=latest_version.id), latest_version.sha256)
-        except (SignatureStorageError, ValueError, TypeError):
-            raise HTTPException(status_code=503, detail="Signature asset unavailable")
-    elif override and domain_obj.allow_overrides and not explicit_mode:
-        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
-        raw_template = override.html_content
-    else:
-        identity_attributes = await get_identity_attributes(db, normalized_email, domain_obj.identity_provider_id)
-        mode = None
-        if explicit_mode:
-            try:
-                mode = resolve_mode(x_signature_mode)
-            except ValueError as exc:
-                raise HTTPException(status_code=400, detail=str(exc))
-        else:
-            context = RuleContext(
-                sender=normalized_email,
-                domain=domain_part,
-                groups=identity_attributes.groups,
-                claims=identity_attributes.claims,
-                attributes=identity_attributes.attributes,
-            )
-            matched_rule = evaluate_rules(load_signature_rules(db), context)
-            if matched_rule and matched_rule.action == "GROUP":
-                if not matched_rule.group_id or not identity_attributes.principal_id:
-                    return empty_response
-                selected_signature = select_and_record_group_signature(
-                    db,
-                    principal_id=identity_attributes.principal_id,
-                    group_id=matched_rule.group_id,
-                    domain_id=domain_obj.id,
-                )
-                if selected_signature is None:
-                    return empty_response
-                selected_group_id = matched_rule.group_id
-                selected_group_signature = selected_signature
-                latest_version = (
-                    db.query(SignatureVersionDB)
-                    .filter(SignatureVersionDB.signature_id == selected_signature.id)
-                    .order_by(SignatureVersionDB.version_number.desc())
-                    .first()
-                )
-                if latest_version is None:
-                    raise HTTPException(status_code=503, detail="Signature version metadata is missing")
-                try:
-                    raw_template = signature_file_store.read(
-                        selected_signature.name,
-                        uuid.UUID(hex=latest_version.id),
-                        latest_version.sha256,
-                    )
-                    selected_from_group = True
-                except (SignatureStorageError, ValueError, TypeError):
-                    raise HTTPException(status_code=503, detail="Signature asset unavailable")
-            else:
-                try:
-                    mode = resolve_mode(matched_rule.action if matched_rule else None)
-                except ValueError as exc:
-                    raise HTTPException(status_code=500, detail="A stored signature rule has an invalid action")
-                signature_id = matched_rule.signature_id if matched_rule else None
-
-        if mode == SignatureMode.NONE:
-            return empty_response
-
-        if mode is not None:
-            selected_variant = select_and_record_variant(
-                db,
-                sender_email=normalized_email,
-                pool_name=mode.value,
-                domain_id=domain_obj.id,
-                signature_id=signature_id,
-            )
-            if selected_variant:
-                latest_version = (
-                    db.query(SignatureVersionDB)
-                    .filter(SignatureVersionDB.signature_id == selected_variant.signature_id)
-                    .order_by(SignatureVersionDB.version_number.desc())
-                    .first()
-                )
-                if latest_version:
-                    selected_signature = db.get(SignatureDB, selected_variant.signature_id)
-                    if selected_signature is None:
-                        raise HTTPException(status_code=503, detail="Selected signature metadata is missing")
-                    try:
-                        raw_template = signature_file_store.read(
-                            selected_signature.name,
-                            uuid.UUID(hex=latest_version.id),
-                            latest_version.sha256,
-                        )
-                        selected_from_variant = True
-                    except (SignatureStorageError, ValueError, TypeError):
-                        raise HTTPException(status_code=503, detail="Signature asset unavailable")
-                else:
-                    raise HTTPException(status_code=503, detail="Signature version metadata is missing")
-            elif mode == SignatureMode.AUTO and signature_id is None:
-                raw_template = domain_obj.template_html
-            else:
-                return empty_response
-
-    if not raw_template:
-        return empty_response
-
-    first_name = identity_attributes.first_name or normalized_email.split("@")[0].capitalize()
-    last_name = identity_attributes.last_name
-    title = identity_attributes.title
-    phone = identity_attributes.phone
-
-    profile_values = {
-        "first_name": first_name,
-        "last_name": last_name,
-        "title": title,
-        "phone": phone,
-        "email": normalized_email,
-        "domain_name": domain_part,
-    }
     try:
-        raw_template = sanitize_signature_html(raw_template)
-        raw_template, group_slots = prepare_group_placeholders(raw_template)
-        group_values = {}
-        for slug, template_key in group_slots.items():
-            group = db.query(SignatureGroupDB).filter(
-                SignatureGroupDB.slug == slug,
-                SignatureGroupDB.is_active.is_(True),
-            ).first()
-            selected = None
-            if group is not None and identity_attributes.principal_id:
-                if group.id == selected_group_id:
-                    selected = selected_group_signature
-                else:
-                    selected = select_and_record_group_signature(
-                        db,
-                        principal_id=identity_attributes.principal_id,
-                        group_id=group.id,
-                        domain_id=domain_obj.id,
-                    )
-                    if selected is not None:
-                        selected_from_group = True
-            if selected is None:
-                group_values[template_key] = Markup("")
-                continue
-            nested_version = (
-                db.query(SignatureVersionDB)
-                .filter(SignatureVersionDB.signature_id == selected.id)
-                .order_by(SignatureVersionDB.version_number.desc())
-                .first()
-            )
-            if nested_version is None:
-                raise HTTPException(status_code=503, detail="Group signature version metadata is missing")
-            try:
-                nested_html = signature_file_store.read(
-                    selected.name, uuid.UUID(hex=nested_version.id), nested_version.sha256
-                )
-                nested_html = sanitize_signature_html(nested_html)
-                # Group nesting is intentionally one level deep to prevent recursive templates.
-                nested_html = strip_group_placeholders(nested_html)
-                rendered_group = render_signature_template(nested_html, profile_values)
-                # The nested fragment is allowlist-sanitized above; profile values remain autoescaped.
-                group_values[template_key] = Markup(rendered_group)  # nosec B704
-            except (SignatureStorageError, ValueError, TypeError):
-                raise HTTPException(status_code=503, detail="Group signature asset unavailable")
-        parsed = render_signature_template(raw_template, {**profile_values, **group_values})
-    except TemplateError:
-        raise HTTPException(status_code=422, detail="Invalid signature template")
-
-    if selected_from_variant or selected_from_group:
-        db.commit()
-
-    return SignatureEngineResult(
-        html=parsed,
-        inject_on_replies=domain_obj.inject_on_replies,
-        trim_whitespace=domain_obj.trim_whitespace,
-        strip_device_signatures=domain_obj.strip_device_signatures,
-    ).to_payload()
+        result = await resolve_signature_engine(db, engine_request)
+    except SignatureEngineError as exc:
+        raise _engine_http_exception(exc)
+    return result.to_payload()
 
 
 # ==========================================
