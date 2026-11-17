@@ -108,5 +108,44 @@ class StalwartAdapterTests(unittest.TestCase):
             build_stalwart_hook_response(payload, {"html": ""})
 
 
+    def test_preserves_inline_images_and_file_attachments(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+            ],
+            "--outer\\r\\n"
+            'Content-Type: multipart/related; boundary="related"\\r\\n\\r\\n'
+            "--related\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            '<html><body><img src="cid:logo@example.org"></body></html>\\r\\n'
+            "--related\\r\\n"
+            "Content-Type: image/png\\r\\n"
+            "Content-Transfer-Encoding: base64\\r\\n"
+            "Content-ID: <logo@example.org>\\r\\n"
+            "Content-Disposition: inline; filename=logo.png\\r\\n\\r\\n"
+            "aW1hZ2UtZGF0YQ==\\r\\n"
+            "--related--\\r\\n"
+            "--outer\\r\\n"
+            "Content-Type: application/pdf\\r\\n"
+            "Content-Transfer-Encoding: base64\\r\\n"
+            "Content-Disposition: attachment; filename=report.pdf\\r\\n\\r\\n"
+            "cGRmLWRhdGE=\\r\\n"
+            "--outer--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        body = next(
+            item["value"] for item in result["modifications"]
+            if item["type"] == "replaceContents"
+        )
+        self.assertIn("<p>Signature</p>", body)
+        self.assertIn("Content-ID: <logo@example.org>", body)
+        self.assertIn("Content-Disposition: inline; filename=logo.png", body)
+        self.assertIn("aW1hZ2UtZGF0YQ==", body)
+        self.assertIn("Content-Disposition: attachment; filename=report.pdf", body)
+        self.assertIn("cGRmLWRhdGE=", body)
+
+
 if __name__ == "__main__":
     unittest.main()
