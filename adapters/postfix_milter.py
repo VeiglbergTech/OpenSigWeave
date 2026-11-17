@@ -238,9 +238,9 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                     if name.casefold() in CONTROL_HEADERS:
                         control_names.setdefault(name.casefold(), name)
                 for folded_name, original_name in control_names.items():
-                    indexes = [index for index, (name, _value) in enumerate(self.headers, start=1)
-                               if name.casefold() == folded_name]
-                    for index in reversed(indexes):
+                    occurrences = sum(1 for name, _value in self.headers
+                                      if name.casefold() == folded_name)
+                    for index in range(occurrences, 0, -1):
                         self.chgheader(original_name, index, None)
     
                 # Postfix sender_login_maps remains responsible for send-as authorization.
