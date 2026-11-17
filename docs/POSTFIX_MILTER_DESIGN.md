@@ -1,6 +1,6 @@
 # Postfix Milter adapter — technical design
 
-**Status:** Research complete; implementation not started  
+**Status:** Research complete; PyMilter 1.0.6 is the leading candidate, compatibility spike pending  
 **Target branch:** `dev`  
 **Scope:** Design the Postfix integration boundary without adding an unverified Milter runtime dependency.
 
@@ -10,10 +10,11 @@ Postfix is a strong next adapter candidate. Its SMTP server supports the Sendmai
 
 The first implementation should be a small, independently deployable Milter sidecar. It must call the existing versioned OpenSigWeave engine endpoint; it must not import the application database or duplicate selection, rules, identity resolution or rendering.
 
-**No Milter library is selected yet.** A short compatibility spike is required before adding a dependency:
-- `pymilter` is attractive because the application is Python-based, but it wraps the native Sendmail `libmilter` API. The upstream project advertises version 1.0.5, while its own compatibility notes still mention Python 2 testing. Python 3.12 build/runtime compatibility and the required system library must be proven in CI before adoption.
-- The Go `andybalholm/milter` package exposes a small Milter interface and BSD-2-Clause license, but the repository currently shows only two commits. It is not sufficiently established to select solely from its API shape.
-- A custom protocol implementation is not the default fallback: the Milter wire protocol, negotiation flags, chunk framing and failure semantics are security-sensitive. Prefer a maintained implementation with tests over maintaining a protocol stack ourselves.
+**Leading library candidate: PyMilter 1.0.6, not yet approved for production.** PyMilter wraps Sendmail's native `libmilter` API and provides a Python object-oriented callback interface. The PyPI project page still exposes 1.0.5 (uploaded in 2021), while current distribution packaging has moved to 1.0.6 and includes Python 3.12 builds. This is encouraging evidence, but it is not proof that the exact Python 3.12-slim container used by OpenSigWeave can build, import and run the library correctly. The 1.0.6 distribution packages also require the native `libmilter` shared library. PyMilter is GPL-2.0-or-later, which must be reviewed for the separately distributed sidecar.
+
+The next step is an isolated CI compatibility spike using Python 3.12 and `libmilter`. It must verify package provenance/version, compile/import, callback operation and actual Postfix protocol negotiation before the project pins the dependency. Do not add PyMilter to the main application's `requirements.txt`.
+
+The Go `andybalholm/milter` package remains an alternative only if the Python/native dependency route proves unsuitable. A custom protocol implementation is not the default fallback: the Milter wire protocol, negotiation flags, chunk framing and failure semantics are security-sensitive. Prefer a maintained implementation with tests over maintaining a protocol stack ourselves.
 
 ## Proposed transaction flow
 
@@ -54,10 +55,10 @@ Inbound unauthenticated mail must remain unchanged. Local/non-SMTP submission is
 ## Required test plan
 
 ### Library/runtime spike
-- Build and import the selected Milter library in the same Python 3.12 / container environment used by the project, or document a separately pinned sidecar runtime.
-- Verify protocol negotiation, envelope sender callback, SASL macro visibility, header callbacks, body chunk callbacks, end-of-message callback and body replacement.
+- Build and import PyMilter 1.0.6 in a Python 3.12 container with the required `libmilter` development/runtime packages; record the exact source and package versions.
+- Verify protocol negotiation, envelope sender callback, SASL macro visibility, header callbacks, body chunk callbacks, end-of-message callback and body replacement against a disposable Postfix instance.
 - Test clean startup/shutdown, socket permissions, concurrency and bounded memory under large messages.
-- Verify licensing and dependency maintenance before adoption.
+- Review GPL-2.0-or-later distribution implications and dependency maintenance before adoption.
 
 ### Adapter tests
 - New plain-text message; HTML message; multipart/alternative.
@@ -75,6 +76,9 @@ Run a disposable Postfix instance with the adapter and a DKIM signer in the inte
 
 - Postfix Milter integration and limitations: https://www.postfix.org/MILTER_README.html
 - Postfix Milter configuration parameters: https://www.postfix.org/postconf.5.html
-- PyMilter project and compatibility notes: https://www.pymilter.org/
+- PyMilter project and API documentation: https://www.pymilter.org/
 - PyMilter source: https://github.com/sdgathman/pymilter
-- Go Milter candidate: https://github.com/andybalholm/milter
+- PyMilter PyPI release history: https://pypi.org/project/pymilter/
+- Python 3.12 distribution packaging evidence: https://packages.fedoraproject.org/pkgs/python-pymilter/python3-pymilter/
+- Python 3.12 package dependency evidence: https://portstatus.bsdproject.de/mail/py-pymilter/
+- Go Milter alternative: https://github.com/andybalholm/milter
