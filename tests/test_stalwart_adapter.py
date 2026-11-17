@@ -120,6 +120,11 @@ class StalwartAdapterTests(unittest.TestCase):
             {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0}
         ])
 
+    def test_rejects_bare_carriage_return_in_header_value(self):
+        payload = request([["From", " sender@example.org\\rInjected: yes\\r\\n"]], "Hello")
+        with self.assertRaises(ValueError):
+            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+
     def test_rejects_non_data_stage(self):
         payload = request([], "Hello")
         payload["context"]["stage"] = "mail"
