@@ -176,7 +176,7 @@ jobs:
           postconf -e 'smtpd_sasl_local_domain = localhost'
           postconf -e 'smtpd_sasl_security_options = noanonymous'
           postconf -e 'smtpd_sasl_exceptions_networks ='
-          postconf -e 'smtpd_sender_login_maps = hash:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
           postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
 
           cat > /etc/sasl2/smtpd.conf <<'SASL'
@@ -190,6 +190,7 @@ jobs:
           chmod 640 /etc/sasldb2
           printf 'sender@example.org authuser@localhost\n' > /etc/postfix/sender_login
           postmap /etc/postfix/sender_login
+          test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
 
           install -d -o root -g root -m 755 /var/spool/postfix
           postfix check
