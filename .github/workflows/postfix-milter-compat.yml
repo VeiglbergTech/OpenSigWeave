@@ -176,14 +176,19 @@ jobs:
           }
           trap cleanup EXIT
 
+          milter_ready=false
           for attempt in $(seq 1 30); do
-            if grep -q 'listening' /tmp/milter.log 2>/dev/null; then break; fi
             if ! kill -0 "$MILTER_PID" 2>/dev/null; then
               cat /tmp/milter.log
               exit 1
             fi
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",8899),1); s.close()' 2>/dev/null; then
+              milter_ready=true
+              break
+            fi
             sleep 1
           done
+          test "$milter_ready" = true
 
           postfix start
           for attempt in $(seq 1 30); do
