@@ -45,6 +45,30 @@ The selection repositories flush rotation updates but never commit them. By defa
 
 Do not change selector precedence, sanitization, template behavior or the default commit policy as part of adapter work. Any future change to these invariants requires explicit regression tests.
 
+## Reply signature placement
+
+Signature placement is performed by the transport adapter after the shared engine
+has selected and rendered the signature. It is deliberately separate from signature
+selection and template rendering.
+
+- Python adapters use `core/signature_placement.py` to recognise common plain-text
+  reply separators (English and German Outlook headers, "On … wrote:", "Am … schrieb:",
+  original-message separators and quoted `>` lines) and HTML quote containers
+  (Gmail/Yahoo quote wrappers, Outlook reply containers, Mozilla cite prefixes,
+  `blockquote` and related markers).
+- Stalwart uses this detector for both `text/plain` and `text/html` MIME parts.
+- The Rspamd Lua adapter already has native equivalents for its client-specific
+  splitter patterns and inserts before the earliest recognised boundary.
+- If no known boundary is found, adapters retain the safe end-of-body fallback.
+  Detection is heuristic: unknown client markup cannot be guaranteed, so the
+  implementation must never claim perfect quote-boundary recognition.
+- Signed/encrypted MIME content remains untouched according to the existing
+  adapter safety policy.
+
+This behaviour is covered by placement unit tests and Stalwart MIME-adapter tests.
+New adapters must implement the same placement contract rather than blindly
+appending after the complete conversation.
+
 ## Transport boundaries
 
 ### HTTP engine endpoint
