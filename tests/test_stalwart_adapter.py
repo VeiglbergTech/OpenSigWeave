@@ -1,5 +1,6 @@
 """Contract tests for the Stalwart MTA-hook adapter."""
 import unittest
+from quopri import decodestring
 
 from adapters.stalwart import build_stalwart_hook_response
 
@@ -323,6 +324,7 @@ class StalwartAdapterTests(unittest.TestCase):
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Viele Gruesse</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
+        body = decodestring(body).decode("utf-8")
         self.assertLess(body.index("Viele Gruesse"), body.index("Von: Max Mustermann"))
 
     def test_places_html_signature_before_gmail_quote_container(self):
@@ -335,6 +337,7 @@ class StalwartAdapterTests(unittest.TestCase):
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Viele Gruesse</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
+        body = decodestring(body).decode("utf-8")
         self.assertLess(body.index("Viele Gruesse"), body.index('class="gmail_quote"'))
 
     def test_places_signature_before_plain_blockquote_lines(self):
