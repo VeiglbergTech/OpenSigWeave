@@ -78,8 +78,8 @@ def _header_changes(original, parsed):
         new = [str(value) for value in parsed.get_all(name, [])]
         if old == new:
             continue
-        for index in range(len(old)):
-            changes.append(HeaderChange(name, None, index + 1))
+        for index in range(len(old), 0, -1):
+            changes.append(HeaderChange(name, None, index))
         for index, value in enumerate(new, start=1):
             changes.append(HeaderChange(name, value, index))
     return tuple(changes)
@@ -138,7 +138,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies):
         raise ValueError("MIME serializer returned an invalid message")
     return RewriteResult(new_body, _header_changes(headers, parsed), True)
 
-def fetch_signature(api_url, engine_api_key, sender, *, mode=None, timeout=5.0):
+def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_name=None, signature_code=None, timeout=5.0):
     """Call the existing versioned engine endpoint; selection remains centralized."""
     if not api_url.startswith("https://"):
         raise EngineRequestError("The engine URL must use HTTPS")
@@ -148,6 +148,10 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, timeout=5.0):
     headers = {"X-Engine-Key": engine_api_key, "Accept": "application/json"}
     if mode in VALID_MODES:
         headers["X-OpenSigWeave-Mode"] = mode
+    if isinstance(signature_name, str) and signature_name.strip():
+        headers["X-OpenSigWeave-Signature"] = signature_name.strip()
+    if isinstance(signature_code, str) and signature_code.strip():
+        headers["X-OpenSigWeave-Signature-Code"] = signature_code.strip()
     request = urllib.request.Request(url, headers=headers, method="GET")
     try:
         opener = urllib.request.build_opener(urllib.request.HTTPSHandler())
@@ -194,7 +198,7 @@ def run():
             self.sender = _sender_address(sender)
             self.authenticated_user = self.getsymval("{auth_authen}")
             self.headers = []
-            self.body = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
+            self.body_file = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
             self.body_size = 0
             return Milter.CONTINUE
         def header(self, field, value):
@@ -206,21 +210,44 @@ def run():
             self.body_size += len(chunk)
             if self.body_size > MAX_MESSAGE_BYTES:
                 return Milter.TEMPFAIL
-            self.body.write(chunk)
+            self.body_file.write(chunk)
             return Milter.CONTINUE
         def eom(self):
             try:
+                # Capture selector headers before removing all adapter control headers.
+                mode_values = [value.strip().upper() for name, value in self.headers
+                               if name.casefold() == "x-opensigweave-mode"]
+                signature_values = [value.strip() for name, value in self.headers
+                                    if name.casefold() == "x-opensigweave-signature"]
+                code_values = [value.strip() for name, value in self.headers
+                               if name.casefold() == "x-opensigweave-signature-code"]
+                mode = mode_values[0] if len(mode_values) == 1 and mode_values[0] in VALID_MODES else None
+                signature_name = signature_values[0] if len(signature_values) == 1 else None
+                signature_code = code_values[0] if len(code_values) == 1 else None
+
+                # Remove client-supplied control headers even when no signature is selected.
+                control_names = {}
+                for name, _value in self.headers:
+                    if name.casefold() in CONTROL_HEADERS:
+                        control_names.setdefault(name.casefold(), name)
+                for folded_name, original_name in control_names.items():
+                    indexes = [index for index, (name, _value) in enumerate(self.headers, start=1)
+                               if name.casefold() == folded_name]
+                    for index in reversed(indexes):
+                        self.chgheader(original_name, index, None)
+
                 # Postfix sender_login_maps remains responsible for send-as authorization.
                 if not self.authenticated_user or not self.sender:
                     return Milter.CONTINUE
-                self.body.seek(0)
-                original_body = self.body.read(MAX_MESSAGE_BYTES + 1)
+                self.body_file.seek(0)
+                original_body = self.body_file.read(MAX_MESSAGE_BYTES + 1)
                 if len(original_body) > MAX_MESSAGE_BYTES:
                     return Milter.TEMPFAIL
-                modes = [value.strip().upper() for name, value in self.headers
-                         if name.casefold() == "x-opensigweave-mode"]
-                mode = modes[0] if len(modes) == 1 and modes[0] in VALID_MODES else None
-                result = fetch_signature(api_url, api_key, self.sender, mode=mode, timeout=timeout)
+                result = fetch_signature(
+                    api_url, api_key, self.sender, mode=mode,
+                    signature_name=signature_name, signature_code=signature_code,
+                    timeout=timeout,
+                )
                 if not result["html"]:
                     return Milter.CONTINUE
                 rewritten = rewrite_message(
@@ -231,12 +258,6 @@ def run():
                     return Milter.CONTINUE
                 for change in rewritten.header_changes:
                     self.chgheader(change.name, change.index, change.value)
-                control_indexes = {}
-                for name, _value in self.headers:
-                    if name.casefold() in CONTROL_HEADERS:
-                        key = name.casefold()
-                        control_indexes[key] = control_indexes.get(key, 0) + 1
-                        self.chgheader(name, control_indexes[key], None)
                 self.addheader("X-OpenSigWeave-Injected", "true")
                 for offset in range(0, len(rewritten.body), BODY_REPLACEMENT_CHUNK):
                     self.replacebody(rewritten.body[offset:offset + BODY_REPLACEMENT_CHUNK])
@@ -246,7 +267,7 @@ def run():
                 return Milter.TEMPFAIL
             finally:
                 try:
-                    self.body.close()
+                    self.body_file.close()
                 except Exception:
                     pass
         def abort(self):
