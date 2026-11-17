@@ -68,7 +68,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "envelope": {"from": {"address": "alias@example.org"}},
             "message": {
                 "headers": [
-                    ["From", " forged@example.net\\r\\n"],
+                    ["From", " forged@example.net\r\n"],
                     ["x-opensigweave-mode", "professional"],
                     ["X-OpenSigWeave-Signature", "Sales"],
                     ["X-OpenSigWeave-Signature-Code", "a1b2"],
@@ -107,8 +107,8 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "envelope": {"from": {"address": "sender@example.org"}},
             "message": {
                 "headers": [
-                    ["From", " sender@example.org\\r\\n"],
-                    ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
+                    ["From", " sender@example.org\r\n"],
+                    ["Content-Type", " text/plain; charset=utf-8\r\n"],
                 ],
                 "contents": "Hello",
             },
@@ -143,12 +143,12 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "envelope": {"from": {"address": "sender@example.org"}},
             "message": {
                 "headers": [
-                    ["From", " sender@example.org\\r\\n"],
-                    ["Content-Type", ' multipart/signed; boundary="b1"; protocol="application/pgp-signature"\\r\\n'],
+                    ["From", " sender@example.org\r\n"],
+                    ["Content-Type", ' multipart/signed; boundary="b1"; protocol="application/pgp-signature"\r\n'],
                 ],
                 "contents": (
-                    "--b1\\r\\nContent-Type: text/plain\\r\\n\\r\\nHello\\r\\n"
-                    "--b1--\\r\\n"
+                    "--b1\r\nContent-Type: text/plain\r\n\r\nHello\r\n"
+                    "--b1--\r\n"
                 ),
             },
         }
@@ -179,8 +179,8 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "envelope": {"from": {"address": "sender@example.org"}},
             "message": {
                 "headers": [
-                    ["From", " sender@example.org\\rInjected: yes\\r\\n"],
-                    ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
+                    ["From", " sender@example.org\rInjected: yes\r\n"],
+                    ["Content-Type", " text/plain; charset=utf-8\r\n"],
                 ],
                 "contents": "Hello",
             },

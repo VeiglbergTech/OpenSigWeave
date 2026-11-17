@@ -39,11 +39,11 @@ The extraction preserves the existing decision order and persistence boundaries:
 5. Resolve explicit modes or evaluate persisted rules for automatic selection.
 6. Use the existing group and variant selection repositories; keep rotation state in the caller's database transaction.
 7. Sanitize stored HTML and nested group fragments before rendering; keep profile values autoescaped.
-8. Commit rotation changes only after successful rendering, as before.
+8. Keep rotation changes pending until rendering succeeds; an adapter may defer the commit until its final message mutation succeeds.
 
 The selection repositories flush rotation updates but never commit them. By default, the service commits only after the complete signature (including nested group fragments) has rendered successfully. Callers may pass `commit_selection=False` to keep rotation updates pending while an adapter performs its final message mutation. The Stalwart hook uses this mode and commits only when it returns a `replaceContents` modification; signed, malformed, already-injected or otherwise unchanged messages roll back the pending rotation. On an exception, the caller must roll back or close the session before reusing it. Direct service tests cover render-failure rollback and deferred commit ownership.
 
-Do not change selector precedence, sanitization, template behavior or commit timing as part of adapter work. Any future change to these invariants requires explicit regression tests.
+Do not change selector precedence, sanitization, template behavior or the default commit policy as part of adapter work. Any future change to these invariants requires explicit regression tests.
 
 ## Transport boundaries
 
