@@ -206,7 +206,11 @@ jobs:
 
           useradd --create-home testuser
           install -d -o testuser -g testuser -m 700 /tmp/delivered
+          postconf -e 'alias_database = lmdb:/etc/aliases'
+          postconf -e 'alias_maps = lmdb:/etc/aliases'
+          printf 'root: root\n' > /etc/aliases
           newaliases
+          test "$(postmap -q root lmdb:/etc/aliases)" = "root"
           cat > /tmp/capture_mail.py <<'PY'
           import os
           import sys
