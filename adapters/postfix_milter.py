@@ -150,7 +150,8 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, timeout=5.0):
         headers["X-OpenSigWeave-Mode"] = mode
     request = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler())
+        with opener.open(request, timeout=timeout) as response:
             if response.status != 200:
                 raise EngineRequestError(f"Engine returned HTTP {response.status}")
             raw = response.read(MAX_ENGINE_RESPONSE_BYTES + 1)
