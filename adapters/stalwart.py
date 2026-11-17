@@ -53,7 +53,8 @@ def _plain_signature(html: str) -> str:
 
 def _validate_headers(headers: Any) -> None:
     """Validate every header before any early-return path can accept the message."""
-    _validate_headers(headers)
+    if not isinstance(headers, list):
+        raise ValueError("Invalid Stalwart message headers")
     for item in headers:
         if (not isinstance(item, list) or len(item) != 2
                 or not isinstance(item[0], str) or not isinstance(item[1], str)
@@ -78,6 +79,7 @@ def _build_raw_message(headers: Any, contents: Any) -> bytes:
     ]
     return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
 
+
 def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[str, Any]) -> dict[str, Any]:
     """Translate a rendered OpenSigWeave signature into Stalwart MTA modifications."""
     context = payload.get("context")
@@ -90,8 +92,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
 
     modifications: list[dict[str, Any]] = []
     headers = message.get("headers")
-    if not isinstance(headers, list):
-        raise ValueError("Invalid Stalwart message headers")
+    _validate_headers(headers)
 
     # Remove OpenSigWeave control headers even when no signature is selected.
     seen_control_headers: dict[str, int] = {}
