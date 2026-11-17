@@ -73,7 +73,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         request = SimpleNamespace(json=AsyncMock(return_value=payload))
         with (
             patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
-            patch.object(main, "get_rspamd_signature", new=AsyncMock(return_value={"html": ""})) as engine,
+            patch.object(main, "get_engine_signature", new=AsyncMock(return_value={"html": ""})) as engine,
         ):
             response = asyncio.run(main.stalwart_mta_hook(
                 request, "bEaReR expected-token", self.db
@@ -303,7 +303,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -332,7 +332,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -363,7 +363,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -392,7 +392,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -423,7 +423,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -456,7 +456,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -701,7 +701,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.attribute_provider, "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -736,7 +736,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main, "get_identity_attributes",
             new=AsyncMock(return_value=IdentityAttributes(principal_id="idp-immutable:alice-42")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "alice@tags.example", Response(), x_engine_key=main.ENGINE_API_KEY, db=self.db,
             ))
         self.assertEqual(result["html"].count("Reusable footer"), 2)
@@ -777,7 +777,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_identity_attributes",
             new=AsyncMock(return_value=IdentityAttributes(principal_id="idp-immutable:user-42")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "alice@group.example",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -915,7 +915,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "get_attributes",
             new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
         ):
-            result = asyncio.run(main.get_rspamd_signature(
+            result = asyncio.run(main.get_engine_signature(
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
@@ -1024,7 +1024,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         }
         signature = {"html": "<p>Signature</p>", "inject_on_replies": False}
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
-            with patch.object(main, "get_rspamd_signature", new=AsyncMock(return_value=signature)):
+            with patch.object(main, "get_engine_signature", new=AsyncMock(return_value=signature)):
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
                     json=payload,
@@ -1039,7 +1039,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             "message": {"headers": [], "contents": "Hello"},
         }
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
-            with patch.object(main, "get_rspamd_signature", new=AsyncMock()) as engine:
+            with patch.object(main, "get_engine_signature", new=AsyncMock()) as engine:
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
                     json=payload,
@@ -1064,7 +1064,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         signature = {"html": "<p>HTTP route signature</p>", "inject_on_replies": False}
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
             with patch.object(
-                main, "get_rspamd_signature", new=AsyncMock(return_value=signature)
+                main, "get_engine_signature", new=AsyncMock(return_value=signature)
             ) as engine:
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
