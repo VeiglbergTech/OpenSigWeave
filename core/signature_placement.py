@@ -5,14 +5,14 @@ import re
 from html.parser import HTMLParser
 
 _PLAIN = (
-    re.compile(r"(?im)^\s*[-_]{2,}\s*(?:original message|forwarded message)\s*[-_]{2,}\s*$"),
-    re.compile(r"(?im)^\s*On .{1,240}\bwrote:\s*$"),
-    re.compile(r"(?im)^\s*Am .{1,240}\bschrieb .{1,160}:\s*$"),
-    re.compile(r"(?im)^\s*Le .{1,240}\bécrit\s*:\s*$"),
-    re.compile(r"(?im)^\s*El .{1,240}\bescribió:\s*$"),
-    re.compile(r"(?im)^\s*(?:From|Von):\s*.+\n(?:Sent|Gesendet|Date|Datum):\s*.+\n(?:To|An):\s*.+"),
-    re.compile(r"(?im)^\s*_{5,}\s*\n\s*(?:From|Von):\s*.+"),
-    re.compile(r"(?m)^\s*>"),
+    re.compile(r"(?im)^[ \t]*[-_]{2,}\s*(?:original message|forwarded message)\s*[-_]{2,}\s*$"),
+    re.compile(r"(?im)^[ \t]*On .{1,240}\bwrote:\s*$"),
+    re.compile(r"(?im)^[ \t]*Am .{1,240}\bschrieb .{1,160}:\s*$"),
+    re.compile(r"(?im)^[ \t]*Le .{1,240}\bécrit\s*:\s*$"),
+    re.compile(r"(?im)^[ \t]*El .{1,240}\bescribió:\s*$"),
+    re.compile(r"(?im)^[ \t]*(?:From|Von):\s*.+\n(?:Sent|Gesendet|Date|Datum):\s*.+\n(?:To|An):\s*.+"),
+    re.compile(r"(?im)^[ \t]*_{5,}\s*\n\s*(?:From|Von):\s*.+"),
+    re.compile(r"(?m)^[ \t]*>"),
 )
 _HTML = (
     re.compile(r'''(?is)<div\b[^>]*class\s*=\s*['"][^'"]*gmail_quote'''),
