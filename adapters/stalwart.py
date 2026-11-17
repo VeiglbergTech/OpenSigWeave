@@ -51,10 +51,10 @@ def _plain_signature(html: str) -> str:
     return parser.text()
 
 
-def _validate_headers(headers: Any) -> None:
-    """Validate every header before any early-return path can accept the message."""
-    if not isinstance(headers, list):
-        raise ValueError("Invalid Stalwart message headers")
+def _build_raw_message(headers: Any, contents: Any) -> bytes:
+    if not isinstance(headers, list) or not isinstance(contents, str):
+        raise ValueError("Invalid Stalwart message structure")
+    lines: list[bytes] = []
     for item in headers:
         if (not isinstance(item, list) or len(item) != 2
                 or not isinstance(item[0], str) or not isinstance(item[1], str)
@@ -63,20 +63,9 @@ def _validate_headers(headers: Any) -> None:
         value = item[1]
         # Stalwart documents raw values with a leading space and CRLF. Reject
         # embedded new header lines rather than accepting header injection.
-        if (re.search(r"\r\n(?![ \t])", value.rstrip("\r\n"))
-                or "\n" in value.replace("\r\n", "")
-                or "\r" in value.replace("\r\n", "")):
+        if re.search(r"\r\n(?![ \t])", value.rstrip("\r\n")) or "\n" in value.replace("\r\n", ""):
             raise ValueError("Invalid Stalwart header value")
-
-
-def _build_raw_message(headers: Any, contents: Any) -> bytes:
-    if not isinstance(contents, str):
-        raise ValueError("Invalid Stalwart message structure")
-    _validate_headers(headers)
-    lines = [
-        (item[0] + ":" + item[1].rstrip("\r\n")).encode("utf-8")
-        for item in headers
-    ]
+        lines.append((item[0] + ":" + value.rstrip("\r\n")).encode("utf-8"))
     return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
 
 
@@ -92,7 +81,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
 
     modifications: list[dict[str, Any]] = []
     headers = message.get("headers")
-    _validate_headers(headers)
+    if not isinstance(headers, list):
+        raise ValueError("Invalid Stalwart message headers")
 
     # Remove OpenSigWeave control headers even when no signature is selected.
     seen_control_headers: dict[str, int] = {}
@@ -113,32 +103,17 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     if not isinstance(html_signature, str) or not html_signature:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
+    if any(not isinstance(item, list) or len(item) != 2 or not isinstance(item[0], str)
+           for item in headers):
+        raise ValueError("Invalid Stalwart message headers")
+
     try:
         raw = _build_raw_message(headers, message.get("contents"))
     except (UnicodeEncodeError, ValueError):
         raise
     parsed = BytesParser(policy=policy.default).parsebytes(raw)
 
-    def iter_message_parts(part):
-        # Inspect and edit only the outer message. Attached files and embedded
-        # forwarded messages must not affect the outer message's MIME policy.
-        if part.get_content_type().lower() == "message/rfc822":
-            return
-        if part.get_content_disposition() == "attachment" or part.get_filename():
-            return
-        yield part
-        if part.is_multipart():
-            for child in part.iter_parts():
-                yield from iter_message_parts(child)
-
-    # The stdlib parser records malformed multipart boundaries and other
-    # structural defects. Do not reserialize a message whose outer MIME tree
-    # could not be parsed reliably.
-    if any(part.defects for part in iter_message_parts(parsed)):
-        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-
-    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED
-           for part in iter_message_parts(parsed)):
+    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in parsed.walk()):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     header_names = [item[0].casefold() for item in headers]
@@ -153,9 +128,10 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
                              for name in ("Content-Type", "Content-Transfer-Encoding", "MIME-Version")}
     plain = _plain_signature(html_signature)
     changed = False
-
-    for part in iter_message_parts(parsed):
-        if part.is_multipart():
+    for part in parsed.walk():
+        if part.is_multipart() or part.get_content_disposition() == "attachment":
+            continue
+        if part.get_filename():
             continue
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
