@@ -71,7 +71,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
             Path(__file__).resolve().parents[1] / "core" / "engine_service.py"
         ).read_text(encoding="utf-8")
 
-        self.assertNotRegex(source, r"(?m)^\\s*(?:from|import)\\s+fastapi")
+        self.assertNotRegex(source, r"(?m)^\s*(?:from|import)\s+fastapi")
         self.assertNotIn("HTTPException", source)
         self.assertNotIn("Response", source)
         self.assertNotIn("Request", source)
