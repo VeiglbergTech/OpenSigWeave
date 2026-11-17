@@ -1954,7 +1954,13 @@ async def stalwart_mta_hook(
     def header_values(name: str) -> list[str]:
         values = []
         for item in message["headers"]:
-            if (isinstance(item, list) and len(item) == 2\n                    and isinstance(item[0], str) and item[0].casefold() == name.casefold()\n                    and isinstance(item[1], str)):
+            if (
+                isinstance(item, list)
+                and len(item) == 2
+                and isinstance(item[0], str)
+                and item[0].casefold() == name.casefold()
+                and isinstance(item[1], str)
+            ):
                 values.append(item[1].strip())
         return values
 
