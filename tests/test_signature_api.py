@@ -29,6 +29,7 @@ from itsdangerous import TimestampSigner
 
 import main
 from core.modes import SignatureMode
+from core.engine_contract import SignatureEngineResult
 from database import Base
 from signature_storage import SignatureFileStore
 from identity.attributes import IdentityAttributes
@@ -78,7 +79,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         request = SimpleNamespace(json=AsyncMock(return_value=payload))
         with (
             patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "expected-token"}),
-            patch.object(main, "get_engine_signature", new=AsyncMock(return_value={"html": ""})) as engine,
+            patch.object(main, "resolve_signature_engine", new=AsyncMock(return_value=SignatureEngineResult("", False, True, False))) as engine,
         ):
             response = asyncio.run(main.stalwart_mta_hook(
                 request, "bEaReR expected-token", self.db
@@ -92,12 +93,12 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature-Code", "index": 0},
             ],
         )
-        self.assertEqual(engine.await_args.args[0], "alias@example.org")
-        self.assertEqual(engine.await_args.args[2], main.ENGINE_API_KEY)
-        self.assertEqual(engine.await_args.args[3], "professional")
-        self.assertEqual(engine.await_args.args[4], "Sales")
-        self.assertEqual(engine.await_args.args[5], "a1b2")
-        self.assertIs(engine.await_args.args[6], self.db)
+        self.assertIs(engine.await_args.args[0], self.db)
+        engine_request = engine.await_args.args[1]
+        self.assertEqual(engine_request.sender_email, "alias@example.org")
+        self.assertEqual(engine_request.mode, "PROFESSIONAL")
+        self.assertEqual(engine_request.signature_name, "Sales")
+        self.assertEqual(engine_request.signature_code, "a1b2")
 
     def test_engine_api_exposes_versioned_adapter_neutral_route_and_legacy_rspamd_alias(self):
         routes = {
@@ -1042,7 +1043,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         }
         signature = {"html": "<p>Signature</p>", "inject_on_replies": False}
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
-            with patch.object(main, "get_engine_signature", new=AsyncMock(return_value=signature)):
+            with patch.object(main, "resolve_signature_engine", new=AsyncMock(return_value=SignatureEngineResult(signature["html"], False, True, False))):
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
                     json=payload,
@@ -1057,7 +1058,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             "message": {"headers": [], "contents": "Hello"},
         }
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
-            with patch.object(main, "get_engine_signature", new=AsyncMock()) as engine:
+            with patch.object(main, "resolve_signature_engine", new=AsyncMock()) as engine:
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
                     json=payload,
@@ -1082,7 +1083,7 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         signature = {"html": "<p>HTTP route signature</p>", "inject_on_replies": False}
         with patch.dict(os.environ, {"STALWART_HOOK_TOKEN": "route-test-token"}):
             with patch.object(
-                main, "get_engine_signature", new=AsyncMock(return_value=signature)
+                main, "resolve_signature_engine", new=AsyncMock(return_value=SignatureEngineResult(signature["html"], False, True, False))
             ) as engine:
                 response = self.client.post(
                     "/api/v1/adapters/stalwart/mta-hook",
