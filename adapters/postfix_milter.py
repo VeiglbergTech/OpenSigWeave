@@ -21,6 +21,12 @@ HEADER_NAME = re.compile(r"^[!#$%&'*+.^_|~0-9A-Za-z-]+$")
 class EngineRequestError(RuntimeError):
     pass
 
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Never forward the engine API key through an HTTP redirect."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
 @dataclass(frozen=True)
 class HeaderChange:
     name: str
@@ -154,7 +160,7 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_nam
         headers["X-OpenSigWeave-Signature-Code"] = signature_code.strip()
     request = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        opener = urllib.request.build_opener(urllib.request.HTTPSHandler())
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(), _NoRedirectHandler())
         with opener.open(request, timeout=timeout) as response:
             if response.status != 200:
                 raise EngineRequestError(f"Engine returned HTTP {response.status}")
