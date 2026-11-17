@@ -286,6 +286,40 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(state.principal_id, "idp-immutable:ada-1")
         self.assertEqual(state.last_signature_id, signature.id)
 
+    def test_adapter_can_defer_rotation_commit_until_message_is_accepted(self):
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        signature = self._add_versioned_signature(
+            "Deferred professional", "PROFESSIONAL", "<p>Deferred signature</p>"
+        )
+        self.db.add(SignatureVariantDB(
+            id=uuid.uuid4().hex,
+            signature_id=signature.id,
+            pool_name="PROFESSIONAL",
+            weight=1,
+            is_enabled=True,
+        ))
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>Deferred signature</p>"
+        service, _, _ = self._service(file_store=store)
+        with unittest.mock.patch.object(
+            self.db, "commit", wraps=self.db.commit
+        ) as commit:
+            result = asyncio.run(
+                service.resolve(
+                    self.db,
+                    normalize_engine_request("ada@example.org", "PROFESSIONAL"),
+                    commit_selection=False,
+                )
+            )
+
+        self.assertEqual(result.html, "<p>Deferred signature</p>")
+        commit.assert_not_called()
+        self.assertEqual(self.db.query(SelectionStateDB).count(), 1)
+        self.db.rollback()
+        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
+
     def test_failed_variant_render_does_not_commit_rotation_state(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         signature = self._add_versioned_signature(
