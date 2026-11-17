@@ -64,7 +64,7 @@ Every adapter implementation must document and test:
 | Adapter | Integration mechanism | Status |
 |---|---|---|
 | Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
-| Postfix | Milter or dedicated content-filter service | Planned |
+| Postfix | Milter sidecar using the versioned engine HTTP API | Design documented in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md); implementation pending |
 | Stalwart | Native SMTP/MTA hook at DATA | Experimental adapter implemented; MIME and live SMTP validation still required |
 | Exim | ACL/system-filter integration or external content filter | Planned |
 | Haraka | Plugin | Planned |
