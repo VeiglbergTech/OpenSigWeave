@@ -961,8 +961,8 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
             "envelope": {"from": {"address": "sender@example.org"}},
             "message": {
                 "headers": [
-                    ["From", " sender@example.org\\r\\n"],
-                    ["Content-Type", " text/html; charset=utf-8\\r\\n"],
+                    ["From", " sender@example.org\r\n"],
+                    ["Content-Type", " text/html; charset=utf-8\r\n"],
                 ],
                 "contents": "<html><body>Hello</body></html>",
             },
