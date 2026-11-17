@@ -83,7 +83,15 @@ class SignatureCatalogApiTests(unittest.TestCase):
             response = asyncio.run(main.stalwart_mta_hook(
                 request, "bEaReR expected-token", self.db
             ))
-        self.assertEqual(response, {"action": "accept"})
+        self.assertEqual(response["action"], "accept")
+        self.assertEqual(
+            response["modifications"],
+            [
+                {"type": "deleteHeader", "name": "x-opensigweave-mode", "index": 0},
+                {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 0},
+                {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature-Code", "index": 0},
+            ],
+        )
         self.assertEqual(engine.await_args.args[0], "alias@example.org")
         self.assertEqual(engine.await_args.args[2], main.ENGINE_API_KEY)
         self.assertEqual(engine.await_args.args[3], "professional")
