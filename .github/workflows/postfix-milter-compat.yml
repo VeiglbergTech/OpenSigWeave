@@ -173,6 +173,7 @@ jobs:
           postconf -e 'smtpd_sasl_auth_enable = yes'
           postconf -e 'smtpd_sasl_type = cyrus'
           postconf -e 'smtpd_sasl_path = smtpd'
+          postconf -e 'cyrus_sasl_config_path = /etc/sasl2'
           postconf -e 'smtpd_sasl_security_options = noanonymous'
           postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
           postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
