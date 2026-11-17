@@ -46,6 +46,7 @@ from core.modes import SignatureMode, resolve_mode
 from core.slug import slugify
 from core.rules import RuleContext, evaluate_rules
 from core.rule_repository import load_signature_rules
+from core.engine_contract import normalize_engine_request
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
@@ -1666,9 +1667,16 @@ async def get_engine_signature(
     if not ENGINE_API_KEY or not hmac.compare_digest(x_engine_key or "", ENGINE_API_KEY):
         raise HTTPException(status_code=401, detail="Unauthorized Engine Request")
 
-    normalized_email = email.strip().casefold()
-    if normalized_email.count("@") != 1 or any(ch.isspace() for ch in normalized_email):
-        raise HTTPException(status_code=400, detail="Invalid sender email")
+    try:
+        engine_request = normalize_engine_request(
+            email, x_signature_mode, x_signature_name, x_signature_code
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    normalized_email = engine_request.sender_email
+    x_signature_mode = engine_request.mode
+    x_signature_name = engine_request.signature_name
+    x_signature_code = engine_request.signature_code
     domain_part = normalized_email.rsplit("@", 1)[-1]
     domain_obj = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_part).first()
     empty_response = {
@@ -1691,11 +1699,9 @@ async def get_engine_signature(
     selected_group_id = None
     selected_group_signature = None
     signature_id = None
-    marker_requested = isinstance(x_signature_name, str) or isinstance(x_signature_code, str)
-    mode_candidate = x_signature_mode.strip().upper() if isinstance(x_signature_mode, str) else ""
-    explicit_mode = mode_candidate in {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
+    marker_requested = engine_request.marker_requested
+    explicit_mode = engine_request.explicit_mode
     # Invalid mode headers are not fatal: continue with a body marker or automatic rules.
-    x_signature_mode = mode_candidate if explicit_mode else None
     if marker_requested and not explicit_mode:
         # A text marker is a selector, not an authentication mechanism. It is
         # accepted only when its four-character SHA-256 check matches exactly.
