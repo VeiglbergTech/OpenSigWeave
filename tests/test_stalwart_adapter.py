@@ -358,7 +358,7 @@ class StalwartAdapterTests(unittest.TestCase):
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signatur</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
-        self.assertTrue(body.endswith("Einfacher neuer Text ohne Zitat\n\nSignatur"))
+        self.assertTrue(decodestring(body).decode("utf-8").rstrip("\r\n").endswith("Einfacher neuer Text ohne Zitat\n\nSignatur"))
 
 
 
