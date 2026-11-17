@@ -420,7 +420,11 @@ jobs:
                   messages = [BytesParser(policy=policy.default).parsebytes(open(p, 'rb').read()) for p in paths]
                   break
               time.sleep(0.5)
-          assert len(messages) == 2, f'Expected two delivered messages, got {len(messages)}'
+          if len(messages) != 2:
+              import os, subprocess
+              queue = subprocess.run(['postqueue', '-p'], capture_output=True, text=True).stdout
+              log = open('/var/log/maillog').read() if os.path.exists('/var/log/maillog') else 'no /var/log/maillog'
+              raise AssertionError(f'Expected two delivered messages, got {len(messages)}; queue={queue}; maillog={log}; delivered={glob.glob("/tmp/delivered/*")}')
           injected = [m for m in messages if m.get('X-OpenSigWeave-Injected') == 'true']
           unchanged = [m for m in messages if m.get('X-OpenSigWeave-Injected') is None]
           assert len(injected) == 1 and len(unchanged) == 1, messages
