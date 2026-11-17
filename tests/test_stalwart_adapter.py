@@ -315,10 +315,10 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_places_plain_signature_before_outlook_quoted_history(self):
         payload = request(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=utf-8\\r\\n"]],
-            "Hallo Max,\\n\\ndanke für deine Nachricht.\\n\\n"
-            "Von: Max Mustermann\\nGesendet: Montag\\nAn: Ada\\nBetreff: Frage\\n\\n"
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"]],
+            "Hallo Max,\n\ndanke für deine Nachricht.\n\n"
+            "Von: Max Mustermann\nGesendet: Montag\nAn: Ada\nBetreff: Frage\n\n"
             "Hallo, kannst du helfen?",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Viele Grüße</p>"})
@@ -327,8 +327,8 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_places_html_signature_before_gmail_quote_container(self):
         payload = request(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/html; charset=utf-8\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/html; charset=utf-8\r\n"]],
             '<html><body><div>Hallo Max,</div><div>danke für deine Nachricht.</div>'
             '<div class="gmail_quote">On Monday Max wrote:<blockquote>Old message</blockquote></div>'
             '</body></html>',
@@ -339,9 +339,9 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_places_signature_before_plain_blockquote_lines(self):
         payload = request(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=utf-8\\r\\n"]],
-            "Antworttext\\n\\n> Alte Nachricht\\n> Noch eine Zeile",
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"]],
+            "Antworttext\n\n> Alte Nachricht\n> Noch eine Zeile",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signatur</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
@@ -349,13 +349,13 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_falls_back_to_end_without_recognised_quote_boundary(self):
         payload = request(
-            [["From", " sender@example.org\\r\\n"],
-             ["Content-Type", " text/plain; charset=utf-8\\r\\n"]],
+            [["From", " sender@example.org\r\n"],
+             ["Content-Type", " text/plain; charset=utf-8\r\n"]],
             "Einfacher neuer Text ohne Zitat",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signatur</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
-        self.assertTrue(body.endswith("Einfacher neuer Text ohne Zitat\\n\\nSignatur"))
+        self.assertTrue(body.endswith("Einfacher neuer Text ohne Zitat\n\nSignatur"))
 
 
 
