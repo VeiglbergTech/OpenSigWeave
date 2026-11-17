@@ -1,6 +1,7 @@
 """Direct tests for the framework-independent signature engine service."""
 
 import asyncio
+import hashlib
 import uuid
 import unittest
 from pathlib import Path
@@ -23,6 +24,7 @@ from models import (
     SignatureRuleConditionDB,
     SignatureRuleDB,
     SignatureVariantDB,
+    SelectionStateDB,
     SignatureVersionDB,
     UserOverrideDB,
 )
@@ -133,7 +135,6 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(result.html, "<p>Professional signature</p>")
         store.read.assert_called_once()
         resolver.assert_awaited_once()
-        from models import SelectionStateDB
         state = self.db.query(SelectionStateDB).one()
         self.assertEqual(state.sender_email, "ada@example.org")
         self.assertEqual(state.last_variant_id, variant.id)
@@ -148,7 +149,6 @@ class SignatureEngineServiceTests(unittest.TestCase):
         store = Mock()
         store.read.return_value = "<p>Sales signature</p>"
         service, resolver, _ = self._service(file_store=store)
-        import hashlib
         code = hashlib.sha256(b"sales").hexdigest()[:4]
         result = asyncio.run(
             service.resolve(
@@ -238,7 +238,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result.html, "<p>Rule selected</p>")
-        state = self.db.query(__import__("models").SelectionStateDB).one()
+        state = self.db.query(SelectionStateDB).one()
         self.assertEqual(state.last_variant_id, variant.id)
 
     def test_group_rule_selects_signature_and_persists_rotation_state(self):
