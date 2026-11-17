@@ -377,6 +377,7 @@ jobs:
               output.write(sys.stdin.buffer.read())
           PY
           postfix check
+          export PYTHONPATH="$PWD"
           python3 tests/postfix_milter_e2e_server.py >/tmp/opensigweave-milter.log 2>&1 &
           MILTER_PID=$!
           cleanup() { kill "$MILTER_PID" 2>/dev/null || true; postfix stop 2>/dev/null || true; }
