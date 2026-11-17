@@ -112,3 +112,106 @@ jobs:
             echo "Unresolved native library dependency"
             exit 1
           fi
+
+  postfix-protocol:
+    name: Verify real Postfix Milter protocol exchange
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    timeout-minutes: 10
+    steps:
+      - name: Install Postfix and PyMilter
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y epel-release
+          dnf install -y postfix python3 python3-pymilter
+      - name: Run disposable Postfix SMTP transaction through a real Milter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/probe_milter.py <<'PY'
+          import Milter
+
+          class ProbeMilter(Milter.Base):
+              def envfrom(self, sender, *args):
+                  print(f"CALLBACK_ENVFROM:{sender}", flush=True)
+                  return Milter.CONTINUE
+
+              def header(self, field, value):
+                  print(f"CALLBACK_HEADER:{field}", flush=True)
+                  return Milter.CONTINUE
+
+              def body(self, chunk):
+                  print(f"CALLBACK_BODY:{len(chunk)}", flush=True)
+                  return Milter.CONTINUE
+
+              def eom(self):
+                  self.addheader("X-OpenSigWeave-CI", "real-postfix-milter-ok")
+                  print("CALLBACK_EOM", flush=True)
+                  return Milter.CONTINUE
+
+          Milter.factory = ProbeMilter
+          Milter.set_flags(Milter.ADDHDRS)
+          Milter.runmilter("opensigweave-ci", "inet:8899@127.0.0.1", 30)
+          PY
+
+          postconf -e 'myhostname = localhost.localdomain'
+          postconf -e 'mydestination = localhost, localhost.localdomain'
+          postconf -e 'inet_interfaces = 127.0.0.1'
+          postconf -e 'inet_protocols = ipv4'
+          postconf -e 'mynetworks = 127.0.0.0/8'
+          postconf -e 'smtpd_relay_restrictions = permit_mynetworks,reject_unauth_destination'
+          postconf -e 'smtpd_milters = inet:127.0.0.1:8899'
+          postconf -e 'milter_protocol = 6'
+          postconf -e 'milter_default_action = tempfail'
+          postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          postfix check
+
+          python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
+          MILTER_PID=$!
+          cleanup() {
+            kill "$MILTER_PID" 2>/dev/null || true
+            postfix stop 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            if grep -q 'listening' /tmp/milter.log 2>/dev/null; then break; fi
+            if ! kill -0 "$MILTER_PID" 2>/dev/null; then
+              cat /tmp/milter.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          postfix start
+          for attempt in $(seq 1 30); do
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",25),1); s.close()' 2>/dev/null; then break; fi
+            sleep 1
+          done
+
+          python3 - <<'PY'
+          import smtplib
+          from email.message import EmailMessage
+
+          message = EmailMessage()
+          message["From"] = "sender@example.org"
+          message["To"] = "root@localhost"
+          message["Subject"] = "OpenSigWeave Milter protocol smoke test"
+          message.set_content("Protocol callback test")
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.send_message(message)
+          print("SMTP transaction accepted by Postfix")
+          PY
+
+          for attempt in $(seq 1 20); do
+            if grep -q 'CALLBACK_EOM' /tmp/milter.log; then break; fi
+            sleep 0.5
+          done
+          grep -q 'CALLBACK_ENVFROM:<sender@example.org>' /tmp/milter.log
+          grep -q 'CALLBACK_HEADER:Subject' /tmp/milter.log
+          grep -q 'CALLBACK_BODY:' /tmp/milter.log
+          grep -q 'CALLBACK_EOM' /tmp/milter.log
+          cat /tmp/milter.log
+          echo "Real Postfix-to-PyMilter SMTP protocol exchange: OK"
