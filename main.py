@@ -25,7 +25,6 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
-from markupsafe import Markup
 
 load_dotenv()
 
@@ -34,19 +33,16 @@ from database import get_db, SessionLocal
 from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB
 from rate_limiter import RateLimitMiddleware
 
-from signature_renderer import render_signature_template, prepare_group_placeholders, strip_group_placeholders
+from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB
-from core.selection_repository import select_and_record_variant
-from core.group_selection_repository import get_group_preview_signature, select_and_record_group_signature
-from core.modes import SignatureMode, resolve_mode
+from core.group_selection_repository import get_group_preview_signature
+from core.modes import SignatureMode
 from core.slug import slugify
-from core.rules import RuleContext, evaluate_rules
-from core.rule_repository import load_signature_rules
-from core.engine_contract import SignatureEngineError, SignatureEngineResult, normalize_engine_request
+from core.engine_contract import SignatureEngineError, normalize_engine_request
 from core.engine_service import SignatureEngineService
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
