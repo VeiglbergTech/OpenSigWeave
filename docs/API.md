@@ -139,6 +139,14 @@ The shared response shape is JSON:
 
 The endpoint is deliberately transport-neutral: it does not parse or mutate RFC 5322/MIME messages, inspect a mail-server queue, or decide where DKIM signing occurs. The adapter owns those responsibilities and MUST preserve message structure, enforce sender authorization, avoid duplicate insertion and run before DKIM signing.
 
+## Stalwart MTA hook endpoint (experimental)
+
+`POST /api/v1/adapters/stalwart/mta-hook`
+
+Stalwart calls this endpoint at the SMTP DATA stage. Authenticate requests with `Authorization: Bearer <STALWART_HOOK_TOKEN>`; configure the token as an environment variable and do not store it in tracked configuration. The endpoint ignores unauthenticated sessions and never injects signatures into unauthenticated inbound mail. The envelope sender is taken from Stalwart's trusted SMTP envelope, not from the `From` message header. Stalwart must enforce authenticated sender/alias authorization independently.
+
+The adapter uses the shared signature engine and returns Stalwart's `accept` action with optional `replaceContents`, `addHeader` and `deleteHeader` modifications. It currently supports parser-based text/plain and text/html MIME part updates, including multipart alternatives. Signed/encrypted messages and attachments are left unchanged. This integration is experimental; see `docs/ADAPTERS.md` for limitations and release gates.
+
 ## Rspamd engine endpoint
 
 `GET /api/signature/{email}` (legacy path; new adapters use `/api/v1/engine/signatures/{email}`)
