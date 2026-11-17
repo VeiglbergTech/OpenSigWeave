@@ -321,9 +321,9 @@ class StalwartAdapterTests(unittest.TestCase):
             "Von: Max Mustermann\nGesendet: Montag\nAn: Ada\nBetreff: Frage\n\n"
             "Hallo, kannst du helfen?",
         )
-        result = build_stalwart_hook_response(payload, {"html": "<p>Viele Grüße</p>"})
+        result = build_stalwart_hook_response(payload, {"html": "<p>Viele Gruesse</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
-        self.assertLess(body.index("Viele Grüße"), body.index("Von: Max Mustermann"))
+        self.assertLess(body.index("Viele Gruesse"), body.index("Von: Max Mustermann"))
 
     def test_places_html_signature_before_gmail_quote_container(self):
         payload = request(
@@ -333,9 +333,9 @@ class StalwartAdapterTests(unittest.TestCase):
             '<div class="gmail_quote">On Monday Max wrote:<blockquote>Old message</blockquote></div>'
             '</body></html>',
         )
-        result = build_stalwart_hook_response(payload, {"html": "<p>Viele Grüße</p>"})
+        result = build_stalwart_hook_response(payload, {"html": "<p>Viele Gruesse</p>"})
         body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
-        self.assertLess(body.index("Viele Grüße"), body.index('class="gmail_quote"'))
+        self.assertLess(body.index("Viele Gruesse"), body.index('class="gmail_quote"'))
 
     def test_places_signature_before_plain_blockquote_lines(self):
         payload = request(
