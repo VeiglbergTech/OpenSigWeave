@@ -40,6 +40,63 @@ jobs:
           print(f"Native extension: {milter.__file__}")
           print(f"Python API module: {Milter.__file__}")
           PY
+      - name: Exercise PyMilter callback and mutation API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import Milter
+
+          class FakeContext:
+              def __init__(self):
+                  self.replacements = []
+
+              def getsymval(self, name):
+                  return {"{auth_authen}": "sender@example.org"}.get(name)
+
+              def replacebody(self, chunk):
+                  self.replacements.append(chunk)
+
+          class Probe(Milter.Base):
+              def __init__(self):
+                  self.sender = None
+                  self.headers = []
+                  self.body_chunks = []
+
+              def envfrom(self, sender, *args):
+                  self.sender = sender
+                  return Milter.CONTINUE
+
+              def header(self, field, value):
+                  self.headers.append((field, value))
+                  return Milter.CONTINUE
+
+              def body(self, chunk):
+                  self.body_chunks.append(chunk)
+                  return Milter.CONTINUE
+
+              def eom(self):
+                  self.replacebody(b"rewritten body")
+                  return Milter.CONTINUE
+
+          probe = Probe()
+          context = FakeContext()
+          probe._setctx(context)
+
+          assert probe.envfrom("<sender@example.org>") == Milter.CONTINUE
+          assert probe.sender == "<sender@example.org>"
+          assert probe.getsymval("{auth_authen}") == "sender@example.org"
+          assert probe.header("Content-Type", " text/plain") == Milter.CONTINUE
+          assert probe.body(b"original body") == Milter.CONTINUE
+          assert probe.eom() == Milter.CONTINUE
+          assert context.replacements == [b"rewritten body"]
+
+          print("Envelope sender callback: OK")
+          print("SASL macro lookup: OK")
+          print("Header callback: OK")
+          print("Body callback: OK")
+          print("End-of-message body replacement API: OK")
+          PY
       - name: Verify native libmilter linkage
         shell: bash
         run: |
