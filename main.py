@@ -1663,10 +1663,15 @@ def _signature_engine_service() -> SignatureEngineService:
 
 
 async def resolve_signature_engine(
-    db: Session, engine_request: SignatureEngineRequest
+    db: Session,
+    engine_request: SignatureEngineRequest,
+    *,
+    commit_selection: bool = True,
 ) -> SignatureEngineResult:
     """Resolve a normalized request through the single shared engine service."""
-    return await _signature_engine_service().resolve(db, engine_request)
+    return await _signature_engine_service().resolve(
+        db, engine_request, commit_selection=commit_selection
+    )
 
 
 _ENGINE_ERROR_HTTP_STATUS = {
@@ -1785,12 +1790,31 @@ async def stalwart_mta_hook(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     try:
-        engine_result = await resolve_signature_engine(db, engine_request)
+        # The adapter may still decline to modify this MIME message (for example,
+        # signed mail or a reply excluded by policy). Keep rotation updates pending
+        # until the adapter confirms that it will replace the message body.
+        engine_result = await resolve_signature_engine(
+            db, engine_request, commit_selection=False
+        )
     except SignatureEngineError as exc:
+        db.rollback()
         raise _engine_http_exception(exc)
 
     try:
-        return build_stalwart_hook_response(payload, engine_result.to_payload())
+        hook_response = build_stalwart_hook_response(
+            payload, engine_result.to_payload()
+        )
     except (TypeError, ValueError):
+        db.rollback()
         logger.warning("Rejected malformed Stalwart MTA hook message")
         raise HTTPException(status_code=400, detail="Invalid Stalwart message structure")
+
+    modifications = hook_response.get("modifications", [])
+    if any(
+        isinstance(item, dict) and item.get("type") == "replaceContents"
+        for item in modifications
+    ):
+        db.commit()
+    else:
+        db.rollback()
+    return hook_response
