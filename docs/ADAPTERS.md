@@ -1,0 +1,80 @@
+# OpenSigWeave adapter architecture
+
+**Status:** Initial adapter contract, development preview  
+**Scope:** Mail-server integration boundary; this document does not claim that planned adapters are implemented.
+
+## Design rule
+
+OpenSigWeave core owns signature catalog, identity resolution, policy/rules, variant and group selection, sanitization and HTML rendering. Adapters own mail-server-specific event handling, authenticated sender attribution, MIME parsing/mutation, duplicate prevention, retry/failure policy and placement before DKIM signing.
+
+No adapter may duplicate signature-selection or template-rendering logic. No adapter may bypass sender authorization performed by the mail platform.
+
+## Versioned engine contract
+
+New adapters MUST call:
+
+`GET /api/v1/engine/signatures/{url-encoded-envelope-sender}`
+
+Required header:
+
+- `X-Engine-Key: <engine API key>`
+
+Optional selection headers:
+
+- `X-OpenSigWeave-Mode: AUTO | PROFESSIONAL | INTERNAL | NONE`
+- `X-OpenSigWeave-Signature: <signature name>`
+- `X-OpenSigWeave-Signature-Code: <four-character selector checksum>`
+
+The endpoint returns `Cache-Control: no-store, private` and JSON:
+
+```json
+{
+  "html": "<p>Rendered signature</p>",
+  "inject_on_replies": false,
+  "trim_whitespace": true,
+  "strip_device_signatures": false
+}
+```
+
+An empty `html` means do not inject a signature. HTTP 401 means adapter credentials are invalid; 400 means malformed sender input; 422 means a stored template cannot be rendered; 503 means required signature assets are unavailable. Adapters must not interpret API errors as an empty signature: they must apply their explicitly configured fail-open/fail-closed policy and emit an operational log/metric.
+
+The legacy `GET /api/signature/{email}` endpoint remains an alias for existing Rspamd installations. New adapters MUST use the versioned path.
+
+## Adapter lifecycle
+
+Every adapter implementation must document and test:
+
+1. **Identity:** obtain the SMTP envelope sender from the trusted mail transaction, not an untrusted message header.
+2. **Authorization:** verify that the authenticated principal is allowed to send as that envelope sender, including aliases and delegated send-as.
+3. **Selection:** pass the envelope sender and optional validated mode/selector to the engine API.
+4. **MIME safety:** modify only supported MIME structures using a parser/library. Never reconstruct multipart messages with regular expressions or raw boundary concatenation.
+5. **Idempotency:** detect an existing OpenSigWeave insertion and never append duplicates on retries or reinjection.
+6. **Replies:** honor `inject_on_replies` and preserve quoted history.
+7. **Ordering:** mutate the message before DKIM signing; verify the final delivered DKIM signature in an end-to-end test.
+8. **Failure handling:** bounded network timeout/response size, TLS certificate verification, explicit fail-open/fail-closed behavior and observable errors.
+9. **Security:** keep credentials outside source control, use least-privilege credentials, prevent SSRF/configurable arbitrary URL abuse, and do not trust client-supplied sender identity.
+10. **Compatibility:** publish supported mail-server versions, installation/uninstall instructions and upgrade tests.
+
+## Adapter roadmap
+
+| Adapter | Integration mechanism | Status |
+|---|---|---|
+| Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
+| Postfix | Milter or dedicated content-filter service | Planned |
+| Stalwart | Native SMTP/MTA hook where message mutation is supported | Planned; validate hook API and event ordering against target Stalwart release |
+| Exim | ACL/system-filter integration or external content filter | Planned |
+| Haraka | Plugin | Planned |
+| OpenSMTPD | Filter API | Planned; validate mutation support |
+| Microsoft Exchange | Transport Agent / supported transport extensibility | Research required; deployment/runtime compatibility varies |
+| Proxmox Mail Gateway | Postfix/Rspamd integration layer | Evaluate as a deployment recipe, not automatically a distinct engine adapter |
+| Generic SMTP gateway | Explicitly configured SMTP proxy/filter | Future; requires careful queue, retry and DKIM design |
+
+A product is not considered supported merely because it can make HTTP requests. It must expose a trusted sender identity and a safe message-mutation point before DKIM signing.
+
+## Credential evolution
+
+The initial contract uses the existing `ENGINE_API_KEY` for backwards compatibility. Before production or multi-tenant use, replace the shared key with independently revocable adapter credentials (adapter ID, secret hash, enabled state, scopes, last-used timestamp and rotation/revocation workflow). Do not put adapter secrets in tracked Lua/config examples.
+
+## Release gates
+
+An adapter is releasable only after unit/contract tests, static analysis, supported-version documentation and an isolated SMTP end-to-end test covering plain text, HTML, multipart/alternative, attachments, inline Content-IDs, transfer encodings, replies, retries, duplicate prevention, sender spoofing rejection and final DKIM validation. Unsupported MIME cases must be skipped safely, not corrupted.
