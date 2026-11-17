@@ -156,7 +156,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         if not isinstance(body, str):
             continue
         if content_type == "text/html":
-            if re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", body, re.I):
+            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
                 continue
             body, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
