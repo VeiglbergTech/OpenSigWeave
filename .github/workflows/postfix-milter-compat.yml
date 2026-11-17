@@ -50,6 +50,10 @@ jobs:
           class FakeContext:
               def __init__(self):
                   self.replacements = []
+                  self.private = None
+
+              def setpriv(self, value):
+                  self.private = value
 
               def getsymval(self, name):
                   return {"{auth_authen}": "sender@example.org"}.get(name)
