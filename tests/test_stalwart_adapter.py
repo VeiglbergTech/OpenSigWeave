@@ -394,7 +394,8 @@ class StalwartAdapterTests(unittest.TestCase):
         html_start = body.index("Content-Type: text/html")
         plain_part = body[plain_start:html_start]
         html_part = body[html_start:]
-        self.assertLess(plain_part.index("SOGo-Signatur"), plain_part.index("> Deine ursprüngliche Nachricht"))
+        decoded_plain_part = decodestring(plain_part.encode("utf-8")).decode("utf-8", errors="replace")
+        self.assertLess(decoded_plain_part.index("SOGo-Signatur"), decoded_plain_part.index("> Deine ursprüngliche Nachricht"))
         self.assertLess(html_part.index("SOGo-Signatur"), html_part.index("<blockquote type=\"cite\""))
 
 
