@@ -63,7 +63,9 @@ def _build_raw_message(headers: Any, contents: Any) -> bytes:
         value = item[1]
         # Stalwart documents raw values with a leading space and CRLF. Reject
         # embedded new header lines rather than accepting header injection.
-        if re.search(r"\r\n(?![ \t])", value.rstrip("\r\n")) or "\n" in value.replace("\r\n", ""):
+        if (re.search(r"\r\n(?![ \t])", value.rstrip("\r\n"))
+                or "\n" in value.replace("\r\n", "")
+                or "\r" in value.replace("\r\n", "")):
             raise ValueError("Invalid Stalwart header value")
         lines.append((item[0] + ":" + value.rstrip("\r\n")).encode("utf-8"))
     return b"\r\n".join(lines) + b"\r\n\r\n" + contents.encode("utf-8")
