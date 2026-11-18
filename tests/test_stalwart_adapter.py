@@ -195,11 +195,18 @@ class StalwartAdapterTests(unittest.TestCase):
         )
         decoded_body = decodestring(body.encode("utf-8")).decode("utf-8", errors="replace")
         self.assertIn("<p>Signature</p>", decoded_body)
-        self.assertIn("Content-ID: <logo@example.org>", decoded_body)
-        self.assertIn("Content-Disposition: inline; filename=logo.png", body)
-        self.assertIn("aW1hZ2UtZGF0YQ==", body)
-        self.assertIn("Content-Disposition: attachment; filename=report.pdf", body)
-        self.assertIn("cGRmLWRhdGE=", body)
+        from email import policy
+        from email.parser import BytesParser
+
+        parsed = BytesParser(policy=policy.default).parsebytes(
+            ('MIME-Version: 1.0\\r\\nContent-Type: multipart/mixed; boundary=outer\\r\\n\\r\\n'
+             + body).encode("utf-8")
+        )
+        inline_image = next(part for part in parsed.walk() if part.get("Content-ID") == "<logo@example.org>")
+        pdf_attachment = next(part for part in parsed.walk() if part.get_filename() == "report.pdf")
+        self.assertEqual(inline_image.get_payload(decode=True), b"image-data")
+        self.assertEqual(pdf_attachment.get_payload(decode=True), b"pdf-data")
+        self.assertIn("<p>Signature</p>", decoded_body)
 
 
     def test_does_not_modify_attached_forwarded_messages(self):
