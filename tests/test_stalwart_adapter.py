@@ -315,6 +315,34 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("cGRmLWRhdGE=", body)
 
 
+    def test_preserves_decoded_binary_attachment_bytes(self):
+        import base64
+        from email import policy
+        from email.parser import BytesParser
+
+        binary = bytes(range(256)) + b"\x00\xff\x10OpenSigWeave"
+        encoded = base64.b64encode(binary).decode("ascii")
+        headers = [
+            ["From", " sender@example.org\r\n"],
+            ["MIME-Version", " 1.0\r\n"],
+            ["Content-Type", ' multipart/mixed; boundary="binary-boundary"\r\n'],
+        ]
+        contents = (
+            "--binary-boundary\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nHello\r\n"
+            "--binary-boundary\r\nContent-Type: application/octet-stream\r\n"
+            "Content-Disposition: attachment; filename=payload.bin\r\n"
+            "Content-Transfer-Encoding: base64\r\n\r\n"
+            + encoded + "\r\n--binary-boundary--\r\n"
+        )
+        result = build_stalwart_hook_response(request(headers, contents), {"html": "<p>Signature</p>"})
+        body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
+        parsed = BytesParser(policy=policy.default).parsebytes(
+            ("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=binary-boundary\r\n\r\n"
+             + body).encode("utf-8")
+        )
+        attachment = next(part for part in parsed.walk() if part.get_filename() == "payload.bin")
+        self.assertEqual(attachment.get_payload(decode=True), binary)
+
     def test_places_plain_signature_before_outlook_quoted_history(self):
         payload = request(
             [["From", " sender@example.org\r\n"],
