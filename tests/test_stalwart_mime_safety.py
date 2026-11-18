@@ -36,6 +36,29 @@ class NestedMimeSafetyTests(unittest.TestCase):
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
         self.assertEqual(result, {"action": "accept"})
 
+    def test_nested_encrypted_multipart_is_left_unchanged(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+            ],
+            "--outer\\r\\n"
+            'Content-Type: multipart/encrypted; boundary="encrypted"; protocol="application/pgp-encrypted"\\r\\n\\r\\n'
+            "--encrypted\\r\\n"
+            "Content-Type: application/pgp-encrypted\\r\\n\\r\\nVersion: 1\\r\\n"
+            "--encrypted\\r\\n"
+            "Content-Type: application/octet-stream\\r\\n"
+            "Content-Transfer-Encoding: base64\\r\\n\\r\\n"
+            "ZW5jcnlwdGVk\\r\\n"
+            "--encrypted--\\r\\n"
+            "--outer\\r\\n"
+            "Content-Type: text/plain; charset=utf-8\\r\\n\\r\\nOuter text\\r\\n"
+            "--outer--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertEqual(result, {"action": "accept"})
+
 
 if __name__ == "__main__":
     unittest.main()
