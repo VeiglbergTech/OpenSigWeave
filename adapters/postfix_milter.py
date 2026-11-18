@@ -94,21 +94,21 @@ def _header_changes(original, parsed):
 def _trim_trailing_whitespace(content, *, html):
     """Remove common trailing editor whitespace from decoded text content."""
     if not html:
-        return content.rstrip().removesuffix("\\u00a0").rstrip()
+        return content.rstrip().removesuffix("\u00a0").rstrip()
     previous = None
     while content != previous:
         previous = content
         content = content.rstrip()
-        content = re.sub(r"<br\\b[^>]*>\\s*$", "", content, flags=re.I)
-        content = re.sub(r"<(?:p|div)\\b[^>]*>\\s*(?:&nbsp;|\\u00a0)?\\s*</(?:p|div)>\\s*$", "", content, flags=re.I)
+        content = re.sub(r"<br\b[^>]*>\s*$", "", content, flags=re.I)
+        content = re.sub(r"<(?:p|div)\b[^>]*>\s*(?:&nbsp;|\\u00a0)?\s*</(?:p|div)>\s*$", "", content, flags=re.I)
     return content
 
 
 def _strip_device_signatures(content, *, html):
     """Remove mobile/Outlook auto-signature lines from decoded text parts."""
     if html:
-        return re.sub(r"<br\\b[^>]*>\\s*(?:Sent from my |Get Outlook for )[^<]*", "", content, flags=re.I)
-    return re.sub(r"\\r?\\n[ \\t]*(?:Sent from my |Get Outlook for )[^\\r\\n<]*", "", content, flags=re.I)
+        return re.sub(r"<br\b[^>]*>\s*(?:Sent from my |Get Outlook for )[^<]*", "", content, flags=re.I)
+    return re.sub(r"\r?\n[ \\t]*(?:Sent from my |Get Outlook for )[^\r\n<]*", "", content, flags=re.I)
 
 
 def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_whitespace=True, strip_device_signatures=False):
@@ -143,7 +143,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         if not isinstance(content, str):
             continue
         is_html = content_type == "text/html"
-        if is_html and re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", content, re.I):
+        if is_html and re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", content, re.I):
             continue
         if strip_device_signatures:
             content = _strip_device_signatures(content, html=is_html)
