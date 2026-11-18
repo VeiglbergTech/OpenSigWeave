@@ -22,6 +22,7 @@ class SignaturePlacementTests(unittest.TestCase):
         result, detected = insert_signature(body, "Signature", html=False)
         self.assertTrue(detected)
         self.assertLess(result.index("Signature"), result.index("> quoted text"))
+        self.assertEqual(result, "New answer\\n\\nSignature\\n\\n> quoted text")
 
     def test_gmail_quote_container_is_detected(self):
         body = '<div>New answer</div><div class="gmail_quote">Old answer</div>'
