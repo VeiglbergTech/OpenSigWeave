@@ -63,18 +63,27 @@ def find_html_quote_boundary(body: str) -> int | None:
     return min(positions) if positions else None
 
 
-def insert_signature(body: str, signature: str, *, html: bool) -> tuple[str, bool]:
-    """Insert immediately before detected quoted history; otherwise append."""
+def insert_signature(
+    body: str, signature: str, *, html: bool, trim_whitespace: bool = True
+) -> tuple[str, bool]:
+    """Insert before quoted history, optionally preserving existing whitespace."""
     boundary = find_html_quote_boundary(body) if html else find_plain_quote_boundary(body)
     if boundary is None:
         if html:
-            match = re.search(r"</body\s*>", body, re.I)
+            match = re.search(r"</body\\s*>", body, re.I)
             fragment = "<br><br>" + signature
             if match:
-                return body[:match.start()] + fragment + body[match.start():], False
-            return body + fragment, False
-        return body.rstrip() + "\n\n" + signature, False
-    before, after = body[:boundary].rstrip(), body[boundary:].lstrip()
+                before = body[:match.start()]
+                if trim_whitespace:
+                    before = before.rstrip()
+                return before + fragment + body[match.start():], False
+            before = body.rstrip() if trim_whitespace else body
+            return before + fragment, False
+        before = body.rstrip() if trim_whitespace else body
+        return before + "\\n\\n" + signature, False
+    before, after = body[:boundary], body[boundary:]
+    if trim_whitespace:
+        before, after = before.rstrip(), after.lstrip()
     if html:
         return before + "<br><br>" + signature + "<br><br>" + after, True
-    return before + "\n\n" + signature + "\n\n" + after, True
+    return before + "\\n\\n" + signature + "\\n\\n" + after, True
