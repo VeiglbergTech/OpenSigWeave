@@ -82,3 +82,17 @@ Run a disposable Postfix instance with the adapter and a DKIM signer in the inte
 - Python 3.12 distribution packaging evidence: https://packages.fedoraproject.org/pkgs/python-pymilter/python3-pymilter/
 - Python 3.12 package dependency evidence: https://portstatus.bsdproject.de/mail/py-pymilter/
 - Go Milter alternative: https://github.com/andybalholm/milter
+
+
+## Postfix body cleanup policy
+
+The Postfix adapter consumes the engine's typed `trim_whitespace` and
+`strip_device_signatures` booleans. Cleanup runs only on decoded editable
+`text/plain` and `text/html` MIME parts, before reply-boundary insertion;
+attachments and unsupported/signed MIME structures remain untouched.
+Whitespace trimming removes common trailing editor whitespace and empty HTML
+blocks. Device-signature stripping matches the Rspamd adapter's supported
+plain-text lines (`Sent from my …`, `Get Outlook for …`) and corresponding
+HTML lines following a `<br>`. False policy values preserve that content.
+Unit tests cover both policies; Postfix E2E still uses a mock engine and does
+not yet prove a live engine policy response.
