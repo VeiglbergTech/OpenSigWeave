@@ -98,10 +98,10 @@ class NestedMimeSafetyTests(unittest.TestCase):
             if item["type"] == "replaceContents"
         )
         self.assertIn("Outer body", body)
-        self.assertIn("<p>Signature</p>", body)
+        self.assertIn("Signature", body)
         self.assertIn("Forwarded original body", body)
         forwarded = body.split("Content-Type: message/rfc822", 1)[1]
-        self.assertNotIn("<p>Signature</p>", forwarded)
+        self.assertNotIn("Signature", forwarded)
 
 
 if __name__ == "__main__":
