@@ -104,5 +104,37 @@ class NestedMimeSafetyTests(unittest.TestCase):
         self.assertNotIn("Signature", forwarded)
 
 
+    def test_inline_smime_and_pgp_encrypted_parts_block_mutation(self):
+        crlf = chr(13) + chr(10)
+        protected_parts = [
+            (
+                "application/pkcs7-mime; smime-type=enveloped-data",
+                "Content-Transfer-Encoding: base64" + crlf + crlf + "ZW5jcnlwdGVk",
+            ),
+            (
+                "application/pgp-encrypted",
+                "Content-Transfer-Encoding: base64" + crlf + crlf + "ZW5jcnlwdGVk",
+            ),
+        ]
+        for content_type, extra_headers in protected_parts:
+            with self.subTest(content_type=content_type):
+                headers = [
+                    ["From", " sender@example.org" + crlf],
+                    ["MIME-Version", " 1.0" + crlf],
+                    ["Content-Type", ' multipart/mixed; boundary="outer"' + crlf],
+                ]
+                contents = (
+                    "--outer" + crlf
+                    + "Content-Type: text/plain; charset=utf-8" + crlf + crlf
+                    + "Outer text" + crlf
+                    + "--outer" + crlf
+                    + "Content-Type: " + content_type + crlf + extra_headers + crlf
+                    + "--outer--" + crlf
+                )
+                result = build_stalwart_hook_response(
+                    request(headers, contents), {"html": "<p>Signature</p>"}
+                )
+                self.assertEqual(result, {"action": "accept"})
+
 if __name__ == "__main__":
     unittest.main()
