@@ -166,7 +166,11 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         charset = part.get_content_charset() or "utf-8"
         transfer_encoding = part.get("Content-Transfer-Encoding", "quoted-printable").casefold()
         cte = transfer_encoding if transfer_encoding in {"7bit", "8bit", "quoted-printable", "base64"} else "quoted-printable"
-        part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset, cte=cte)
+        try:
+            part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset, cte=cte)
+        except (LookupError, UnicodeError, TypeError, ValueError):
+            # Unsupported charset/encoding: leave this MIME part untouched.
+            continue
         changed = True
 
     if not changed:
