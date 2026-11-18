@@ -193,8 +193,9 @@ class StalwartAdapterTests(unittest.TestCase):
             item["value"] for item in result["modifications"]
             if item["type"] == "replaceContents"
         )
-        self.assertIn("<p>Signature</p>", body)
-        self.assertIn("Content-ID: <logo@example.org>", body)
+        decoded_body = decodestring(body.encode("utf-8")).decode("utf-8", errors="replace")
+        self.assertIn("<p>Signature</p>", decoded_body)
+        self.assertIn("Content-ID: <logo@example.org>", decoded_body)
         self.assertIn("Content-Disposition: inline; filename=logo.png", body)
         self.assertIn("aW1hZ2UtZGF0YQ==", body)
         self.assertIn("Content-Disposition: attachment; filename=report.pdf", body)
