@@ -100,7 +100,7 @@ def _trim_trailing_whitespace(content, *, html):
         previous = content
         content = content.rstrip()
         content = re.sub(r"<br\b[^>]*>\s*$", "", content, flags=re.I)
-        content = re.sub(r"<(?:p|div)\b[^>]*>\s*(?:&nbsp;|\\u00a0)?\s*</(?:p|div)>\s*$", "", content, flags=re.I)
+        content = re.sub(r"<(?:p|div)\b[^>]*>\s*(?:&nbsp;|\u00a0)?\s*</(?:p|div)>\s*$", "", content, flags=re.I)
     return content
 
 
@@ -108,7 +108,7 @@ def _strip_device_signatures(content, *, html):
     """Remove mobile/Outlook auto-signature lines from decoded text parts."""
     if html:
         return re.sub(r"<br\b[^>]*>\s*(?:Sent from my |Get Outlook for )[^<]*", "", content, flags=re.I)
-    return re.sub(r"\r?\n[ \\t]*(?:Sent from my |Get Outlook for )[^\r\n<]*", "", content, flags=re.I)
+    return re.sub(r"\r?\n[ \t]*(?:Sent from my |Get Outlook for )[^\r\n<]*", "", content, flags=re.I)
 
 
 def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_whitespace=True, strip_device_signatures=False):
