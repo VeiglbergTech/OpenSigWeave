@@ -62,15 +62,15 @@ class NestedMimeSafetyTests(unittest.TestCase):
     def test_nested_multipart_missing_inner_boundary_is_left_unchanged(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["MIME-Version", " 1.0\\r\\n"],
-                ["Content-Type", ' multipart/mixed; boundary="outer"\\r\\n'],
+                ["From", " sender@example.org\r\\n"],
+                ["MIME-Version", " 1.0\r\\n"],
+                ["Content-Type", ' multipart/mixed; boundary="outer"\r\\n'],
             ],
-            "--outer\\r\\n"
-            'Content-Type: multipart/alternative; boundary="inner"\\r\\n\\r\\n'
-            "--inner\\r\\n"
-            "Content-Type: text/plain; charset=utf-8\\r\\n\\r\\nInner text\\r\\n"
-            "--outer--\\r\\n",
+            "--outer\r\\n"
+            'Content-Type: multipart/alternative; boundary="inner"\r\\n\r\\n'
+            "--inner\r\\n"
+            "Content-Type: text/plain; charset=utf-8\r\\n\r\\nInner text\r\\n"
+            "--outer--\r\\n",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
         self.assertEqual(result, {"action": "accept"})
