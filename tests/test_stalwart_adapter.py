@@ -199,7 +199,7 @@ class StalwartAdapterTests(unittest.TestCase):
         from email.parser import BytesParser
 
         parsed = BytesParser(policy=policy.default).parsebytes(
-            ('MIME-Version: 1.0\\r\\nContent-Type: multipart/mixed; boundary=outer\\r\\n\\r\\n'
+            ('MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=outer\r\n\r\n'
              + body).encode("utf-8")
         )
         inline_image = next(part for part in parsed.walk() if part.get("Content-ID") == "<logo@example.org>")
