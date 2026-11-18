@@ -136,5 +136,16 @@ class NestedMimeSafetyTests(unittest.TestCase):
                 )
                 self.assertEqual(result, {"action": "accept"})
 
+    def test_ascii_part_skips_signature_that_cannot_be_encoded(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\r\n"],
+                ["Content-Type", " text/plain; charset=us-ascii\r\n"],
+            ],
+            "ASCII-only body\r\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Grüße</p>"})
+        self.assertEqual(result, {"action": "accept"})
+
 if __name__ == "__main__":
     unittest.main()
