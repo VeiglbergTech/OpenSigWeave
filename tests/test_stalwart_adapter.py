@@ -440,9 +440,9 @@ class StalwartAdapterTests(unittest.TestCase):
     def test_skips_text_part_with_unknown_transfer_encoding(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["Content-Type", " text/plain; charset=utf-8\\r\\n"],
-                ["Content-Transfer-Encoding", " x-unknown-encoding\\r\\n"],
+                ["From", " sender@example.org\r\n"],
+                ["Content-Type", " text/plain; charset=utf-8\r\n"],
+                ["Content-Transfer-Encoding", " x-unknown-encoding\r\n"],
             ],
             "Encoded payload that must not be reinterpreted",
         )
