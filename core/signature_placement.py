@@ -70,7 +70,7 @@ def insert_signature(
     boundary = find_html_quote_boundary(body) if html else find_plain_quote_boundary(body)
     if boundary is None:
         if html:
-            match = re.search(r"</body\\s*>", body, re.I)
+            match = re.search(r"</body\s*>", body, re.I)
             fragment = "<br><br>" + signature
             if match:
                 before = body[:match.start()]
@@ -80,7 +80,7 @@ def insert_signature(
             before = body.rstrip() if trim_whitespace else body
             return before + fragment, False
         before = body.rstrip() if trim_whitespace else body
-        return before + "\\n\\n" + signature, False
+        return before + "\n\n" + signature, False
     before, after = body[:boundary], body[boundary:]
     if trim_whitespace:
         before, after = before.rstrip(), after.lstrip()
