@@ -440,8 +440,8 @@ class StalwartAdapterTests(unittest.TestCase):
     def test_skips_text_part_with_unknown_charset(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["Content-Type", " text/plain; charset=x-unknown-codec\\r\\n"],
+                ["From", " sender@example.org\r\n"],
+                ["Content-Type", " text/plain; charset=x-unknown-codec\r\n"],
             ],
             "Hello",
         )
