@@ -208,7 +208,46 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             with self.assertRaises(EngineRequestError):
                 fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
 
-    def test_message_size_is_bounded(self):
+
+    def test_trim_whitespace_removes_trailing_plain_editor_whitespace(self):
+        result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
+            b"Reply  \\r\\n\\r\\n", "<p>Signature</p>", inject_on_replies=True,
+            trim_whitespace=True)
+        decoded = quopri.decodestring(result.body).decode("utf-8")
+        self.assertTrue(result.changed)
+        self.assertNotIn("Reply  ", decoded)
+
+    def test_trim_whitespace_false_preserves_trailing_plain_whitespace(self):
+        result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
+            b"Reply  \\r\\n\\r\\n", "<p>Signature</p>", inject_on_replies=True,
+            trim_whitespace=False)
+        decoded = quopri.decodestring(result.body).decode("utf-8")
+        self.assertTrue(result.changed)
+        self.assertIn("Reply  ", decoded)
+
+    def test_strip_device_signature_plain_text(self):
+        result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
+            b"Reply\\r\\nSent from my iPhone", "<p>Signature</p>",
+            inject_on_replies=True, strip_device_signatures=True)
+        decoded = quopri.decodestring(result.body).decode("utf-8")
+        self.assertTrue(result.changed)
+        self.assertNotIn("Sent from my iPhone", decoded)
+
+    def test_strip_device_signature_html(self):
+        result = rewrite_message([("Content-Type", "text/html; charset=utf-8")],
+            b"<html><body>Reply<br>Get Outlook for Android</body></html>",
+            "<p>Signature</p>", inject_on_replies=True, strip_device_signatures=True)
+        decoded = quopri.decodestring(result.body).decode("utf-8")
+        self.assertTrue(result.changed)
+        self.assertNotIn("Get Outlook for Android", decoded)
+
+    def test_whitespace_and_device_policies_are_disabled_by_default(self):
+        result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
+            b"Reply\\r\\nSent from my iPhone\\r\\n  ", "<p>Signature</p>",
+            inject_on_replies=True)
+        decoded = quopri.decodestring(result.body).decode("utf-8")
+        self.assertIn("Sent from my iPhone", decoded)
+\n    def test_message_size_is_bounded(self):
         with self.assertRaises(ValueError):
             rewrite_message([], b"x" * (MAX_MESSAGE_BYTES + 1), "<p>Sig</p>", inject_on_replies=True)
 
