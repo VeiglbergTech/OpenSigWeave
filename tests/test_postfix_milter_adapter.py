@@ -247,7 +247,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             inject_on_replies=True)
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertIn("Sent from my iPhone", decoded)
-\n
+
     def test_trim_whitespace_false_preserves_signature_whitespace(self):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
             b"Reply", "<p> Signature </p>", inject_on_replies=True,
