@@ -149,6 +149,11 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
             continue
+        transfer_encoding = part.get("Content-Transfer-Encoding", "7bit").casefold()
+        if transfer_encoding not in {"7bit", "8bit", "binary", "quoted-printable", "base64"}:
+            # Unknown transfer encodings cannot be decoded reliably. Do not
+            # reinterpret their raw payload as text or rewrite the MIME part.
+            continue
         try:
             body = part.get_content()
         except (LookupError, UnicodeError, TypeError):
