@@ -49,11 +49,12 @@ class _TextExtractor(HTMLParser):
         if tag.lower() in {"br", "p", "div", "li", "tr"}:
             self.parts.append("\n")
 
-def _plain_signature(html):
+def _plain_signature(html, *, trim_whitespace=True):
     parser = _TextExtractor()
     parser.feed(html)
     parser.close()
-    return "".join(parser.parts).strip()
+    text = "".join(parser.parts)
+    return text.strip() if trim_whitespace else text
 
 def _raw_message(headers, body):
     lines = []
@@ -129,7 +130,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
     parts = list(_editable_parts(parsed))
     if any(part.defects for part in parts):
         return RewriteResult(body, (), False)
-    plain_signature = _plain_signature(signature_html)
+    plain_signature = _plain_signature(signature_html, trim_whitespace=trim_whitespace)
     changed = False
     for part in parts:
         content_type = part.get_content_type().lower()
