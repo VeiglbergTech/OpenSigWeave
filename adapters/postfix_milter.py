@@ -90,7 +90,27 @@ def _header_changes(original, parsed):
             changes.append(HeaderChange(name, value, index))
     return tuple(changes)
 
-def rewrite_message(headers, body, signature_html, *, inject_on_replies):
+def _trim_trailing_whitespace(content, *, html):
+    """Remove common trailing editor whitespace from decoded text content."""
+    if not html:
+        return content.rstrip().removesuffix("\\u00a0").rstrip()
+    previous = None
+    while content != previous:
+        previous = content
+        content = content.rstrip()
+        content = re.sub(r"<br\\b[^>]*>\\s*$", "", content, flags=re.I)
+        content = re.sub(r"<(?:p|div)\\b[^>]*>\\s*(?:&nbsp;|\\u00a0)?\\s*</(?:p|div)>\\s*$", "", content, flags=re.I)
+    return content
+
+
+def _strip_device_signatures(content, *, html):
+    """Remove mobile/Outlook auto-signature lines from decoded text parts."""
+    if html:
+        return re.sub(r"<br\\b[^>]*>\\s*(?:Sent from my |Get Outlook for )[^<]*", "", content, flags=re.I)
+    return re.sub(r"\\r?\\n[ \\t]*(?:Sent from my |Get Outlook for )[^\\r\\n<]*", "", content, flags=re.I)
+
+
+def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_whitespace=True, strip_device_signatures=False):
     """Safely rewrite supported MIME text parts while retaining binary attachments."""
     if len(body) > MAX_MESSAGE_BYTES:
         raise ValueError("Message exceeds configured size limit")
@@ -121,14 +141,21 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies):
             continue
         if not isinstance(content, str):
             continue
-        if content_type == "text/html":
-            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", content, re.I):
-                continue
-            updated, _ = insert_signature(content, signature_html, html=True)
-        else:
-            if not plain_signature:
-                continue
-            updated, _ = insert_signature(content, plain_signature, html=False)
+        is_html = content_type == "text/html"
+        if is_html and re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", content, re.I):
+            continue
+        if strip_device_signatures:
+            content = _strip_device_signatures(content, html=is_html)
+        if trim_whitespace:
+            content = _trim_trailing_whitespace(content, html=is_html)
+        selected_signature = signature_html if is_html else plain_signature
+        if not selected_signature:
+            continue
+        if trim_whitespace:
+            selected_signature = _trim_trailing_whitespace(selected_signature, html=is_html).lstrip()
+        updated, _ = insert_signature(
+            content, selected_signature, html=is_html, trim_whitespace=trim_whitespace
+        )
         charset = part.get_content_charset() or "utf-8"
         transfer = str(part.get("Content-Transfer-Encoding", "quoted-printable")).casefold()
         cte = transfer if transfer in {"7bit", "8bit", "quoted-printable", "base64"} else "quoted-printable"
@@ -269,6 +296,8 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 rewritten = rewrite_message(
                     self.headers, original_body, result["html"],
                     inject_on_replies=result["inject_on_replies"],
+                    trim_whitespace=result["trim_whitespace"],
+                    strip_device_signatures=result["strip_device_signatures"],
                 )
                 if not rewritten.changed:
                     return Milter.CONTINUE
