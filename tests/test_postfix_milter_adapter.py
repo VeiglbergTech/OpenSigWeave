@@ -255,7 +255,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertTrue(result.changed)
         self.assertIn(" Signature ", decoded)
-\n    def test_message_size_is_bounded(self):
+    def test_message_size_is_bounded(self):
         with self.assertRaises(ValueError):
             rewrite_message([], b"x" * (MAX_MESSAGE_BYTES + 1), "<p>Sig</p>", inject_on_replies=True)
 
