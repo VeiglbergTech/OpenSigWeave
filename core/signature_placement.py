@@ -86,4 +86,4 @@ def insert_signature(
         before, after = before.rstrip(), after.lstrip()
     if html:
         return before + "<br><br>" + signature + "<br><br>" + after, True
-    return before + "\\n\\n" + signature + "\\n\\n" + after, True
+    return before + "\n\n" + signature + "\n\n" + after, True
