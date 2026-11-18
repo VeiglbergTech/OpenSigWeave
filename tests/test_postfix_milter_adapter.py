@@ -211,7 +211,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
 
     def test_trim_whitespace_removes_trailing_plain_editor_whitespace(self):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
-            b"Reply  \\r\\n\\r\\n", "<p>Signature</p>", inject_on_replies=True,
+            b"Reply  \r\n\r\n", "<p>Signature</p>", inject_on_replies=True,
             trim_whitespace=True)
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertTrue(result.changed)
@@ -219,7 +219,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
 
     def test_trim_whitespace_false_preserves_trailing_plain_whitespace(self):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
-            b"Reply  \\r\\n\\r\\n", "<p>Signature</p>", inject_on_replies=True,
+            b"Reply  \r\n\r\n", "<p>Signature</p>", inject_on_replies=True,
             trim_whitespace=False)
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertTrue(result.changed)
@@ -227,7 +227,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
 
     def test_strip_device_signature_plain_text(self):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
-            b"Reply\\r\\nSent from my iPhone", "<p>Signature</p>",
+            b"Reply\r\nSent from my iPhone", "<p>Signature</p>",
             inject_on_replies=True, strip_device_signatures=True)
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertTrue(result.changed)
@@ -243,7 +243,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
 
     def test_whitespace_and_device_policies_are_disabled_by_default(self):
         result = rewrite_message([("Content-Type", "text/plain; charset=utf-8")],
-            b"Reply\\r\\nSent from my iPhone\\r\\n  ", "<p>Signature</p>",
+            b"Reply\r\nSent from my iPhone\r\n  ", "<p>Signature</p>",
             inject_on_replies=True)
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertIn("Sent from my iPhone", decoded)
