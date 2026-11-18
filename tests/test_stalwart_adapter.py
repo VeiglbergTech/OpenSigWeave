@@ -437,5 +437,19 @@ class StalwartAdapterTests(unittest.TestCase):
 
 
 
+    def test_skips_text_part_with_unknown_charset(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["Content-Type", " text/plain; charset=x-unknown-codec\\r\\n"],
+            ],
+            "Hello",
+        )
+        self.assertEqual(
+            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"}),
+            {"action": "accept"},
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
