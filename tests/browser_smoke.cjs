@@ -97,6 +97,37 @@ async function main() {
     assert.match(await personalEditor.innerHTML(), /<strong>B<\/strong>/,
       "CKEditor formatting must remain functional with the current report-only CSP");
 
+    // Verify that the rich editor round-trips common email-signature markup
+    // independently of the personal editor's current contents.
+    const richMarkupRoundTrip = await page.evaluate(async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      let instance;
+      try {
+        instance = await window.OpenSigWeaveEditor.create(host, {
+          initialData:
+            '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">' +
+            '<tbody><tr><td valign="top" style="padding:8px;">' +
+            '<center><font face="Arial" color="#333333" size="2">' +
+            '<small>Small</small> <sub>subscript</sub> <sup>superscript</sup> ' +
+            '<code>code</code><pre>preformatted</pre>' +
+            '</font></center></td></tr></tbody></table>'
+        });
+        return instance.getData();
+      } finally {
+        if (instance) await instance.destroy();
+        host.remove();
+      }
+    });
+    for (const markup of ["<table", "<tbody", "<td", "<center", "<font", "<small", "<sub", "<sup", "<code", "<pre"]) {
+      assert.ok(richMarkupRoundTrip.includes(markup),
+        "rich editor must retain supported email markup: " + markup + "; output=" + richMarkupRoundTrip);
+    }
+    assert.match(richMarkupRoundTrip, /width="600"/,
+      "rich editor must retain supported table dimensions");
+    assert.match(richMarkupRoundTrip, /valign="top"/,
+      "rich editor must retain supported table-cell alignment");
+
     checkpoint("personal editor: complete");
     const personal = await page.request.get(baseURL + "/api/my-signature", { timeout: 15000 });
     assert.equal(personal.status(), 200, "signed-in administrator can load personal signature");
