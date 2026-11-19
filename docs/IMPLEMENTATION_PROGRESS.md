@@ -23,7 +23,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Latest complete application CI: [run #44501075118](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44501075118), commit `300e14b4174fd62c4286a06b9fd9c94c040fdebf`, result **success**. All workflow job steps completed successfully, including secret scan, dependency audit, Python compile/security checks, JavaScript and Lua syntax, PostgreSQL/SQLite migrations, Docker build/smoke test, encrypted backup/fresh restore and regression tests. This run also validates the README Buy-Me-a-Coffee badge image-source correction.
+- Latest complete application CI: [run #44515500782 (CI #2200)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44515500782), commit `fd16f46366dad966dbabaafbbcfd89c18e10560a`, result **success**. All workflow steps completed successfully, including secret scan, dependency audit, Python compile/security checks, browser JavaScript/CSP checks, PostgreSQL/SQLite migrations, Docker build and Playwright browser smoke, encrypted backup/fresh restore and regression tests. The browser smoke now also checks CKEditor 5 round-tripping of common email markup (tables, table cells, alignment, center/font and inline semantic formatting).
 - Latest dedicated Postfix compatibility CI: [run #44309369390](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44309369390), commit `9036d0f72a64c8f05b5b7e3abea66a7fd9c43f1f`, result **success**. It verifies PyMilter runtime, real Postfix SMTP/Milter exchange and final delivery through the actual OpenSigWeave adapter with a mock engine. The delivered message contains the inserted signature and idempotency marker; unauthenticated mail remains unchanged and control headers are removed.
 - `beta` promotion is pending until the documentation refresh and its resulting CI checks complete; `main` remains unchanged.
 - The Postfix compatibility spike is tracked separately in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md). Its protocol test is not equivalent to an authenticated sender authorization acceptance test.
@@ -34,7 +34,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 | Area | Required verification |
 |---|---|
 | Identity | Live LDAP/Active Directory and Authentik sign-in, group mapping and logout |
-| Browser/editor | Investigate Quill 1.3.7 `style-src-attr` CSP reports; keep CSP report-only until resolved. Verify real email-client rendering and Outlook behavior. |
+| Browser/editor | CKEditor 5 is now self-hosted and browser-tested for personal editing and common email-markup round trips. Complete browser acceptance for the domain master-template and per-user override editors, review CKEditor `style-src-attr` CSP reports and keep CSP report-only until resolved. Verify real email-client rendering and Outlook behavior. |
 | HTML fidelity | Define a security-reviewed policy for Outlook conditional comments/VML; current sanitizer removes them. |
 | Backup | Execute the documented two-host restore drill and test real NFS/SMB mount, disconnect and recovery behavior. |
 | Rspamd | In disposable Mailcow, verify sender authorization, supported non-multipart processing, idempotency, Rspamd order and final DKIM. Rotate the historical Rspamd key wherever deployed. |
