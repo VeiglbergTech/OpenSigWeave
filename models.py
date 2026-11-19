@@ -1,5 +1,5 @@
 """SQLAlchemy persistence models for OpenSigWeave."""
-from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func, JSON
+from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint, func, JSON
 
 from database import Base
 
@@ -131,6 +131,42 @@ class SignatureRuleDB(Base):
     group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="SET NULL"), nullable=True, index=True)
     is_enabled = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class SignatureScheduleDB(Base):
+    """Time-bounded override selecting one signature or signature group."""
+    __tablename__ = "signature_schedules"
+    id = Column(String(32), primary_key=True)
+    name = Column(String(255), nullable=False)
+    domain_id = Column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), nullable=True, index=True)
+    target_type = Column(String(16), nullable=False)
+    signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="SET NULL"), nullable=True, index=True)
+    group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="SET NULL"), nullable=True, index=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    priority = Column(Integer, nullable=False, default=0)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    __table_args__ = (
+        CheckConstraint("starts_at < ends_at", name="ck_signature_schedule_window"),
+        CheckConstraint(
+            "(target_type = 'SIGNATURE' AND signature_id IS NOT NULL AND group_id IS NULL) "
+            "OR (target_type = 'GROUP' AND group_id IS NOT NULL AND signature_id IS NULL)",
+            name="ck_signature_schedule_target",
+        ),
+    )
+
+
+class BrandingSettingsDB(Base):
+    """Single-row administrator-managed application branding."""
+    __tablename__ = "branding_settings"
+    id = Column(Integer, primary_key=True)
+    app_name = Column(String(120), nullable=False, default="OpenSigWeave")
+    app_color = Column(String(7), nullable=False, default="#ff7043")
+    logo_png = Column(LargeBinary, nullable=True)
+    favicon_data = Column(LargeBinary, nullable=True)
+    favicon_mime = Column(String(64), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
 
 
 class SignatureRuleConditionDB(Base):

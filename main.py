@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
@@ -30,7 +30,7 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db, SessionLocal
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB, SignatureScheduleDB, BrandingSettingsDB
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
@@ -49,6 +49,12 @@ from core.engine_contract import (
     normalize_engine_request,
 )
 from core.engine_service import SignatureEngineService
+from core.branding import (
+    DEFAULT_APP_COLOR,
+    DEFAULT_APP_NAME,
+    branding_context,
+    decode_branding_data_url,
+)
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
@@ -238,6 +244,26 @@ class SignatureRuleCreateRequest(BaseModel):
     is_enabled: bool = True
     conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list, max_length=64)
 
+class BrandingUpdateRequest(BaseModel):
+    app_name: str = Field(min_length=1, max_length=120)
+    app_color: str = Field(min_length=7, max_length=7)
+    logo_data_url: Optional[str] = Field(default=None, max_length=900000)
+    favicon_data_url: Optional[str] = Field(default=None, max_length=500000)
+    reset_logo: bool = False
+    reset_favicon: bool = False
+
+
+class SignatureScheduleRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    target_type: Literal["SIGNATURE", "GROUP"]
+    signature_id: Optional[str] = Field(default=None, max_length=32)
+    group_id: Optional[str] = Field(default=None, max_length=32)
+    domain_id: Optional[int] = None
+    starts_at: datetime
+    ends_at: datetime
+    priority: int = Field(default=0, ge=-100000, le=100000)
+    is_enabled: bool = True
+
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
 
@@ -382,8 +408,41 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 app.add_middleware(SecurityHeadersMiddleware)
 
 templates = Jinja2Templates(directory="templates")
-app.mount("/branding", StaticFiles(directory="branding"), name="branding")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/branding/logo.png")
+def branding_logo(db: Session = Depends(get_db)):
+    settings = db.get(BrandingSettingsDB, 1)
+    if settings is not None and settings.logo_png:
+        return Response(
+            content=settings.logo_png,
+            media_type="image/png",
+            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+        )
+    path = "branding/logo.png"
+    if not os.path.isfile(path):
+        raise HTTPException(status_code=404, detail="Branding logo is not configured")
+    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/branding/favicon")
+@app.get("/branding/favicon.ico")
+def branding_favicon(db: Session = Depends(get_db)):
+    settings = db.get(BrandingSettingsDB, 1)
+    if settings is not None and settings.favicon_data:
+        return Response(
+            content=settings.favicon_data,
+            media_type=settings.favicon_mime or "image/x-icon",
+            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+        )
+    favicon_path = "branding/favicon.ico"
+    if os.path.isfile(favicon_path):
+        return FileResponse(favicon_path, media_type="image/x-icon", headers={"Cache-Control": "no-cache"})
+    logo_path = "branding/logo.png"
+    if os.path.isfile(logo_path):
+        return FileResponse(logo_path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    raise HTTPException(status_code=404, detail="Branding favicon is not configured")
 
 def session_user(request: Request) -> dict:
     user = request.session.get("user")
@@ -451,11 +510,20 @@ def configured_login_providers(db) -> list[dict[str, str]]:
 
 def login_page(request: Request, error: bool = False, status_code: int = 200, db=None):
     csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
+    brand = branding_context(db) if db is not None else {
+        "app_name": DEFAULT_APP_NAME,
+        "app_color": DEFAULT_APP_COLOR,
+        "has_logo": os.path.isfile("branding/logo.png"),
+        "has_favicon": os.path.isfile("branding/favicon.ico") or os.path.isfile("branding/logo.png"),
+        "has_custom_logo": False,
+        "has_custom_favicon": False,
+    }
     return templates.TemplateResponse(request, "login.html", {
         "request": request,
         "csrf_token": csrf_token,
         "error": error,
         "oidc_providers": configured_login_providers(db),
+        **brand,
     }, status_code=status_code)
 
 
@@ -759,21 +827,12 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
     if not is_admin and not is_user:
         return templates.TemplateResponse(request, "error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token})
 
-    has_logo = os.path.isfile("branding/logo.png")
-    has_favicon = os.path.isfile("branding/favicon.ico")
-    
-    app_name = "OpenSigWeave"
-    app_color = "#60a5fa"
-    
-    settings_path = "branding/settings.json"
-    if os.path.isfile(settings_path):
-        try:
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-                if "app_name" in settings: app_name = settings["app_name"]
-                if "app_color" in settings: app_color = settings["app_color"]
-        except Exception: pass
-            
+    brand = branding_context(db)
+    has_logo = brand["has_logo"]
+    has_favicon = brand["has_favicon"]
+    app_name = brand["app_name"]
+    app_color = brand["app_color"]
+
     attributes = user.get('attributes', {}) if user else {}
     phone = attributes.get('phone', 'Not Set')
     title = attributes.get('title', 'Not Set')
@@ -1088,6 +1147,77 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
     identity_provider_registry.delete(provider_id)
     db.delete(row); db.commit()
     return {"status": "deleted"}
+
+
+@app.get("/api/admin/branding")
+def get_admin_branding(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    brand = branding_context(db)
+    return {
+        **brand,
+        "logo_url": "/branding/logo.png",
+        "favicon_url": "/branding/favicon",
+    }
+
+
+@app.put("/api/admin/branding")
+def update_admin_branding(
+    payload: BrandingUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if not re.fullmatch(r"#[0-9A-Fa-f]{6}", payload.app_color):
+        raise HTTPException(status_code=422, detail="Brand color must be a six-digit hex color")
+    if payload.reset_logo and payload.logo_data_url:
+        raise HTTPException(status_code=422, detail="Choose either a logo upload or reset")
+    if payload.reset_favicon and payload.favicon_data_url:
+        raise HTTPException(status_code=422, detail="Choose either a favicon upload or reset")
+
+    settings = db.get(BrandingSettingsDB, 1)
+    if settings is None:
+        settings = BrandingSettingsDB(id=1)
+        db.add(settings)
+    settings.app_name = payload.app_name.strip()
+    settings.app_color = payload.app_color.lower()
+
+    try:
+        if payload.reset_logo:
+            settings.logo_png = None
+        elif payload.logo_data_url:
+            logo, _mime = decode_branding_data_url(
+                payload.logo_data_url,
+                allowed_mimes={"image/png"},
+                max_bytes=512 * 1024,
+            )
+            settings.logo_png = logo
+
+        if payload.reset_favicon:
+            settings.favicon_data = None
+            settings.favicon_mime = None
+        elif payload.favicon_data_url:
+            favicon, favicon_mime = decode_branding_data_url(
+                payload.favicon_data_url,
+                allowed_mimes={"image/png", "image/x-icon", "image/vnd.microsoft.icon"},
+                max_bytes=256 * 1024,
+            )
+            settings.favicon_data = favicon
+            settings.favicon_mime = "image/x-icon" if favicon_mime in {"image/x-icon", "image/vnd.microsoft.icon"} else "image/png"
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc))
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        **branding_context(db),
+        "logo_url": "/branding/logo.png",
+        "favicon_url": "/branding/favicon",
+    }
 
 
 @app.get("/api/admin/exports")
@@ -1495,7 +1625,149 @@ def delete_signature_group(group_id: str, request: Request, db: Session = Depend
         raise HTTPException(status_code=404, detail="Group not found")
     if db.query(SignatureRuleDB).filter(SignatureRuleDB.group_id == group_id).first():
         raise HTTPException(status_code=409, detail="Group is referenced by a rule; update the rule first")
+    if db.query(SignatureScheduleDB).filter(SignatureScheduleDB.group_id == group_id).first():
+        raise HTTPException(status_code=409, detail="Group is referenced by a schedule; update the schedule first")
     db.delete(group)
+    db.commit()
+    return {"status": "deleted"}
+
+
+def _normalized_schedule_window(payload: SignatureScheduleRequest):
+    if payload.starts_at.tzinfo is None or payload.starts_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="Schedule start must include a timezone")
+    if payload.ends_at.tzinfo is None or payload.ends_at.utcoffset() is None:
+        raise HTTPException(status_code=422, detail="Schedule end must include a timezone")
+    starts_at = payload.starts_at.astimezone(timezone.utc)
+    ends_at = payload.ends_at.astimezone(timezone.utc)
+    if starts_at >= ends_at:
+        raise HTTPException(status_code=422, detail="Schedule end must be after start")
+    return starts_at, ends_at
+
+
+def _schedule_target_scope(db: Session, payload: SignatureScheduleRequest):
+    if payload.domain_id is not None and db.get(DomainDB, payload.domain_id) is None:
+        raise HTTPException(status_code=404, detail="Schedule domain not found")
+
+    if payload.target_type == "SIGNATURE":
+        if not payload.signature_id or payload.group_id:
+            raise HTTPException(status_code=422, detail="SIGNATURE schedules require signature_id only")
+        target = db.get(SignatureDB, payload.signature_id)
+        if target is None or not target.is_active:
+            raise HTTPException(status_code=422, detail="Active target signature not found")
+        assigned = {
+            row.domain_id for row in db.query(SignatureDomainDB)
+            .filter(SignatureDomainDB.signature_id == target.id).all()
+        }
+    else:
+        if not payload.group_id or payload.signature_id:
+            raise HTTPException(status_code=422, detail="GROUP schedules require group_id only")
+        target = db.get(SignatureGroupDB, payload.group_id)
+        if target is None or not target.is_active:
+            raise HTTPException(status_code=422, detail="Active target group not found")
+        assigned = {
+            row.domain_id for row in db.query(SignatureGroupDomainDB)
+            .filter(SignatureGroupDomainDB.group_id == target.id).all()
+        }
+
+    if payload.domain_id is None and assigned:
+        raise HTTPException(status_code=422, detail="All-domain schedules require a globally scoped target")
+    if payload.domain_id is not None and assigned and payload.domain_id not in assigned:
+        raise HTTPException(status_code=422, detail="Scheduled target is not assigned to the selected domain")
+
+
+def _serialize_schedule(item: SignatureScheduleDB):
+    def iso_utc(value):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+    return {
+        "id": item.id,
+        "name": item.name,
+        "target_type": item.target_type,
+        "signature_id": item.signature_id,
+        "group_id": item.group_id,
+        "domain_id": item.domain_id,
+        "starts_at": iso_utc(item.starts_at),
+        "ends_at": iso_utc(item.ends_at),
+        "priority": item.priority,
+        "is_enabled": item.is_enabled,
+    }
+
+
+@app.get("/api/admin/schedules")
+def list_signature_schedules(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    items = (
+        db.query(SignatureScheduleDB)
+        .order_by(SignatureScheduleDB.starts_at.asc(), SignatureScheduleDB.priority.desc(), SignatureScheduleDB.id.asc())
+        .all()
+    )
+    return [_serialize_schedule(item) for item in items]
+
+
+@app.post("/api/admin/schedules", status_code=201)
+def create_signature_schedule(
+    payload: SignatureScheduleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    starts_at, ends_at = _normalized_schedule_window(payload)
+    _schedule_target_scope(db, payload)
+    item = SignatureScheduleDB(
+        id=uuid.uuid4().hex,
+        name=payload.name.strip(),
+        target_type=payload.target_type,
+        signature_id=payload.signature_id,
+        group_id=payload.group_id,
+        domain_id=payload.domain_id,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        priority=payload.priority,
+        is_enabled=payload.is_enabled,
+    )
+    db.add(item)
+    db.commit()
+    return _serialize_schedule(item)
+
+
+@app.put("/api/admin/schedules/{schedule_id}")
+def update_signature_schedule(
+    schedule_id: str,
+    payload: SignatureScheduleRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    item = db.get(SignatureScheduleDB, schedule_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    starts_at, ends_at = _normalized_schedule_window(payload)
+    _schedule_target_scope(db, payload)
+    item.name = payload.name.strip()
+    item.target_type = payload.target_type
+    item.signature_id = payload.signature_id
+    item.group_id = payload.group_id
+    item.domain_id = payload.domain_id
+    item.starts_at = starts_at
+    item.ends_at = ends_at
+    item.priority = payload.priority
+    item.is_enabled = payload.is_enabled
+    db.commit()
+    return _serialize_schedule(item)
+
+
+@app.delete("/api/admin/schedules/{schedule_id}")
+def delete_signature_schedule(schedule_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    item = db.get(SignatureScheduleDB, schedule_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    db.delete(item)
     db.commit()
     return {"status": "deleted"}
 

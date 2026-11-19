@@ -19,6 +19,7 @@ from core.modes import SignatureMode, resolve_mode
 from core.rule_repository import load_signature_rules
 from core.rules import RuleContext, evaluate_rules
 from core.selection_repository import select_and_record_variant
+from core.schedule_repository import load_active_schedule
 from models import (
     DomainDB,
     SignatureDB,
@@ -86,6 +87,10 @@ class SignatureEngineService:
         signature_name = request.signature_name
         signature_code = request.signature_code
 
+        active_schedule = None
+        if not marker_requested and not explicit_mode:
+            active_schedule = load_active_schedule(db, domain_obj.id)
+
         # Invalid mode headers are not fatal: continue with a body marker or automatic rules.
         if marker_requested and not explicit_mode:
             # A text marker is a selector, not an authentication mechanism. It is
@@ -146,6 +151,62 @@ class SignatureEngineService:
             if len(candidates) != 1:
                 return empty_result
             selected_signature = candidates[0]
+            latest_version = (
+                db.query(SignatureVersionDB)
+                .filter(SignatureVersionDB.signature_id == selected_signature.id)
+                .order_by(SignatureVersionDB.version_number.desc())
+                .first()
+            )
+            if latest_version is None:
+                raise SignatureEngineError(
+                    "SIGNATURE_VERSION_METADATA_MISSING",
+                    "Signature version metadata is missing",
+                )
+            try:
+                raw_template = self.file_store.read(
+                    selected_signature.name,
+                    uuid.UUID(hex=latest_version.id),
+                    latest_version.sha256,
+                )
+            except (SignatureStorageError, ValueError, TypeError):
+                raise SignatureEngineError(
+                    "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
+                )
+
+        elif active_schedule is not None:
+            identity_attributes = await self.identity_resolver(
+                db, normalized_email, domain_obj.identity_provider_id
+            )
+            if active_schedule.target_type == "GROUP":
+                if not active_schedule.group_id or not identity_attributes.principal_id:
+                    return empty_result
+                selected_signature = select_and_record_group_signature(
+                    db,
+                    principal_id=identity_attributes.principal_id,
+                    group_id=active_schedule.group_id,
+                    domain_id=domain_obj.id,
+                )
+                if selected_signature is None:
+                    return empty_result
+                selected_group_id = active_schedule.group_id
+                selected_group_signature = selected_signature
+                selected_from_group = True
+            elif active_schedule.target_type == "SIGNATURE":
+                if not active_schedule.signature_id:
+                    return empty_result
+                selected_signature = db.get(SignatureDB, active_schedule.signature_id)
+                if selected_signature is None or not selected_signature.is_active:
+                    return empty_result
+                assigned_domains = {
+                    row.domain_id for row in db.query(SignatureDomainDB).filter(
+                        SignatureDomainDB.signature_id == selected_signature.id
+                    ).all()
+                }
+                if assigned_domains and domain_obj.id not in assigned_domains:
+                    return empty_result
+            else:
+                return empty_result
+
             latest_version = (
                 db.query(SignatureVersionDB)
                 .filter(SignatureVersionDB.signature_id == selected_signature.id)

@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import uuid
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -23,6 +24,7 @@ from models import (
     SignatureGroupMemberDB,
     SignatureRuleConditionDB,
     SignatureRuleDB,
+    SignatureScheduleDB,
     SignatureVariantDB,
     SelectionStateDB,
     SignatureVersionDB,
@@ -200,6 +202,123 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(result.html, "<p>Personal Ada</p>")
         resolver.assert_awaited_once()
         store.read.assert_not_called()
+
+    def test_active_signature_schedule_overrides_personal_override(self):
+        domain = DomainDB(domain_name="example.org", is_active=True, allow_overrides=True)
+        self.db.add(domain)
+        self.db.flush()
+        signature = self._add_versioned_signature(
+            "Christmas", "AUTO", "<p>Christmas schedule</p>"
+        )
+        self.db.add(UserOverrideDB(
+            user_email="ada@example.org",
+            html_content="<p>Personal override</p>",
+            is_disabled=False,
+        ))
+        now = datetime.now(timezone.utc)
+        self.db.add(SignatureScheduleDB(
+            id=uuid.uuid4().hex,
+            name="Christmas campaign",
+            domain_id=domain.id,
+            target_type="SIGNATURE",
+            signature_id=signature.id,
+            starts_at=now - timedelta(hours=1),
+            ends_at=now + timedelta(hours=1),
+            priority=100,
+            is_enabled=True,
+        ))
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>Christmas schedule</p>"
+        service, resolver, _ = self._service(file_store=store)
+        result = asyncio.run(
+            service.resolve(self.db, normalize_engine_request("ada@example.org"))
+        )
+
+        self.assertEqual(result.html, "<p>Christmas schedule</p>")
+        resolver.assert_awaited_once()
+        store.read.assert_called_once()
+
+    def test_expired_schedule_falls_back_to_personal_override(self):
+        domain = DomainDB(domain_name="example.org", is_active=True, allow_overrides=True)
+        self.db.add(domain)
+        self.db.flush()
+        signature = self._add_versioned_signature(
+            "Expired Christmas", "AUTO", "<p>Expired</p>"
+        )
+        self.db.add(UserOverrideDB(
+            user_email="ada@example.org",
+            html_content="<p>Personal override</p>",
+            is_disabled=False,
+        ))
+        now = datetime.now(timezone.utc)
+        self.db.add(SignatureScheduleDB(
+            id=uuid.uuid4().hex,
+            name="Expired campaign",
+            domain_id=domain.id,
+            target_type="SIGNATURE",
+            signature_id=signature.id,
+            starts_at=now - timedelta(days=2),
+            ends_at=now - timedelta(days=1),
+            priority=100,
+            is_enabled=True,
+        ))
+        self.db.commit()
+
+        service, _, store = self._service()
+        result = asyncio.run(
+            service.resolve(self.db, normalize_engine_request("ada@example.org"))
+        )
+
+        self.assertEqual(result.html, "<p>Personal override</p>")
+        store.read.assert_not_called()
+
+    def test_active_group_schedule_selects_group_member(self):
+        domain = DomainDB(domain_name="example.org", is_active=True)
+        self.db.add(domain)
+        self.db.flush()
+        signature = self._add_versioned_signature(
+            "Christmas group member", "AUTO", "<p>Scheduled group</p>"
+        )
+        group = SignatureGroupDB(
+            id=uuid.uuid4().hex,
+            name="Christmas",
+            slug="christmas",
+            is_active=True,
+        )
+        self.db.add(group)
+        self.db.add(SignatureGroupMemberDB(
+            group_id=group.id,
+            signature_id=signature.id,
+            weight=1,
+            is_enabled=True,
+        ))
+        now = datetime.now(timezone.utc)
+        self.db.add(SignatureScheduleDB(
+            id=uuid.uuid4().hex,
+            name="Christmas group campaign",
+            domain_id=domain.id,
+            target_type="GROUP",
+            group_id=group.id,
+            starts_at=now - timedelta(minutes=5),
+            ends_at=now + timedelta(minutes=5),
+            priority=10,
+            is_enabled=True,
+        ))
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>Scheduled group</p>"
+        service, _, _ = self._service(file_store=store)
+        result = asyncio.run(
+            service.resolve(self.db, normalize_engine_request("ada@example.org"))
+        )
+
+        self.assertEqual(result.html, "<p>Scheduled group</p>")
+        state = self.db.query(GroupSelectionStateDB).one()
+        self.assertEqual(state.group_id, group.id)
+        self.assertEqual(state.last_signature_id, signature.id)
 
     def test_persisted_rule_selects_its_target_signature_variant(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))

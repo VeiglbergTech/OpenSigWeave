@@ -76,7 +76,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0012_html_source",))
+            self.assertEqual(revision, ("0013_branding_schedules",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -91,6 +91,8 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("signature_group_domains", tables)
             self.assertIn("signature_group_members", tables)
             self.assertIn("group_selection_state", tables)
+            self.assertIn("signature_schedules", tables)
+            self.assertIn("branding_settings", tables)
             self.assertIn("identity_provider_id", columns)
             self.assertIn("authentication_provider_id", columns)
             self.assertIn("template_html_source", columns)
@@ -203,7 +205,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(professional_members, [("sig-prof-1", 4, 1)])
             self.assertEqual(internal_members, [("sig-int-1", 6, 1)])
             self.assertEqual(existing_rule, ("AUTO", None, 10))
-            self.assertEqual(revision, ("0012_html_source",))
+            self.assertEqual(revision, ("0013_branding_schedules",))
 
 
 if __name__ == "__main__":
