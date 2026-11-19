@@ -474,7 +474,7 @@ async function main() {
     assert.ok(editorOverride, "administrator override must be persisted and returned by the domain API");
     assert.match(editorOverride.html_content, /<strong>Administrator user override<\/strong>/,
       "administrator override API must return the formatted HTML");
-    await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
+    await domainSettings.getByRole("button", { name: "Close Manager", exact: true }).click();
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" });
     await allowOverridesLabel.click();
