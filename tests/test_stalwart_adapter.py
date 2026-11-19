@@ -451,6 +451,25 @@ class StalwartAdapterTests(unittest.TestCase):
             {"action": "accept"},
         )
 
+    def test_skips_entire_multipart_alternative_with_unknown_transfer_encoding(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/alternative; boundary="alt"\\r\\n'],
+            ],
+            "--alt\\r\\n"
+            "Content-Type: text/plain; charset=utf-8\\r\\n"
+            "Content-Transfer-Encoding: x-unknown-encoding\\r\\n\\r\\n"
+            "Opaque payload\\r\\n"
+            "--alt\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body>Hello</body></html>\\r\\n"
+            "--alt--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertNotIn("replaceContents", [item["type"] for item in result.get("modifications", [])])
+
     def test_skips_text_part_with_unknown_charset(self):
         payload = request(
             [
