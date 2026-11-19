@@ -154,7 +154,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         content_type = part.get_content_type().lower()
         if content_type == "text/html":
-            if re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", body, re.I):
+            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
                 continue
             candidate, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
@@ -184,7 +184,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
             continue
-        transfer_encoding = part.get("Content-Transfer-Encoding", "7bit").strip().casefold()
         try:
             body = part.get_content()
         except (LookupError, UnicodeError, TypeError):
@@ -200,7 +199,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
                 continue
             body, _quote_detected = insert_signature(body, plain, html=False)
         charset = part.get_content_charset() or "utf-8"
-        transfer_encoding = part.get("Content-Transfer-Encoding", "quoted-printable").casefold()
+        transfer_encoding = part.get("Content-Transfer-Encoding", "quoted-printable")
+        transfer_encoding = transfer_encoding.strip().casefold()
         cte = transfer_encoding if transfer_encoding in {"7bit", "8bit", "quoted-printable", "base64"} else "quoted-printable"
         try:
             part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset, cte=cte)
