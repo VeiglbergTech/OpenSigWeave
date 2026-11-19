@@ -65,6 +65,32 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.body, body)
 
+    def test_signed_attached_email_does_not_block_outer_message_rewrite(self):
+        headers = [("MIME-Version", "1.0"),
+            ("Content-Type", 'multipart/mixed; boundary="outer"')]
+        attached_email = (
+            b"From: sender@example.org\\r\\n"
+            b"MIME-Version: 1.0\\r\\n"
+            b'Content-Type: multipart/signed; boundary="inner"; '
+            b'protocol="application/pgp-signature"\\r\\n\\r\\n'
+            b"--inner\\r\\nContent-Type: text/plain\\r\\n\\r\\nSigned content\\r\\n"
+            b"--inner\\r\\nContent-Type: application/pgp-signature\\r\\n\\r\\nsignature\\r\\n"
+            b"--inner--\\r\\n"
+        )
+        body = (
+            b"--outer\\r\\nContent-Type: text/plain; charset=utf-8\\r\\n\\r\\nCover note\\r\\n"
+            b"--outer\\r\\nContent-Type: message/rfc822\\r\\n"
+            b"Content-Disposition: attachment; filename=forwarded.eml\\r\\n\\r\\n"
+            + attached_email +
+            b"\\r\\n--outer--\\r\\n"
+        )
+        result = rewrite_message(headers, body, "<p>Signature</p>", inject_on_replies=True)
+        self.assertTrue(result.changed)
+        self.assertIn(b"Signature", result.body)
+        self.assertIn(b"Signed content", result.body)
+        self.assertIn(b"application/pgp-signature", result.body)
+        self.assertIn(b"signature", result.body)
+
     def test_binary_attachment_payload_is_preserved(self):
         import base64
         from email import policy

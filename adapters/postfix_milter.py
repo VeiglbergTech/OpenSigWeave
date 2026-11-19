@@ -73,6 +73,24 @@ def _raw_message(headers, body):
         lines.append(name.encode("ascii") + b":" + clean.encode("utf-8"))
     return b"\r\n".join(lines) + b"\r\n\r\n" + body
 
+def _contains_protected_signed_part(part):
+    """Detect signed/encrypted MIME only in the editable message tree.
+
+    Attached messages and files are opaque: their own signatures must not
+    prevent rewriting an unrelated outer message body.
+    """
+    content_type = part.get_content_type().lower()
+    if (content_type == "message/rfc822"
+            or part.get_content_disposition() == "attachment"
+            or part.get_filename()):
+        return False
+    if content_type in SIGNED_TYPES:
+        return True
+    if part.is_multipart():
+        return any(_contains_protected_signed_part(child) for child in part.iter_parts())
+    return False
+
+
 def _editable_parts(part):
     content_type = part.get_content_type().lower()
     if content_type in SIGNED_TYPES:
@@ -127,9 +145,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
     if not inject_on_replies and any(name in {"in-reply-to", "references"} for name in names):
         return RewriteResult(body, (), False)
     parsed = BytesParser(policy=policy.default).parsebytes(_raw_message(headers, body))
-    if any(part.get_content_type().lower() in SIGNED_TYPES and
-           part.get_content_disposition() != "attachment" and not part.get_filename()
-           for part in parsed.walk()):
+    if _contains_protected_signed_part(parsed):
         return RewriteResult(body, (), False)
     parts = list(_editable_parts(parsed))
     if any(part.defects for part in parts):
