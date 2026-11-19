@@ -123,7 +123,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     # occurrences from highest to lowest index so earlier deletions do not
     # shift the remaining target occurrences.
     control_header_deletions.sort(key=lambda item: (item["name"].casefold(), -item["index"]))
-    modifications.extend(control_header_deletions)
+    # Defer control-header cleanup until an actual body rewrite is ready.
+    # Stalwart treats any non-empty hook modification list as authoritative;
+    # header-only cleanup could otherwise discard an earlier Milter body edit.
 
     html_signature = signature_data.get("html")
     if not isinstance(html_signature, str) or not html_signature:
@@ -227,6 +229,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     _, found, new_body = serialized.partition(separator)
     if not found:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+
+    modifications.extend(control_header_deletions)
 
     # The DATA hook receives headers separately from the body. set_content()
     # may update top-level MIME metadata, so mirror those deltas explicitly.
