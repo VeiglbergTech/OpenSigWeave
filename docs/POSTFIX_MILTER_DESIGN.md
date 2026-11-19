@@ -96,3 +96,8 @@ plain-text lines (`Sent from my …`, `Get Outlook for …`) and corresponding
 HTML lines following a `<br>`. False policy values preserve that content.
 Unit tests cover both policies; Postfix E2E still uses a mock engine and does
 not yet prove a live engine policy response.
+
+
+## Untrusted processing markers
+
+`X-OpenSigWeave-Injected` and the historical `<!-- OpenSigWeave:INJECTED -->` HTML comment are sender-controlled when received in an SMTP message. They must never be treated as proof that an adapter already processed the message. The adapter removes client-supplied control headers and performs its normal eligibility/rewrite checks; idempotency across retries must be provided by trusted MTA/queue state, not by message content supplied by the sender.

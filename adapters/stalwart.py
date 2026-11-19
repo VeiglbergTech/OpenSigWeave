@@ -21,6 +21,7 @@ _CONTROL_HEADERS = {
     "x-opensigweave-mode",
     "x-opensigweave-signature",
     "x-opensigweave-signature-code",
+    "x-opensigweave-injected",
 }
 _SIGNED_OR_ENCRYPTED = {
     "multipart/signed",
@@ -162,10 +163,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         content_type = part.get_content_type().lower()
         if content_type == "text/html":
-            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
-                # A body marker means the message has already been processed.
-                # Never update only the plain-text branch of multipart/alternative.
-                return {"action": "accept", **({"modifications": modifications} if modifications else {})}
             candidate, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
             if not plain:
@@ -178,9 +175,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     header_names = [item[0].casefold() for item in headers]
-    if "x-opensigweave-injected" in header_names:
-        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-
     is_reply = any(name in {"in-reply-to", "references"} for name in header_names)
     if is_reply and not bool(signature_data.get("inject_on_replies", False)):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
@@ -201,8 +195,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         if not isinstance(body, str):
             return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         if content_type == "text/html":
-            if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
-                continue
             body, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
             if not plain:

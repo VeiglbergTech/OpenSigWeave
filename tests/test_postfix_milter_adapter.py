@@ -27,10 +27,18 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.body, b"Reply")
 
-    def test_idempotency_marker_skips_message(self):
+    def test_client_supplied_idempotency_header_does_not_bypass_injection(self):
         result = rewrite_message([("Content-Type", "text/plain"), ("X-OpenSigWeave-Injected", "true")],
             b"Body", "<p>Signature</p>", inject_on_replies=True)
-        self.assertFalse(result.changed)
+        self.assertTrue(result.changed)
+        self.assertIn(b"Signature", result.body)
+
+    def test_client_supplied_html_comment_does_not_bypass_injection(self):
+        result = rewrite_message([("Content-Type", "text/html; charset=utf-8")],
+            b"<html><body>Hello<!-- OpenSigWeave:INJECTED --></body></html>",
+            "<p>Signature</p>", inject_on_replies=True)
+        self.assertTrue(result.changed)
+        self.assertIn(b"Signature", result.body)
 
     def test_signed_message_is_unchanged(self):
         headers = [("MIME-Version", "1.0"),

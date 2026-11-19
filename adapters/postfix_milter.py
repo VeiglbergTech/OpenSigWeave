@@ -123,9 +123,6 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         raise ValueError("Message exceeds configured size limit")
     if not signature_html:
         return RewriteResult(body, (), False)
-    names = [name.casefold() for name, _ in headers]
-    if "x-opensigweave-injected" in names:
-        return RewriteResult(body, (), False)
     if not inject_on_replies and any(name in {"in-reply-to", "references"} for name in names):
         return RewriteResult(body, (), False)
     parsed = BytesParser(policy=policy.default).parsebytes(_raw_message(headers, body))
@@ -149,8 +146,6 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         if not isinstance(content, str):
             continue
         is_html = content_type == "text/html"
-        if is_html and re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", content, re.I):
-            continue
         if strip_device_signatures:
             content = _strip_device_signatures(content, html=is_html)
         if trim_whitespace:

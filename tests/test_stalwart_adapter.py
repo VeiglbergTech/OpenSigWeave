@@ -27,7 +27,7 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("<p>Signature</p>", body)
         self.assertIn("X-OpenSigWeave-Injected", [item.get("name") for item in changes])
 
-    def test_body_idempotency_marker_prevents_partial_alternative_mutation(self):
+    def test_client_supplied_body_marker_does_not_bypass_multipart_injection(self):
         payload = request(
             [
                 ["From", " sender@example.org\r\n"],
@@ -43,7 +43,9 @@ class StalwartAdapterTests(unittest.TestCase):
             "--alt--\r\n",
         )
         result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
-        self.assertEqual(result, {"action": "accept"})
+        self.assertIn("replaceContents", [item["type"] for item in result["modifications"]])
+        body = next(item["value"] for item in result["modifications"] if item["type"] == "replaceContents")
+        self.assertIn("Signature", body)
 
     def test_reports_top_level_mime_header_changes(self):
         payload = request(
@@ -122,17 +124,16 @@ class StalwartAdapterTests(unittest.TestCase):
         body = next(item["value"] for item in changes if item["type"] == "replaceContents")
         self.assertIn("QUJDRA==", body)
 
-    def test_does_not_duplicate_when_marker_header_exists(self):
+    def test_client_supplied_marker_header_does_not_bypass_injection(self):
         payload = request(
             [["From", " sender@example.org\r\n"],
              ["Content-Type", " text/plain; charset=utf-8\r\n"],
              ["X-OpenSigWeave-Injected", " true\r\n"]],
             "Hello",
         )
-        self.assertEqual(
-            build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"}),
-            {"action": "accept"},
-        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertIn("replaceContents", [item["type"] for item in result["modifications"]])
+        self.assertIn("deleteHeader", [item["type"] for item in result["modifications"]])
 
     def test_skips_replies_when_domain_policy_disables_reply_injection(self):
         payload = request(
