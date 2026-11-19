@@ -430,11 +430,10 @@ async function main() {
     await domainEditor.press("Control+A");
     await domainEditor.press("Control+B");
     await domainEditor.press("End");
-    await domainEditor.press(" Space");
     await page.waitForFunction(() =>
       document.querySelector("#domain-raw-html-editor").value.includes("<strong>Domain master template</strong>")
     );
-    assert.match(await domainEditor.innerHTML(), /<strong>Domain master template<\\/strong>/,
+    assert.match(await domainEditor.innerHTML(), /<strong>Domain master template<\/strong>/,
       "domain master-template CKEditor must format content and synchronize its source textarea");
     const saveMasterTemplate = page.waitForResponse(response =>
       response.request().method() === "PUT"
@@ -445,7 +444,7 @@ async function main() {
     await saveMasterTemplate;
     domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
     createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
-    assert.match(createdDomain.template_html, /<strong>Domain master template<\\/strong>/,
+    assert.match(createdDomain.template_html, /<strong>Domain master template<\/strong>/,
       "domain master-template HTML must persist through the domain API");
 
     // Exercise the administrator's per-user override editor and save workflow.
@@ -461,7 +460,7 @@ async function main() {
     await page.waitForFunction(() =>
       document.querySelector("#admin-raw-html-editor").value.includes("<strong>Administrator user override</strong>")
     );
-    assert.match(await adminEditor.innerHTML(), /<strong>Administrator user override<\\/strong>/,
+    assert.match(await adminEditor.innerHTML(), /<strong>Administrator user override<\/strong>/,
       "administrator override CKEditor must format content and synchronize its source textarea");
     const saveAdminOverride = page.waitForResponse(response =>
       response.request().method() === "POST"
@@ -473,7 +472,7 @@ async function main() {
     const adminOverrides = await (await page.request.get(baseURL + "/api/admin/overrides/browser-smoke-domain.test")).json();
     const editorOverride = adminOverrides.find(item => item.user_email === "editor-smoke@browser-smoke-domain.test");
     assert.ok(editorOverride, "administrator override must be persisted and returned by the domain API");
-    assert.match(editorOverride.html_content, /<strong>Administrator user override<\\/strong>/,
+    assert.match(editorOverride.html_content, /<strong>Administrator user override<\/strong>/,
       "administrator override API must return the formatted HTML");
     await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
