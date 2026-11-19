@@ -423,6 +423,60 @@ async function main() {
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     const domainSettings = page.locator('[x-data="domainSettingsModal"]');
+    // Exercise the domain master-template CKEditor instance and its source synchronization.
+    const domainEditor = domainSettings.locator("#domain-rich-editor .ck-editor__editable");
+    await domainEditor.waitFor({ state: "visible" });
+    await domainEditor.fill("Domain master template");
+    await domainEditor.press("Control+A");
+    await domainEditor.press("Control+B");
+    await domainEditor.press("End");
+    await domainEditor.press(" Space");
+    await page.waitForFunction(() =>
+      document.querySelector("#domain-raw-html-editor").value.includes("<strong>Domain master template</strong>")
+    );
+    assert.match(await domainEditor.innerHTML(), /<strong>Domain master template<\\/strong>/,
+      "domain master-template CKEditor must format content and synchronize its source textarea");
+    const saveMasterTemplate = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id)
+      && response.status() === 200
+    );
+    await domainSettings.getByRole("button", { name: "Save Settings", exact: true }).click();
+    await saveMasterTemplate;
+    domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.match(createdDomain.template_html, /<strong>Domain master template<\\/strong>/,
+      "domain master-template HTML must persist through the domain API");
+
+    // Exercise the administrator's per-user override editor and save workflow.
+    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await domainSettings.getByRole("button", { name: "User Overrides", exact: true }).click();
+    await domainSettings.getByPlaceholder("user@domain.com").fill("editor-smoke@browser-smoke-domain.test");
+    await domainSettings.getByRole("button", { name: "+ Add / Edit" }).click();
+    const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
+    await adminEditor.waitFor({ state: "visible" });
+    await adminEditor.fill("Administrator user override");
+    await adminEditor.press("Control+A");
+    await adminEditor.press("Control+B");
+    await page.waitForFunction(() =>
+      document.querySelector("#admin-raw-html-editor").value.includes("<strong>Administrator user override</strong>")
+    );
+    assert.match(await adminEditor.innerHTML(), /<strong>Administrator user override<\\/strong>/,
+      "administrator override CKEditor must format content and synchronize its source textarea");
+    const saveAdminOverride = page.waitForResponse(response =>
+      response.request().method() === "POST"
+      && response.url().endsWith("/api/admin/overrides")
+      && response.status() === 200
+    );
+    await domainSettings.getByRole("button", { name: "Save User", exact: true }).click();
+    await saveAdminOverride;
+    const adminOverrides = await (await page.request.get(baseURL + "/api/admin/overrides/browser-smoke-domain.test")).json();
+    const editorOverride = adminOverrides.find(item => item.user_email === "editor-smoke@browser-smoke-domain.test");
+    assert.ok(editorOverride, "administrator override must be persisted and returned by the domain API");
+    assert.match(editorOverride.html_content, /<strong>Administrator user override<\\/strong>/,
+      "administrator override API must return the formatted HTML");
+    await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
+    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" });
     await allowOverridesLabel.click();
     const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Enable Experimental Reply Injection" });
