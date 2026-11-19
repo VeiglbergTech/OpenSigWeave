@@ -158,12 +158,12 @@ class StalwartAdapterTests(unittest.TestCase):
     def test_removes_duplicate_control_headers_in_descending_occurrence_order(self):
         payload = request(
             [
-                ["From", " sender@example.org\\r\\n"],
-                ["X-OpenSigWeave-Mode", " PROFESSIONAL\\r\\n"],
-                ["X-OpenSigWeave-Mode", " INTERNAL\\r\\n"],
-                ["X-OpenSigWeave-Signature", " Old\\r\\n"],
-                ["X-OpenSigWeave-Mode", " NONE\\r\\n"],
-                ["X-OpenSigWeave-Signature", " New\\r\\n"],
+                ["From", " sender@example.org\r\n"],
+                ["X-OpenSigWeave-Mode", " PROFESSIONAL\r\n"],
+                ["X-OpenSigWeave-Mode", " INTERNAL\r\n"],
+                ["X-OpenSigWeave-Signature", " Old\r\n"],
+                ["X-OpenSigWeave-Mode", " NONE\r\n"],
+                ["X-OpenSigWeave-Signature", " New\r\n"],
             ],
             "Hello",
         )
