@@ -510,7 +510,7 @@ def configured_login_providers(db) -> list[dict[str, str]]:
 
 def login_page(request: Request, error: bool = False, status_code: int = 200, db=None):
     csrf_token = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
-    brand = branding_context(db) if db is not None else {
+    brand = branding_context(db) if hasattr(db, "get") else {
         "app_name": DEFAULT_APP_NAME,
         "app_color": DEFAULT_APP_COLOR,
         "has_logo": os.path.isfile("branding/logo.png"),
