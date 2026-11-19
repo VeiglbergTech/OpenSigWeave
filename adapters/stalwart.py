@@ -106,6 +106,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
 
     # Remove OpenSigWeave control headers even when no signature is selected.
     seen_control_headers: dict[str, int] = {}
+    control_header_deletions: list[dict[str, Any]] = []
     for header in headers:
         if (isinstance(header, list) and len(header) == 2
                 and isinstance(header[0], str)
@@ -113,11 +114,16 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             normalized_name = header[0].casefold()
             index = seen_control_headers.get(normalized_name, 0)
             seen_control_headers[normalized_name] = index + 1
-            modifications.append({
+            control_header_deletions.append({
                 "type": "deleteHeader",
                 "name": header[0],
                 "index": index,
             })
+    # Stalwart applies header modifications sequentially. Delete duplicate
+    # occurrences from highest to lowest index so earlier deletions do not
+    # shift the remaining target occurrences.
+    control_header_deletions.sort(key=lambda item: (item["name"].casefold(), -item["index"]))
+    modifications.extend(control_header_deletions)
 
     html_signature = signature_data.get("html")
     if not isinstance(html_signature, str) or not html_signature:
