@@ -1,6 +1,6 @@
 # Postfix Milter adapter — technical design
 
-**Status:** The experimental Postfix Milter adapter is implemented on `dev`. PyMilter 1.0.6 runtime/API, real Postfix SMTP/Milter protocol exchange, authenticated delivery through the actual adapter, control-header removal and final local-delivered MIME are CI-validated. The latest evidence is Tests #2225 (Actions run `44579169547`) and Postfix-CI #79 (Actions run `44579169574`), both successful on commit `7b0749ddb9f4893187d5fac60f0ff88d7c366a0a`. The latter includes the attached signed `.eml` regression scenario: the outer message is rewritten while the attached signed message remains opaque and intact. The adapter E2E uses a mock engine. Live engine HTTPS/API integration, DKIM-chain validation, production image packaging, concurrency/load behavior and production deployment validation remain open. PyMilter licensing and long-term packaging suitability still require review.  
+**Status:** The experimental Postfix Milter adapter is implemented on `dev`. PyMilter 1.0.6 runtime/API, real Postfix SMTP/Milter protocol exchange, authenticated delivery through the actual adapter, control-header removal and final local-delivered MIME are CI-validated. CI evidence through Tests #2227 (Actions run `44583422530`) and Postfix-CI #81 (Actions run `44583423005`) is successful on commit `cce8a3371e7a44aa04c54e0b2c2d7dea7ffee3b3`. Tests #2227 also validates the conservative `message/rfc822` rule: when an attached email is present, the outer body is left byte-for-byte unchanged because Python's MIME serializer can refold nested headers and invalidate embedded signatures. The adapter E2E uses a mock engine. Live engine HTTPS/API integration, DKIM-chain validation, production image packaging, concurrency/load behavior and production deployment validation remain open. PyMilter licensing and long-term packaging suitability still require review.  
 **Target branch:** `dev`  
 **Scope:** Track the implementation boundary, evidence and remaining release gates for the experimental Postfix adapter.
 
@@ -27,7 +27,7 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
    - sender-supplied processing markers are ignored and removed; any duplicate suppression must rely on trusted MTA/queue state;
    - signed/encrypted MIME structures are left unchanged;
    - any `message/rfc822` part causes the complete outer message to remain unchanged until serialization can preserve the nested message byte-for-byte;
-   - configured maximum message size and timeout are respected.
+   - configured header-count/header-byte limits, maximum body size and timeout are respected.
 5. It calls `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}` with `X-Engine-Key` and optional validated selection headers.
 6. It parses and mutates MIME using a standards-aware email library. It must preserve attachments, inline Content-IDs, transfer encodings and unrelated MIME parts. It must never rebuild MIME using regular expressions or raw boundary concatenation.
 7. It emits body/header changes only if a real insertion occurred. Empty engine output, ineligible messages and safe no-op cases are accepted unchanged.

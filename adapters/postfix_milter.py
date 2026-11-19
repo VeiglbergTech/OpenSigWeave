@@ -11,6 +11,8 @@ from core.signature_placement import insert_signature
 
 LOGGER = logging.getLogger("opensigweave.postfix")
 MAX_MESSAGE_BYTES = 20 * 1024 * 1024
+MAX_HEADER_BYTES = 1024 * 1024
+MAX_HEADER_COUNT = 2000
 MAX_ENGINE_RESPONSE_BYTES = 1024 * 1024
 BODY_REPLACEMENT_CHUNK = 64 * 1024
 VALID_MODES = {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
@@ -64,20 +66,28 @@ def _plain_signature(html, *, trim_whitespace=True):
 
 def _raw_message(headers, body):
     lines = []
+    header_bytes = 0
     for name, value in headers:
+        if len(lines) >= MAX_HEADER_COUNT:
+            raise ValueError("Message has too many headers")
         if not HEADER_NAME.fullmatch(name):
             raise ValueError("Invalid message header name")
         clean = value[:-2] if value.endswith("\r\n") else value
         if "\r" in clean or "\n" in clean:
             raise ValueError("Invalid message header value")
-        lines.append(name.encode("ascii") + b":" + clean.encode("utf-8"))
+        line = name.encode("ascii") + b":" + clean.encode("utf-8")
+        header_bytes += len(line) + 2
+        if header_bytes > MAX_HEADER_BYTES:
+            raise ValueError("Message headers exceed configured size limit")
+        lines.append(line)
     return b"\r\n".join(lines) + b"\r\n\r\n" + body
 
 def _contains_protected_signed_part(part):
-    """Detect signed/encrypted MIME only in the editable message tree.
+    """Detect MIME structures that make regeneration unsafe.
 
-    Attached messages and files are opaque: their own signatures must not
-    prevent rewriting an unrelated outer message body.
+    Ordinary file attachments are opaque and do not block rewriting. Attached
+    RFC 822 messages block the whole rewrite because stdlib serialization may
+    change their raw bytes and invalidate nested signatures.
     """
     content_type = part.get_content_type().lower()
     # The stdlib email parser/generator may refold headers inside an attached
@@ -267,13 +277,21 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
             self.sender = _sender_address(sender)
             self.authenticated_user = self.getsymval("{auth_authen}")
             self.headers = []
+            self.header_bytes = 0
+            self.headers_over_limit = False
             self.body_file = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
             self.body_size = 0
             return Milter.CONTINUE
         def header(self, field, value):
             if not HEADER_NAME.fullmatch(field):
                 return Milter.REJECT
-            self.headers.append((field, value.strip("\r\n")))
+            clean = value.strip("\r\n")
+            encoded_size = len(field.encode("ascii")) + 1 + len(clean.encode("utf-8")) + 2
+            if len(self.headers) >= MAX_HEADER_COUNT or self.header_bytes + encoded_size > MAX_HEADER_BYTES:
+                self.headers_over_limit = True
+                return Milter.TEMPFAIL
+            self.header_bytes += encoded_size
+            self.headers.append((field, clean))
             return Milter.CONTINUE
         def body(self, chunk):
             self.body_size += len(chunk)
@@ -283,6 +301,8 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
             return Milter.CONTINUE
         def eom(self):
             try:
+                if self.headers_over_limit:
+                    return Milter.TEMPFAIL
                 # Capture selector headers before removing all adapter control headers.
                 mode_values = [value.strip().upper() for name, value in self.headers
                                if name.casefold() == "x-opensigweave-mode"]

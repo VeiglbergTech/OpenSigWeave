@@ -4,7 +4,16 @@ import unittest
 import urllib.request
 from unittest.mock import patch
 import ssl
-from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, _NoRedirectHandler, fetch_signature, rewrite_message
+from adapters.postfix_milter import (
+    EngineRequestError,
+    MAX_HEADER_BYTES,
+    MAX_HEADER_COUNT,
+    MAX_MESSAGE_BYTES,
+    _NoRedirectHandler,
+    build_milter_class,
+    fetch_signature,
+    rewrite_message,
+)
 
 class PostfixMilterAdapterTests(unittest.TestCase):
     def test_plain_text_signature_precedes_quote(self):
@@ -335,6 +344,50 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         decoded = quopri.decodestring(result.body).decode("utf-8")
         self.assertTrue(result.changed)
         self.assertIn(" Signature ", decoded)
+    def test_header_bytes_are_bounded(self):
+        with self.assertRaises(ValueError):
+            rewrite_message(
+                [("X-Large", "x" * MAX_HEADER_BYTES)],
+                b"Body",
+                "<p>Sig</p>",
+                inject_on_replies=True,
+            )
+
+    def test_header_count_is_bounded(self):
+        headers = [("X-Test", "x")] * (MAX_HEADER_COUNT + 1)
+        with self.assertRaises(ValueError):
+            rewrite_message(headers, b"Body", "<p>Sig</p>", inject_on_replies=True)
+
+    def test_milter_tempfails_before_buffering_oversized_headers(self):
+        class FakeBase:
+            def getsymval(self, _name):
+                return "authenticated-user"
+
+        class FakeMilter:
+            Base = FakeBase
+            CONTINUE = 0
+            REJECT = 1
+            TEMPFAIL = 2
+
+            @staticmethod
+            def symlist(*_args):
+                return lambda function: function
+
+        milter_class = build_milter_class(
+            FakeMilter,
+            "https://engine.example",
+            "k" * 40,
+        )
+        milter = milter_class()
+        self.assertEqual(milter.envfrom("<sender@example.org>"), FakeMilter.CONTINUE)
+        self.assertEqual(
+            milter.header("X-Large", "x" * MAX_HEADER_BYTES),
+            FakeMilter.TEMPFAIL,
+        )
+        self.assertTrue(milter.headers_over_limit)
+        self.assertEqual(milter.headers, [])
+        milter.abort()
+
     def test_message_size_is_bounded(self):
         with self.assertRaises(ValueError):
             rewrite_message([], b"x" * (MAX_MESSAGE_BYTES + 1), "<p>Sig</p>", inject_on_replies=True)
