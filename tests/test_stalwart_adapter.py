@@ -150,10 +150,10 @@ class StalwartAdapterTests(unittest.TestCase):
             [["From", " sender@example.org\r\n"], ["X-OpenSigWeave-Mode", " PROFESSIONAL\r\n"]],
             "Hello",
         )
+        # A header-only hook response could overwrite an earlier Milter body
+        # rewrite in Stalwart, so no-signature messages must remain untouched.
         result = build_stalwart_hook_response(payload, {"html": ""})
-        self.assertEqual(result["modifications"], [
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0}
-        ])
+        self.assertEqual(result, {"action": "accept"})
 
     def test_removes_duplicate_control_headers_in_descending_occurrence_order(self):
         payload = request(
@@ -168,13 +168,7 @@ class StalwartAdapterTests(unittest.TestCase):
             "Hello",
         )
         result = build_stalwart_hook_response(payload, {"html": ""})
-        self.assertEqual(result["modifications"], [
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 2},
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 1},
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0},
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 1},
-            {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 0},
-        ])
+        self.assertEqual(result, {"action": "accept"})
 
     def test_rejects_bare_carriage_return_in_header_value(self):
         payload = request([["From", " sender@example.org\rInjected: yes\r\n"]], "Hello")
