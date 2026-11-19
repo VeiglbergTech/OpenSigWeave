@@ -277,7 +277,7 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
             self.sender = _sender_address(sender)
             self.authenticated_user = self.getsymval("{auth_authen}")
             self.headers = []
-            self.header_bytes = 0
+            self._header_size_bytes = 0
             self.headers_over_limit = False
             self.body_file = tempfile.SpooledTemporaryFile(max_size=1024 * 1024, mode="w+b")
             self.body_size = 0
@@ -287,10 +287,10 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 return Milter.REJECT
             clean = value.strip("\r\n")
             encoded_size = len(field.encode("ascii")) + 1 + len(clean.encode("utf-8")) + 2
-            if len(self.headers) >= MAX_HEADER_COUNT or self.header_bytes + encoded_size > MAX_HEADER_BYTES:
+            if len(self.headers) >= MAX_HEADER_COUNT or self._header_size_bytes + encoded_size > MAX_HEADER_BYTES:
                 self.headers_over_limit = True
                 return Milter.TEMPFAIL
-            self.header_bytes += encoded_size
+            self._header_size_bytes += encoded_size
             self.headers.append((field, clean))
             return Milter.CONTINUE
         def body(self, chunk):

@@ -363,6 +363,9 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             def getsymval(self, _name):
                 return "authenticated-user"
 
+            def header_bytes(self, field, value):
+                return self.header(field, value)
+
         class FakeMilter:
             Base = FakeBase
             CONTINUE = 0
@@ -379,7 +382,9 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             "k" * 40,
         )
         milter = milter_class()
+        self.assertTrue(callable(milter.header_bytes))
         self.assertEqual(milter.envfrom("<sender@example.org>"), FakeMilter.CONTINUE)
+        self.assertTrue(callable(milter.header_bytes))
         self.assertEqual(
             milter.header("X-Large", "x" * MAX_HEADER_BYTES),
             FakeMilter.TEMPFAIL,
