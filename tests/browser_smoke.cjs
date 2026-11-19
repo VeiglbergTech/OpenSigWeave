@@ -244,7 +244,12 @@ async function main() {
     const scheduleDialog = schedulePanel.locator('[x-show="editing"][role="dialog"]');
     await assertFloatingDialog(scheduleDialog, "schedule editor");
     await scheduleDialog.getByLabel("Name").fill("Browser Smoke Schedule");
-    await scheduleDialog.locator('select[x-model="form.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
+    const scheduleTargetType = scheduleDialog.locator('select[x-model="form.target_type"]');
+    await scheduleTargetType.selectOption("GROUP");
+    await scheduleTargetType.selectOption("SIGNATURE");
+    const scheduleSignatureSelect = scheduleDialog.locator('select[x-model="form.signature_id"]');
+    await scheduleSignatureSelect.waitFor({ state: "visible" });
+    await scheduleSignatureSelect.selectOption({ label: "Browser Smoke Signature" });
     const localInputValue = date => {
       const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
       return shifted.toISOString().slice(0, 16);
