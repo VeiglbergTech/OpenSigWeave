@@ -30,7 +30,7 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
 5. It calls `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}` with `X-Engine-Key` and optional validated selection headers.
 6. It parses and mutates MIME using a standards-aware email library. It must preserve attachments, inline Content-IDs, transfer encodings and unrelated MIME parts. It must never rebuild MIME using regular expressions or raw boundary concatenation.
 7. It emits body/header changes only if a real insertion occurred. Empty engine output, ineligible messages and safe no-op cases are accepted unchanged.
-8. It adds an idempotency marker only after successful insertion. Retries must not duplicate the signature.
+8. It adds an idempotency marker only after successful insertion. Retries must not duplicate the signature. Any client-supplied OpenSigWeave control header, including the idempotency marker, is untrusted and removed before eligibility checks; the marker cannot be used to bypass signature insertion.
 9. It returns the configured Milter action on engine or parsing failure. Default deployment guidance should favor temporary failure until operators deliberately choose fail-open behavior.
 
 ## Identity and authorization

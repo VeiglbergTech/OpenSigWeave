@@ -401,10 +401,13 @@ jobs:
           from email.message import EmailMessage
           def make_message():
               message = EmailMessage()
-              message['From'] = 'sender@example.org'
+              # Deliberately spoof the RFC 5322 From and pre-seed the internal
+              # marker: neither client-controlled header may influence processing.
+              message['From'] = 'spoofed@example.net'
               message['To'] = 'testuser@localhost'
               message['Subject'] = 'OpenSigWeave Postfix E2E'
               message['X-OpenSigWeave-Mode'] = 'INTERNAL'
+              message['X-OpenSigWeave-Injected'] = 'true'
               message.set_content('Original message body')
               return message
           with smtplib.SMTP('127.0.0.1', 25, timeout=10) as smtp:
@@ -435,6 +438,10 @@ jobs:
           assert 'OpenSigWeave integration signature' in injected[0].get_content()
           assert 'Original message body' in injected[0].get_content()
           assert injected[0].get('X-OpenSigWeave-Mode') is None
+          assert injected[0].get('X-OpenSigWeave-Injected') == 'true'
+          assert unchanged[0].get('X-OpenSigWeave-Injected') is None, unchanged[0]
+          assert injected[0]['From'] == 'spoofed@example.net'
+          assert unchanged[0]['From'] == 'spoofed@example.net'
           assert 'OpenSigWeave integration signature' not in unchanged[0].get_content()
           print('Actual OpenSigWeave Milter: authenticated injection and unauthenticated no-op verified')
           PY

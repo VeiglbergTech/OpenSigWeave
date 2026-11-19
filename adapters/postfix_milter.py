@@ -14,7 +14,13 @@ MAX_MESSAGE_BYTES = 20 * 1024 * 1024
 MAX_ENGINE_RESPONSE_BYTES = 1024 * 1024
 BODY_REPLACEMENT_CHUNK = 64 * 1024
 VALID_MODES = {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
-CONTROL_HEADERS = {"x-opensigweave-mode", "x-opensigweave-signature", "x-opensigweave-signature-code"}
+# All OpenSigWeave control/marker headers are untrusted when received from SMTP clients.
+CONTROL_HEADERS = {
+    "x-opensigweave-mode",
+    "x-opensigweave-signature",
+    "x-opensigweave-signature-code",
+    "x-opensigweave-injected",
+}
 SIGNED_TYPES = {"multipart/signed", "multipart/encrypted", "application/pkcs7-mime", "application/x-pkcs7-mime", "application/pgp-encrypted"}
 HEADER_NAME = re.compile(r"^[!#$%&'*+.^_|~0-9A-Za-z-]+$")
 
@@ -294,8 +300,14 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 )
                 if not result["html"]:
                     return Milter.CONTINUE
+                # Never trust a client-supplied idempotency marker. Remove every
+                # adapter control header from the message passed to the MIME rewriter.
+                message_headers = [
+                    (name, value) for name, value in self.headers
+                    if name.casefold() not in CONTROL_HEADERS
+                ]
                 rewritten = rewrite_message(
-                    self.headers, original_body, result["html"],
+                    message_headers, original_body, result["html"],
                     inject_on_replies=result["inject_on_replies"],
                     trim_whitespace=result["trim_whitespace"],
                     strip_device_signatures=result["strip_device_signatures"],
