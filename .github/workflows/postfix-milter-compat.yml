@@ -409,13 +409,13 @@ jobs:
               # Duplicate, conflicting sender-controlled selector and marker headers
               # must all be removed; duplicates must not create ambiguous selection.
               message['X-OpenSigWeave-Mode'] = 'INTERNAL'
-              message.add_header('X-OpenSigWeave-Mode', 'PROFESSIONAL')
+              message.add_header('x-opensigweave-mOdE', 'PROFESSIONAL')
               message['X-OpenSigWeave-Signature'] = 'Forged Signature'
-              message.add_header('X-OpenSigWeave-Signature', 'Second Forged Signature')
+              message.add_header('x-opensigweave-sIgnature', 'Second Forged Signature')
               message['X-OpenSigWeave-Signature-Code'] = 'FORGED1'
-              message.add_header('X-OpenSigWeave-Signature-Code', 'FORGED2')
+              message.add_header('x-opensigweave-sIgnature-cOde', 'FORGED2')
               message['X-OpenSigWeave-Injected'] = 'true'
-              message.add_header('X-OpenSigWeave-Injected', 'false')
+              message.add_header('x-opensigweave-iNjected', 'false')
               message.set_content('Original message body')
               return message
           with smtplib.SMTP('127.0.0.1', 25, timeout=10) as smtp:
