@@ -123,6 +123,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         raise ValueError("Message exceeds configured size limit")
     if not signature_html:
         return RewriteResult(body, (), False)
+    names = [name.casefold() for name, _value in headers]
     if not inject_on_replies and any(name in {"in-reply-to", "references"} for name in names):
         return RewriteResult(body, (), False)
     parsed = BytesParser(policy=policy.default).parsebytes(_raw_message(headers, body))
