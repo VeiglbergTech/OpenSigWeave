@@ -142,6 +142,8 @@ async function main() {
       { tab: "Signatures", heading: "Signature Catalog" },
       { tab: "Signature Groups", heading: "Signature Groups" },
       { tab: "Rules", heading: "Signature Rules" },
+      { tab: "Scheduling", heading: "Signature Scheduling" },
+      { tab: "Branding", heading: "Branding" },
       { tab: "Exports", heading: "Configuration exports" },
       { tab: "Imports", heading: "Configuration imports" },
     ];
@@ -234,6 +236,98 @@ async function main() {
     });
 
     checkpoint("signature create/update: complete");
+
+    // Exercise scheduling create/update/delete through the real administrator UI.
+    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    const schedulePanel = page.locator('[x-data="scheduleManager"]');
+    await schedulePanel.getByRole("button", { name: "+ Add Schedule", exact: true }).click();
+    const scheduleDialog = schedulePanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(scheduleDialog, "schedule editor");
+    await scheduleDialog.getByLabel("Name").fill("Browser Smoke Schedule");
+    await scheduleDialog.getByLabel("Signature", { exact: true }).selectOption({ label: "Browser Smoke Signature" });
+    const localInputValue = date => {
+      const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+      return shifted.toISOString().slice(0, 16);
+    };
+    const scheduleNow = new Date();
+    await scheduleDialog.getByLabel("Start").fill(localInputValue(new Date(scheduleNow.getTime() - 2 * 60 * 1000)));
+    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() + 60 * 60 * 1000)));
+    await scheduleDialog.getByLabel("Priority").fill("10");
+    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
+    let scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    await scheduleRow.waitFor();
+    let schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    let browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.ok(browserSchedule, "schedule created in the UI must be persisted");
+    assert.equal(browserSchedule.target_type, "SIGNATURE");
+    assert.equal(browserSchedule.priority, 10);
+
+    await scheduleRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await scheduleDialog.getByLabel("Priority").fill("42");
+    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('[x-data="scheduleManager"] tbody tr')]
+        .find(item => item.textContent.includes("Browser Smoke Schedule"));
+      return row && row.children[4].textContent.trim() === "42";
+    });
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(browserSchedule.priority, 42, "schedule update must persist");
+
+    scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    page.once("dialog", dialog => dialog.accept());
+    await scheduleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await scheduleRow.waitFor({ state: "detached" });
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    assert.equal(schedules.some(item => item.name === "Browser Smoke Schedule"), false,
+      "deleted schedule must be removed from persistence");
+
+    checkpoint("scheduling lifecycle: complete");
+
+    // Exercise persistent branding and both asset upload paths. Restore defaults
+    // afterwards so later smoke checks continue with the normal product identity.
+    await page.getByRole("button", { name: "Branding", exact: true }).click();
+    let brandingPanel = page.locator('[x-data="brandingManager"]');
+    await brandingPanel.getByLabel("Application name").fill("OpenSigWeave Browser Smoke");
+    await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#f97316");
+    const brandingFiles = brandingPanel.locator('input[type="file"]');
+    await brandingFiles.nth(0).setInputFiles("/work/branding/logo.png");
+    await brandingFiles.nth(1).setInputFiles("/work/branding/logo.png");
+    const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      brandingSave.click(),
+    ]);
+    await page.locator(".app-brand").filter({ hasText: "OpenSigWeave Browser Smoke" }).waitFor();
+    const customBranding = await (await page.request.get(baseURL + "/api/admin/branding")).json();
+    assert.equal(customBranding.app_name, "OpenSigWeave Browser Smoke");
+    assert.equal(customBranding.app_color, "#f97316");
+    assert.equal(customBranding.has_custom_logo, true);
+    assert.equal(customBranding.has_custom_favicon, true);
+
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Branding", exact: true }).click();
+    brandingPanel = page.locator('[x-data="brandingManager"]');
+    await brandingPanel.getByLabel("Application name").fill("OpenSigWeave");
+    await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#ff7043");
+    await brandingPanel.getByRole("button", { name: "Use built-in logo", exact: true }).click();
+    await brandingPanel.getByRole("button", { name: "Use built-in fallback", exact: true }).click();
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
+      brandingPanel.getByRole("button", { name: "Save Branding", exact: true }).click(),
+    ]);
+    await page.locator(".app-brand").filter({ hasText: "OpenSigWeave" }).waitFor();
+    const restoredBranding = await (await page.request.get(baseURL + "/api/admin/branding")).json();
+    assert.equal(restoredBranding.app_name, "OpenSigWeave");
+    assert.equal(restoredBranding.app_color, "#ff7043");
+    assert.equal(restoredBranding.has_custom_logo, false);
+    assert.equal(restoredBranding.has_custom_favicon, false);
+    const bundledLogo = await page.request.get(baseURL + "/branding/logo.png");
+    assert.equal(bundledLogo.status(), 200, "built-in logo must remain available after restoring defaults");
+
+    checkpoint("branding lifecycle: complete");
+
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
     const groupPanel = page.locator('[x-data="signatureGroupManager"]');
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
     await groupPanel.getByRole("button", { name: "+ Add Group" }).click();
@@ -605,7 +699,7 @@ async function main() {
     const protectedPage = await page.request.get(baseURL + "/", { timeout: 15000 });
     assert.equal(protectedPage.status(), 200);
     assert.match(protectedPage.url(), /\/login$/, "logged-out session must be redirected to login");
-    process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, export ZIP download and import preview, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
+    process.stdout.write("Browser smoke passed: administrator login, personal API, all admin sections, branding upload/reset, scheduling create/update/delete, export ZIP download and import preview, signature create/update/versioning, group create/update/member-weight update/membership removal/group delete, GROUP rule create/update/delete, regular-user authorization, domain override allow/deny policies, logout and session invalidation.\n");
   } finally {
     await browser.close();
   }

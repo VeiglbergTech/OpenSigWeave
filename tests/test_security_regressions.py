@@ -142,6 +142,25 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("class BrandingSettingsDB", (ROOT / "models.py").read_text(encoding="utf-8"))
         self.assertIn("class SignatureScheduleDB", (ROOT / "models.py").read_text(encoding="utf-8"))
 
+    def test_release_branding_asset_is_packaged_and_upload_budget_is_bounded(self):
+        self.assertIn('"/api/admin/branding": 2 * 1024 * 1024', self.source)
+        dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+        gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        self.assertNotIn("branding/logo.png", dockerignore)
+        self.assertNotIn("branding/logo.png", gitignore)
+        logo = (ROOT / "branding" / "logo.png").read_bytes()
+        self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("FROM node:22.23.5-alpine3.24 AS ckeditor", dockerfile)
+        self.assertNotIn("FROM node:22-alpine AS ckeditor", dockerfile)
+        for obsolete in (
+            ROOT / "branding" / "logo.png.example",
+            ROOT / "branding" / "favicon.ico.example",
+            ROOT / "branding" / "settings.json.example",
+            ROOT / "docs" / "EDITOR_MIGRATION_PLAN.md",
+        ):
+            self.assertFalse(obsolete.exists(), f"Obsolete release artifact still exists: {obsolete}")
+
     def test_signature_management_api_routes_require_admin(self):
         self.assertIn('@app.get("/api/admin/signatures")', self.source)
         self.assertIn('@app.post("/api/admin/signatures", status_code=201)', self.source)

@@ -17,9 +17,7 @@ docs
 *.sqlite
 signatures
 signatur
-branding/logo.png
 branding/favicon.ico
-branding/settings.json
 
 .idp/
 

@@ -1,5 +1,5 @@
-# Pin the multi-platform image index; Dependabot tracks digest updates.
-FROM node:22-alpine AS ckeditor
+# Pin the CKEditor build stage to an exact Node/Alpine version; Dependabot tracks updates.
+FROM node:22.23.5-alpine3.24 AS ckeditor
 
 WORKDIR /build
 COPY static/js/ckeditor-entry.js ./ckeditor-entry.js

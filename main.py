@@ -365,6 +365,9 @@ app.add_middleware(
     path_limits={
         "/api/admin/imports/preview": MAX_EXPORT_BYTES,
         "/api/admin/imports/apply": MAX_EXPORT_BYTES,
+        # Branding uploads are base64-encoded in JSON; keep a bounded budget
+        # above the combined validated binary logo/favicon limits.
+        "/api/admin/branding": 2 * 1024 * 1024,
         # MTA hooks carry the complete message, including MIME attachments.
         "/api/v1/adapters/stalwart/mta-hook": 20 * 1024 * 1024,
     },
