@@ -131,6 +131,15 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in safe_parts):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
+    supported_transfer_encodings = {"7bit", "8bit", "binary", "quoted-printable", "base64"}
+    for part in safe_parts:
+        if part.is_multipart() or part.get_content_type().lower() not in {"text/plain", "text/html"}:
+            continue
+        transfer_encoding = part.get("Content-Transfer-Encoding", "7bit")
+        if not isinstance(transfer_encoding, str) or transfer_encoding.strip().casefold() not in supported_transfer_encodings:
+            # Do not mutate only one decodable branch of a multipart alternative.
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+
     header_names = [item[0].casefold() for item in headers]
     if "x-opensigweave-injected" in header_names:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
@@ -149,11 +158,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         content_type = part.get_content_type().lower()
         if content_type not in {"text/plain", "text/html"}:
             continue
-        transfer_encoding = part.get("Content-Transfer-Encoding", "7bit").casefold()
-        if transfer_encoding not in {"7bit", "8bit", "binary", "quoted-printable", "base64"}:
-            # Unknown transfer encodings cannot be decoded reliably. Do not
-            # reinterpret their raw payload as text or rewrite the MIME part.
-            continue
+        transfer_encoding = part.get("Content-Transfer-Encoding", "7bit").strip().casefold()
         try:
             body = part.get_content()
         except (LookupError, UnicodeError, TypeError):
