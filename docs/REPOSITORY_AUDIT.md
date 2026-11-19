@@ -33,13 +33,10 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Latest `dev` validation: push run [#1884](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815243995) passed on `29c86d5ba9371e067319867bf93b8ea820c0f71b`.
-- `beta` is fast-forwarded to the same commit; push run [#1885](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815757212) and Draft PR validation [#1886](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815762725) both passed.
-- `main` remains unchanged; PR #2 is still Draft and unmerged.
-- The workflow covers secret/dependency scans, syntax, migrations, Docker health, browser workflows, backup/restore and regression tests.
-- The latest `dev` follow-up changes documentation only; application behavior is unchanged. Its CI run is separate from the last fully validated baseline.
-
-Automated local CI is not live LDAP/OIDC validation, a cross-host restore drill, real NFS/SMB testing, SMTP/DKIM integration, a dynamic penetration test or production certification.
+- Latest `dev` application validation: push run [`44532956099`](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532956099) passed on `483df4485166116d6e85ac891a59bc3ce2815cbb`. All 22 reported workflow steps succeeded, including Docker smoke test, encrypted backup/fresh restore and regression tests.
+- Latest dedicated Postfix compatibility validation: run [`44532955327`](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed on the same commit. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
+- `main` remains unchanged; PR #2 remains Draft and unmerged. No promotion or deployment is implied by these CI results.
+- CI covers secret/dependency scans, syntax, migrations, Docker smoke, browser workflows, backup/restore and regression tests. It does not replace live identity-provider, SMTP/DKIM, client-rendering, cross-host restore or production validation.
 
 ## Remaining actions
 
