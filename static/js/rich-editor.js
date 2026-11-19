@@ -7,9 +7,13 @@
         "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine"
     ];
 
+    // Keep the editor's General HTML Support aligned with the server sanitizer.
+    // This is an editing-fidelity setting only; signature_sanitizer.py remains
+    // the authoritative security boundary for preview and delivery.
     const allowedElements = [
-        "p", "div", "span", "br", "strong", "b", "em", "i", "u", "s",
-        "a", "img", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
+        "p", "div", "center", "span", "br", "strong", "b", "em", "i", "u", "s",
+        "small", "sub", "sup", "code", "pre", "a", "img", "font",
+        "table", "thead", "tbody", "tfoot", "tr", "td", "th",
         "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6",
         "blockquote", "hr"
     ];
@@ -41,7 +45,8 @@
                     attributes: [
                         "style", "class", "href", "src", "alt", "title", "width", "height",
                         "align", "valign", "border", "cellpadding", "cellspacing",
-                        "colspan", "rowspan", "target", "rel", "dir", "role", "id"
+                        "colspan", "rowspan", "target", "rel", "dir", "role", "id",
+                        "face", "color", "size", "start", "type", "value"
                     ],
                     classes: true,
                     styles: true
