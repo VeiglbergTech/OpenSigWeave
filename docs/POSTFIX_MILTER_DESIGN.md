@@ -1,6 +1,6 @@
 # Postfix Milter adapter — technical design
 
-**Status:** The experimental Postfix Milter adapter is implemented on `dev`. PyMilter 1.0.6 runtime/API, real Postfix SMTP/Milter protocol exchange, authenticated delivery through the actual adapter, control-header removal and final local-delivered MIME are CI-validated. CI evidence through Tests #2227 (Actions run `44583422530`) and Postfix-CI #81 (Actions run `44583423005`) is successful on commit `cce8a3371e7a44aa04c54e0b2c2d7dea7ffee3b3`. Tests #2227 also validates the conservative `message/rfc822` rule: when an attached email is present, the outer body is left byte-for-byte unchanged because Python's MIME serializer can refold nested headers and invalidate embedded signatures. The adapter E2E uses a mock engine. Live engine HTTPS/API integration, DKIM-chain validation, production image packaging, concurrency/load behavior and production deployment validation remain open. PyMilter licensing and long-term packaging suitability still require review.  
+**Status:** The experimental Postfix Milter adapter is implemented on `dev`. PyMilter 1.0.6 runtime/API, real Postfix SMTP/Milter protocol exchange, authenticated delivery through the actual adapter, control-header removal and final local-delivered MIME are CI-validated. CI evidence through Tests #2229 (Actions run `44594009283`) and Postfix-CI #83 (Actions run `44594009306`) is successful on commit `c09b9eb29bbc6beeeecd6c5b69db6374f8a0fc49`. The adapter conservatively leaves messages containing encapsulated `message/*` parts unchanged because Python's MIME serializer can refold nested headers and invalidate embedded signatures. The adapter E2E uses a mock engine. Live engine HTTPS/API integration, DKIM-chain validation, production image packaging, concurrency/load behavior and production deployment validation remain open. PyMilter licensing and long-term packaging suitability still require review.  
 **Target branch:** `dev`  
 **Scope:** Track the implementation boundary, evidence and remaining release gates for the experimental Postfix adapter.
 
@@ -26,7 +26,7 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
    - envelope sender is non-empty and normalized;
    - sender-supplied processing markers are ignored and removed; any duplicate suppression must rely on trusted MTA/queue state;
    - signed/encrypted MIME structures are left unchanged;
-   - any `message/rfc822` part causes the complete outer message to remain unchanged until serialization can preserve the nested message byte-for-byte;
+   - any encapsulated `message/*` part causes the complete outer message to remain unchanged until serialization can preserve the nested message byte-for-byte;
    - configured header-count/header-byte limits, maximum body size and timeout are respected.
 5. It calls `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}` with `X-Engine-Key` and optional validated selection headers.
 6. It parses and mutates MIME using a standards-aware email library. It must preserve attachments, inline Content-IDs, transfer encodings and unrelated MIME parts. It must never rebuild MIME using regular expressions or raw boundary concatenation.
@@ -99,13 +99,14 @@ Unit tests cover both policies; Postfix E2E still uses a mock engine and does
 not yet prove a live engine policy response.
 
 
-## Attached RFC 822 messages and signature preservation
+## Attached encapsulated messages and signature preservation
 
 The Python standard-library MIME parser/generator can refold headers when it
-serializes a nested `message/rfc822` part. That changes the attached message's
-raw signed bytes and can invalidate embedded PGP or DKIM signatures even if the
-decoded text remains identical. The Postfix adapter therefore treats every
-`message/rfc822` part as a conservative whole-message no-rewrite condition.
+serializes nested message MIME parts such as `message/rfc822`, `message/global`
+or `message/news`. That changes the attached message's raw signed bytes and can
+invalidate embedded PGP or DKIM signatures even if the decoded text remains
+identical. The Postfix adapter therefore treats every `message/*` part as a
+conservative whole-message no-rewrite condition.
 Ordinary file attachments remain opaque and do not, by themselves, block
 rewriting of the outer message. Re-enabling outer-message rewriting alongside
 attached emails requires a serializer that demonstrably preserves the nested

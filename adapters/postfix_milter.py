@@ -86,7 +86,7 @@ def _contains_protected_signed_part(part):
     """Detect MIME structures that make regeneration unsafe.
 
     Ordinary file attachments are opaque and do not block rewriting. Attached
-    RFC 822 messages block the whole rewrite because stdlib serialization may
+    message/* parts block the whole rewrite because stdlib serialization may
     change their raw bytes and invalidate nested signatures.
     """
     content_type = part.get_content_type().lower()
@@ -94,7 +94,7 @@ def _contains_protected_signed_part(part):
     # message/rfc822 part. That can invalidate an embedded PGP/DKIM signature,
     # even when the decoded content appears unchanged. Until raw-part-preserving
     # serialization is implemented, fail closed for the entire outer message.
-    if content_type == "message/rfc822":
+    if part.get_content_maintype().lower() == "message":
         return True
     if part.get_content_disposition() == "attachment" or part.get_filename():
         return False
@@ -109,7 +109,7 @@ def _editable_parts(part):
     content_type = part.get_content_type().lower()
     if content_type in SIGNED_TYPES:
         return
-    if content_type == "message/rfc822" or part.get_content_disposition() == "attachment" or part.get_filename():
+    if part.get_content_maintype().lower() == "message" or part.get_content_disposition() == "attachment" or part.get_filename():
         return
     yield part
     if part.is_multipart():

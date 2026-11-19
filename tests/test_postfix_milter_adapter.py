@@ -74,7 +74,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.body, body)
 
-    def test_signed_attached_email_blocks_outer_message_rewrite_to_preserve_raw_bytes(self):
+    def test_attached_message_parts_block_outer_rewrite_to_preserve_raw_bytes(self):
         headers = [("MIME-Version", "1.0"),
             ("Content-Type", 'multipart/mixed; boundary="outer"')]
         attached_email = (
@@ -86,18 +86,20 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             b"--inner\r\nContent-Type: application/pgp-signature\r\n\r\nsignature\r\n"
             b"--inner--\r\n"
         )
-        body = (
-            b"--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nCover note\r\n"
-            b"--outer\r\nContent-Type: message/rfc822\r\n"
-            b"Content-Disposition: attachment; filename=forwarded.eml\r\n\r\n"
-            + attached_email +
-            b"\r\n--outer--\r\n"
-        )
-        result = rewrite_message(headers, body, "<p>Signature</p>", inject_on_replies=True)
-        self.assertFalse(result.changed)
-        # Exact equality is intentional: MIME parsing and regeneration can
-        # refold nested message headers and invalidate the attached signature.
-        self.assertEqual(result.body, body)
+        for content_type in ("message/rfc822", "message/global", "message/news"):
+            with self.subTest(content_type=content_type):
+                body = (
+                    b"--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nCover note\r\n"
+                    b"--outer\r\nContent-Type: " + content_type.encode("ascii") + b"\r\n"
+                    b"Content-Disposition: attachment; filename=forwarded.eml\r\n\r\n"
+                    + attached_email +
+                    b"\r\n--outer--\r\n"
+                )
+                result = rewrite_message(headers, body, "<p>Signature</p>", inject_on_replies=True)
+                self.assertFalse(result.changed)
+                # Exact equality is intentional: MIME parsing and regeneration can
+                # refold nested message headers and invalidate the attached signature.
+                self.assertEqual(result.body, body)
 
     def test_binary_attachment_payload_is_preserved(self):
         import base64
