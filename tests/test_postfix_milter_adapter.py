@@ -3,6 +3,7 @@ import quopri
 import unittest
 import urllib.request
 from unittest.mock import patch
+import ssl
 from adapters.postfix_milter import EngineRequestError, MAX_MESSAGE_BYTES, _NoRedirectHandler, fetch_signature, rewrite_message
 
 class PostfixMilterAdapterTests(unittest.TestCase):
@@ -129,6 +130,37 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertEqual(headers["x-opensigweave-signature-code"], "A1B2")
         self.assertEqual(headers["accept"], "application/json")
         self.assertEqual(opener.timeout, 3.5)
+
+    def test_engine_client_enables_system_ca_and_hostname_verification(self):
+        payload = {
+            "html": "",
+            "inject_on_replies": True,
+            "trim_whitespace": True,
+            "strip_device_signatures": False,
+        }
+
+        class Response:
+            status = 200
+            def __enter__(self):
+                return self
+            def __exit__(self, *_args):
+                return False
+            def read(self, limit):
+                return json.dumps(payload).encode("utf-8")
+
+        class Opener:
+            def open(self, request, timeout):
+                return Response()
+
+        with patch("adapters.postfix_milter.urllib.request.build_opener", return_value=Opener()) as build:
+            fetch_signature("https://engine.example", "k" * 40, "sender@example.org")
+
+        handlers = build.call_args.args
+        https_handler = next(handler for handler in handlers if isinstance(handler, urllib.request.HTTPSHandler))
+        context = https_handler._context
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+
 
     def test_engine_client_rejects_invalid_response_contract(self):
         class Response:

@@ -1,6 +1,6 @@
 """Standalone Postfix SMTP Milter sidecar for OpenSigWeave."""
 from __future__ import annotations
-import json, logging, os, re, tempfile, urllib.error, urllib.parse, urllib.request
+import json, logging, os, re, ssl, tempfile, urllib.error, urllib.parse, urllib.request
 from dataclasses import dataclass
 from email import policy
 from email.generator import BytesGenerator
@@ -190,7 +190,10 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_nam
         headers["X-OpenSigWeave-Signature-Code"] = signature_code.strip()
     request = urllib.request.Request(url, headers=headers, method="GET")
     try:
-        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(), _NoRedirectHandler())
+        ssl_context = ssl.create_default_context()
+        opener = urllib.request.build_opener(
+            urllib.request.HTTPSHandler(context=ssl_context), _NoRedirectHandler()
+        )
         with opener.open(request, timeout=timeout) as response:
             if response.status != 200:
                 raise EngineRequestError(f"Engine returned HTTP {response.status}")
