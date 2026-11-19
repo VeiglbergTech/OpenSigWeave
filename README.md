@@ -4,7 +4,9 @@ Self-hosted email-signature management with a web portal, rule and rendering eng
 
 **Status:** Development preview, not production-ready. Deploys independently of Mailcow; the standalone Compose stack does not install Rspamd or modify a mail server. Do not connect it to production mail flow.
 
-<a href="https://www.buymeacoffee.com/veiglbergtech"><img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=&slug=veiglbergtech&button_colour=40DCA5&font_colour=ffffff&font_family=Cookie&outline_colour=000000&coffee_colour=FFDD00" /></a>
+<a href="https://www.buymeacoffee.com/veiglbergtech">
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" />
+</a>
 
 ## Features
 
