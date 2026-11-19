@@ -25,7 +25,8 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
    - authenticated submission only by default;
    - envelope sender is non-empty and normalized;
    - sender-supplied processing markers are ignored and removed; any duplicate suppression must rely on trusted MTA/queue state;
-   - signed/encrypted or unsupported MIME structures are left unchanged;
+   - signed/encrypted MIME structures are left unchanged;
+   - any `message/rfc822` part causes the complete outer message to remain unchanged until serialization can preserve the nested message byte-for-byte;
    - configured maximum message size and timeout are respected.
 5. It calls `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}` with `X-Engine-Key` and optional validated selection headers.
 6. It parses and mutates MIME using a standards-aware email library. It must preserve attachments, inline Content-IDs, transfer encodings and unrelated MIME parts. It must never rebuild MIME using regular expressions or raw boundary concatenation.
@@ -97,6 +98,19 @@ HTML lines following a `<br>`. False policy values preserve that content.
 Unit tests cover both policies; Postfix E2E still uses a mock engine and does
 not yet prove a live engine policy response.
 
+
+## Attached RFC 822 messages and signature preservation
+
+The Python standard-library MIME parser/generator can refold headers when it
+serializes a nested `message/rfc822` part. That changes the attached message's
+raw signed bytes and can invalidate embedded PGP or DKIM signatures even if the
+decoded text remains identical. The Postfix adapter therefore treats every
+`message/rfc822` part as a conservative whole-message no-rewrite condition.
+Ordinary file attachments remain opaque and do not, by themselves, block
+rewriting of the outer message. Re-enabling outer-message rewriting alongside
+attached emails requires a serializer that demonstrably preserves the nested
+RFC 822 payload byte-for-byte, backed by a regression test that compares the
+raw payload rather than checking only visible content.
 
 ## Untrusted processing markers
 

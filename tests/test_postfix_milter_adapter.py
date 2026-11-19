@@ -65,7 +65,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.body, body)
 
-    def test_signed_attached_email_does_not_block_outer_message_rewrite(self):
+    def test_signed_attached_email_blocks_outer_message_rewrite_to_preserve_raw_bytes(self):
         headers = [("MIME-Version", "1.0"),
             ("Content-Type", 'multipart/mixed; boundary="outer"')]
         attached_email = (
@@ -85,11 +85,10 @@ class PostfixMilterAdapterTests(unittest.TestCase):
             b"\r\n--outer--\r\n"
         )
         result = rewrite_message(headers, body, "<p>Signature</p>", inject_on_replies=True)
-        self.assertTrue(result.changed)
-        self.assertIn(b"Signature", result.body)
-        self.assertIn(b"Signed content", result.body)
-        self.assertIn(b"application/pgp-signature", result.body)
-        self.assertIn(b"signature", result.body)
+        self.assertFalse(result.changed)
+        # Exact equality is intentional: MIME parsing and regeneration can
+        # refold nested message headers and invalidate the attached signature.
+        self.assertEqual(result.body, body)
 
     def test_binary_attachment_payload_is_preserved(self):
         import base64

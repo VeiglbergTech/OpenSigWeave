@@ -80,9 +80,13 @@ def _contains_protected_signed_part(part):
     prevent rewriting an unrelated outer message body.
     """
     content_type = part.get_content_type().lower()
-    if (content_type == "message/rfc822"
-            or part.get_content_disposition() == "attachment"
-            or part.get_filename()):
+    # The stdlib email parser/generator may refold headers inside an attached
+    # message/rfc822 part. That can invalidate an embedded PGP/DKIM signature,
+    # even when the decoded content appears unchanged. Until raw-part-preserving
+    # serialization is implemented, fail closed for the entire outer message.
+    if content_type == "message/rfc822":
+        return True
+    if part.get_content_disposition() == "attachment" or part.get_filename():
         return False
     if content_type in SIGNED_TYPES:
         return True
