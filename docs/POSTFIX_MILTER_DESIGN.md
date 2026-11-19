@@ -24,13 +24,13 @@ The Go `andybalholm/milter` package remains an alternative only if the Python/na
 4. At end-of-message, it checks whether the message is eligible:
    - authenticated submission only by default;
    - envelope sender is non-empty and normalized;
-   - message is not already marked as processed;
+   - sender-supplied processing markers are ignored and removed; any duplicate suppression must rely on trusted MTA/queue state;
    - signed/encrypted or unsupported MIME structures are left unchanged;
    - configured maximum message size and timeout are respected.
 5. It calls `GET /api/v1/engine/signatures/{url-encoded-envelope-sender}` with `X-Engine-Key` and optional validated selection headers.
 6. It parses and mutates MIME using a standards-aware email library. It must preserve attachments, inline Content-IDs, transfer encodings and unrelated MIME parts. It must never rebuild MIME using regular expressions or raw boundary concatenation.
 7. It emits body/header changes only if a real insertion occurred. Empty engine output, ineligible messages and safe no-op cases are accepted unchanged.
-8. It adds an idempotency marker only after successful insertion. Retries must not duplicate the signature. Any client-supplied OpenSigWeave control header, including the idempotency marker, is untrusted and removed before eligibility checks; the marker cannot be used to bypass signature insertion.
+8. It adds an informational processing marker only after successful insertion. The marker is never trusted on input and cannot provide idempotency across independent message submissions or reprocessing. Any such duplicate suppression requires trusted MTA/queue state; the current adapter does not implement that state.
 9. It returns the configured Milter action on engine or parsing failure. Default deployment guidance should favor temporary failure until operators deliberately choose fail-open behavior.
 
 ## Identity and authorization
@@ -63,14 +63,14 @@ Inbound unauthenticated mail must remain unchanged. Local/non-SMTP submission is
 ### Adapter tests
 - New plain-text message; HTML message; multipart/alternative.
 - Attachments and inline Content-ID images preserved byte-semantically where feasible.
-- Quoted replies follow `inject_on_replies`; no duplicate insertion on retries.
+- Quoted replies follow `inject_on_replies`; a sender-supplied processing marker must not suppress insertion. Duplicate suppression across independent reprocessing is not implemented until trusted MTA/queue state is integrated.
 - Empty envelope sender, unauthenticated sender, spoofed `From:`, unauthorized alias and missing SASL macro all produce no injection.
 - Signed/encrypted messages and malformed MIME remain unchanged.
 - Engine 401/400/422/503, timeout, oversized response, malformed JSON and incomplete/mistyped typed policy fields exercise explicit failure policy.
 - Confirm no Milter mutation is emitted when insertion is skipped or fails.
 
 ### End-to-end release gate
-Run a disposable Postfix instance with the adapter and a DKIM signer in the intended order. Send messages through SMTP AUTH and verify delivered MIME, sender authorization, retry behavior, idempotency and final DKIM validation. Unit tests or a protocol simulator alone do not qualify as Postfix integration validation.
+Run a disposable Postfix instance with the adapter and a DKIM signer in the intended order. Send messages through SMTP AUTH and verify delivered MIME, sender authorization, retry behavior, rejection of forged processing markers and final DKIM validation. Do not claim exactly-once processing across independent submissions until trusted MTA/queue state is integrated and tested. Unit tests or a protocol simulator alone do not qualify as Postfix integration validation.
 
 ## References
 
@@ -100,4 +100,4 @@ not yet prove a live engine policy response.
 
 ## Untrusted processing markers
 
-`X-OpenSigWeave-Injected` and the historical `<!-- OpenSigWeave:INJECTED -->` HTML comment are sender-controlled when received in an SMTP message. They must never be treated as proof that an adapter already processed the message. The adapter removes client-supplied control headers and performs its normal eligibility/rewrite checks; idempotency across retries must be provided by trusted MTA/queue state, not by message content supplied by the sender.
+`X-OpenSigWeave-Injected` and the historical `<!-- OpenSigWeave:INJECTED -->` HTML comment are sender-controlled when received in an SMTP message. They must never be treated as proof that an adapter already processed the message. The adapter removes client-supplied control headers and performs its normal eligibility/rewrite checks. The marker added after insertion is informational only. The current adapter does not implement trusted MTA/queue state, so it makes no exactly-once guarantee across independent submissions or reprocessing; any future duplicate suppression must use trusted state, never message content supplied by the sender.
