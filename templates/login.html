@@ -3,13 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign in · OpenSigWeave</title>
+    <title>Sign in · {{ app_name }}</title>
     <link rel="stylesheet" href="/static/css/tailwind.css">
     <link rel="stylesheet" href="/static/css/portal.css">
+    {% if has_favicon %}<link rel="icon" href="/branding/favicon">{% endif %}
+    <script defer src="/static/js/branding.js"></script>
 </head>
-<body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6">
+<body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6" data-app-color="{{ app_color|e }}">
     <main class="w-full max-w-md rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
-        <h1 class="text-2xl font-semibold mb-2">OpenSigWeave</h1>
+        {% if has_logo %}<img src="/branding/logo.png" alt="{{ app_name }} logo" class="max-h-32 max-w-full object-contain mx-auto mb-5">{% endif %}
+        <h1 class="text-2xl font-semibold mb-2 app-brand">{{ app_name }}</h1>
         <p class="text-gray-400 mb-6">Use email and password for LDAP or local administrator access. Or sign in with one of the configured Authentik providers below.</p>
         {% if error %}
         <p role="alert" class="mb-4 rounded bg-red-900/40 border border-red-700 p-3 text-sm">Invalid email address or password.</p>

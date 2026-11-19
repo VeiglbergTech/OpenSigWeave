@@ -457,6 +457,166 @@ function identityProviderManager() { return {
         }
 
 
+        function scheduleManager() {
+            return {
+                schedules: [], signatures: [], groups: [], domains: [], editing: false,
+                form: { id: null, name: '', target_type: 'SIGNATURE', signature_id: '', group_id: '', domain_id: '', starts_local: '', ends_local: '', priority: 0, is_enabled: true },
+                async fetchAll() {
+                    try {
+                        const responses = await Promise.all([
+                            fetch('/api/admin/schedules'), fetch('/api/admin/signatures'),
+                            fetch('/api/admin/signature-groups'), fetch('/domains/')
+                        ]);
+                        if (responses.some(response => !response.ok)) throw new Error('Could not load scheduling data');
+                        [this.schedules, this.signatures, this.groups, this.domains] = await Promise.all(responses.map(response => response.json()));
+                    } catch (error) { notify(error.message, 'error'); }
+                },
+                activeSignatures() { return this.signatures.filter(item => item.is_active); },
+                activeGroups() { return this.groups.filter(item => item.is_active); },
+                targetLabel(schedule) {
+                    if (schedule.target_type === 'GROUP') {
+                        const group = this.groups.find(item => item.id === schedule.group_id);
+                        return 'Group: ' + (group ? group.name : 'Missing group');
+                    }
+                    const signature = this.signatures.find(item => item.id === schedule.signature_id);
+                    return 'Signature: ' + (signature ? signature.name : 'Missing signature');
+                },
+                domainLabel(id) {
+                    if (id == null) return 'All domains';
+                    const domain = this.domains.find(item => Number(item.id) === Number(id));
+                    return domain ? domain.domain_name : 'Missing domain';
+                },
+                toInputValue(value) {
+                    const date = value instanceof Date ? value : new Date(value);
+                    if (Number.isNaN(date.getTime())) return '';
+                    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+                    return local.toISOString().slice(0, 16);
+                },
+                formatLocal(value) {
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime())) return 'Invalid date';
+                    return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+                },
+                newSchedule() {
+                    const start = new Date();
+                    start.setSeconds(0, 0);
+                    const end = new Date(start.getTime() + 7 * 24 * 60 * 60 * 1000);
+                    this.form = { id: null, name: '', target_type: 'SIGNATURE', signature_id: '', group_id: '', domain_id: '',
+                        starts_local: this.toInputValue(start), ends_local: this.toInputValue(end), priority: 0, is_enabled: true };
+                    this.editing = true;
+                },
+                editSchedule(schedule) {
+                    this.form = { id: schedule.id, name: schedule.name, target_type: schedule.target_type,
+                        signature_id: schedule.signature_id || '', group_id: schedule.group_id || '',
+                        domain_id: schedule.domain_id == null ? '' : String(schedule.domain_id),
+                        starts_local: this.toInputValue(schedule.starts_at), ends_local: this.toInputValue(schedule.ends_at),
+                        priority: schedule.priority, is_enabled: schedule.is_enabled };
+                    this.editing = true;
+                },
+                changeTargetType() {
+                    if (this.form.target_type === 'GROUP') this.form.signature_id = '';
+                    else this.form.group_id = '';
+                },
+                async saveSchedule() {
+                    if (!this.form.name.trim()) { notify('Please enter a schedule name.', 'error'); return; }
+                    if (this.form.target_type === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
+                    if (this.form.target_type === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
+                    const start = new Date(this.form.starts_local);
+                    const end = new Date(this.form.ends_local);
+                    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+                        notify('Enter a valid start and end time.', 'error'); return;
+                    }
+                    const payload = {
+                        name: this.form.name.trim(), target_type: this.form.target_type,
+                        signature_id: this.form.target_type === 'SIGNATURE' ? this.form.signature_id : null,
+                        group_id: this.form.target_type === 'GROUP' ? this.form.group_id : null,
+                        domain_id: this.form.domain_id === '' ? null : Number(this.form.domain_id),
+                        starts_at: start.toISOString(), ends_at: end.toISOString(),
+                        priority: Number(this.form.priority), is_enabled: this.form.is_enabled
+                    };
+                    const url = this.form.id ? '/api/admin/schedules/' + encodeURIComponent(this.form.id) : '/api/admin/schedules';
+                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST',
+                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) {
+                        const problem = await response.json().catch(() => ({}));
+                        notify('Could not save schedule: ' + (problem.detail || response.statusText), 'error'); return;
+                    }
+                    notify('Schedule saved.');
+                    this.editing = false;
+                    await this.fetchAll();
+                },
+                async deleteSchedule(schedule) {
+                    if (!window.confirm('Delete schedule "' + schedule.name + '"?')) return;
+                    const response = await fetch('/api/admin/schedules/' + encodeURIComponent(schedule.id), { method: 'DELETE' });
+                    if (!response.ok) { notify('Could not delete schedule.', 'error'); return; }
+                    notify('Schedule deleted.');
+                    await this.fetchAll();
+                }
+            };
+        }
+
+        function brandingManager() {
+            return {
+                settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', favicon_url: '/branding/favicon' },
+                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(),
+                async fetchSettings() {
+                    const response = await fetch('/api/admin/branding');
+                    if (!response.ok) { notify('Could not load branding settings.', 'error'); return; }
+                    this.settings = await response.json();
+                    this.cacheKey = Date.now();
+                },
+                logoPreview() { return this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey; },
+                faviconPreview() { return this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey; },
+                readFile(file, fallbackMime) {
+                    return new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onerror = () => reject(new Error('Could not read selected file'));
+                        reader.onload = () => {
+                            let value = String(reader.result || '');
+                            if (fallbackMime && value.startsWith('data:;base64,')) value = 'data:' + fallbackMime + value.slice(5);
+                            resolve(value);
+                        };
+                        reader.readAsDataURL(file);
+                    });
+                },
+                async chooseLogo(event) {
+                    const file = event.target.files && event.target.files[0];
+                    if (!file) return;
+                    if (file.size > 512 * 1024 || file.type !== 'image/png') { notify('Logo must be a PNG up to 512 KiB.', 'error'); event.target.value = ''; return; }
+                    try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.resetLogo = false; }
+                    catch (error) { notify(error.message, 'error'); }
+                },
+                async chooseFavicon(event) {
+                    const file = event.target.files && event.target.files[0];
+                    if (!file) return;
+                    const ico = file.name.toLowerCase().endsWith('.ico');
+                    if (file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) { notify('Favicon must be PNG or ICO up to 256 KiB.', 'error'); event.target.value = ''; return; }
+                    try { this.faviconDataUrl = await this.readFile(file, ico ? 'image/x-icon' : 'image/png'); this.resetFavicon = false; }
+                    catch (error) { notify(error.message, 'error'); }
+                },
+                restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
+                restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
+                async save() {
+                    if (!this.settings.app_name || !this.settings.app_name.trim()) { notify('Application name is required.', 'error'); return; }
+                    if (!/^#[0-9a-fA-F]{6}$/.test(this.settings.app_color || '')) { notify('Accent color must be a six-digit hex value.', 'error'); return; }
+                    const response = await fetch('/api/admin/branding', {
+                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
+                            logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
+                            reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
+                        })
+                    });
+                    if (!response.ok) {
+                        const problem = await response.json().catch(() => ({}));
+                        notify('Could not save branding: ' + (problem.detail || response.statusText), 'error'); return;
+                    }
+                    window.location.reload();
+                }
+            };
+        }
+
+
         function domainSettingsModal() {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
@@ -792,6 +952,8 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("signatureManager", signatureManager);
     Alpine.data("signatureGroupManager", signatureGroupManager);
     Alpine.data("ruleManager", ruleManager);
+    Alpine.data("scheduleManager", scheduleManager);
+    Alpine.data("brandingManager", brandingManager);
     Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("adminImportManager", adminImportManager);
     Alpine.data("toastManager", toastManager);
@@ -814,9 +976,4 @@ document.addEventListener("DOMContentLoaded", () => {
     const saveButton = document.getElementById("save-user-signature");
     if (saveButton) saveButton.addEventListener("click", saveUserSignature);
 
-    const brand = document.querySelector(".app-brand");
-    if (brand) {
-        const color = brand.dataset.appColor || "";
-        if (window.CSS && CSS.supports("color", color)) brand.style.color = color;
-    }
 });

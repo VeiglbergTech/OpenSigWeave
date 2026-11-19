@@ -129,6 +129,19 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("return await client.authorize_redirect", self.source)
         self.assertIn("await client.authorize_access_token(request)", self.source)
 
+    def test_branding_and_scheduling_routes_require_admin(self):
+        for route in (
+            '@app.get("/api/admin/branding")',
+            '@app.put("/api/admin/branding")',
+            '@app.get("/api/admin/schedules")',
+            '@app.post("/api/admin/schedules", status_code=201)',
+            '@app.put("/api/admin/schedules/{schedule_id}")',
+            '@app.delete("/api/admin/schedules/{schedule_id}")',
+        ):
+            self.assertIn(route, self.source)
+        self.assertIn("class BrandingSettingsDB", (ROOT / "models.py").read_text(encoding="utf-8"))
+        self.assertIn("class SignatureScheduleDB", (ROOT / "models.py").read_text(encoding="utf-8"))
+
     def test_signature_management_api_routes_require_admin(self):
         self.assertIn('@app.get("/api/admin/signatures")', self.source)
         self.assertIn('@app.post("/api/admin/signatures", status_code=201)', self.source)
@@ -244,6 +257,12 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("data-csrf-token", index)
         self.assertIn("x-cloak", index)
         self.assertTrue((ROOT / "static" / "js" / "portal.js").is_file())
+        self.assertTrue((ROOT / "static" / "js" / "branding.js").is_file())
+        login = (ROOT / "templates" / "login.html").read_text(encoding="utf-8")
+        self.assertIn("/static/js/branding.js", index)
+        self.assertIn("/static/js/branding.js", login)
+        self.assertIn("/branding/logo.png", login)
+        self.assertIn("/branding/favicon", login)
         self.assertIn("/static/js/logout.js", (ROOT / "templates" / "error.html").read_text(encoding="utf-8"))
         self.assertTrue((ROOT / "static" / "js" / "logout.js").is_file())
         self.assertTrue((ROOT / "static" / "css" / "portal.css").is_file())

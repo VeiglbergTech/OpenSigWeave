@@ -177,11 +177,12 @@ or an element with `data-opensigweave-mode="PROFESSIONAL"`. Markers found only a
 ## Resolution precedence
 
 1. An administrator-disabled user override returns no signature.
-2. An explicit authenticated message-mode header overrides personal overrides and rules.
-3. Without an explicit mode header, an enabled personal override is used only when the domain allows overrides.
-4. Otherwise, the highest-priority matching rule determines the mode and optional signature target.
-5. If no rule matches, the default mode is `AUTO`; the legacy domain template is used if no catalog variant is available in that pool.
-6. `NONE` returns an empty signature.
+2. Explicit per-message selection (validated body marker or authenticated message-mode header) overrides scheduling, personal overrides and rules.
+3. Otherwise, the highest-priority active schedule for the sender's domain is applied. Domain-specific schedules win equal-priority ties against all-domain schedules.
+4. Without an active schedule, an enabled personal override is used only when the domain allows overrides.
+5. Otherwise, the highest-priority matching rule determines the mode and optional signature target.
+6. If no rule matches, the default mode is `AUTO`; the legacy domain template is used if no catalog variant is available in that pool.
+7. `NONE` returns an empty signature.
 
 ## Current limitations and verification status
 
@@ -209,3 +210,26 @@ Administrator-only endpoints:
 Rules accept `action_mode: "GROUP"` together with `group_id`; `signature_id` must be null. A group tag in signature HTML uses `{{ group:slug }}`. Repeated tags for the same slug reuse one selection during that message. Selection state requires a provider-namespaced immutable identity: Authentik user `pk` or Active Directory `objectGUID`; email is never used as the group rotation key.
 
 Migrations seed `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing variant pools. Existing rules remain on their original modes until an administrator explicitly changes them.
+
+
+## Scheduling
+
+Administrator-only endpoints:
+
+- `GET /api/admin/schedules`
+- `POST /api/admin/schedules`
+- `PUT /api/admin/schedules/{schedule_id}`
+- `DELETE /api/admin/schedules/{schedule_id}`
+
+A schedule targets exactly one active signature or one active signature group. It may be scoped to one domain or to all domains. All-domain schedules require a globally scoped target. The time window is stored as timezone-aware UTC and uses `starts_at <= now < ends_at`. Overlapping schedules are resolved by descending `priority`; at equal priority a domain-specific schedule beats an all-domain schedule, then the most recent start time and stable ID break ties.
+
+The web UI accepts browser-local date/time values and converts them to UTC before submission. The initial implementation supports explicit date ranges; recurring annual/weekly schedules are not part of this contract.
+
+## Branding
+
+Administrator-only endpoints:
+
+- `GET /api/admin/branding`
+- `PUT /api/admin/branding`
+
+Branding stores the application name, six-digit hex accent color, optional PNG logo and optional PNG/ICO favicon in PostgreSQL. Logo uploads are limited to 512 KiB and favicon uploads to 256 KiB; file signatures are checked server-side. Public assets are served through `/branding/logo.png` and `/branding/favicon`. Clearing a custom asset falls back to the bundled OpenSigWeave logo.

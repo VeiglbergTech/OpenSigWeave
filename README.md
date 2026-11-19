@@ -21,6 +21,8 @@ The CI workflows exercise migrations, security/dependency checks, browser workfl
 - Per-domain login-provider and profile-provider assignments: Authentik OIDC or LDAP/Active Directory over LDAPS.
 - Local administrator emergency login; role groups `signature-users` and `signature-admins`.
 - Signature catalog, immutable HTML versions, weighted variants, groups and sender/domain/group/claim/attribute rules.
+- Date/time scheduling for an exact signature or signature group, with optional domain scope and overlap priorities.
+- Administrator-managed product branding (name, accent color, logo and favicon) stored persistently in PostgreSQL; the bundled OpenSigWeave logo is the default.
 - Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`; explicit message-mode header and body marker support.
 - Server-side HTML sanitization, sandboxed previews, CSRF protection, secure sessions and trusted-host validation.
 - Encrypted full backups, fresh-deployment restore, verified retention and optional systemd scheduling to remote storage.

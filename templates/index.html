@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if app_name %}{{ app_name }} Admin{% else %}Signature Admin{% endif %}</title>
-    {% if has_favicon %} <link rel="icon" href="/branding/favicon.ico" type="image/x-icon"> {% endif %}
+    {% if has_favicon %}<link rel="icon" href="/branding/favicon">{% endif %}
     
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
@@ -13,8 +13,9 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
     <link href="/static/css/portal.css" rel="stylesheet">
+    <script defer src="/static/js/branding.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
 
     <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
@@ -27,7 +28,7 @@
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
             {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
-            {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand" data-app-color="{{ app_color|e }}">{{ app_name }}</div>{% endif %}
+            {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
@@ -113,6 +114,8 @@
                 <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
                 <button @click="adminTab = 'signature-groups'" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
                 <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button @click="adminTab = 'scheduling'" :class="adminTab === 'scheduling' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Scheduling</button>
+                <button @click="adminTab = 'branding'" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
                 <button @click="adminTab = 'exports'" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
                 <button @click="adminTab = 'imports'" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
             </div>
@@ -434,6 +437,61 @@
                 </div>
             </div>
         </div>
+        <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="fetchAll()" class="space-y-5">
+            <div class="flex items-center justify-between gap-4">
+                <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
+                <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
+            </div>
+            <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">Explicit per-message signature/mode selection still has priority. Active schedules override personal overrides and normal rules. Start is inclusive and end is exclusive.</div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>
+                        <td class="px-4 py-3 font-medium" x-text="schedule.name"></td><td class="px-4 py-3 text-sm" x-text="targetLabel(schedule)"></td><td class="px-4 py-3 text-sm" x-text="domainLabel(schedule.domain_id)"></td>
+                        <td class="px-4 py-3 text-xs text-gray-300"><div x-text="formatLocal(schedule.starts_at)"></div><div class="text-gray-500">to <span x-text="formatLocal(schedule.ends_at)"></span></div></td>
+                        <td class="px-4 py-3 tabular-nums" x-text="schedule.priority"></td><td class="px-4 py-3"><span class="text-xs" :class="schedule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="schedule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                        <td class="px-4 py-3 text-right whitespace-nowrap"><button @click="editSchedule(schedule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button><button @click="deleteSchedule(schedule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button></td>
+                    </tr></template><tr x-show="schedules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No scheduled signature windows configured.</td></tr></tbody>
+                </table>
+            </div>
+            <div x-show="editing" x-cloak @keydown.escape.window="editing = false" role="dialog" aria-modal="true" class="form-dialog bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Schedule' : 'Create Schedule'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white" placeholder="Christmas 2026"></label>
+                    <label class="text-sm text-gray-300">Domain<select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">All domains</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select></label>
+                    <label class="text-sm text-gray-300">Target type<select x-model="form.target_type" @change="changeTargetType()" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="SIGNATURE">Signature</option><option value="GROUP">Signature Group</option></select></label>
+                    <label x-show="form.target_type === 'SIGNATURE'" class="text-sm text-gray-300">Signature<select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select signature</option><template x-for="signature in activeSignatures()" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select></label>
+                    <label x-show="form.target_type === 'GROUP'" class="text-sm text-gray-300">Signature Group<select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select group</option><template x-for="group in activeGroups()" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select></label>
+                    <label class="text-sm text-gray-300">Start<input type="datetime-local" x-model="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">End<input type="datetime-local" x-model="form.ends_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="text-sm text-gray-300">Priority<input type="number" min="-100000" max="100000" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_enabled"> Schedule enabled</label>
+                </div>
+                <p class="text-xs text-gray-500">Times are entered in your browser's local timezone and stored/evaluated as UTC, so DST conversion happens at the selected date.</p>
+                <div class="flex justify-end gap-2 border-t border-gray-700 pt-4"><button @click="editing=false" class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveSchedule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Schedule</button></div>
+            </div>
+        </div>
+
+        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="space-y-5">
+            <div><h2 class="text-2xl font-semibold">Branding</h2><p class="text-sm text-gray-400 mt-1">Customize the portal identity. Settings and uploaded assets are stored in PostgreSQL and included in normal database backups.</p></div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                    <h3 class="font-semibold">Application identity</h3>
+                    <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
+                    <p class="text-xs text-gray-500">The accent color is applied to the product name and primary portal controls.</p>
+                </div>
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
+                    <div><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
+                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="logoPreview()" alt="Brand logo preview" class="max-h-28 max-w-full object-contain"></div>
+                        <input type="file" accept="image/png,.png" @change="chooseLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in fallback</button></div>
+                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 h-20 flex items-center justify-center"><img :src="faviconPreview()" alt="Favicon preview" class="max-h-12 max-w-12 object-contain"></div>
+                        <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 256 KiB. Without a custom favicon, the built-in logo is used.</p></div>
+                </div>
+            </div>
+            <div class="flex justify-end"><button @click="save()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded text-sm font-medium">Save Branding</button></div>
+        </div>
+
         <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="space-y-5">
             <div>
                 <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
