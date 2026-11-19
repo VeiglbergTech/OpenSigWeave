@@ -50,6 +50,21 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         self.assertFalse(result.changed)
         self.assertEqual(result.body, body)
 
+    def test_nested_signed_part_keeps_entire_message_unchanged(self):
+        headers = [("MIME-Version", "1.0"),
+            ("Content-Type", 'multipart/mixed; boundary="outer"')]
+        body = (
+            b"--outer\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nCover note\r\n"
+            b"--outer\r\nContent-Type: multipart/signed; boundary=\"inner\"; "
+            b"protocol=\"application/pgp-signature\"\r\n\r\n"
+            b"--inner\r\nContent-Type: text/plain\r\n\r\nSigned content\r\n"
+            b"--inner\r\nContent-Type: application/pgp-signature\r\n\r\nsignature\r\n"
+            b"--inner--\r\n--outer--\r\n"
+        )
+        result = rewrite_message(headers, body, "<p>Signature</p>", inject_on_replies=True)
+        self.assertFalse(result.changed)
+        self.assertEqual(result.body, body)
+
     def test_binary_attachment_payload_is_preserved(self):
         import base64
         from email import policy
