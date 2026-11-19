@@ -2,11 +2,20 @@
 
 Self-hosted email-signature management with a web portal, rule and rendering engine, versioned HTML storage, managed identity providers and mail-server adapters for Rspamd plus experimental Postfix and Stalwart integrations.
 
-**Status:** Development preview, not production-ready. Deploys independently of Mailcow; the standalone Compose stack does not install Rspamd or modify a mail server. Do not connect it to production mail flow.
+**Status:** Beta candidate, not production-ready. The `beta` branch contains the complete CI-validated development state. OpenSigWeave deploys independently of Mailcow; the standalone Compose stack does not install Rspamd or modify a mail server. Do not connect it to production mail flow.
 
 <a href="https://www.buymeacoffee.com/veiglbergtech">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" />
 </a>
+
+## CI validation and release status
+
+- Beta candidate commit: `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`.
+- Application workflow on `beta`: [run #2210](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535549067) — **success**.
+- Main application workflow on `dev`: [run #2209](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44534529189) — **success**.
+- Postfix adapter compatibility: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) — **success**, using disposable Postfix and a mock engine.
+
+The CI workflows exercise migrations, security/dependency checks, browser workflows, Docker smoke tests, encrypted backup/restore and regression tests. The Postfix compatibility workflow verifies adapter delivery in a disposable MTA. These checks do not establish live engine API/TLS, DKIM-chain, production MTA, identity-provider, real email-client or cross-host recovery acceptance. Keep production mail flow disabled until those are tested.
 
 ## Features
 
@@ -37,7 +46,7 @@ The commands deploy the development preview branch and do not change Mailcow or 
 ```bash
 sudo mkdir -p /opt/opensigweave
 sudo chown "$USER":"$USER" /opt/opensigweave
-git clone --branch dev https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
+git clone --branch beta https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
 cd /opt/opensigweave
 cp .env.example .env
 chmod 600 .env
@@ -296,7 +305,7 @@ The hook request body is limited to 20 MiB. The adapter preserves supported mult
 - [Rich-text editor decision](docs/EDITOR_DECISION.md)
 - [Signature groups design](docs/SIGNATURE_GROUPS_DESIGN.md)
 
-Development takes place on `dev`. The `beta` branch is the GitHub-CI-validated candidate for deployment testing; `main` is reserved for the version accepted after real-environment testing. Do not deploy `main` or connect production mail flow until the outstanding acceptance checks pass. Native Mailcow UI/integration is a separate future project.
+Development takes place on `dev`. The `beta` branch is the CI-validated candidate for controlled deployment testing; use `beta` for the Quick Start above. `main` remains unchanged and is reserved for a release accepted after real-environment testing. CI validation is not production certification: live identity-provider, SMTP/DKIM, real email-client, cross-host restore and operational acceptance remain outstanding. Do not connect production mail flow until those checks pass. Native Mailcow UI/integration is a separate future project.
 
 ## License
 

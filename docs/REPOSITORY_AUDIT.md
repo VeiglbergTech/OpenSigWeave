@@ -1,7 +1,7 @@
 # Repository and security audit
 
 **Repository:** `VeiglbergTech/OpenSigWeave`  
-**Review date:** 2026-11-16  
+**Review date:** 2026-11-19  
 **Scope:** Current standalone preview. This is an engineering review, not a penetration test or security certification.
 
 ## Current implementation
@@ -33,9 +33,10 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Latest `dev` application validation: push run [`44532956099`](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532956099) passed on `483df4485166116d6e85ac891a59bc3ce2815cbb`. All 22 reported workflow steps succeeded, including Docker smoke test, encrypted backup/fresh restore and regression tests.
-- Latest dedicated Postfix compatibility validation: run [`44532955327`](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed on the same commit. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
-- `main` remains unchanged; PR #2 remains Draft and unmerged. No promotion or deployment is implied by these CI results.
+- Latest `dev` application validation: push run [`44534529189` (#2209)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44534529189) passed on `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`. The full application workflow succeeded, including Docker smoke test, encrypted backup/fresh restore and regression tests.
+- The same commit was fast-forwarded to `beta`; application push run [`44535549067` (#2210)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535549067) and separate PR validation [`44535561995` (#2211)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535561995) both passed.
+- Latest dedicated Postfix compatibility validation: run [`44532955327` (#70)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed on `483df4485166116d6e85ac891a59bc3ce2815cbb`. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
+- `main` remains unchanged; PR #2 remains Draft and unmerged. No production deployment is implied by these CI results.
 - CI covers secret/dependency scans, syntax, migrations, Docker smoke, browser workflows, backup/restore and regression tests. It does not replace live identity-provider, SMTP/DKIM, client-rendering, cross-host restore or production validation.
 
 ## Remaining actions

@@ -1,6 +1,6 @@
 # OpenSigWeave adapter architecture
 
-**Status:** Adapter contract plus experimental Stalwart MTA-hook adapter, development preview  
+**Status:** Shared adapter contract; Rspamd integration plus experimental Postfix Milter and Stalwart MTA-hook adapters. Automated adapter coverage exists, but no adapter is production-certified.  
 **Scope:** Mail-server integration boundary; this document does not claim that planned adapters are implemented.
 
 ## Design rule
