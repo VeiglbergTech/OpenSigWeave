@@ -18,12 +18,12 @@ The implementation must never describe a backup as successful until the archive 
 
 | Component | Source of truth | Full backup | Selective UI export |
 |---|---|---:|---:|
-| PostgreSQL records and migrations | PostgreSQL volume | Yes | Database component |
-| Current signatures and immutable versions | opensigweave-signatures volume | Yes | Signature component |
-| Identity-provider secret files | opensigweave-idp-data volume (/app/.idp) | Yes | Identity-provider component |
-| Application environment and independent secrets | Host .env | Yes | Configuration component, secrets excluded by default |
-| Compose definition and deployment metadata | Host compose.yaml and manifest | Yes | Configuration component |
-| Application image identity/version | Image digest and release metadata | Yes | Manifest metadata |
+| PostgreSQL records/migrations, including rules, schedules and branding | PostgreSQL | Yes | Only supported logical components listed below |
+| Current signatures and immutable versions | `opensigweave-signatures` volume | Yes | Yes, when **Signatures** is selected |
+| Identity-provider secret files | `opensigweave-idp-data` volume | Yes | **No**; only non-secret provider metadata is exportable |
+| Application environment and independent secrets | Host `.env` | Yes, encrypted | No |
+| Compose definition and deployment metadata | Host `compose.yaml` and manifest | Yes | No |
+| Application image identity/version | Saved image + backup manifest | Yes | No |
 
 Both PostgreSQL and the signature volume are mandatory for a usable full restore. The IDP volume and host environment file are mandatory to restore managed authentication and the configured application secrets.
 
@@ -104,22 +104,25 @@ This is not an in-place replacement workflow. Existing deployment directories, C
 
 A failed restore must not automatically delete the safety snapshot. Recovery instructions must be printed and logged without exposing secret values.
 
-## 6. UI component exports
+## 6. Selective administrator component export
 
-The administrator UI may offer these component choices:
+The web UI provides a bounded, versioned ZIP export for portable **non-secret configuration**, not disaster recovery. The implemented selectable components are exactly:
 
-- Database
-- Signatures and immutable versions
-- Identity-provider configuration and credentials
-- Deployment configuration
+- signatures and immutable HTML versions;
+- domains;
+- signature groups and memberships;
+- rules and conditions;
+- identity-provider **metadata only**.
 
-UI exports must show the exact included components before creation. Secrets are excluded from a configuration-only export by default. Including IDP credentials or application secrets requires a clear warning and encrypted output. A partial export is for migration or inspection, not a complete disaster-recovery guarantee.
+The export deliberately excludes provider credential files, application secrets, personal user overrides and identity caches. Rule conditions can contain operator-entered identifiers such as email addresses, so an archive must still be reviewed before sharing.
 
-The UI must enforce administrator authorization, CSRF protection, rate/size limits, and an explicit download action. Backup creation should run as a bounded background job rather than holding an HTTP request open. Job state must not expose secret contents.
+Schedules and branding are currently **not** part of the selective component export. They are PostgreSQL state and are therefore preserved by the full encrypted disaster-recovery backup.
+
+Exports are capped at 20 MiB, use checksummed HTML assets and a versioned manifest, return with no-store/private cache headers, and require administrator authorization plus CSRF protection for state-changing import operations. Imports are validated and additive: existing records are not silently overwritten.
 
 ## 7. Key handling and retention
 
-- Encryption is mandatory for full backups and any export containing credentials.
+- Encryption is mandatory for full backups. The implemented selective UI export never contains provider credentials or application secrets.
 - The age recipient is public and may be configured on the host; the private identity must be kept separately.
 - Losing the private identity makes encrypted backups unrecoverable. Warn during setup and document key escrow.
 - Never log passwords, tokens, decrypted .env contents, or private identities.
@@ -131,7 +134,7 @@ The UI must enforce administrator authorization, CSRF protection, rate/size limi
 
 The feature is not complete until automated tests cover:
 
-- Full backup includes database, signatures, IDP credentials, encrypted environment and deployment metadata.
+- Full backup includes database (including schedules/branding), signatures, IDP credentials, encrypted environment and deployment metadata.
 - Docker Compose preflight rejects missing services, stopped containers and missing signature/IDP volume mounts.
 - The application service is restarted after successful and failed snapshot attempts, and a restart failure is reported distinctly.
 - Missing volume, invalid recipient, insufficient disk space, failed dump, failed archive, failed encryption and failed verification all fail closed.

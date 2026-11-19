@@ -1,6 +1,6 @@
 # OpenSigWeave management and engine API
 
-This document describes the API implemented on the standalone preview branch. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
+This document describes the API implemented by the current beta/release-candidate application. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
 
 State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests.
 
@@ -69,7 +69,7 @@ Example:
 - `domain_id` may be `null` for a global signature.
 - `mode` is `AUTO`, `PROFESSIONAL` or `INTERNAL`.
 - `is_active` defaults to `true`.
-- The HTML is sanitized and written to the signature file store.
+- The submitted HTML source is stored as the immutable version source; it is allowlist-sanitized before preview and delivery.
 - PostgreSQL stores the version identifier, relative path, SHA-256 hash, size and metadata.
 - An initial variant is created in the same mode pool.
 
@@ -191,7 +191,7 @@ or an element with `data-opensigweave-mode="PROFESSIONAL"`. Markers found only a
 - Outlook marker preservation and reply behavior need testing with real client versions.
 - SMTP envelope-sender authorization must be enforced by Mailcow/Postfix; `task:get_user()` is not sufficient authorization by itself.
 - Docker CI validates image build, Compose startup, PostgreSQL migrations, healthchecks and an authenticated engine API request. It does not perform an OIDC browser login or a full SMTP delivery test.
-- CSP remains report-only pending real-browser testing.
+- CSP remains report-only pending broader browser/deployment acceptance. The CI Chromium workflow records policy-violation events and currently observes none across the exercised administration/editor paths.
 
 
 ## Signature groups
@@ -232,4 +232,4 @@ Administrator-only endpoints:
 - `GET /api/admin/branding`
 - `PUT /api/admin/branding`
 
-Branding stores the application name, six-digit hex accent color, optional PNG logo and optional PNG/ICO favicon in PostgreSQL. Logo uploads are limited to 512 KiB and favicon uploads to 256 KiB; file signatures are checked server-side. Public assets are served through `/branding/logo.png` and `/branding/favicon`. Clearing a custom asset falls back to the bundled OpenSigWeave logo.
+Branding stores the application name, six-digit hex accent color, optional PNG logo and optional PNG/ICO favicon in PostgreSQL. Logo uploads are limited to 512 KiB and favicon uploads to 256 KiB; the JSON request has a separate bounded 2 MiB request budget to account for base64 overhead. File signatures are checked server-side. Public assets are served through `/branding/logo.png` and `/branding/favicon`. Clearing a custom asset falls back to the bundled OpenSigWeave logo.

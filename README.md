@@ -1,142 +1,106 @@
+<p align="center">
+  <img src="branding/logo.png" alt="OpenSigWeave" width="520">
+</p>
+
 # OpenSigWeave
 
-Self-hosted email-signature management with a web portal, rule and rendering engine, versioned HTML storage, managed identity providers and mail-server adapters for Rspamd plus experimental Postfix and Stalwart integrations.
+OpenSigWeave is a self-hosted email-signature management service with a FastAPI administration portal, PostgreSQL-backed rule and rendering engine, versioned signature storage, managed identity providers, scheduling, branding, backups and mail-server adapters.
 
-**Status:** Beta candidate, not production-ready. The `beta` branch contains the complete CI-validated development state. OpenSigWeave deploys independently of Mailcow; the standalone Compose stack does not install Rspamd or modify a mail server. Do not connect it to production mail flow.
+> **Release status:** beta/release-candidate. The application and repository are heavily CI-tested, but the mail-server adapters are not all production-certified. In particular, live DKIM-chain and real-client acceptance remain separate deployment checks.
 
 <a href="https://www.buymeacoffee.com/veiglbergtech">
-  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60" />
+  <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60">
 </a>
 
-## CI validation and release status
+## Branches and deployment policy
 
-- Current application workflow history: [CI runs for `dev`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [CI runs for `beta`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta).
-- Postfix adapter compatibility: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) — **success**, using disposable Postfix and a mock engine.
+| Branch | Purpose |
+|---|---|
+| `dev` | Active development. Never use this branch as the normal deployment source. |
+| `beta` | Deployment branch. It is updated only by fast-forwarding a fully green `dev` commit and is the branch to deploy for beta/release-candidate installations. |
+| `main` | Release branch. It is not automatically updated from `beta`. |
 
-The CI workflows exercise migrations, security/dependency checks, browser workflows, Docker smoke tests, encrypted backup/restore and regression tests. The Postfix compatibility workflow verifies adapter delivery in a disposable MTA. These checks do not establish live engine API/TLS, DKIM-chain, production MTA, identity-provider, real email-client or cross-host recovery acceptance. Keep production mail flow disabled until those are tested.
+CI history: [dev workflow runs](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) · [beta workflow runs](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta)
+
+A green application workflow means the tested commit passed secret scanning, dependency auditing, static security checks, Python/JavaScript syntax checks, PostgreSQL and SQLite migrations, Docker startup, browser administration workflows, CSP observation, encrypted backup/fresh restore and regression tests. Dedicated Postfix compatibility CI additionally exercises the real PyMilter adapter in disposable Postfix. These checks do **not** replace live identity-provider, DKIM-chain, production-mail-flow, load or real email-client acceptance.
 
 ## Features
 
-- FastAPI portal and management API; PostgreSQL-backed metadata and shared rate limits.
-- Per-domain login-provider and profile-provider assignments: Authentik OIDC or LDAP/Active Directory over LDAPS.
-- Local administrator emergency login; role groups `signature-users` and `signature-admins`.
-- Signature catalog, immutable HTML versions, weighted variants, groups and sender/domain/group/claim/attribute rules.
-- Date/time scheduling for an exact signature or signature group, with optional domain scope and overlap priorities.
-- Administrator-managed product branding (name, accent color, logo and favicon) stored persistently in PostgreSQL; the bundled OpenSigWeave logo is the default.
-- Modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`; explicit message-mode header and body marker support.
-- Server-side HTML sanitization, sandboxed previews, CSRF protection, secure sessions and trusted-host validation.
-- Encrypted full backups, fresh-deployment restore, verified retention and optional systemd scheduling to remote storage.
-- Separate Lua adapter for Rspamd; top-level `multipart/*` messages are deliberately left unchanged.
-- Experimental Postfix Milter sidecar and Stalwart MTA-hook adapter; both use the shared signature engine and include isolated automated integration/contract tests. Signed/encrypted MIME messages are skipped where applicable; neither adapter is production-certified.
+- FastAPI web portal with administrator and user views.
+- PostgreSQL metadata with Alembic migrations.
+- Local emergency administrator login plus managed Authentik/generic OIDC and LDAP/Active Directory providers.
+- Signature catalog with stable IDs, immutable HTML versions, domain scopes and weighted variants.
+- Reusable signature groups with weighted no-repeat selection.
+- Rules based on sender, domain, groups, claims and profile attributes.
+- Explicit per-message mode/marker selection.
+- Date/time scheduling for one signature or signature group, optionally scoped to a domain and resolved by priority.
+- CKEditor 5 administration/editor experience plus raw-HTML editing.
+- Persistent branding for application name, accent color, logo and favicon.
+- Source-preserving HTML storage with sanitization at delivery/preview boundaries.
+- Reply-aware placement for supported adapters.
+- Encrypted disaster-recovery backup, verification, fresh restore and guarded off-host scheduling.
+- Rspamd adapter plus experimental Postfix Milter and Stalwart MTA-hook adapters.
+- Selective, validated administrator ZIP export/import for portable non-secret configuration.
+
+## Adapter status
+
+| Adapter | Current automated evidence | Important remaining acceptance |
+|---|---|---|
+| Rspamd | Lua syntax and contract/regression tests | Current rewrite path intentionally leaves top-level `multipart/*` unchanged. Disposable Mailcow sender-authorization, processing-order and final-DKIM acceptance still required. |
+| Postfix Milter | PyMilter runtime, native protocol exchange and real disposable Postfix delivery through the actual adapter with a mock OpenSigWeave engine | Live HTTPS engine credentials/trust, production filter ordering and final DKIM still required. |
+| Stalwart | Shared-engine and MIME regression coverage, including multipart, reply placement, attachments and signed/encrypted fail-safe behavior | Live Stalwart SMTP/DKIM end-to-end acceptance still required. |
+
+See [adapter documentation](docs/ADAPTERS.md), [Postfix design](docs/POSTFIX_MILTER_DESIGN.md) and [web/Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
 
 ## Requirements
 
-- Linux host, Docker Engine and Docker Compose plugin v2 (`docker compose`).
-- Git and a DNS name for the portal.
-- HTTPS reverse proxy; the session cookie is Secure and OIDC redirect URIs must use HTTPS.
-- Local administrator email and scrypt password hash for emergency access.
-- Authentik OIDC or LDAP/Active Directory if users should authenticate through a managed directory.
+- Linux host
+- Docker Engine
+- Docker Compose plugin v2
+- Git
+- HTTPS reverse proxy and DNS name for the portal
+- PostgreSQL is supplied by the Compose stack
+- For full backups: `age` and a separate age private identity
+- Optional external identity provider if users should sign in with OIDC or LDAP/Active Directory
 
-The application listens on TCP `8085` inside the container. Compose binds it to `APP_BIND_ADDRESS` (default `127.0.0.1`); PostgreSQL is not published to the host. Compose uses `postgres:17-alpine`.
+The application listens on TCP `8085` inside the container. Compose binds it to `APP_BIND_ADDRESS`, which defaults to `127.0.0.1`. PostgreSQL is not published to the host.
 
-## Quick start
+## Install from beta
 
-The commands deploy the development preview branch and do not change Mailcow or mail-server configuration.
+Clone the deployment branch:
 
 ```bash
 sudo mkdir -p /opt/opensigweave
 sudo chown "$USER":"$USER" /opt/opensigweave
-git clone --branch beta https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
+git clone --branch beta --single-branch https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
 cd /opt/opensigweave
 cp .env.example .env
-chmod 600 .env
 ```
 
-Generate three independent secrets (run once per variable):
+Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY`. Do not reuse one secret for another:
 
 ```bash
-python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Edit `.env`:
-
-```bash
-nano .env
-```
-
-Set at least:
-
-| Variable | Purpose |
-|---|---|
-| `POSTGRES_PASSWORD` | PostgreSQL password |
-| `SECRET_KEY` | Session-cookie signing secret |
-| `ENGINE_API_KEY` | Rspamd and internal engine API authentication |
-| `STALWART_HOOK_TOKEN` | Optional independent Bearer token for the Stalwart MTA hook |
-| `APP_ALLOWED_HOSTS` | Explicit portal hostnames; required in local/managed-provider mode |
-| `LOCAL_ADMIN_EMAIL` | Local emergency administrator |
-| `LOCAL_ADMIN_PASSWORD_HASH` | Salted scrypt hash; never store the plaintext password |
-
-Use different random values for all three secrets. Do not commit `.env`. Keep it mode `0600`. Compose builds the internal `DATABASE_URL` from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`; the Compose value overrides the example URL in the application container.
-
-Generate the local administrator hash:
+Generate the local emergency administrator password hash:
 
 ```bash
 python scripts/hash_password.py
 ```
 
-Enter the complete output in `LOCAL_ADMIN_PASSWORD_HASH`, enclosed in single quotes. Use a password of at least 12 characters. The local administrator receives both `signature-admins` and `signature-users`.
+Edit `.env` and set at least:
 
-### Environment reference
+- `POSTGRES_PASSWORD`
+- matching `DATABASE_URL` password
+- `SECRET_KEY` — at least 32 non-placeholder characters
+- `ENGINE_API_KEY` — separate value, at least 32 non-placeholder characters
+- `APP_ALLOWED_HOSTS` — explicit portal hostname(s), no wildcard
+- `LOCAL_ADMIN_EMAIL`
+- `LOCAL_ADMIN_PASSWORD_HASH`
+- `APP_BIND_ADDRESS` if the reverse proxy is not on the same host
 
-Defaults are defined in [`.env.example`](.env.example).
-
-| Variable | Default / requirement |
-|---|---|
-| `POSTGRES_DB` | `opensigweave` |
-| `POSTGRES_USER` | `opensigweave` |
-| `POSTGRES_PASSWORD` | Required; set a unique random value |
-| `DATABASE_URL` | Compose overrides it for the application using the PostgreSQL service |
-| `SIGNATURE_STORAGE_PATH` | `/data/signatures` |
-| `SECRET_KEY`, `ENGINE_API_KEY` | Required independent random secrets |
-| `STALWART_HOOK_TOKEN` | Optional; set a separate random secret when enabling the Stalwart adapter |
-| `APP_ALLOWED_HOSTS` | Empty in example; set explicit hostnames, comma-separated, no wildcard/scheme/port/path |
-| `LOCAL_ADMIN_EMAIL` | `admin@example.com` |
-| `LOCAL_ADMIN_PASSWORD_HASH` | Empty in example; required for local login |
-| `LOGIN_RATE_LIMIT` | `10` |
-| `AUTH_CALLBACK_RATE_LIMIT` | `20` |
-| `ENGINE_RATE_LIMIT` | `1800` |
-| `APP_BIND_ADDRESS` | `127.0.0.1`; set to the application host private IP only for a remote proxy |
-| `TRUSTED_PROXY_CIDRS` | Empty; set to the exact trusted reverse-proxy source address (`/32` or `/128`) |
-
-Managed provider credentials do **not** belong in the root `.env`. The portal stores them in `/app/.idp/{provider-id}/.env` on the persistent `opensigweave-idp-data` volume. Provider directories use mode `0700`, files mode `0600`; secrets are not returned by the management API. Leaving a password/token field empty during an edit preserves its existing secret.
-
-### Configure managed identity
-
-Login and profile attributes are assigned independently per email domain. A domain can use one provider for login and another for profile lookup.
-
-**Authentik OIDC**
-
-1. Create an OAuth2/OpenID Provider and application.
-2. In OpenSigWeave, create a provider under **Administration → Identity Providers** with a stable ID, e.g. `authentik-main`.
-3. Register the exact callback URI `https://signature.example.org/auth/authentik-main` at Authentik and enter the HTTPS discovery URL, client ID, client secret, scopes and callback URI in OpenSigWeave.
-4. UserInfo must return `sub`, `email`, `email_verified` as JSON boolean `true`, and `groups` as an array. Authentik 2025.10+ may require a custom scope/property mapping to return a genuinely verified email. Do not hard-code verification for unverified addresses.
-5. Create groups `signature-users` and `signature-admins`; assign users to the appropriate groups.
-6. If using Authentik as the profile provider, create a dedicated service account and API token with only the global **Can view User** permission. Do not use a personal administrator token.
-
-References: [Authentik OIDC provider](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/create-oauth2-provider/), [scopes](https://docs.goauthentik.io/add-secure-apps/providers/oauth2/), [service accounts](https://docs.goauthentik.io/users-sources/user/account-types/service-accounts/) and [permissions](https://docs.goauthentik.io/users-sources/access-control/manage_permissions/).
-
-**LDAP / Active Directory**
-
-1. Create a dedicated read-only directory account and add an LDAP provider under **Administration → Identity Providers**.
-2. Configure an LDAPS URL (e.g. `ldaps://dc.example.org:636`), bind DN/password, Base DN (e.g. `DC=example,DC=org`), timeout (default 5 seconds) and, if needed, a private CA certificate path such as `/app/.idp/samba-ad/ca.pem`.
-3. Default user filter: `(&(objectCategory=person)(objectClass=user)(mail={email}))`. Keep the `{email}` placeholder.
-4. Assign the provider as the domain's Login Provider and optionally Profile Provider.
-
-TLS certificate verification is mandatory; do not use `ldap://`, disable validation or bind as a domain administrator. Login requires an enabled AD account, an exact `mail` match and direct `memberOf` membership mapped to `signature-users` or `signature-admins`; nested group expansion is not implemented. The login flow searches with the service account, then verifies the password with a separate bind as the user's DN.
-
-`APP_ALLOWED_HOSTS` must contain at least one explicit hostname. All external OIDC providers are configured under **Administration → Identity Providers** and use callbacks at `/auth/{provider-id}`. There is no global OIDC configuration or `/auth` compatibility callback.
-
-### Start and check
+Validate and start:
 
 ```bash
 docker compose config --quiet
@@ -145,82 +109,134 @@ docker compose ps
 docker compose logs --tail=100 opensigweave
 ```
 
-The application waits for healthy PostgreSQL, applies Alembic migrations and starts Uvicorn on port `8085`.
+Do not expose PostgreSQL. If the reverse proxy is remote, bind port 8085 only to the application server's private interface and restrict the host firewall to the proxy IP.
 
-Useful operations:
+## Reverse proxy and HTTPS
 
-```bash
-docker compose logs -f opensigweave
-docker compose logs -f postgres
-docker compose restart opensigweave
-docker compose down
-docker compose up -d
-```
+OpenSigWeave expects HTTPS in normal operation. The default session cookie is Secure, HttpOnly and SameSite=Lax. Keep the canonical external hostname in `APP_ALLOWED_HOSTS`.
 
-**Never use `docker compose down --volumes` for routine maintenance:** it deletes database, signature and identity-provider data.
+If the immediate reverse proxy is trusted and client-IP-aware rate limiting should use forwarded addresses, set `TRUSTED_PROXY_CIDRS` only to the actual proxy networks. Forwarded headers from untrusted peers are ignored.
 
-## HTTPS reverse proxy
+Do not disable certificate verification for OIDC, LDAP or adapter-to-engine HTTPS connections.
 
-Example Caddy configuration when Caddy runs on the same host:
+## First sign-in and identity setup
 
-```caddyfile
-signature.example.org {
-    reverse_proxy 127.0.0.1:8085
-}
-```
+1. Sign in with the local emergency administrator configured in `.env`.
+2. Open **Administration → Identity Providers**.
+3. Create the required Authentik/generic OIDC or LDAP/Active Directory provider.
+4. Test the provider connection.
+5. Open **Domains**, register each mail domain and assign its login provider and profile provider.
+6. Map directory users to the exact application groups:
+   - `signature-users`
+   - `signature-admins`
+7. Verify a normal user cannot access administrator functions.
 
-For a **separate reverse-proxy server**, configure `APP_BIND_ADDRESS` in `.env` to the application server private-interface IP (not `0.0.0.0`), recreate the application container, and configure the application host firewall to allow inbound TCP/8085 **only from the reverse-proxy private IP**. Deny all other sources, including the public interface. Set `TRUSTED_PROXY_CIDRS` to the exact proxy source address as `/32` (IPv4) or `/128` (IPv6), not an entire LAN unless every host in it is trusted. The application uses this setting only to resolve client addresses for rate limiting; it does not make the proxy network boundary for you. Preserve the canonical Host header. Never expose port `8085` publicly or trust arbitrary forwarded headers. If proxy and application communicate over an untrusted network, use an authenticated encrypted tunnel or TLS for the upstream connection.
-
-Open `https://signature.example.org/` after HTTPS is configured.
-
-## First-use check
-
-1. Sign in as a normal user and verify administrator functions are inaccessible.
-2. Sign in as a member of `signature-admins`.
-3. Create and enable a domain (e.g. `example.org`), then create a signature in the catalog.
-4. Save and verify its initial version/variant; test a rule if required.
-5. Preview the signature and confirm untrusted HTML is sanitized.
-
-Example HTML:
-
-```html
-<table>
-  <tr><td>{{ first_name }} {{ last_name }}</td></tr>
-  <tr><td>{{ title }}</td></tr>
-  <tr><td>{{ phone }}</td></tr>
-  <tr><td>{{ email }}</td></tr>
-</table>
-```
-
-## Signature selection and engine API
-
-The versioned, mail-server-neutral engine endpoint is `GET /api/v1/engine/signatures/{email}`; it requires `X-Engine-Key` matching `ENGINE_API_KEY`. The older `/api/signature/{email}` path remains available as a compatibility alias. See [API reference](docs/API.md) for management endpoints, permissions, payloads and selection precedence.
-
-Supported modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`. A valid `X-OpenSigWeave-Mode` header takes precedence over the body marker. The explicit marker format is:
+OIDC callback URIs use:
 
 ```text
-<---[Signature name]--[4-character code]--->
+https://<portal-host>/auth/<provider-id>
 ```
 
-The four-character code is the first four hexadecimal characters of the SHA-256 digest of the signature name after Unicode case-folding and UTF-8 encoding. Matching is case-insensitive. Copy the actual code from the administrator catalog; the marker is selection syntax, not authentication or authorization. Invalid/duplicate mode headers are ignored. A body marker is consumed even if invalid, overridden or no signature is inserted.
+Managed provider credentials do **not** belong in the root `.env`. The portal stores them under `/app/.idp/{provider-id}/.env` on the persistent `opensigweave-idp-data` volume. Provider directories/files use restrictive permissions and secret values are not returned by the management API. Leaving a secret field empty while editing preserves the existing value.
 
-**MIME limitation:** the current Rspamd adapter leaves every top-level `multipart/*` message unchanged, including `multipart/alternative` and messages with attachments. Body-marker rewriting currently applies only to non-multipart messages.
+### Authentik / OpenID Connect
 
-## Persistence and backups
+For Authentik:
 
-Compose creates three named volumes:
+1. Create an OAuth2/OpenID Provider and application.
+2. Create the provider in **Administration → Identity Providers** with a stable ID such as `authentik-main`.
+3. Register the exact callback URI (for example `https://signature.example.org/auth/authentik-main`) and configure the HTTPS discovery URL, client ID, client secret, scopes and callback URI in OpenSigWeave.
+4. UserInfo must provide a stable `sub`, syntactically valid `email`, `email_verified` as JSON boolean `true`, and `groups` as an array. Do not fake email verification for an unverified address.
+5. Assign users to `signature-users` and, where appropriate, `signature-admins`.
+6. If Authentik is also the profile provider, use a dedicated service account/API token with only the read permission needed for user lookup; do not use a personal administrator token.
+
+Generic OIDC uses the same managed callback model but relies on verified callback/UserInfo claims for portable profile data.
+
+### LDAP / Active Directory
+
+1. Create a dedicated read-only directory service account.
+2. Add an LDAP provider under **Administration → Identity Providers**.
+3. Configure an LDAPS URL such as `ldaps://dc.example.org:636`, bind DN/password, Base DN, timeout and, if required, the private CA certificate path.
+4. The default Active Directory user filter is `(&(objectCategory=person)(objectClass=user)(mail={email}))`; retain the `{email}` placeholder.
+5. Assign the provider as the domain's Login Provider and, if desired, Profile Provider.
+
+TLS certificate verification is mandatory. Do not use `ldap://`, disable certificate validation or bind as a domain administrator. Login requires an enabled account, one exact `mail` match and direct `memberOf` membership mapped to the application groups. Nested group expansion is not implemented. Password verification is performed with a separate bind as the user's DN after the service-account lookup.
+
+## Signatures, groups and rules
+
+Administration provides:
+
+- **Signatures** — create and update signatures, immutable versions, variants and domain scopes.
+- **Signature Groups** — reusable sets of signatures with weighted no-repeat selection.
+- **Rules** — choose a mode, exact signature or group based on sender/domain/group/claim/attribute conditions.
+- **Scheduling** — temporarily override normal selection with one signature or group during a concrete date/time range.
+- **Branding** — application name, accent color, logo and favicon.
+
+Signature assets use stable database IDs. On disk, signature HTML is stored under:
+
+```text
+signatur/{Signaturname}/signature.html
+```
+
+Immutable snapshots live in the same signature directory under `.versions/`. Renaming a signature changes its directory name but not its internal ID.
+
+### Scheduling precedence
+
+Resolution order is:
+
+1. administrator-disabled user override → no signature
+2. explicit per-message selection
+3. highest-priority active schedule
+4. allowed personal override
+5. highest-priority matching rule
+6. default `AUTO` selection / legacy domain template
+7. `NONE` → no signature
+
+Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC. At equal priority, a domain-specific schedule wins over an all-domain schedule.
+
+The current scheduler intentionally supports concrete ranges only. Recurring annual/weekly schedules are not part of the beta contract.
+
+## Branding
+
+The bundled OpenSigWeave logo is the default. In **Administration → Branding** an administrator can configure:
+
+- application name
+- six-digit hex accent color
+- PNG logo, maximum 512 KiB
+- PNG/ICO favicon, maximum 256 KiB
+
+Uploaded branding is stored in PostgreSQL. Server-side validation checks allowed media type, base64 encoding, size and file signature. Resetting an asset falls back to the bundled branding.
+
+## Update an existing beta deployment
+
+Take and verify a backup before upgrading. Then fast-forward the deployment checkout:
+
+```bash
+cd /opt/opensigweave
+git fetch origin
+git checkout beta
+git pull --ff-only origin beta
+docker compose config --quiet
+docker compose up -d --build
+docker compose ps
+docker compose logs --tail=100 opensigweave
+```
+
+The container runs `alembic upgrade head` before starting Uvicorn. Never delete the PostgreSQL volume as an upgrade method.
+
+## Backups and restore
+
+Compose uses three named volumes:
 
 | Volume | Contents |
 |---|---|
-| `opensigweave-postgres-data` | PostgreSQL database |
-| `opensigweave-signatures` | Current and immutable versioned signature HTML |
-| `opensigweave-idp-data` | Managed identity-provider settings and secrets |
+| `opensigweave-postgres-data` | PostgreSQL data, including rules, schedules and persistent branding |
+| `opensigweave-signatures` | canonical and immutable versioned signature HTML |
+| `opensigweave-idp-data` | managed provider configuration and credentials |
 
-Signature files are stored at `signatur/{Signaturname}/signature.html`; immutable snapshots are in the same directory under `.versions/`. PostgreSQL stores stable internal IDs and metadata. Renaming a signature renames its directory without changing its ID.
+A complete disaster-recovery set also includes the deployment files and encrypted `.env`. The age private identity is **not** stored in the backup and must be protected separately/off-host.
 
-A complete recovery set includes all three volumes, `compose.yaml` and an encrypted copy of the host `.env`. The age private identity is separate and must be kept offline/off-host; without it, backups cannot be restored. Never keep the only backup on the Docker host.
-
-Create and verify an encrypted backup (requires Docker Compose v2, `age`, an age recipient and its matching private identity):
+Create and verify:
 
 ```bash
 cd /opt/opensigweave
@@ -234,24 +250,7 @@ python3 backup_cli.py verify /backup/opensigweave-backup.age \
   --identity /media/offline/age-identity.txt
 ```
 
-The create operation stops only the application service, dumps PostgreSQL, snapshots signature and IDP volumes, saves exact container images, encrypts `.env` and verifies the resulting archive. It restarts the application after success or failure and reports restart-recovery errors.
-
-**Scheduled off-host backup:** the repository includes a systemd service/timer for a mounted remote filesystem. Configure `/mnt/opensigweave-backups`, create `/etc/opensigweave/backup.env` from `scripts/backup.env.example`, install `scripts/systemd/opensigweave-backup.service` and `scripts/systemd/opensigweave-backup.timer`, then:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now opensigweave-backup.timer
-sudo systemctl start opensigweave-backup.service
-sudo systemctl status opensigweave-backup.service
-```
-
-The service refuses an absent mount or a filesystem type outside its allowlist (NFS, SMB/CIFS or supported remote FUSE), prevents overlapping runs and verifies archives before retention deletion. The age identity must be root-owned, mode `0600`, outside the share and separately backed up offline. Inspect the first manual run. Retention defaults to dry-run; add `--apply` only to delete older verified archives:
-
-```bash
-python3 backup_cli.py prune --directory /mnt/opensigweave-backups --identity /etc/opensigweave/age-identity.txt --keep 14
-```
-
-Restore only to a fresh host/directory and unique Compose project name:
+Restore only into a fresh target:
 
 ```bash
 python3 backup_cli.py restore /backup/opensigweave-backup.age \
@@ -260,53 +259,104 @@ python3 backup_cli.py restore /backup/opensigweave-backup.age \
   --project-name opensigweave-dr
 ```
 
-Restore refuses existing target directories/volumes and retains newly created resources on failure for inspection. It restores the exact saved images, not a new build. It does not change DNS or reverse-proxy routing. A real two-host restore drill and real NFS/SMB host test remain outstanding; see [backup and disaster recovery](docs/BACKUP_RESTORE_DESIGN.md) and [cross-host restore drill](docs/CROSS_HOST_RESTORE_DRILL.md).
+For scheduled off-host backups, copy `scripts/backup.env.example` to `/etc/opensigweave/backup.env`, install the included systemd service/timer and use a dedicated mounted remote filesystem. The service refuses missing/local targets and unsupported filesystem types.
 
-## Optional Rspamd integration
+Full details: [backup/restore design](docs/BACKUP_RESTORE_DESIGN.md) and [cross-host restore drill](docs/CROSS_HOST_RESTORE_DRILL.md).
 
-Not included in standalone installation. Adapter files: `rspamd/opensigweave.lua` and `rspamd/opensigweave.conf.example`. Configure the HTTPS engine URL ending in `/api/v1/engine/signatures/` and the same `ENGINE_API_KEY` in protected Rspamd configuration; never put the key in Lua source.
+### Component export is not a backup
 
-Keep Mailcow/Postfix sender verification enabled: an authenticated SMTP user does not by itself prove authorization to use the envelope sender. Verify Rspamd processing order and final DKIM after mutation in a disposable Mailcow environment. No production mail-flow, sender-authorization or DKIM-order test has passed. See [web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
+The web UI's selective ZIP export currently supports:
 
+- signatures and immutable HTML versions
+- domains
+- signature groups and memberships
+- rules and conditions
+- identity-provider metadata
 
-## Optional Stalwart integration (experimental)
+It deliberately excludes provider credentials, application secrets, personal overrides and identity caches. Branding and schedules are currently covered by the full PostgreSQL disaster-recovery backup, not by the selective component export.
 
-The Stalwart adapter is not enabled automatically. It exposes `POST /api/v1/adapters/stalwart/mta-hook` and accepts only the DATA stage. To enable it:
+Imports are additive and validated; existing records are not silently overwritten.
 
-1. Generate a separate random token and set it as `STALWART_HOOK_TOKEN` in the OpenSigWeave `.env` file. Do not reuse `SECRET_KEY` or `ENGINE_API_KEY`.
-2. Configure a Stalwart MTA Hook that calls the HTTPS endpoint above, uses Bearer authentication with the same token, and runs at the `data` stage only. Keep TLS certificate verification enabled and set a bounded HTTP timeout and response-size limit.
-3. Keep Stalwart's authenticated sender and alias/delegated-send authorization enabled. The adapter checks that the SMTP session is authenticated, but Stalwart must enforce that the authenticated principal may use the envelope sender.
-4. Configure `tempFailOnError` deliberately. Enabling it makes transient hook failures return a temporary SMTP failure so the sending client can retry.
-5. Do not place another body-mutating hook after OpenSigWeave. Validate the complete filter order and DKIM signing with a disposable Stalwart instance before any real mail flow.
+## Explicit message selection
 
-The hook request body is limited to 20 MiB. The adapter preserves supported multipart structures and skips signed/encrypted messages as well as malformed outer MIME trees, but it remains experimental: there is no live Stalwart SMTP/DKIM end-to-end certification. It does not yet implement the Rspamd adapter's body-marker selection, device-signature cleanup or whitespace trimming. Do not connect it to production mail flow.
+Supported modes are:
 
-## Troubleshooting
+- `AUTO`
+- `PROFESSIONAL`
+- `INTERNAL`
+- `NONE`
 
-| Symptom | Checks |
-|---|---|
-| Application restarts | `docker compose ps`; `docker compose logs --tail=200 opensigweave`; check independent `SECRET_KEY` and `ENGINE_API_KEY` values (at least 32 characters) and remove placeholders. |
-| PostgreSQL password error | Check `docker compose config` and matching `POSTGRES_PASSWORD`/database URL. Changing the environment variable does not rotate credentials in an initialized database; use a PostgreSQL password-rotation procedure, never delete the volume. |
-| OIDC callback failure | Check provider enabled, HTTPS discovery reachability, client credentials, exact registered callback, canonical Host, verified email and groups array. |
-| Login succeeds but no portal access | Check exact `signature-users` / `signature-admins` group mapping. |
-| Empty profile fields | Check profile-provider assignment, Authentik URL/token and read permission, or LDAP service-bind access; inspect application logs. Failed lookup returns empty attributes unless a same-provider cache entry is available. |
-| Proxy cannot connect | Check `APP_BIND_ADDRESS`, host firewall allowance from the proxy IP, routing/tunnel and TCP/8085. Do not solve this by exposing the port publicly. |
+Adapters that support the control header use:
+
+```text
+X-OpenSigWeave-Mode: PROFESSIONAL
+```
+
+The message must be an authenticated submission; client-controlled selector headers are consumed by the adapter and never treated as sender authorization.
+
+A signature may also be selected by its body marker where the adapter supports marker extraction:
+
+```text
+<---[Signature name]--[4-character code]--->
+```
+
+The four-character code is the first four hexadecimal characters of SHA-256 over the Unicode-case-folded UTF-8 signature name. Copy the code shown in the administrator catalog.
+
+## Security model
+
+Important enforced properties include:
+
+- no built-in production secret fallbacks
+- minimum-length/non-placeholder secret validation
+- CSRF protection for state-changing browser requests
+- Secure/HttpOnly/SameSite session cookies
+- explicit trusted hosts
+- database-backed rate limiting
+- bounded request bodies and adapter responses
+- HTML sanitization before preview/delivery
+- autoescaped template values
+- sandboxed preview iframes
+- LDAPS/HTTPS certificate verification
+- non-root read-only application container, dropped Linux capabilities and `no-new-privileges`
+- PostgreSQL not published by Compose
+- secret scanning of complete Git history
+- dependency auditing and Bandit analysis in CI
+
+The browser CSP is currently **Report-Only**. Automated Chromium workflows record no CSP violations across the exercised administration/editor flows, but enforcement remains a separate acceptance step to avoid breaking untested browser/deployment combinations.
+
+See [security review](docs/WEB_AND_RSPAMD_REVIEW.md) and [repository audit](docs/REPOSITORY_AUDIT.md).
+
+## Known acceptance gaps
+
+A green beta build is not equivalent to production mail-flow certification. Before production use, validate what applies to your environment:
+
+- live OIDC/LDAP sign-in and group mapping
+- real reverse-proxy forwarded-header topology
+- actual sender authorization at the MTA
+- adapter/filter ordering
+- final DKIM after OpenSigWeave mutation
+- SOGo, Outlook and Thunderbird behavior with your real signatures
+- cross-host restore on independent infrastructure
+- real NFS/SMB disconnect/recovery
+- throughput/load and failure-policy behavior
 
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
-- [Mail-server adapter integrations and compatibility](docs/ADAPTERS.md)
-- [Management and engine API](docs/API.md)
-- [Implementation progress and verification](docs/IMPLEMENTATION_PROGRESS.md)
-- [Repository audit](docs/REPOSITORY_AUDIT.md)
-- [Web and Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md)
-- [Backup and disaster recovery](docs/BACKUP_RESTORE_DESIGN.md)
+- [API](docs/API.md)
+- [Engine service](docs/ENGINE_SERVICE.md)
+- [Adapters](docs/ADAPTERS.md)
+- [Postfix Milter design](docs/POSTFIX_MILTER_DESIGN.md)
+- [Signature groups](docs/SIGNATURE_GROUPS_DESIGN.md)
+- [Client compatibility](docs/CLIENT_COMPATIBILITY.md)
+- [Editor decision](docs/EDITOR_DECISION.md)
+- [HTML source preservation](docs/HTML_SOURCE_PRESERVATION_ADR.md)
+- [Backup/restore design](docs/BACKUP_RESTORE_DESIGN.md)
 - [Cross-host restore drill](docs/CROSS_HOST_RESTORE_DRILL.md)
-- [Rich-text editor decision](docs/EDITOR_DECISION.md)
-- [Signature groups design](docs/SIGNATURE_GROUPS_DESIGN.md)
-
-Development takes place on `dev`. The `beta` branch is the CI-validated candidate for controlled deployment testing; use `beta` for the Quick Start above. `main` remains unchanged and is reserved for a release accepted after real-environment testing. CI validation is not production certification: live identity-provider, SMTP/DKIM, real email-client, cross-host restore and operational acceptance remain outstanding. Do not connect production mail flow until those checks pass. Native Mailcow UI/integration is a separate future project.
+- [Security review](docs/WEB_AND_RSPAMD_REVIEW.md)
+- [Implementation status](docs/IMPLEMENTATION_PROGRESS.md)
+- [Repository audit](docs/REPOSITORY_AUDIT.md)
 
 ## License
 
-[GNU General Public License v3.0](LICENSE).
+OpenSigWeave is distributed under the [GNU General Public License v3](LICENSE). Third-party components keep their own licenses; see [third-party notices](static/vendor/THIRD_PARTY_NOTICES.md).

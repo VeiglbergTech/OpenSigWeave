@@ -1,8 +1,8 @@
 # Web application and Rspamd security review
 
 **Development baseline:** `dev` (CI-validated candidate: `beta`)  
-**Review date:** 2026-11-16  
-**Status:** Code-level review of the standalone preview; not a penetration test.
+**Review date:** 2026-11-19  
+**Status:** Code-level beta/release-candidate review plus automated security/browser evidence; not a penetration test or production certification.
 
 ## 1. Web application
 
@@ -36,15 +36,15 @@ Reverse proxies must preserve the canonical Host header. The supported deploymen
 - Signature HTML is sanitized server-side before storage and again before use.
 - Dynamic identity values are rendered in a sandboxed Jinja environment with automatic HTML escaping.
 - Signature previews are isolated in sandboxed iframes.
-- Editor HTML is parsed through Quill's clipboard parser; client-side parsing is not treated as the security boundary.
-- Quill is self-hosted. Alpine's CSP-compatible build is version-pinned and protected with SHA-384 SRI, but is still loaded from a CDN.
+- CKEditor 5 49.1.0 is self-hosted. Client-side editor parsing is not treated as the security boundary; the server-side sanitizer remains authoritative.
+- Alpine's CSP-compatible build is version-pinned and protected with SHA-384 SRI, but is still loaded from a CDN.
 - The CSP is `Content-Security-Policy-Report-Only`, not enforced.
 
-The jsdom smoke test covers the CSP evaluator and checks the actual template for unsupported Alpine expression patterns. It does not replace a real-browser walkthrough. Before enforcing CSP, inspect actual browser reports, preview behavior and Quill's runtime style behavior. Do not add broad `unsafe-eval` or `unsafe-inline` directives merely to silence violations.
+The jsdom smoke test covers the CSP evaluator and checks the actual template for unsupported Alpine expression patterns. Chromium/Playwright additionally captures `securitypolicyviolation` events during real browser administration/editor workflows. Keep CSP report-only until broader browser/deployment acceptance; do not add broad `unsafe-eval` or `unsafe-inline` directives merely to silence a future violation.
 
-The current Chromium/Playwright CI flow goes beyond the jsdom check: it signs in through the local administrator form, exercises all seven administration areas, creates/updates/deletes signatures, groups, memberships and GROUP rules, downloads an export, previews it through the import UI, checks normal-user/admin authorization boundaries and domain override policy, then logs out and confirms session invalidation. A follow-up assertion types into the existing Quill personal editor, applies bold formatting and verifies the resulting HTML in the raw-source textarea. This is still a local test environment; it does not replace live identity-provider or email-client acceptance.
+The current Chromium/Playwright CI flow signs in through the local administrator form, traverses the administration areas, exercises CKEditor-backed editing, signature/group/rule lifecycle operations, Scheduling create/update/delete, Branding logo/favicon upload and reset, selective export/import preview, normal-user/admin authorization boundaries, domain override policy, logout and session invalidation. It runs against the built Docker stack. This remains isolated CI evidence and does not replace live identity-provider, production MTA or real email-client acceptance.
 
-The current browser report-only run observes exactly two `style-src-attr` violations originating in vendored Quill 1.3.7 and no script-policy violations. Do not broaden the policy to `unsafe-inline` to silence them. The editor replacement and CSP remediation are intentionally deferred together until the email-HTML preservation requirements are settled.
+The current report-only Chromium workflow records no CSP violation events across the exercised paths. Keep the policy report-only until broader supported-browser and deployment acceptance confirms that enforcement is safe; do not broaden the policy with `unsafe-inline` or `unsafe-eval` without a specific reviewed need.
 
 ## 2. Authentik attribute provider
 
@@ -96,7 +96,7 @@ Before enabling the adapter in a mail flow, use a disposable Mailcow environment
 
 No production Mailcow configuration has been changed and no end-to-end SMTP/DKIM test has been completed.
 
-## 4. Suggested preview acceptance matrix
+## 4. Acceptance matrix
 
 | Area | Test cases |
 |---|---|
@@ -116,13 +116,8 @@ The multipart cases should currently confirm that the message remains unchanged.
 
 ## 5. CI evidence and limits
 
-Latest CI evidence:
+Application CI history is available from the branch-specific GitHub Actions views for [dev](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [beta](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta). The workflow scans complete Git history for secrets, audits Python dependencies, runs Bandit, checks browser JavaScript and CSP expressions, validates PostgreSQL/SQLite migrations, builds the Docker stack, runs Chromium administration workflows, verifies encrypted full backup/fresh restore and executes the regression suite.
 
-- `dev` push run [#1884](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815243995): success on commit `29c86d5ba9371e067319867bf93b8ea820c0f71b`.
-- `beta` push run [#1885](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815757212) and Draft PR validation [#1886](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/43815762725): both successful on the same commit.
-- The latest commit changes documentation only; no application source behavior changed.
-- The workflow runs on pushes to `dev` and `beta`, as well as pull requests targeting `main`. `main` remains unchanged.
+Dedicated Postfix compatibility CI separately validates the real PyMilter/libmilter/Postfix mutation path with a mock engine.
 
-The current `dev` follow-up changes are documentation-only; no application behavior changed. A successful CI run remains automated preview validation, not live integration acceptance.
-
-This is automated regression and local-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, SMTP integration test, DKIM verification or production security certification.
+This is automated regression and isolated-container evidence only. It is not a dynamic penetration test, live LDAP/OIDC integration test, cross-host disaster-recovery drill, real NFS/SMB storage test, live production SMTP integration, final DKIM verification or production security certification.

@@ -16,8 +16,8 @@ Compatibility safeguards:
 - Outlook conditional comments and VML are detected and warned about; users must retain and review the raw HTML source for Outlook-specific markup.
 - The editor must never be treated as a sanitizer or security boundary.
 - Signature group tokens can be inserted at the current editor selection.
-- Browser smoke tests verify self-hosted asset loading, formatting, synchronization to the source HTML and signature create/update flows under the current Content Security Policy.
+- Browser smoke tests verify self-hosted asset loading, formatting, synchronization to source HTML and personal/domain/administrator/signature-catalog editing under the current report-only Content Security Policy. The same Docker/Chromium flow also exercises Scheduling and Branding administration.
 
-The distribution is licensed under GPL 2+ and is compatible with this GPL-3.0-or-later project. Keep the exact CKEditor license file in the image and repository notices.
+The distribution is licensed under GPL 2+ and is compatible with OpenSigWeave's GPLv3 distribution. Keep the exact CKEditor license file in the image and repository notices.
 
 Future editor changes must preserve offline operation, email-compatible HTML, source round trips, sanitizer behavior, Outlook warnings and all three editor surfaces. Any CKEditor upgrade must be version-pinned and pass the full CI and real-browser acceptance suite before beta deployment.

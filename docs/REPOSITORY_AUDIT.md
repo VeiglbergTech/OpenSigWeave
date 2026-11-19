@@ -1,49 +1,84 @@
 # Repository and security audit
 
-**Repository:** `VeiglbergTech/OpenSigWeave`  
+**Baseline:** beta/release-candidate source tree  
 **Review date:** 2026-11-19  
-**Scope:** Current standalone preview. This is an engineering review, not a penetration test or security certification.
+**Scope:** code/repository review plus automated CI evidence. This is not a penetration test or production security certification.
 
-## Current implementation
+## Release hygiene
 
-- FastAPI portal, management API, PostgreSQL/Alembic and SQLite compatibility.
-- Per-domain Authentik/generic OIDC or LDAPS login and independent profile providers; local emergency administrator.
-- Versioned signature HTML storage, sanitization, catalog, groups, rules and weighted selection.
-- CSRF/session/host controls, request limits, shared database rate limiting and proxy-CIDR-aware client identity.
-- Encrypted full backups, fresh-target restore, verified retention and guarded remote-mount scheduling.
-- Optional Rspamd adapter, isolated from the standalone application and Mailcow configuration.
+The repository is organized around a standalone Docker deployment. The deployment source of truth is the `beta` branch; `dev` is not intended as an operator deployment source.
 
-## Security and operational findings
+Release-candidate cleanup removed obsolete branding placeholder files and the superseded Quill-to-CKEditor migration plan. The bundled `branding/logo.png` is tracked and explicitly included in the Docker build context.
 
-| Area | Verified implementation | Remaining work |
-|---|---|---|
-| Authentication/authorization | Managed OIDC, LDAPS, local emergency login and server-side role checks | Live provider sign-in/logout and group mapping |
-| Browser security | CSRF, secure sessions, trusted hosts, response headers and server-side HTML sanitization | CSP remains report-only; two Quill 1.3.7 style-attribute reports remain |
-| Request protection | Body limits, shared database rate limits and trusted-proxy CIDR checks | Validate thresholds and proxy behavior on the target deployment |
-| Signature storage | Path validation, symlink rejection, atomic writes and SHA-256 integrity checks | Real cross-host restore and remote-filesystem failure tests |
-| Backups | Encrypted archive, fresh-target restore, checksum verification and fail-closed retention | Two-host drill and real NFS/SMB acceptance |
-| Mail flow | HTTPS engine API; multipart messages fail closed and remain unchanged | SMTP sender authorization, Rspamd ordering, idempotency and DKIM in disposable Mailcow |
-| Container | Non-root user, read-only root filesystem, dropped capabilities, no-new-privileges and loopback binding | Deployment-specific runtime review |
+The CKEditor build stage uses an exact Node/Alpine image version. Runtime Python and PostgreSQL images remain pinned as defined by the Docker/Compose files and are tracked by dependency automation.
 
-See [web and Rspamd security review](WEB_AND_RSPAMD_REVIEW.md) for detailed trust boundaries and test cases, and [backup/restore design](BACKUP_RESTORE_DESIGN.md) for recovery guarantees.
+## Automated security controls
 
-## Historical credential
+The application workflow checks each candidate for:
 
-A Rspamd engine credential was present in historical Git content. It is not reproduced here. Treat it as compromised and rotate it anywhere it may have been deployed, copied or stored. Git history was not rewritten; the known historical finding is allowlisted for scanning, while new findings remain subject to CI.
+- secret leaks across complete Git history with Gitleaks;
+- vulnerable Python dependencies with `pip-audit`;
+- Python static security findings with Bandit;
+- Python and browser JavaScript syntax;
+- migration compatibility on PostgreSQL and SQLite;
+- Docker build/startup and browser workflows;
+- report-only CSP violation events in Chromium;
+- encrypted full backup/fresh restore;
+- regression tests.
 
-## CI evidence and limits
+Dedicated Postfix CI separately exercises PyMilter/libmilter and disposable Postfix.
 
-- Application workflow history is available for [`dev`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [`beta`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta). The branch promotion policy is fast-forward only: `beta` receives a development commit after the full `dev` workflow succeeds.
-- Dedicated Postfix compatibility validation: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
-- `main` remains unchanged; PR #2 remains Draft and unmerged. No production deployment is implied by these CI results.
-- CI covers secret/dependency scans, syntax, migrations, Docker smoke, browser workflows, backup/restore and regression tests. It does not replace live identity-provider, SMTP/DKIM, client-rendering, cross-host restore or production validation.
+Historical Gitleaks allowlist entries are retained where required for old Git objects. Removing an allowlist entry merely because the current tree no longer contains that artifact would break complete-history scanning without removing the historical object.
 
-## Remaining actions
+## Manual review highlights
 
-1. Rotate the historical Rspamd key wherever deployed.
-2. Verify live LDAP/OIDC login, group mapping and logout.
-3. Resolve Quill CSP reports without broad `unsafe-inline` exceptions.
-4. Complete the two-host and real NFS/SMB backup acceptance.
-5. Test Rspamd sender authorization, MIME behavior, idempotency and DKIM in disposable Mailcow.
-6. Validate rate-limit thresholds and reverse-proxy Host/forwarded-header handling.
-7. Perform focused dynamic security and realistic load testing.
+The current source review specifically checked common high-risk patterns and configuration boundaries. No new obvious code-level vulnerability requiring a release block was identified in the reviewed tree. This statement is deliberately narrower than claiming the application is vulnerability-free.
+
+Controls observed in the current implementation include:
+
+- no production fallback for required session/engine secrets;
+- minimum-length and known-placeholder rejection for sensitive keys;
+- CSRF protection on state-changing browser requests;
+- explicit trusted-host validation;
+- Secure/HttpOnly/SameSite session cookies;
+- database-backed rate limits and bounded request bodies;
+- forwarded-client-IP trust only from configured proxy CIDRs;
+- HTTPS/LDAPS certificate validation;
+- server-side signature HTML sanitization and autoescaped dynamic values;
+- sandboxed previews;
+- file-store path/symlink protection, atomic writes and SHA-256 integrity checks;
+- non-root/read-only application container with dropped capabilities and `no-new-privileges`;
+- PostgreSQL not published by Compose;
+- bounded adapter message/header/HTTP-response handling.
+
+## Release-candidate issues found and fixed
+
+The audit did find concrete problems before beta promotion:
+
+1. **Bundled logo excluded from Docker build context.** The tracked default logo was ignored by `.dockerignore`, so a deployment could start without the expected product asset. The ignore rule was removed and CI now verifies the logo inside the built container and through the public branding endpoint.
+2. **Branding request-envelope size mismatch.** Raw logo/favicon limits were safe individually, but base64 JSON overhead could collide with the generic 1 MiB body limit. The branding route now has a separate bounded 2 MiB request budget while binary asset limits remain 512 KiB/256 KiB.
+3. **Mutable Node builder tag.** The CKEditor build stage used `node:22-alpine`; it is now pinned to an exact Node/Alpine version.
+4. **Scheduling UI stale catalog state.** A signature created after page initialization did not immediately appear in Scheduling. Scheduling now refreshes when signatures, groups or domains change, and CI exercises this real workflow.
+5. **Coverage gap for new administration features.** Browser CI now creates/updates/deletes a schedule and uploads/resets branding assets instead of merely checking that the tabs render.
+
+## Known security/operational limitations
+
+- CSP remains `Content-Security-Policy-Report-Only`. Current CI records no violation events on exercised paths, but broader browser/deployment acceptance is required before enforcement.
+- Starlette's signed client-side session cookie is not a centrally revocable server-side session. Logout removes the browser cookie, but a copied valid cookie can remain valid until expiry.
+- Generic OIDC cannot provide a portable immediate account-revocation check; verified claims/attributes may remain cached according to the implementation policy.
+- Adapter transport authentication does not replace MTA sender authorization. The mail platform must enforce that an authenticated principal may use the envelope sender.
+- Exactly-once processing across independent re-submissions is not guaranteed.
+- Real MTA/DKIM, client-rendering, cross-host DR and load testing remain acceptance gates.
+
+## Review policy
+
+Do not weaken security controls merely to make a deployment or client work. In particular:
+
+- do not disable TLS certificate verification;
+- do not add wildcard trusted hosts;
+- do not trust client-supplied OpenSigWeave processing headers/comments as idempotency proof;
+- do not reconstruct multipart MIME with regular expressions;
+- do not broaden CSP with `unsafe-inline`/`unsafe-eval` without a specific reviewed requirement;
+- do not place secrets in Compose files, source code or tracked adapter examples.
+
+Current operational status and remaining acceptance work are tracked in [IMPLEMENTATION_PROGRESS.md](IMPLEMENTATION_PROGRESS.md).

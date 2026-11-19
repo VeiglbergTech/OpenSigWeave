@@ -19,7 +19,7 @@ Implemented on the working branch:
 
 CI includes source-preservation regression coverage, PostgreSQL/SQLite migrations, Docker/browser smoke and encrypted backup/fresh restore. Current branch-specific CI evidence is maintained in [implementation progress](IMPLEMENTATION_PROGRESS.md).
 
-Remaining acceptance work is real-browser coverage of all three source-editing surfaces and verification of actual email-client rendering. The current Playwright flow exercises Quill typing/formatting and raw-source synchronization in the personal editor; it does not yet prove round-trip behavior in all three editors. Outlook conditional comments and VML are preserved in stored source but removed from sanitized output, so this implementation does not make Outlook VML available in delivered signatures.
+Automated Chromium/Playwright coverage now exercises the self-hosted CKEditor integration across personal, domain-template and administrator editing paths, plus signature catalog create/update flows. Real SOGo, Outlook and Thunderbird rendering remains separate acceptance work. Outlook conditional comments and VML are preserved in stored source but removed from sanitized preview/delivery output, so this implementation does not make Outlook VML available in delivered signatures.
 
 ## Context
 

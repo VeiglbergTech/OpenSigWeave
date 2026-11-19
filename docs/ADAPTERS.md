@@ -13,7 +13,7 @@ No adapter may duplicate signature-selection or template-rendering logic. No ada
 
 ## Engine service extraction
 
-The framework-independent service is implemented on `dev` and documented in [ENGINE_SERVICE.md](ENGINE_SERVICE.md). HTTP/Rspamd and in-process adapters share the same typed request/result contract and selection/rendering implementation. External adapters use the versioned HTTP endpoint; in-process adapters call the shared service directly. Direct service, route and adapter regression tests are part of the CI verification.
+The framework-independent service is implemented and documented in [ENGINE_SERVICE.md](ENGINE_SERVICE.md). HTTP/Rspamd and in-process adapters share the same typed request/result contract and selection/rendering implementation. External adapters use the versioned HTTP endpoint; in-process adapters call the shared service directly. Direct service, route and adapter regression tests are part of the CI verification.
 
 ## Versioned engine contract
 
@@ -66,7 +66,7 @@ Every adapter implementation must document and test:
 | Adapter | Integration mechanism | Status |
 |---|---|---|
 | Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
-| Postfix | PyMilter sidecar using the versioned engine HTTP API | Experimental implementation on `dev`; isolated Postfix E2E verifies authenticated injection, unauthenticated no-op, control-header removal and final local delivery using a mock engine. Live engine HTTPS/API and DKIM-chain tests remain open |
+| Postfix | PyMilter sidecar using the versioned engine HTTP API | Experimental; isolated Postfix E2E verifies authenticated injection, unauthenticated no-op, control-header removal and final local delivery using a mock engine. Live engine HTTPS/API and DKIM-chain tests remain open |
 | Stalwart | Native SMTP/MTA hook at DATA | Experimental adapter implemented; MIME and live SMTP validation still required |
 | Exim | ACL/system-filter integration or external content filter | Planned |
 | Haraka | Plugin | Planned |

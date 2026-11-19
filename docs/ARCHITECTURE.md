@@ -1,7 +1,7 @@
 # OpenSigWeave – architecture and implementation boundaries
 
-**Document status:** Current preview architecture with explicit future boundaries  
-**Last reviewed:** 2026-11-15
+**Document status:** Current beta/release-candidate architecture and explicit support boundaries  
+**Last reviewed:** 2026-11-19
 
 ## 1. Product boundary
 
@@ -45,13 +45,16 @@ The implemented services cover:
 - Name-based signature directories at `signatur/{Signaturname}/signature.html`, with immutable UUID-addressed snapshots in each directory's `.versions/` subdirectory. PostgreSQL retains stable internal signature IDs, version metadata, SHA-256 hashes and integrity checks; renaming a signature moves its directory without changing its ID.
 - Weighted variants and selection state to avoid immediate repetition for a sender/mode pool.
 - Rules with priorities and AND-combined conditions for sender, domain, groups, claims and attributes.
-- HTML sanitization before storage and rendering with automatic escaping of dynamic identity values.
+- Exact editable HTML source preservation with allowlist sanitization at preview/delivery trust boundaries and automatic escaping of dynamic identity values.
+- Reusable signature groups with transactional weighted no-repeat selection.
+- Concrete date/time schedules that target an active signature or signature group, optionally scoped to one domain and ordered by priority.
+- Persistent application branding (name, accent color, logo and favicon) stored in PostgreSQL.
 
 ### Persistence and file storage
 
 PostgreSQL is the supported standalone deployment database. SQLAlchemy manages relational records and Alembic manages schema migrations. SQLite remains available for compatibility and unit-test scenarios.
 
-PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, rules, selection state and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
+PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, groups, rules, schedules, branding settings/assets, selection state, identity caches and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
 
 The application image stores files in `/data/signatures`; Compose persists this path in the `opensigweave-signatures` named volume. PostgreSQL uses the separate `opensigweave-postgres-data` volume. Both volumes must be backed up and restored together.
 
@@ -84,7 +87,7 @@ The server checks these permissions in route handlers. Hiding a menu item in the
 
 ### Engine identity
 
-The Rspamd adapter authenticates to `GET /api/signature/{email}` with `X-Engine-Key`. The key is configured independently from the session secret and is never embedded in the tracked Lua source.
+External adapters authenticate to the versioned `GET /api/v1/engine/signatures/{email}` endpoint with `X-Engine-Key`. The older `/api/signature/{email}` path remains only as a compatibility alias for existing Rspamd deployments. The key is configured independently from the session secret and is never embedded in the tracked Lua source.
 
 The Lua adapter requires `task:get_user()`, but that only indicates an authenticated SMTP session. It does not prove that the authenticated mailbox may send as the envelope sender. Mailcow/Postfix sender verification and explicit alias/delegated-send-as permissions must enforce that relationship before the signature hook.
 
@@ -118,12 +121,15 @@ Current persisted concepts include:
 - Immutable signature versions and file integrity metadata.
 - Signature variants and weights.
 - Signature rules and typed conditions.
+- Signature groups, memberships and per-principal group-selection state.
+- Time-bounded signature/group schedules and priorities.
+- Persistent branding settings and uploaded assets.
 - Per-sender variant-selection state.
 - Shared database-backed rate-limit buckets.
 - Identity-provider metadata and separate per-domain login/profile-provider associations.
 - Provider-scoped cached identity attributes keyed by normalized email.
 
-An independent audit-log subsystem, SCIM provisioning and nested LDAP group expansion are not part of the current preview.
+An independent audit-log subsystem, SCIM provisioning and nested LDAP group expansion are not part of the current beta contract.
 
 ## 6. Security and operational controls
 
@@ -143,7 +149,7 @@ Current implementation includes:
 - A non-root, read-only Docker application container.
 - CI dependency auditing and full Git-history secret scanning.
 
-The Content Security Policy is report-only until full browser validation. These controls are not a substitute for a dynamic penetration test or production deployment review.
+The Content Security Policy remains report-only. The current Chromium/Playwright workflow records no `securitypolicyviolation` events across its exercised portal/editor, scheduling and branding paths, but broader browser/deployment acceptance is still required before enforcement. These controls are not a substitute for a dynamic penetration test or production deployment review.
 
 ## 7. Mail-flow constraints
 
@@ -164,7 +170,10 @@ The current adapter intentionally skips multipart messages. Do not work around t
 - Verify live Authentik and Active Directory sign-in/logout.
 - Complete the two-host restore drill and real NFS/SMB backup-target tests.
 - Verify Rspamd sender authorization, processing order, idempotency and final DKIM in disposable Mailcow.
-- Resolve the observed Quill CSP reports before enforcing CSP.
+- Verify Postfix against the live HTTPS engine and final DKIM ordering.
+- Verify Stalwart through live SMTP/DKIM end-to-end tests.
+- Validate real SOGo, Outlook and Thunderbird reply/forward rendering with delivered MIME.
+- Keep CSP report-only until broader browser/deployment acceptance confirms that enforcement will not break supported workflows.
 - Validate rate limits, reverse-proxy behavior and realistic load; perform dynamic security testing.
 
 Native Mailcow UI integration remains a separate future project.
