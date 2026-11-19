@@ -145,3 +145,31 @@ The migration must not attempt to reconstruct source markup from old sanitized r
 - Group selection, version history, file integrity checks and backup/restore remain intact.
 - Existing records migrate without data loss; historical content already removed by the old sanitizer is not falsely represented as recoverable.
 - All source-returning routes retain their existing authorization boundaries.
+
+## Outlook-specific output policy assessment
+
+**Decision:** Do not emit Outlook conditional comments or VML in delivered signatures yet. Preserve them only in the authenticated editor source, as implemented above. The existing allowlist sanitizer remains authoritative for preview and delivery.
+
+This is an intentional compatibility limitation, not an accidental sanitizer regression. Outlook conditional comments are HTML comments to most clients but are interpreted by supported Outlook/Word rendering paths. Their payload can contain VML elements, namespace declarations, URL-bearing attributes, CSS and nested fallback markup. Preserving the comment wrapper while passing its payload through the current HTML sanitizer would either remove the VML and produce a non-functional Outlook branch, or require a separate parser and policy for content the current sanitizer does not understand.
+
+A blanket exception for `<!--[if mso]>` blocks is not acceptable. It would create a second HTML trust boundary and could reintroduce active markup, unsafe URLs, remote-resource abuse, CSS constructs or parser-differential behavior that the current allowlist intentionally removes. Allowing arbitrary `v:` elements or attributes globally is also out of scope.
+
+### Requirements before reconsidering support
+
+1. Define a deliberately small supported VML subset from real signature examples; do not aim for general VML compatibility.
+2. Parse conditional-comment syntax structurally and reject malformed, nested, duplicated or unsupported conditions. Do not extract blocks with a permissive regular expression.
+3. Sanitize the normal HTML fallback and the Outlook-only payload independently. The Outlook path needs its own explicit element, attribute, namespace, URL-scheme and CSS-property allowlists.
+4. Reject script-capable, form, active, embedded, external-document and unknown namespace content. Remote image behavior must follow the same explicit policy as ordinary signature images.
+5. Keep the source snapshot unchanged, but derive both output branches at the rendering trust boundary. Never return the untrusted source block directly to preview or mail injection.
+6. Add adversarial tests for malformed comments, namespace spoofing, event attributes, unsafe URL schemes, CSS URL/expression constructs, nested fallback content and parser differentials.
+7. Verify output in supported Outlook desktop versions and at least one non-Outlook client, including the actual delivered MIME and final DKIM signature.
+
+### Rejected shortcuts
+
+- Enabling `strip_comments=False` on the shared `nh3.Cleaner`: this changes comment handling globally and does not make VML safe.
+- Adding VML names to the shared `_ALLOWED_TAGS`: this broadens the normal HTML trust boundary and does not validate namespace-specific attributes.
+- Passing conditional blocks through unchanged: source preservation is not output sanitization.
+- Treating a successful sanitizer unit test as proof of Outlook rendering: client rendering and delivered MIME need separate acceptance.
+
+Until the requirements above can be met and reviewed, the supported behavior remains: preserve the exact source for editing, remove conditional comments/VML from preview and delivery, and display the existing editor warning.
+
