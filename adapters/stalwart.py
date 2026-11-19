@@ -140,6 +140,33 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             # Do not mutate only one decodable branch of a multipart alternative.
             return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
+    # Preflight every editable text representation before changing any of them.
+    # A multipart/alternative must never end up with only one branch updated.
+    plain = _plain_signature(html_signature)
+    for part in safe_parts:
+        if part.is_multipart() or part.get_content_type().lower() not in {"text/plain", "text/html"}:
+            continue
+        try:
+            body = part.get_content()
+        except (LookupError, UnicodeError, TypeError):
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+        if not isinstance(body, str):
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+        content_type = part.get_content_type().lower()
+        if content_type == "text/html":
+            if re.search(r"<!--\\s*OpenSigWeave:INJECTED\\s*-->", body, re.I):
+                continue
+            candidate, _quote_detected = insert_signature(body, html_signature, html=True)
+        else:
+            if not plain:
+                continue
+            candidate, _quote_detected = insert_signature(body, plain, html=False)
+        charset = part.get_content_charset() or "utf-8"
+        try:
+            candidate.encode(charset)
+        except (LookupError, UnicodeError, TypeError):
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+
     header_names = [item[0].casefold() for item in headers]
     if "x-opensigweave-injected" in header_names:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
@@ -150,7 +177,6 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
 
     original_mime_headers = {name: [str(value) for value in parsed.get_all(name, [])]
                              for name in ("Content-Type", "Content-Transfer-Encoding", "MIME-Version")}
-    plain = _plain_signature(html_signature)
     changed = False
     for part in safe_parts:
         if part.is_multipart():
@@ -162,9 +188,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         try:
             body = part.get_content()
         except (LookupError, UnicodeError, TypeError):
-            continue
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         if not isinstance(body, str):
-            continue
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         if content_type == "text/html":
             if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
                 continue
@@ -179,8 +205,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         try:
             part.set_content(body, subtype=content_type.split("/", 1)[1], charset=charset, cte=cte)
         except (LookupError, UnicodeError, TypeError, ValueError):
-            # Unsupported charset/encoding: leave this MIME part untouched.
-            continue
+            # Never serialize a partially mutated multipart/alternative.
+            return {"action": "accept", **({"modifications": modifications} if modifications else {})}
         changed = True
 
     if not changed:
