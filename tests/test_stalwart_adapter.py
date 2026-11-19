@@ -155,6 +155,27 @@ class StalwartAdapterTests(unittest.TestCase):
             {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0}
         ])
 
+    def test_removes_duplicate_control_headers_in_descending_occurrence_order(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["X-OpenSigWeave-Mode", " PROFESSIONAL\\r\\n"],
+                ["X-OpenSigWeave-Mode", " INTERNAL\\r\\n"],
+                ["X-OpenSigWeave-Signature", " Old\\r\\n"],
+                ["X-OpenSigWeave-Mode", " NONE\\r\\n"],
+                ["X-OpenSigWeave-Signature", " New\\r\\n"],
+            ],
+            "Hello",
+        )
+        result = build_stalwart_hook_response(payload, {"html": ""})
+        self.assertEqual(result["modifications"], [
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 2},
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 1},
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Mode", "index": 0},
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 1},
+            {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 0},
+        ])
+
     def test_rejects_bare_carriage_return_in_header_value(self):
         payload = request([["From", " sender@example.org\rInjected: yes\r\n"]], "Hello")
         with self.assertRaises(ValueError):
