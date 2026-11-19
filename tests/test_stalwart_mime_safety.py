@@ -136,6 +136,25 @@ class NestedMimeSafetyTests(unittest.TestCase):
                 )
                 self.assertEqual(result, {"action": "accept"})
 
+
+    def test_skips_entire_multipart_alternative_with_unknown_charset(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/alternative; boundary="alt"\\r\\n'],
+            ],
+            "--alt\\r\\n"
+            "Content-Type: text/plain; charset=x-unknown-codec\\r\\n\\r\\n"
+            "Opaque plain body\\r\\n"
+            "--alt\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body>Hello</body></html>\\r\\n"
+            "--alt--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertNotIn("replaceContents", [item["type"] for item in result.get("modifications", [])])
+
     def test_ascii_part_skips_signature_that_cannot_be_encoded(self):
         payload = request(
             [
