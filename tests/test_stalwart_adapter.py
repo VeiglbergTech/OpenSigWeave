@@ -27,6 +27,24 @@ class StalwartAdapterTests(unittest.TestCase):
         self.assertIn("<p>Signature</p>", body)
         self.assertIn("X-OpenSigWeave-Injected", [item.get("name") for item in changes])
 
+    def test_body_idempotency_marker_prevents_partial_alternative_mutation(self):
+        payload = request(
+            [
+                ["From", " sender@example.org\\r\\n"],
+                ["MIME-Version", " 1.0\\r\\n"],
+                ["Content-Type", ' multipart/alternative; boundary="alt"\\r\\n'],
+            ],
+            "--alt\\r\\n"
+            "Content-Type: text/plain; charset=utf-8\\r\\n\\r\\n"
+            "Plain body without marker\\r\\n"
+            "--alt\\r\\n"
+            "Content-Type: text/html; charset=utf-8\\r\\n\\r\\n"
+            "<html><body>Hello<!-- OpenSigWeave:INJECTED --></body></html>\\r\\n"
+            "--alt--\\r\\n",
+        )
+        result = build_stalwart_hook_response(payload, {"html": "<p>Signature</p>"})
+        self.assertEqual(result, {"action": "accept"})
+
     def test_reports_top_level_mime_header_changes(self):
         payload = request(
             [["From", " sender@example.org\r\n"],

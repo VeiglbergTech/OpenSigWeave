@@ -155,7 +155,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
         content_type = part.get_content_type().lower()
         if content_type == "text/html":
             if re.search(r"<!--\s*OpenSigWeave:INJECTED\s*-->", body, re.I):
-                continue
+                # A body marker means the message has already been processed.
+                # Never update only the plain-text branch of multipart/alternative.
+                return {"action": "accept", **({"modifications": modifications} if modifications else {})}
             candidate, _quote_detected = insert_signature(body, html_signature, html=True)
         else:
             if not plain:
