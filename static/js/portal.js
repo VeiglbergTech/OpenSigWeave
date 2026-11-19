@@ -285,6 +285,7 @@ function identityProviderManager() { return {
                     notify('Signature saved.');
                     this.editing = false;
                     await this.fetchAll();
+                    window.dispatchEvent(new window.Event('signature-catalog-updated'));
                 },
                 async manageVariants(signature) {
                     this.variantSignature = signature;
@@ -461,6 +462,12 @@ function identityProviderManager() { return {
             return {
                 schedules: [], signatures: [], groups: [], domains: [], editing: false,
                 form: { id: null, name: '', target_type: 'SIGNATURE', signature_id: '', group_id: '', domain_id: '', starts_local: '', ends_local: '', priority: 0, is_enabled: true },
+                init() {
+                    window.addEventListener('signature-catalog-updated', () => this.fetchAll());
+                    window.addEventListener('signature-groups-updated', () => this.fetchAll());
+                    window.addEventListener('domain-updated', () => this.fetchAll());
+                    this.fetchAll();
+                },
                 async fetchAll() {
                     try {
                         const responses = await Promise.all([

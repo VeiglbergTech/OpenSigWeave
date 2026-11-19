@@ -437,7 +437,7 @@
                 </div>
             </div>
         </div>
-        <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="fetchAll()" class="space-y-5">
+        <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="space-y-5">
             <div class="flex items-center justify-between gap-4">
                 <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
