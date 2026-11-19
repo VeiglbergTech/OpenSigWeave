@@ -109,13 +109,13 @@ docker compose ps
 docker compose logs --tail=100 opensigweave
 ```
 
-Do not expose PostgreSQL. If the reverse proxy is remote, bind port 8085 only to the application server's private interface and restrict the host firewall to the proxy IP.
+Do not expose PostgreSQL. If the reverse proxy is remote, set `APP_BIND_ADDRESS` to the application server's **private-interface IP** and restrict TCP/8085 in the host firewall **only from the reverse-proxy private IP**.
 
 ## Reverse proxy and HTTPS
 
 OpenSigWeave expects HTTPS in normal operation. The default session cookie is Secure, HttpOnly and SameSite=Lax. Keep the canonical external hostname in `APP_ALLOWED_HOSTS`.
 
-If the immediate reverse proxy is trusted and client-IP-aware rate limiting should use forwarded addresses, set `TRUSTED_PROXY_CIDRS` only to the actual proxy networks. Forwarded headers from untrusted peers are ignored.
+If the immediate reverse proxy is trusted and client-IP-aware rate limiting should use forwarded addresses, set `TRUSTED_PROXY_CIDRS` only to the actual proxy networks. Forwarded headers from untrusted peers are ignored. `TRUSTED_PROXY_CIDRS` changes client-IP attribution for rate limiting; it **does not make the proxy network boundary for you**. The host firewall remains mandatory for a remote proxy.
 
 Do not disable certificate verification for OIDC, LDAP or adapter-to-engine HTTPS connections.
 
