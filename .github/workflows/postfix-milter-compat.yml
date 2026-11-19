@@ -406,8 +406,16 @@ jobs:
               message['From'] = 'spoofed@example.net'
               message['To'] = 'testuser@localhost'
               message['Subject'] = 'OpenSigWeave Postfix E2E'
+              # Duplicate, conflicting sender-controlled selector and marker headers
+              # must all be removed; duplicates must not create ambiguous selection.
               message['X-OpenSigWeave-Mode'] = 'INTERNAL'
+              message.add_header('X-OpenSigWeave-Mode', 'PROFESSIONAL')
+              message['X-OpenSigWeave-Signature'] = 'Forged Signature'
+              message.add_header('X-OpenSigWeave-Signature', 'Second Forged Signature')
+              message['X-OpenSigWeave-Signature-Code'] = 'FORGED1'
+              message.add_header('X-OpenSigWeave-Signature-Code', 'FORGED2')
               message['X-OpenSigWeave-Injected'] = 'true'
+              message.add_header('X-OpenSigWeave-Injected', 'false')
               message.set_content('Original message body')
               return message
           with smtplib.SMTP('127.0.0.1', 25, timeout=10) as smtp:
@@ -437,8 +445,10 @@ jobs:
           assert len(injected) == 1 and len(unchanged) == 1, messages
           assert 'OpenSigWeave integration signature' in injected[0].get_content()
           assert 'Original message body' in injected[0].get_content()
-          assert injected[0].get('X-OpenSigWeave-Mode') is None
-          assert injected[0].get('X-OpenSigWeave-Injected') == 'true'
+          assert injected[0].get_all('X-OpenSigWeave-Mode') is None
+          assert injected[0].get_all('X-OpenSigWeave-Signature') is None
+          assert injected[0].get_all('X-OpenSigWeave-Signature-Code') is None
+          assert injected[0].get_all('X-OpenSigWeave-Injected') == ['true']
           assert unchanged[0].get('X-OpenSigWeave-Injected') is None, unchanged[0]
           assert injected[0]['From'] == 'spoofed@example.net'
           assert unchanged[0]['From'] == 'spoofed@example.net'
