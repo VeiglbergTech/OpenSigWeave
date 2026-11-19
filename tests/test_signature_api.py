@@ -85,14 +85,9 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 request, "bEaReR expected-token", self.db
             ))
         self.assertEqual(response["action"], "accept")
-        self.assertEqual(
-            response["modifications"],
-            [
-                {"type": "deleteHeader", "name": "x-opensigweave-mode", "index": 0},
-                {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature", "index": 0},
-                {"type": "deleteHeader", "name": "X-OpenSigWeave-Signature-Code", "index": 0},
-            ],
-        )
+        # No body rewrite means no hook modifications: a header-only response
+        # could overwrite a body change made by an earlier Stalwart Milter.
+        self.assertEqual(response, {"action": "accept"})
         self.assertIs(engine.await_args.args[0], self.db)
         self.assertFalse(engine.await_args.kwargs["commit_selection"])
         engine_request = engine.await_args.args[1]
