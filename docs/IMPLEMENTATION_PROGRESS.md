@@ -23,7 +23,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Latest complete application CI: [run #44515500782 (CI #2200)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44515500782), commit `fd16f46366dad966dbabaafbbcfd89c18e10560a`, result **success**. All workflow steps completed successfully, including secret scan, dependency audit, Python compile/security checks, browser JavaScript/CSP checks, PostgreSQL/SQLite migrations, Docker build and Playwright browser smoke, encrypted backup/fresh restore and regression tests. The browser smoke now also checks CKEditor 5 round-tripping of common email markup (tables, table cells, alignment, center/font and inline semantic formatting).
+- Latest complete application CI: [run #44526642106 (CI #2204)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44526642106), commit `693c1176b1914e7e2d95ea78702b8d2036e4967f`, result **success**. All workflow steps completed successfully, including secret scan, dependency audit, Python compile/security checks, browser JavaScript/CSP checks, PostgreSQL/SQLite migrations, Docker build and Playwright browser smoke, encrypted backup/fresh restore and regression tests. The browser smoke covers personal, domain master-template and administrator per-user CKEditor workflows, including common email-markup round trips (tables, table cells, alignment, center/font and inline semantic formatting).
 - Latest dedicated Postfix compatibility CI: [run #44309369390](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44309369390), commit `9036d0f72a64c8f05b5b7e3abea66a7fd9c43f1f`, result **success**. It verifies PyMilter runtime, real Postfix SMTP/Milter exchange and final delivery through the actual OpenSigWeave adapter with a mock engine. The delivered message contains the inserted signature and idempotency marker; unauthenticated mail remains unchanged and control headers are removed.
 - `beta` promotion is pending until the documentation refresh and its resulting CI checks complete; `main` remains unchanged.
 - The Postfix compatibility spike is tracked separately in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md). Its protocol test is not equivalent to an authenticated sender authorization acceptance test.
@@ -34,7 +34,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 | Area | Required verification |
 |---|---|
 | Identity | Live LDAP/Active Directory and Authentik sign-in, group mapping and logout |
-| Browser/editor | CKEditor 5 is now self-hosted and browser-tested for personal editing and common email-markup round trips. Complete browser acceptance for the domain master-template and per-user override editors, review CKEditor `style-src-attr` CSP reports and keep CSP report-only until resolved. Verify real email-client rendering and Outlook behavior. |
+| Browser/editor | CKEditor 5 is self-hosted and browser-tested for personal, domain master-template and administrator per-user editing, including common email-markup round trips. The CI Playwright run captured no CSP violation events across these exercised portal/editor workflows; no `style-src-attr` exception is justified by current evidence. Inline style attributes still appear in the DOM (including Alpine visibility state and branding), but they did not produce CSP violation events in this browser run. Keep CSP report-only pending broader browser/client acceptance. Verify real email-client rendering and Outlook behavior. |
 | HTML fidelity | Define a security-reviewed policy for Outlook conditional comments/VML; current sanitizer removes them. |
 | Backup | Execute the documented two-host restore drill and test real NFS/SMB mount, disconnect and recovery behavior. |
 | Rspamd | In disposable Mailcow, verify sender authorization, supported non-multipart processing, idempotency, Rspamd order and final DKIM. Rotate the historical Rspamd key wherever deployed. |
@@ -46,7 +46,7 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 - Keep OpenSigWeave independent of Mailcow; native Mailcow UI/authentication is a separate future project.
 - Do not enable production mail flow until disposable SMTP/DKIM acceptance tests pass.
-- Do not enable enforced CSP until real-browser reports have been resolved.
+- Do not enable enforced CSP until broader real-browser coverage and real-user workflows have been validated; the current CI browser smoke observed no CSP violation events in its exercised portal/editor paths.
 - PR #2 (`beta` → `main`) remains Draft. Do not merge it or update `main` until the owner confirms successful real-environment testing.
 
 ## Signature storage layout

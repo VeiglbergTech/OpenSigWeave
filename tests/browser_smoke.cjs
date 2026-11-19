@@ -594,14 +594,10 @@ async function main() {
 
     assert.deepEqual(pageErrors, [], "browser runtime must not raise uncaught JavaScript errors");
     const cspViolations = await page.evaluate(() => window.__cspViolations || []);
-    assert.ok(cspViolations.every(violation =>
-      violation.directive === "style-src-attr"
-      && violation.blockedURI === "inline"
-      && violation.disposition === "report"
-      && violation.sourceFile.includes("/static/vendor/ckeditor5/49.1.0/ckeditor5.js")
-    ), "Unexpected browser CSP violation: " + JSON.stringify(cspViolations));
+    assert.deepEqual(cspViolations, [],
+      "The exercised portal and CKEditor workflows must not produce CSP violation events: " + JSON.stringify(cspViolations));
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
-    process.stdout.write("CSP report-only browser violations (CKEditor 5 report-only style attributes): " + JSON.stringify(cspViolations) + "\\n");
+    process.stdout.write("CSP report-only browser violations during exercised portal/editor workflows: " + JSON.stringify(cspViolations) + "\\n");
     process.stdout.write("Inline style elements: " + JSON.stringify(inlineStyleElements) + "\\n");
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
