@@ -1,6 +1,6 @@
 # OpenSigWeave
 
-Self-hosted email-signature management with a web portal, rule and rendering engine, versioned HTML storage, managed identity providers and an optional Rspamd adapter.
+Self-hosted email-signature management with a web portal, rule and rendering engine, versioned HTML storage, managed identity providers and mail-server adapters for Rspamd plus experimental Postfix and Stalwart integrations.
 
 **Status:** Development preview, not production-ready. Deploys independently of Mailcow; the standalone Compose stack does not install Rspamd or modify a mail server. Do not connect it to production mail flow.
 
@@ -16,7 +16,7 @@ Self-hosted email-signature management with a web portal, rule and rendering eng
 - Server-side HTML sanitization, sandboxed previews, CSRF protection, secure sessions and trusted-host validation.
 - Encrypted full backups, fresh-deployment restore, verified retention and optional systemd scheduling to remote storage.
 - Separate Lua adapter for Rspamd; top-level `multipart/*` messages are deliberately left unchanged.
-- Experimental Stalwart MTA-hook adapter with authenticated DATA-stage integration and parser-based MIME updates; signed/encrypted messages are skipped.
+- Experimental Postfix Milter sidecar and Stalwart MTA-hook adapter; both use the shared signature engine and include isolated automated integration/contract tests. Signed/encrypted MIME messages are skipped where applicable; neither adapter is production-certified.
 
 ## Requirements
 
@@ -284,6 +284,7 @@ The hook request body is limited to 20 MiB. The adapter preserves supported mult
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Mail-server adapter integrations and compatibility](docs/ADAPTERS.md)
 - [Management and engine API](docs/API.md)
 - [Implementation progress and verification](docs/IMPLEMENTATION_PROGRESS.md)
 - [Repository audit](docs/REPOSITORY_AUDIT.md)
