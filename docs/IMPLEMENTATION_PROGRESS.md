@@ -2,7 +2,7 @@
 
 **Project:** OpenSigWeave standalone preview  
 **Status:** Core application and automated preview validation are progressing; external acceptance remains. Not production-ready.  
-**Branches:** `dev` and `beta` both point to `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`. `beta` was fast-forwarded from `dev` after the full development CI passed. `main` remains unchanged; PR #2 remains Draft and unmerged.
+**Branches:** `dev` is the active development branch. `beta` receives fast-forwarded development commits after the full `dev` CI passes. `main` remains unchanged; PR #2 remains Draft and unmerged.
 
 ## Implemented
 
@@ -23,10 +23,8 @@ Detailed contracts and operator instructions: [architecture](ARCHITECTURE.md), [
 
 ## Automated verification
 
-- Latest complete application CI: [run `44534529189` (#2209)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44534529189), commit `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`, result **success**. The full workflow completed successfully, including secret scan, dependency audit, Python compile/security checks, browser JavaScript/CSP checks, PostgreSQL/SQLite migrations, Docker build and smoke test, encrypted backup/fresh restore and regression tests.
-- Latest dedicated Postfix compatibility CI: [run `44532955327`](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327), commit `483df4485166116d6e85ac891a59bc3ce2815cbb`, result **success**. All three jobs passed: PyMilter runtime, real Postfix Milter protocol exchange and end-to-end delivery through the actual OpenSigWeave adapter with a mock engine. It verifies authenticated signature insertion, unauthenticated no-op behavior, client control-header removal and final delivered MIME. Live engine HTTPS/API integration, DKIM-chain behavior and production deployment remain unverified.
-- The same commit is on `beta`; application push CI [run #2210](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535549067) and separate PR validation [run #2211](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535561995) both passed.
-- The Postfix compatibility spike is tracked separately in [POSTFIX_MILTER_DESIGN.md](POSTFIX_MILTER_DESIGN.md). Its protocol test is not equivalent to an authenticated sender authorization acceptance test.
+- Branch-specific application CI history: [runs for `dev`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [runs for `beta`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta). The application workflow covers secret/dependency scans, Python and browser checks, CSP evaluation, PostgreSQL/SQLite migrations, Docker smoke tests, encrypted backup/fresh restore and regression tests.
+- Dedicated Postfix compatibility CI: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327), result **success**. All three jobs passed: PyMilter runtime, real Postfix Milter protocol exchange and end-to-end delivery through the actual OpenSigWeave adapter with a mock engine. It verifies authenticated signature insertion, unauthenticated no-op behavior, client control-header removal and final delivered MIME. Live engine HTTPS/API integration, DKIM-chain behavior and production deployment remain unverified.
 - CI success does not establish production readiness or replace live mail-flow, identity-provider, email-client, restore or load tests.
 
 ## Outstanding acceptance and engineering work

@@ -33,9 +33,8 @@ A Rspamd engine credential was present in historical Git content. It is not repr
 
 ## CI evidence and limits
 
-- Latest `dev` application validation: push run [`44534529189` (#2209)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44534529189) passed on `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`. The full application workflow succeeded, including Docker smoke test, encrypted backup/fresh restore and regression tests.
-- The same commit was fast-forwarded to `beta`; application push run [`44535549067` (#2210)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535549067) and separate PR validation [`44535561995` (#2211)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535561995) both passed.
-- Latest dedicated Postfix compatibility validation: run [`44532955327` (#70)](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed on `483df4485166116d6e85ac891a59bc3ce2815cbb`. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
+- Application workflow history is available for [`dev`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [`beta`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta). The branch promotion policy is fast-forward only: `beta` receives a development commit after the full `dev` workflow succeeds.
+- Dedicated Postfix compatibility validation: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) passed. All three jobs succeeded, including actual adapter delivery through disposable Postfix with a mock engine.
 - `main` remains unchanged; PR #2 remains Draft and unmerged. No production deployment is implied by these CI results.
 - CI covers secret/dependency scans, syntax, migrations, Docker smoke, browser workflows, backup/restore and regression tests. It does not replace live identity-provider, SMTP/DKIM, client-rendering, cross-host restore or production validation.
 

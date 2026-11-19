@@ -10,9 +10,7 @@ Self-hosted email-signature management with a web portal, rule and rendering eng
 
 ## CI validation and release status
 
-- Beta candidate commit: `2590252f2e6ba4d3a56f241fd181fe76dfcc4749`.
-- Application workflow on `beta`: [run #2210](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44535549067) — **success**.
-- Main application workflow on `dev`: [run #2209](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44534529189) — **success**.
+- Current application workflow history: [CI runs for `dev`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Adev) and [CI runs for `beta`](https://github.com/VeiglbergTech/OpenSigWeave/actions?query=branch%3Abeta).
 - Postfix adapter compatibility: [run #70](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44532955327) — **success**, using disposable Postfix and a mock engine.
 
 The CI workflows exercise migrations, security/dependency checks, browser workflows, Docker smoke tests, encrypted backup/restore and regression tests. The Postfix compatibility workflow verifies adapter delivery in a disposable MTA. These checks do not establish live engine API/TLS, DKIM-chain, production MTA, identity-provider, real email-client or cross-host recovery acceptance. Keep production mail flow disabled until those are tested.
