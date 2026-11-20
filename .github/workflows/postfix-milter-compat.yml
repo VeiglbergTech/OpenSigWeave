@@ -2,7 +2,7 @@ name: Postfix Milter Compatibility
 
 on:
   push:
-    branches: ["dev"]
+    branches: ["dev", "beta", "main"]
     paths:
       - "docs/POSTFIX_MILTER_DESIGN.md"
       - "adapters/postfix_milter.py"
