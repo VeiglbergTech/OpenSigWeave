@@ -12,9 +12,11 @@ from database import Base
 from models import DomainDB, SignatureDB, SignatureVariantDB, SignatureVersionDB
 from signature_catalog import (
     SignatureNotFoundError,
+    SignatureVersionNotFoundError,
     add_signature_variant,
     add_signature_version,
     create_signature,
+    restore_signature_version,
     update_signature,
     update_signature_variant,
 )
@@ -115,6 +117,86 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(
             self.store.read(signature.name, uuid.UUID(hex=second.id), second.sha256),
             "<p>Version 2</p>",
+        )
+
+    def test_restore_signature_version_creates_new_current_without_overwriting_history(self):
+        signature, first, _ = create_signature(
+            self.session,
+            self.store,
+            name="Restorable",
+            domain_id=None,
+            mode=SignatureMode.AUTO,
+            html_content="<p>Version 1</p>",
+        )
+        second = add_signature_version(
+            self.session,
+            self.store,
+            signature.id,
+            "<p>Version 2</p>",
+        )
+
+        restored = restore_signature_version(
+            self.session,
+            self.store,
+            signature.id,
+            first.id,
+            created_by="admin@example.org",
+        )
+
+        self.assertEqual(restored.version_number, 3)
+        self.assertEqual(restored.created_by, "admin@example.org")
+        self.assertEqual(
+            self.store.read(signature.name, uuid.UUID(hex=first.id), first.sha256),
+            "<p>Version 1</p>",
+        )
+        self.assertEqual(
+            self.store.read(signature.name, uuid.UUID(hex=second.id), second.sha256),
+            "<p>Version 2</p>",
+        )
+        self.assertEqual(
+            self.store.read(signature.name, uuid.UUID(hex=restored.id), restored.sha256),
+            "<p>Version 1</p>",
+        )
+        self.assertEqual(
+            (Path(self.tempdir.name) / "signatur" / signature.name / "signature.html").read_text(),
+            "<p>Version 1</p>",
+        )
+        versions = self.session.execute(
+            select(SignatureVersionDB)
+            .where(SignatureVersionDB.signature_id == signature.id)
+            .order_by(SignatureVersionDB.version_number)
+        ).scalars().all()
+        self.assertEqual([version.version_number for version in versions], [1, 2, 3])
+
+        with self.assertRaises(ValueError):
+            restore_signature_version(
+                self.session,
+                self.store,
+                signature.id,
+                restored.id,
+            )
+
+    def test_restore_signature_version_rejects_version_from_another_signature(self):
+        first_signature, first_version, _ = create_signature(
+            self.session, self.store, name="First", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+        )
+        second_signature, _, _ = create_signature(
+            self.session, self.store, name="Second", domain_id=None,
+            mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+        )
+        with self.assertRaises(SignatureVersionNotFoundError):
+            restore_signature_version(
+                self.session,
+                self.store,
+                second_signature.id,
+                first_version.id,
+            )
+        self.assertEqual(
+            self.session.execute(
+                select(SignatureVersionDB).where(SignatureVersionDB.signature_id == second_signature.id)
+            ).scalars().all()[0].version_number,
+            1,
         )
 
     def test_add_variant_requires_matching_mode(self):
