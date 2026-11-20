@@ -327,6 +327,9 @@ async function main() {
       document.body.appendChild(source);
     }, imageFixtures.png);
     const dragUpload = waitForImageUpload();
+    // Prevent an unhandled pending response wait from masking the real error
+    // if the native drag assertion fails and the browser is closed.
+    void dragUpload.catch(() => {});
     await page.locator("#signature-native-file-drag-fixture").dragTo(signatureEditEditor, {
       targetPosition: { x: 80, y: 40 },
     });
@@ -335,6 +338,7 @@ async function main() {
       drop: window.__signatureNativeFileDrop,
     }));
     await page.locator("#signature-native-file-drag-fixture").evaluate(element => element.remove());
+    process.stdout.write("Native image drag observation: " + JSON.stringify(nativeDrop) + "\\n");
     assert.equal(nativeDrop.startTrusted, true, "browser must dispatch a trusted dragstart event");
     assert.equal(nativeDrop.drop?.isTrusted, true, "browser must dispatch a trusted file drop event");
     assert.deepEqual(nativeDrop.drop.fileNames, [imageFixtures.png.name],
