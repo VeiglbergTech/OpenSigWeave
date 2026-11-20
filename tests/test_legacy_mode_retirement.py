@@ -14,9 +14,6 @@ RETIRED = tuple("".join(parts) for parts in (
 ))
 COMPATIBILITY_FILES = {
     "admin_import.py",
-    "migrations/versions/0002_signature_assets.py",
-    "migrations/versions/0003_signature_rules.py",
-    "migrations/versions/0009_signature_groups.py",
     "migrations/versions/0011_legacy_signature_groups.py",
     "migrations/versions/0014_retire_signature_modes.py",
     "tests/test_migration_compatibility.py",
