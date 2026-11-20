@@ -351,7 +351,10 @@ async function main() {
     await brandingPanel.getByLabel("Application name").fill("OpenSigWeave Browser Smoke");
     await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#f97316");
     const brandingFiles = brandingPanel.locator('input[type="file"]');
-    const brandingLogoBytes = fs.readFileSync("/work/branding/logo.png");
+    const brandingLogoBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl+N8sAAAAASUVORK5CYII=",
+      "base64"
+    );
     const brandingLogoFile = { name: "logo.png", mimeType: "image/png", buffer: brandingLogoBytes };
     await brandingFiles.nth(0).setInputFiles(brandingLogoFile);
     await brandingFiles.nth(1).setInputFiles(brandingLogoFile);
