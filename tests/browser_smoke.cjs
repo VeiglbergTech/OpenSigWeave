@@ -353,6 +353,13 @@ async function main() {
     const brandingFiles = brandingPanel.locator('input[type="file"]');
     await brandingFiles.nth(0).setInputFiles("/work/branding/logo.png");
     await brandingFiles.nth(1).setInputFiles("/work/branding/logo.png");
+    await page.waitForFunction(() => {
+      const logo = document.querySelector('img[alt="Brand logo preview"]');
+      const favicon = document.querySelector('img[alt="Favicon preview"]');
+      return logo && favicon
+        && logo.getAttribute("src").startsWith("data:image/png;base64,")
+        && favicon.getAttribute("src").startsWith("data:image/png;base64,");
+    });
     const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
     await Promise.all([
       page.waitForNavigation({ waitUntil: "domcontentloaded" }),
