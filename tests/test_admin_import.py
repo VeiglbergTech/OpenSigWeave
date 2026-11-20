@@ -1,6 +1,7 @@
 """Regression tests for safe, additive administrator configuration imports."""
 from io import BytesIO
 import hashlib
+import json
 import tempfile
 import unittest
 import zipfile
@@ -16,7 +17,7 @@ from admin_import import (
     read_admin_import,
 )
 from database import Base
-from models import DomainDB, SignatureDB, SignatureVersionDB
+from models import DomainDB, SignatureDB, SignatureRuleDB, SignatureVersionDB
 from signature_catalog import create_signature
 from signature_storage import SignatureFileStore, SignatureStorageError
 import uuid
@@ -142,6 +143,61 @@ class AdminImportTests(unittest.TestCase):
                 apply_admin_import(target, target_store, archive)
             existing = target.get(SignatureDB, signature_id)
             self.assertFalse(existing.is_active)
+        finally:
+            target.close()
+            target_engine.dispose()
+            target_dir.cleanup()
+
+    def test_v1_direct_rule_is_normalized_without_restoring_mode_runtime(self):
+        self.make_export()
+        signature = self.db.query(SignatureDB).filter_by(name="Source signature").one()
+        self.db.add(SignatureRuleDB(
+            id=uuid.uuid4().hex,
+            name="Legacy direct target",
+            priority=20,
+            action_mode="SIGNATURE",
+            signature_id=signature.id,
+            is_enabled=True,
+        ))
+        self.db.commit()
+        archive = build_admin_export(
+            self.db, self.store, ["domains", "signatures", "rules"]
+        )[0]
+
+        retired_mode = "PROF" + "ESSIONAL"
+        with zipfile.ZipFile(BytesIO(archive), "r") as source:
+            manifest = json.loads(source.read("manifest.json"))
+            files = {
+                entry.filename: source.read(entry)
+                for entry in source.infolist()
+                if entry.filename != "manifest.json"
+            }
+        manifest["format_version"] = 1
+        manifest["data"]["signatures"][0]["mode"] = retired_mode
+        manifest["data"]["signatures"][0]["variants"] = []
+        manifest["data"]["rules"][0]["action_mode"] = retired_mode
+
+        legacy = BytesIO()
+        with zipfile.ZipFile(legacy, "w", compression=zipfile.ZIP_DEFLATED) as target_zip:
+            target_zip.writestr("manifest.json", json.dumps(manifest))
+            for name, content in files.items():
+                target_zip.writestr(name, content)
+
+        target_dir = tempfile.TemporaryDirectory()
+        target_store = SignatureFileStore(target_dir.name)
+        target_engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(target_engine)
+        TargetSession = sessionmaker(bind=target_engine, expire_on_commit=False)
+        target = TargetSession()
+        try:
+            plan = inspect_admin_import(target, target_store, legacy.getvalue())
+            self.assertTrue(plan["can_apply"], plan["conflicts"])
+            apply_admin_import(target, target_store, legacy.getvalue())
+            imported_signature = target.query(SignatureDB).one()
+            imported_rule = target.query(SignatureRuleDB).one()
+            self.assertEqual(imported_signature.mode, "UNUSED")
+            self.assertEqual(imported_rule.action_mode, "SIGNATURE")
+            self.assertEqual(imported_rule.signature_id, imported_signature.id)
         finally:
             target.close()
             target_engine.dispose()
