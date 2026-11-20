@@ -4,12 +4,10 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from core.modes import SignatureMode
 from models import (
     DomainDB,
     SignatureDB,
     SignatureDomainDB,
-    SignatureVariantDB,
     SignatureVersionDB,
 )
 from signature_storage import SignatureFileStore, SignatureStorageError, StoredSignature
@@ -54,16 +52,12 @@ def create_signature(
     name: str,
     domain_id: int | None = None,
     domain_ids: list[int] | None = None,
-    mode: SignatureMode,
     html_content: str,
-    weight: int = 1,
     is_active: bool = True,
     created_by: str | None = None,
-) -> tuple[SignatureDB, SignatureVersionDB, SignatureVariantDB]:
+) -> tuple[SignatureDB, SignatureVersionDB]:
     if not name.strip():
         raise ValueError("name must not be empty")
-    if weight < 1:
-        raise ValueError("weight must be positive")
     assigned_domain_ids = sorted(set(domain_ids if domain_ids is not None else ([domain_id] if domain_id is not None else [])))
     if assigned_domain_ids and any(session.get(DomainDB, item) is None for item in assigned_domain_ids):
         raise ValueError("One or more domain_ids do not exist")
@@ -78,7 +72,7 @@ def create_signature(
         name=name.strip(),
         domain_id=assigned_domain_ids[0] if len(assigned_domain_ids) == 1 else None,
         scope="DOMAIN" if assigned_domain_ids else "GLOBAL",
-        mode=mode.value,
+        mode="UNUSED",
         is_active=is_active,
     )
 
@@ -95,16 +89,8 @@ def create_signature(
         version, stored = _persist_version(
             session, store, signature_id, name.strip(), html_content, created_by, 1
         )
-        variant = SignatureVariantDB(
-            id=uuid.uuid4().hex,
-            signature_id=signature_id,
-            pool_name=mode.value,
-            weight=weight,
-            is_enabled=True,
-        )
-        session.add(variant)
         session.commit()
-        return signature, version, variant
+        return signature, version
     except Exception:
         session.rollback()
         if stored is not None:
@@ -209,37 +195,6 @@ def restore_signature_version(
     )
 
 
-def add_signature_variant(
-    session: Session,
-    signature_id: str,
-    *,
-    pool_name: SignatureMode,
-    weight: int = 1,
-) -> SignatureVariantDB:
-    if weight < 1:
-        raise ValueError("weight must be positive")
-    signature = session.get(SignatureDB, signature_id)
-    if signature is None:
-        raise SignatureNotFoundError(signature_id)
-    if signature.mode != pool_name.value:
-        raise ValueError("variant pool must match the signature mode")
-
-    variant = SignatureVariantDB(
-        id=uuid.uuid4().hex,
-        signature_id=signature_id,
-        pool_name=pool_name.value,
-        weight=weight,
-        is_enabled=True,
-    )
-    try:
-        session.add(variant)
-        session.commit()
-        return variant
-    except Exception:
-        session.rollback()
-        raise
-
-
 def update_signature(
     session: Session,
     store: SignatureFileStore,
@@ -250,7 +205,7 @@ def update_signature(
     domain_ids: list[int] | None = None,
     is_active: bool,
 ) -> SignatureDB:
-    """Update mutable catalog metadata without changing a signature's mode."""
+    """Update mutable catalog metadata for an existing signature."""
     signature = session.get(SignatureDB, signature_id)
     if signature is None:
         raise SignatureNotFoundError(signature_id)
@@ -296,27 +251,4 @@ def update_signature(
                 store.rename_signature(new_name, old_name)
             except Exception:
                 pass
-        raise
-
-
-def update_signature_variant(
-    session: Session,
-    variant_id: str,
-    *,
-    weight: int,
-    is_enabled: bool,
-) -> SignatureVariantDB:
-    """Update a variant's weight and availability."""
-    if weight < 1:
-        raise ValueError("weight must be positive")
-    variant = session.get(SignatureVariantDB, variant_id)
-    if variant is None:
-        raise SignatureNotFoundError(variant_id)
-    variant.weight = weight
-    variant.is_enabled = bool(is_enabled)
-    try:
-        session.commit()
-        return variant
-    except Exception:
-        session.rollback()
         raise
