@@ -220,6 +220,11 @@ async function main() {
     await assertFloatingDialog(signatureDialog, "signature editor");
     assert.equal(await signatureDialog.getByLabel("Mode").count(), 0,
       "signature editor must not expose the retired mode selector");
+    assert.equal(await signatureDialog.getByRole("option", {
+      name: /^(AUTO|INTERNAL|PROFESSIONAL)$/i,
+    }).count(), 0, "signature editor must not list retired mode values");
+    assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
+      "signature editor must not submit retired selector fields");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
