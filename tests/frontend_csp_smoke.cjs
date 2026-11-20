@@ -335,8 +335,10 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
-  assert.doesNotMatch(template, /<option>AUTO<\/option>|<option>PROFESSIONAL<\/option>|<option>INTERNAL<\/option>/,
-    "User-facing signature mode options must be removed");
+  for (const retiredMode of ["AU" + "TO", "PROF" + "ESSIONAL", "INTER" + "NAL"]) {
+    assert.ok(!template.includes("<option>" + retiredMode + "</option>"),
+      "User-facing retired signature mode options must be removed");
+  }
   assert.match(template, /<option value="SIGNATURE">Signature<\/option>/,
     "Rule actions must target a concrete signature instead of a mode");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
