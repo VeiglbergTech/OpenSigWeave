@@ -76,7 +76,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0014_retire_legacy_signature_modes",))
+            self.assertEqual(revision, ("0014_retire_signature_modes",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -215,7 +215,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(direct_rule, ("SIGNATURE", "sig-prof-1", None))
             self.assertEqual(signature_modes, [("UNUSED",)])
             self.assertTrue(all(slug.startswith("compat-") for (slug,) in group_slugs))
-            self.assertEqual(revision, ("0014_retire_legacy_signature_modes",))
+            self.assertEqual(revision, ("0014_retire_signature_modes",))
 
 
 if __name__ == "__main__":
