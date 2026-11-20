@@ -15,9 +15,9 @@ MAX_HEADER_BYTES = 1024 * 1024
 MAX_HEADER_COUNT = 2000
 MAX_ENGINE_RESPONSE_BYTES = 1024 * 1024
 BODY_REPLACEMENT_CHUNK = 64 * 1024
-VALID_MODES = {"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"}
 # All OpenSigWeave control/marker headers are untrusted when received from SMTP clients.
 CONTROL_HEADERS = {
+    # Deprecated selector header is ignored but stripped so it cannot leak downstream.
     "x-opensigweave-mode",
     "x-opensigweave-signature",
     "x-opensigweave-signature-code",
@@ -204,7 +204,7 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         raise ValueError("MIME serializer returned an invalid message")
     return RewriteResult(new_body, _header_changes(headers, parsed), True)
 
-def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_name=None, signature_code=None, timeout=5.0):
+def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, signature_code=None, timeout=5.0):
     """Call the existing versioned engine endpoint; selection remains centralized."""
     if not api_url.startswith("https://"):
         raise EngineRequestError("The engine URL must use HTTPS")
@@ -212,8 +212,6 @@ def fetch_signature(api_url, engine_api_key, sender, *, mode=None, signature_nam
         raise EngineRequestError("The engine API key is not configured")
     url = api_url.rstrip("/") + "/api/v1/engine/signatures/" + urllib.parse.quote(sender, safe="")
     headers = {"X-Engine-Key": engine_api_key, "Accept": "application/json"}
-    if mode in VALID_MODES:
-        headers["X-OpenSigWeave-Mode"] = mode
     if isinstance(signature_name, str) and signature_name.strip():
         headers["X-OpenSigWeave-Signature"] = signature_name.strip()
     if isinstance(signature_code, str) and signature_code.strip():
@@ -304,13 +302,10 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 if self.headers_over_limit:
                     return Milter.TEMPFAIL
                 # Capture selector headers before removing all adapter control headers.
-                mode_values = [value.strip().upper() for name, value in self.headers
-                               if name.casefold() == "x-opensigweave-mode"]
                 signature_values = [value.strip() for name, value in self.headers
                                     if name.casefold() == "x-opensigweave-signature"]
                 code_values = [value.strip() for name, value in self.headers
                                if name.casefold() == "x-opensigweave-signature-code"]
-                mode = mode_values[0] if len(mode_values) == 1 and mode_values[0] in VALID_MODES else None
                 signature_name = signature_values[0] if len(signature_values) == 1 else None
                 signature_code = code_values[0] if len(code_values) == 1 else None
     
@@ -333,7 +328,7 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 if len(original_body) > MAX_MESSAGE_BYTES:
                     return Milter.TEMPFAIL
                 result = signature_fetcher(
-                    api_url, api_key, self.sender, mode=mode,
+                    api_url, api_key, self.sender,
                     signature_name=signature_name, signature_code=signature_code,
                     timeout=timeout,
                 )
