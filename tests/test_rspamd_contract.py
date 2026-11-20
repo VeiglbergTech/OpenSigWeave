@@ -36,6 +36,11 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", SOURCE)
         self.assertIn("ignoring duplicate mode headers", SOURCE)
 
+    def test_plaintext_signature_preserves_link_targets(self):
+        self.assertIn("html_signature_to_plain", SOURCE)
+        self.assertIn('lower_href:sub(1, 7) == "mailto:"', SOURCE)
+        self.assertIn('return text .. " (" .. href .. ")"', SOURCE)
+
     def test_multipart_uses_rspamd_parsed_mime_tree(self):
         self.assertIn('require "opensigweave_mime"', SOURCE)
         self.assertIn('mime_rewriter.rewrite(task, function(decoded, is_html)', SOURCE)
