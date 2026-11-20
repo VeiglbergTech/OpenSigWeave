@@ -8,10 +8,103 @@ const dom = new JSDOM(`<!doctype html>
   <div id="portal" x-data="portalShell"><button id="portal-preview" @click="previewUserSignature()">Preview</button></div>
   <div id="rules" x-data="ruleManager">
     <span id="action" x-text="form.action_mode"></span>
-    <button id="switch" type="button" @click="setMode('GROUP')">Switch</button>
+    <button id="switch" type="button" @click="setAction('GROUP')">Switch</button>
+    <template x-for="signature in matchingSignatures" :key="signature.id">
+      <span class="signature" x-text="signature.name"></span>
+    </template>
+  </div>
+  <div id="toasts" x-data="toastManager" @notify.window="add($event)">
+    <span id="toast-message" x-text="toasts.length ? toasts[0].msg : ''"></span>
+  </div>
+  <div id="toggle" x-data="toggleManager">
+    <button id="toggle-button" type="button" @click="open()">Toggle</button>
+    <span id="toggle-state" x-text="show ? 'open' : 'closed'"></span><p id="toggle-content" x-show="show" x-cloak>Visible</p>
+  </div>
+</body></html>`, {
+  url: "https://opensigweave.test/",
+  runScripts: "outside-only",
+});
+
+global.window = dom.window;
+global.document = dom.window.document;
+global.MutationObserver = dom.window.MutationObserver;
+global.Element = dom.window.Element;
+global.HTMLElement = dom.window.HTMLElement;
+global.Node = dom.window.Node;
+global.ShadowRoot = dom.window.ShadowRoot;
+global.Document = dom.window.Document;
+global.HTMLTemplateElement = dom.window.HTMLTemplateElement;
+global.CustomEvent = dom.window.CustomEvent;
+global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
+for (const key of Object.getOwnPropertyNames(dom.window)) {
+  if (typeof dom.window[key] === "function" && global[key] === undefined) {
+    global[key] = dom.window[key];
+  }
+}
+
+window.portalShell = () => ({
+  previewUserSignature() { window.dispatchEvent(new CustomEvent("preview-requested", { detail: "ok" })); },
+});
+window.ruleManager = () => ({
+  form: { action_mode: "SIGNATURE" },
+  signatures: [
+    { id: "a", name: "Primary", is_active: true },
+    { id: "b", name: "Secondary", is_active: true },
+    { id: "c", name: "Disabled", is_active: false },
+  ],
+  get matchingSignatures() {
+    return this.signatures.filter(item => item.is_active);
+  },
+  setAction(action) {
+    this.form.action_mode = action;
+  },
+});
+
+window.toastManager = () => ({
+  toasts: [],
+  add(event) {
+    this.toasts.push({ msg: event.detail.msg });
+  },
+});
+window.toggleManager = () => ({
+  show: false,
+  open() {
+    this.show = true;
+  },
+});
+global.ruleManager = window.ruleManager;
+global.toastManager = window.toastManager;
+
+const imported = require("@alpinejs/csp");
+const Alpine = imported.default || imported;
+Alpine.data("portalShell", window.portalShell);
+Alpine.data("ruleManager", window.ruleManager);
+Alpine.data("toastManager", window.toastManager);
+Alpine.data("toggleManager", window.toggleManager);
+window.Alpine = Alpine;
+Alpine.start();
+
+const tick = () => new Promise(resolve => setTimeout(resolve, 0));
+
+(async () => {
+  await tick();
+  assert.equal(document.getElementById("action").textContent, "SIGNATURE");
+  let previewRequested = false;
+  window.addEventListener("preview-requested", event => { previewRequested = event.detail === "ok"; });
+  document.getElementById("portal-preview").click();
+  await tick();
+  assert.equal(previewRequested, true);
   assert.deepEqual(
     [...document.querySelectorAll(".signature")].map(node => node.textContent),
-    ["Internal"],
+    ["Primary", "Secondary"],
+  );
+
+  document.getElementById("switch").click();
+  await tick();
+  assert.equal(document.getElementById("action").textContent, "GROUP");
+  assert.deepEqual(
+    [...document.querySelectorAll(".signature")].map(node => node.textContent),
+    ["Primary", "Secondary"],
   );
 
   window.dispatchEvent(new CustomEvent("notify", { detail: { msg: "CSP build active" } }));
@@ -168,9 +261,9 @@ const dom = new JSDOM(`<!doctype html>
   ruleResponses = [
     { ok: true, json: async () => [{ id: "r1", name: "Existing", action_mode: "GROUP", group_id: "g1", conditions: [{ kind: "sender_equals", value: "sales@example.test" }] }] },
     { ok: true, json: async () => [
-      { id: "s1", name: "Automatic", mode: "AUTO", is_active: true },
-      { id: "s2", name: "Inactive", mode: "AUTO", is_active: false },
-      { id: "s3", name: "Internal", mode: "INTERNAL", is_active: true },
+      { id: "s1", name: "Primary", is_active: true },
+      { id: "s2", name: "Inactive", is_active: false },
+      { id: "s3", name: "Secondary", is_active: true },
     ] },
     { ok: true, json: async () => [{ id: "g1", name: "Sales" }] },
   ];
@@ -178,7 +271,7 @@ const dom = new JSDOM(`<!doctype html>
   assert.equal(rulesManager.rules[0].name, "Existing");
   assert.equal(rulesManager.groups[0].id, "g1");
   rulesManager.form.action_mode = "SIGNATURE";
-  assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1"]);
+  assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1", "s3"]);
   rulesManager.editRule(rulesManager.rules[0]);
   assert.equal(rulesManager.form.group_id, "g1");
   assert.equal(rulesManager.form.signature_id, "");
@@ -220,6 +313,10 @@ const dom = new JSDOM(`<!doctype html>
 
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
+  assert.doesNotMatch(template, /<option>AUTO<\/option>|<option>PROFESSIONAL<\/option>|<option>INTERNAL<\/option>/,
+    "User-facing signature mode options must be removed");
+  assert.match(template, /<option value="SIGNATURE">Signature<\/option>/,
+    "Rule actions must target a concrete signature instead of a mode");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="domain-outlook-markup-warning"[^>]*role="alert"/, "Domain editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/, "Admin editor must warn when Outlook-specific markup is detected");
