@@ -72,7 +72,6 @@ def create_signature(
         name=name.strip(),
         domain_id=assigned_domain_ids[0] if len(assigned_domain_ids) == 1 else None,
         scope="DOMAIN" if assigned_domain_ids else "GLOBAL",
-        mode="UNUSED",
         is_active=is_active,
     )
 
