@@ -7,7 +7,7 @@
 
 Initial mail-client compatibility targets and their automated format-level fixtures are tracked in [CLIENT_COMPATIBILITY.md](CLIENT_COMPATIBILITY.md). Client compatibility is separate from transport-adapter support.
 
-OpenSigWeave core owns signature catalog, identity resolution, policy/rules, variant and group selection, sanitization and HTML rendering. Adapters own mail-server-specific event handling, authenticated sender attribution, MIME parsing/mutation, duplicate prevention, retry/failure policy and placement before DKIM signing.
+OpenSigWeave core owns signature catalog, identity resolution, policy/rules, group selection, sanitization and HTML rendering. Adapters own mail-server-specific event handling, authenticated sender attribution, MIME parsing/mutation, duplicate prevention, retry/failure policy and placement before DKIM signing.
 
 No adapter may duplicate signature-selection or template-rendering logic. No adapter may bypass sender authorization performed by the mail platform.
 
@@ -27,7 +27,6 @@ Required header:
 
 Optional selection headers:
 
-- `X-OpenSigWeave-Mode: AUTO | PROFESSIONAL | INTERNAL | NONE`
 - `X-OpenSigWeave-Signature: <signature name>`
 - `X-OpenSigWeave-Signature-Code: <four-character selector checksum>`
 
@@ -52,7 +51,7 @@ Every adapter implementation must document and test:
 
 1. **Identity:** obtain the SMTP envelope sender from the trusted mail transaction, not an untrusted message header.
 2. **Authorization:** verify that the authenticated principal is allowed to send as that envelope sender, including aliases and delegated send-as.
-3. **Selection:** pass the envelope sender and optional validated mode/selector to the engine API.
+3. **Selection:** pass the envelope sender and optional validated concrete-signature selector to the engine API.
 4. **MIME safety:** modify only supported MIME structures using a parser/library. Never reconstruct multipart messages with regular expressions or raw boundary concatenation.
 5. **Idempotency:** prevent duplicate processing using trusted adapter/queue state. Never treat client-supplied `X-OpenSigWeave-Injected` headers or `<!-- OpenSigWeave:INJECTED -->` body comments as proof that an insertion already occurred; both are forgeable by the sender.
 6. **Replies:** honor `inject_on_replies` and preserve quoted history.
