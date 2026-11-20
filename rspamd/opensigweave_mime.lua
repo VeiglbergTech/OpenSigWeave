@@ -115,7 +115,31 @@ function M.rewrite(task, transform)
     local nl = newline(task)
     local header = task:get_raw_headers()
     if not header then return nil, "missing message headers" end
+
+    -- Preserve top-level preamble/epilogue; Rspamd's get_parts() walk only
+    -- exposes MIME parts. Discarding those bytes would change valid mail.
+    local preamble, epilogue = "", nil
+    if type(task.get_rawbody) == "function" then
+        local body = task:get_rawbody()
+        if not body then return nil, "missing original multipart body" end
+        local raw = tostring(body)
+        local delimiter = "--" .. parts[1]:get_boundary()
+        local first = raw:find(delimiter, 1, true)
+        local closer = delimiter .. "--"
+        local last, after_close, start_at = nil, nil, 1
+        while true do
+            local a, b = raw:find(closer, start_at, true)
+            if not a then break end
+            last, after_close, start_at = a, b, b + 1
+        end
+        if not first or not last or last < first then
+            return nil, "top-level MIME delimiters not found"
+        end
+        preamble = raw:sub(1, first - 1)
+        epilogue = raw:sub(after_close + 1)
+    end
     local chunks = { tostring(header):gsub("[\r\n]+$", "") .. nl .. nl }
+    if preamble ~= "" then chunks[#chunks + 1] = preamble end
     local function emit(content, add_nl)
         chunks[#chunks + 1] = content
         if add_nl ~= false then chunks[#chunks + 1] = nl end
@@ -188,7 +212,15 @@ function M.rewrite(task, transform)
             end
         end
     end
-    while #stack > 0 do emit_boundary("--" .. table.remove(stack) .. "--") end
+    while #stack > 0 do
+        local closing = table.remove(stack)
+        emit_boundary("--" .. closing .. "--")
+        if #stack == 0 and epilogue ~= nil then
+            -- The final MIME closing delimiter is followed by the original
+            -- epilogue, including its original newline sequence.
+            chunks[#chunks] = epilogue
+        end
+    end
     if changed == 0 then return nil, "no editable text was changed" end
     return chunks, changed
 end
