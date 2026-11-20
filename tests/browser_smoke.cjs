@@ -425,7 +425,13 @@ async function main() {
     await assertFloatingDialog(ruleDialog, "signature rule editor");
     await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
     await rulesPanel.getByLabel("Action").selectOption("GROUP");
-    const ruleGroupSelect = rulesPanel.getByLabel("Signature Group", { exact: true });
+    // The wrapping label also contains the select's option text, so Playwright's
+    // exact accessible-label match is not stable once groups are loaded.
+    const ruleGroupSelect = rulesPanel.locator('select[x-model="form.group_id"]');
+    await page.waitForFunction(() => {
+      const action = document.querySelector('[x-data="ruleManager"] select[x-model="form.action_mode"]');
+      return action && action.value === "GROUP";
+    });
     await ruleGroupSelect.waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const select = document.querySelector('[x-data="ruleManager"] select[x-model="form.group_id"]');
