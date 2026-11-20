@@ -134,12 +134,46 @@ window.fetch = (resource, options = {}) => {
         }
 
         function portalShell() {
+    const stateKey = "opensigweave.portal-state.v1";
+    const isAdmin = document.body.dataset.isAdmin === "true";
+    const allowedAdminTabs = new Set([
+        "identity-providers", "domains", "signatures", "signature-groups",
+        "rules", "scheduling", "branding", "exports", "imports"
+    ]);
+    let savedState = {};
+    try {
+        savedState = JSON.parse(window.sessionStorage.getItem(stateKey) || "{}");
+    } catch (_error) {
+        savedState = {};
+    }
+    const persistState = state => {
+        try {
+            window.sessionStorage.setItem(stateKey, JSON.stringify({
+                tab: state.tab,
+                adminTab: state.adminTab
+            }));
+        } catch (_error) {
+            // Browsers may disable session storage; the portal remains usable without persistence.
+        }
+    };
+
     return {
-        tab: "personal",
-        adminTab: "domains",
-        init() { if (document.body.dataset.idpSetupRequired === "true") { this.openAdmin(); this.adminTab = "identity-providers"; } },
+        tab: isAdmin && savedState.tab === "admin" ? "admin" : "personal",
+        adminTab: allowedAdminTabs.has(savedState.adminTab) ? savedState.adminTab : "domains",
+        init() {
+            if (document.body.dataset.idpSetupRequired === "true" && isAdmin) {
+                this.tab = "admin";
+                this.adminTab = "identity-providers";
+            }
+            this.$watch("tab", () => persistState(this));
+            this.$watch("adminTab", () => persistState(this));
+            persistState(this);
+        },
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
-        openAdmin() { this.tab = "admin"; this.adminTab = "domains"; },
+        openAdmin() {
+            if (!isAdmin) return;
+            this.tab = "admin";
+        },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
         confirmDomainDelete(domain) { this.emit("open-confirm", { domain, action: "delete" }); },
@@ -153,7 +187,7 @@ function htmlEditorToggle() { return { showHtml: false }; }
 
 function domainManager() { return {
     domains: [], providers: [],
-    loginProviders() { return this.providers.filter(function(item) { if (!item.is_enabled || !item.configured) return false; if (item.provider_type === "ldap") return true; return item.provider_type === "authentik" && !!(item.settings && item.settings.OIDC_DISCOVERY_URL && item.settings.OIDC_CLIENT_ID && item.settings.OIDC_REDIRECT_URI); }); },
+    loginProviders() { return this.providers.filter(function(item) { if (!item.is_enabled || !item.configured) return false; if (item.provider_type === "ldap") return true; return (item.provider_type === "authentik" || item.provider_type === "oidc") && !!(item.settings && item.settings.OIDC_DISCOVERY_URL && item.settings.OIDC_CLIENT_ID && item.settings.OIDC_REDIRECT_URI); }); },
     async fetchDomains() {
         const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
         this.domains = domainsResponse.ok ? await domainsResponse.json() : [];
