@@ -218,7 +218,7 @@
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                 <table class="w-full text-left">
                     <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
-                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Mode</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Variants</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
                     </thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="signature in signatures" :key="signature.id">
@@ -227,18 +227,15 @@
                                     <div x-text="signature.name"></div>
                                     <div class="text-xs text-gray-500 font-mono mt-1" x-text="formatSignatureMarker(signature)"></div>
                                 </td>
-                                <td class="px-4 py-3 text-sm" x-text="signature.mode"></td>
                                 <td class="px-4 py-3 text-sm" x-text="domainNames(signature)"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
-                                <td class="px-4 py-3 tabular-nums" x-text="signature.variants"></td>
                                 <td class="px-4 py-3"><span class="text-xs" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Inactive'"></span></td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
-                                    <button @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
-                                    <button @click="manageVariants(signature)" class="text-indigo-400 hover:text-indigo-300 text-sm">Variants</button>
+                                    <button @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm">Edit</button>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="signatures.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No signatures configured.</td></tr>
+                        <tr x-show="signatures.length === 0"><td colspan="5" class="px-4 py-6 text-center text-gray-500">No signatures configured.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -247,11 +244,6 @@
                 <div class="flex items-center justify-between"><h3 class="text-lg font-semibold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button @click="editing=false" class="text-gray-400 hover:text-white">Close</button></div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                    <label class="text-sm text-gray-300">Mode
-                        <select x-model="form.mode" :disabled="!!form.id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
-                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option>
-                        </select>
-                    </label>
                     <div class="text-sm text-gray-300 md:col-span-2">
                         <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
@@ -262,7 +254,6 @@
                         </div>
                     </div>
                     <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
-                    <label x-show="!form.id" class="text-sm text-gray-300">Initial variant weight<input type="number" min="1" max="1000" x-model.number="form.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                 </div>
                 <label class="block text-sm text-gray-300">
                     <span>HTML template</span>
@@ -299,21 +290,6 @@
                     </div>
                 </label>
                 <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
-            </div>
-
-            <div x-show="variantEditor" x-cloak @keydown.escape.window="variantEditor = false" role="dialog" aria-modal="true" class="form-dialog form-dialog-wide bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
-                <div class="flex items-center justify-between"><h3 class="text-lg font-semibold">Variants · <span x-text="variantSignature ? variantSignature.name : ''"></span></h3><button @click="variantEditor=false" class="text-gray-400 hover:text-white">Close</button></div>
-                <div class="space-y-3">
-                    <template x-for="variant in variants" :key="variant.id">
-                        <div class="flex flex-wrap items-center gap-4 bg-gray-900 rounded p-3">
-                            <span class="font-medium text-sm w-36" x-text="variant.pool_name"></span>
-                            <label class="text-sm text-gray-300">Weight <input type="number" min="1" max="1000" x-model.number="variant.weight" class="ml-2 w-20 bg-gray-800 border border-gray-600 rounded px-2 py-1"></label>
-                            <label class="text-sm text-gray-300"><input type="checkbox" x-model="variant.is_enabled" class="mr-1"> Enabled</label>
-                            <button @click="saveVariant(variant)" class="text-blue-400 hover:text-blue-300 text-sm ml-auto">Save</button>
-                        </div>
-                    </template>
-                    <p x-show="variants.length === 0" class="text-sm text-gray-400">No variants configured.</p>
-                </div>
             </div>
         </div>
 
@@ -394,7 +370,7 @@
                             <tr>
                                 <td class="px-4 py-3 font-medium" x-text="rule.name"></td>
                                 <td class="px-4 py-3 tabular-nums" x-text="rule.priority"></td>
-                                <td class="px-4 py-3 text-sm" x-text="rule.action_mode"></td>
+                                <td class="px-4 py-3 text-sm" x-text="ruleActionLabel(rule)"></td>
                                 <td class="px-4 py-3 text-xs text-gray-400" x-text="formatConditions(rule)"></td>
                                 <td class="px-4 py-3"><span class="text-xs" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap">
@@ -415,13 +391,13 @@
                     <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="text-sm text-gray-300">Action
                         <select x-model="form.action_mode" @change="changeAction()" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
-                            <option>AUTO</option><option>PROFESSIONAL</option><option>INTERNAL</option><option>GROUP</option><option>NONE</option>
+                            <option value="SIGNATURE">Signature</option><option value="GROUP">Signature Group</option><option value="NONE">No Signature</option>
                         </select>
                     </label>
-                    <label class="text-sm text-gray-300" x-show="form.action_mode !== 'GROUP'">Specific Signature (optional)
+                    <label class="text-sm text-gray-300" x-show="form.action_mode === 'SIGNATURE'">Signature
                         <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
-                            <option value="">Any signature in selected mode</option>
-                            <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name + ' (' + signature.mode + ')'"></option></template>
+                            <option value="">Select signature</option>
+                            <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template>
                         </select>
                     </label>
                     <label class="text-sm text-gray-300" x-show="form.action_mode === 'GROUP'">Signature Group
@@ -456,7 +432,7 @@
                 <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
             </div>
-            <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">Explicit per-message signature/mode selection still has priority. Active schedules override personal overrides and normal rules. Start is inclusive and end is exclusive.</div>
+            <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">Explicit per-message signature selection still has priority. Active schedules override personal overrides and normal rules. Start is inclusive and end is exclusive.</div>
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                 <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>

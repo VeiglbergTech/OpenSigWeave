@@ -220,6 +220,8 @@ async function main() {
     await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
     const signatureDialog = signaturePanel.locator('[x-show="editing"][role="dialog"]');
     await assertFloatingDialog(signatureDialog, "signature editor");
+    assert.equal(await signatureDialog.getByLabel("Mode").count(), 0,
+      "signature editor must not expose legacy AUTO/INTERNAL/PROFESSIONAL modes");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();

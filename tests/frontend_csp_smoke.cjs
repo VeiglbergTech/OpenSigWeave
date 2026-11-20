@@ -7,101 +7,8 @@ const dom = new JSDOM(`<!doctype html>
 <html><body>
   <div id="portal" x-data="portalShell"><button id="portal-preview" @click="previewUserSignature()">Preview</button></div>
   <div id="rules" x-data="ruleManager">
-    <span id="mode" x-text="form.action_mode"></span>
-    <button id="switch" type="button" @click="setMode('INTERNAL')">Switch</button>
-    <template x-for="signature in matchingSignatures" :key="signature.id">
-      <span class="signature" x-text="signature.name"></span>
-    </template>
-  </div>
-  <div id="toasts" x-data="toastManager" @notify.window="add($event)">
-    <span id="toast-message" x-text="toasts.length ? toasts[0].msg : ''"></span>
-  </div>
-  <div id="toggle" x-data="toggleManager">
-    <button id="toggle-button" type="button" @click="open()">Toggle</button>
-    <span id="toggle-state" x-text="show ? 'open' : 'closed'"></span><p id="toggle-content" x-show="show" x-cloak>Visible</p>
-  </div>
-</body></html>`, {
-  url: "https://opensigweave.test/",
-  runScripts: "outside-only",
-});
-
-global.window = dom.window;
-global.document = dom.window.document;
-global.MutationObserver = dom.window.MutationObserver;
-global.Element = dom.window.Element;
-global.HTMLElement = dom.window.HTMLElement;
-global.Node = dom.window.Node;
-global.ShadowRoot = dom.window.ShadowRoot;
-global.Document = dom.window.Document;
-global.HTMLTemplateElement = dom.window.HTMLTemplateElement;
-global.CustomEvent = dom.window.CustomEvent;
-global.getComputedStyle = dom.window.getComputedStyle.bind(dom.window);
-for (const key of Object.getOwnPropertyNames(dom.window)) {
-  if (typeof dom.window[key] === "function" && global[key] === undefined) {
-    global[key] = dom.window[key];
-  }
-}
-
-window.portalShell = () => ({
-  previewUserSignature() { window.dispatchEvent(new CustomEvent("preview-requested", { detail: "ok" })); },
-});
-window.ruleManager = () => ({
-  form: { action_mode: "AUTO" },
-  signatures: [
-    { id: "a", name: "Automatic", mode: "AUTO", is_active: true },
-    { id: "b", name: "Internal", mode: "INTERNAL", is_active: true },
-    { id: "c", name: "Disabled", mode: "AUTO", is_active: false },
-  ],
-  get matchingSignatures() {
-    return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode);
-  },
-  setMode(mode) {
-    this.form.action_mode = mode;
-  },
-});
-
-window.toastManager = () => ({
-  toasts: [],
-  add(event) {
-    this.toasts.push({ msg: event.detail.msg });
-  },
-});
-window.toggleManager = () => ({
-  show: false,
-  open() {
-    this.show = true;
-  },
-});
-global.ruleManager = window.ruleManager;
-global.toastManager = window.toastManager;
-
-const imported = require("@alpinejs/csp");
-const Alpine = imported.default || imported;
-Alpine.data("portalShell", window.portalShell);
-Alpine.data("ruleManager", window.ruleManager);
-Alpine.data("toastManager", window.toastManager);
-Alpine.data("toggleManager", window.toggleManager);
-window.Alpine = Alpine;
-Alpine.start();
-
-const tick = () => new Promise(resolve => setTimeout(resolve, 0));
-
-(async () => {
-  await tick();
-  assert.equal(document.getElementById("mode").textContent, "AUTO");
-  let previewRequested = false;
-  window.addEventListener("preview-requested", event => { previewRequested = event.detail === "ok"; });
-  document.getElementById("portal-preview").click();
-  await tick();
-  assert.equal(previewRequested, true);
-  assert.deepEqual(
-    [...document.querySelectorAll(".signature")].map(node => node.textContent),
-    ["Automatic"],
-  );
-
-  document.getElementById("switch").click();
-  await tick();
-  assert.equal(document.getElementById("mode").textContent, "INTERNAL");
+    <span id="action" x-text="form.action_mode"></span>
+    <button id="switch" type="button" @click="setMode('GROUP')">Switch</button>
   assert.deepEqual(
     [...document.querySelectorAll(".signature")].map(node => node.textContent),
     ["Internal"],
@@ -270,7 +177,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   await rulesManager.fetchAll();
   assert.equal(rulesManager.rules[0].name, "Existing");
   assert.equal(rulesManager.groups[0].id, "g1");
-  rulesManager.form.action_mode = "AUTO";
+  rulesManager.form.action_mode = "SIGNATURE";
   assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1"]);
   rulesManager.editRule(rulesManager.rules[0]);
   assert.equal(rulesManager.form.group_id, "g1");
