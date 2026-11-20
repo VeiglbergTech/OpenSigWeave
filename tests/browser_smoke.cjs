@@ -543,11 +543,27 @@ async function main() {
 
     await page.reload();
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
+
+    // Verify persistence at the API boundary first. This distinguishes an actual
+    // storage regression from a browser timing issue in the async edit dialog.
+    const persistedProviders = await (await page.request.get(baseURL + "/api/admin/identity-providers")).json();
+    const persistedSsoProvider = persistedProviders.find(item => item.id === "browser-smoke-login-provider");
+    assert.ok(persistedSsoProvider, "saved OIDC provider must still exist after reload");
+    assert.equal(persistedSsoProvider.settings.OIDC_DISCOVERY_URL,
+      "https://idp.example.org/.well-known/openid-configuration");
+    assert.equal(persistedSsoProvider.settings.OIDC_CLIENT_ID, "browser-smoke-client");
+    assert.equal(persistedSsoProvider.settings.OIDC_REDIRECT_URI,
+      "https://signatures.example.org/auth/browser-smoke-login-provider");
+    assert.equal(Object.prototype.hasOwnProperty.call(persistedSsoProvider.settings, "OIDC_CLIENT_SECRET"), false,
+      "OIDC client secret must remain write-only");
+
     const reloadedSsoProviderRow = page.locator('[x-data="identityProviderManager"] tbody tr')
       .filter({ hasText: "Browser Smoke Login Provider" });
     await reloadedSsoProviderRow.getByRole("button", { name: "Edit", exact: true }).click();
     const reloadedSsoDialog = page.locator('[x-data="identityProviderManager"] [x-show="editing"][role="dialog"]');
+    await reloadedSsoDialog.waitFor({ state: "visible" });
     const reloadedOidcFields = reloadedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    await reloadedOidcFields.waitFor({ state: "visible" });
     assert.equal(await reloadedOidcFields.getByLabel("OIDC discovery URL").inputValue(),
       "https://idp.example.org/.well-known/openid-configuration");
     assert.equal(await reloadedOidcFields.getByLabel("OIDC client ID").inputValue(), "browser-smoke-client");
