@@ -25,6 +25,10 @@ TEXT_SUFFIXES = {
 
 
 class LegacyModeRetirementTests(unittest.TestCase):
+    def test_legacy_mode_column_is_retained_only_for_database_compatibility(self):
+        self.assertIn("mode", main.SignatureDB.__table__.columns)
+        self.assertEqual(main.SignatureDB.__table__.columns["mode"].default.arg, "UNUSED")
+
     def test_regular_admin_and_engine_api_have_no_mode_contract(self):
         self.assertNotIn("mode", main.SignatureCreateRequest.model_fields)
         self.assertNotIn("weight", main.SignatureCreateRequest.model_fields)
