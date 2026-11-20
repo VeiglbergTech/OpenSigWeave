@@ -289,6 +289,41 @@ class SignatureEngineService:
                         raise SignatureEngineError(
                             "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
                         )
+                elif matched_rule and matched_rule.action == "SIGNATURE":
+                    if not matched_rule.signature_id:
+                        return empty_result
+                    selected_signature = db.get(SignatureDB, matched_rule.signature_id)
+                    if selected_signature is None or not selected_signature.is_active:
+                        return empty_result
+                    assigned_domains = {
+                        row.domain_id
+                        for row in db.query(SignatureDomainDB)
+                        .filter(SignatureDomainDB.signature_id == selected_signature.id)
+                        .all()
+                    }
+                    if assigned_domains and domain_obj.id not in assigned_domains:
+                        return empty_result
+                    latest_version = (
+                        db.query(SignatureVersionDB)
+                        .filter(SignatureVersionDB.signature_id == selected_signature.id)
+                        .order_by(SignatureVersionDB.version_number.desc())
+                        .first()
+                    )
+                    if latest_version is None:
+                        raise SignatureEngineError(
+                            "SIGNATURE_VERSION_METADATA_MISSING",
+                            "Signature version metadata is missing",
+                        )
+                    try:
+                        raw_template = self.file_store.read(
+                            selected_signature.name,
+                            uuid.UUID(hex=latest_version.id),
+                            latest_version.sha256,
+                        )
+                    except (SignatureStorageError, ValueError, TypeError):
+                        raise SignatureEngineError(
+                            "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
+                        )
                 else:
                     try:
                         mode = resolve_mode(

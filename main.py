@@ -195,9 +195,7 @@ class SignatureCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
     domain_ids: Optional[List[int]] = None
-    mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL"] = "AUTO"
     html_content: str = Field(min_length=1, max_length=65536)
-    weight: int = Field(default=1, ge=1, le=1000)
     is_active: bool = True
 
 class SignatureUpdateRequest(BaseModel):
@@ -238,7 +236,7 @@ class SignatureGroupMemberRequest(BaseModel):
 class SignatureRuleCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=0, ge=-100000, le=100000)
-    action_mode: Literal["AUTO", "PROFESSIONAL", "INTERNAL", "NONE", "GROUP"] = "AUTO"
+    action_mode: Literal["SIGNATURE", "GROUP", "NONE"] = "SIGNATURE"
     signature_id: Optional[str] = None
     group_id: Optional[str] = None
     is_enabled: bool = True
@@ -1377,9 +1375,9 @@ def create_signature_endpoint(
             name=payload.name,
             domain_id=payload.domain_id,
             domain_ids=payload.domain_ids,
-            mode=SignatureMode(payload.mode),
+            mode=SignatureMode.AUTO,
             html_content=payload.html_content,
-            weight=payload.weight,
+            weight=1,
             is_active=payload.is_active,
             created_by=user.get("email"),
         )
@@ -1903,20 +1901,20 @@ def create_signature_rule(
         raise HTTPException(status_code=403, detail="Admins only")
     if payload.action_mode == "GROUP":
         if not payload.group_id or payload.signature_id:
-            raise HTTPException(status_code=422, detail="GROUP rules require group_id and cannot target one signature")
+            raise HTTPException(status_code=422, detail="GROUP rules require group_id only")
         target_group = db.get(SignatureGroupDB, payload.group_id)
         if target_group is None or not target_group.is_active:
             raise HTTPException(status_code=422, detail="Active target group not found")
-    elif payload.group_id:
-        raise HTTPException(status_code=422, detail="group_id is only valid for GROUP rules")
-    if payload.signature_id:
+    elif payload.action_mode == "SIGNATURE":
+        if not payload.signature_id or payload.group_id:
+            raise HTTPException(status_code=422, detail="SIGNATURE rules require signature_id only")
         target_signature = db.get(SignatureDB, payload.signature_id)
         if target_signature is None:
             raise HTTPException(status_code=404, detail="Signature not found")
-        if target_signature.mode != payload.action_mode:
-            raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
         if not target_signature.is_active:
             raise HTTPException(status_code=422, detail="Inactive signatures cannot be rule targets")
+    elif payload.signature_id or payload.group_id:
+        raise HTTPException(status_code=422, detail="NONE rules cannot target a signature or group")
     rule = SignatureRuleDB(
         id=uuid.uuid4().hex,
         name=payload.name.strip(),
@@ -1959,20 +1957,20 @@ def update_signature_rule(
         raise HTTPException(status_code=404, detail="Rule not found")
     if payload.action_mode == "GROUP":
         if not payload.group_id or payload.signature_id:
-            raise HTTPException(status_code=422, detail="GROUP rules require group_id and cannot target one signature")
+            raise HTTPException(status_code=422, detail="GROUP rules require group_id only")
         target_group = db.get(SignatureGroupDB, payload.group_id)
         if target_group is None or not target_group.is_active:
             raise HTTPException(status_code=422, detail="Active target group not found")
-    elif payload.group_id:
-        raise HTTPException(status_code=422, detail="group_id is only valid for GROUP rules")
-    if payload.signature_id:
+    elif payload.action_mode == "SIGNATURE":
+        if not payload.signature_id or payload.group_id:
+            raise HTTPException(status_code=422, detail="SIGNATURE rules require signature_id only")
         target_signature = db.get(SignatureDB, payload.signature_id)
         if target_signature is None:
             raise HTTPException(status_code=404, detail="Signature not found")
-        if target_signature.mode != payload.action_mode:
-            raise HTTPException(status_code=422, detail="Rule action mode must match the targeted signature mode")
         if not target_signature.is_active:
             raise HTTPException(status_code=422, detail="Inactive signatures cannot be rule targets")
+    elif payload.signature_id or payload.group_id:
+        raise HTTPException(status_code=422, detail="NONE rules cannot target a signature or group")
     try:
         rule.name = payload.name.strip()
         rule.priority = payload.priority

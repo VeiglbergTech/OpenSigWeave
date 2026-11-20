@@ -7,8 +7,8 @@ const dom = new JSDOM(`<!doctype html>
 <html><body>
   <div id="portal" x-data="portalShell"><button id="portal-preview" @click="previewUserSignature()">Preview</button></div>
   <div id="rules" x-data="ruleManager">
-    <span id="mode" x-text="form.action_mode"></span>
-    <button id="switch" type="button" @click="setMode('INTERNAL')">Switch</button>
+    <span id="action" x-text="form.action_mode"></span>
+    <button id="switch" type="button" @click="setAction('GROUP')">Switch</button>
     <template x-for="signature in matchingSignatures" :key="signature.id">
       <span class="signature" x-text="signature.name"></span>
     </template>
@@ -46,17 +46,17 @@ window.portalShell = () => ({
   previewUserSignature() { window.dispatchEvent(new CustomEvent("preview-requested", { detail: "ok" })); },
 });
 window.ruleManager = () => ({
-  form: { action_mode: "AUTO" },
+  form: { action_mode: "SIGNATURE" },
   signatures: [
-    { id: "a", name: "Automatic", mode: "AUTO", is_active: true },
-    { id: "b", name: "Internal", mode: "INTERNAL", is_active: true },
-    { id: "c", name: "Disabled", mode: "AUTO", is_active: false },
+    { id: "a", name: "Primary", is_active: true },
+    { id: "b", name: "Secondary", is_active: true },
+    { id: "c", name: "Disabled", is_active: false },
   ],
   get matchingSignatures() {
-    return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode);
+    return this.signatures.filter(item => item.is_active);
   },
-  setMode(mode) {
-    this.form.action_mode = mode;
+  setAction(action) {
+    this.form.action_mode = action;
   },
 });
 
@@ -88,7 +88,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
 (async () => {
   await tick();
-  assert.equal(document.getElementById("mode").textContent, "AUTO");
+  assert.equal(document.getElementById("action").textContent, "SIGNATURE");
   let previewRequested = false;
   window.addEventListener("preview-requested", event => { previewRequested = event.detail === "ok"; });
   document.getElementById("portal-preview").click();
@@ -96,15 +96,15 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(previewRequested, true);
   assert.deepEqual(
     [...document.querySelectorAll(".signature")].map(node => node.textContent),
-    ["Automatic"],
+    ["Primary", "Secondary"],
   );
 
   document.getElementById("switch").click();
   await tick();
-  assert.equal(document.getElementById("mode").textContent, "INTERNAL");
+  assert.equal(document.getElementById("action").textContent, "GROUP");
   assert.deepEqual(
     [...document.querySelectorAll(".signature")].map(node => node.textContent),
-    ["Internal"],
+    ["Primary", "Secondary"],
   );
 
   window.dispatchEvent(new CustomEvent("notify", { detail: { msg: "CSP build active" } }));
@@ -261,17 +261,17 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   ruleResponses = [
     { ok: true, json: async () => [{ id: "r1", name: "Existing", action_mode: "GROUP", group_id: "g1", conditions: [{ kind: "sender_equals", value: "sales@example.test" }] }] },
     { ok: true, json: async () => [
-      { id: "s1", name: "Automatic", mode: "AUTO", is_active: true },
-      { id: "s2", name: "Inactive", mode: "AUTO", is_active: false },
-      { id: "s3", name: "Internal", mode: "INTERNAL", is_active: true },
+      { id: "s1", name: "Primary", is_active: true },
+      { id: "s2", name: "Inactive", is_active: false },
+      { id: "s3", name: "Secondary", is_active: true },
     ] },
     { ok: true, json: async () => [{ id: "g1", name: "Sales" }] },
   ];
   await rulesManager.fetchAll();
   assert.equal(rulesManager.rules[0].name, "Existing");
   assert.equal(rulesManager.groups[0].id, "g1");
-  rulesManager.form.action_mode = "AUTO";
-  assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1"]);
+  rulesManager.form.action_mode = "SIGNATURE";
+  assert.deepEqual([...rulesManager.matchingSignatures].map(item => item.id), ["s1", "s3"]);
   rulesManager.editRule(rulesManager.rules[0]);
   assert.equal(rulesManager.form.group_id, "g1");
   assert.equal(rulesManager.form.signature_id, "");
@@ -313,6 +313,10 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
+  assert.doesNotMatch(template, /<option>AUTO<\/option>|<option>PROFESSIONAL<\/option>|<option>INTERNAL<\/option>/,
+    "User-facing signature mode options must be removed");
+  assert.match(template, /<option value="SIGNATURE">Signature<\/option>/,
+    "Rule actions must target a concrete signature instead of a mode");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="domain-outlook-markup-warning"[^>]*role="alert"/, "Domain editor must warn when Outlook-specific markup is detected");
   assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/, "Admin editor must warn when Outlook-specific markup is detected");

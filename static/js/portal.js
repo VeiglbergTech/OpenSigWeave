@@ -214,9 +214,8 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', variants: [], versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false, variantEditor: false, variantSignature: null,
-                form: { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 },
-                get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false,
+                form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 insertGroupTag(slug, editor) {
                     if (!slug) { notify('Select a signature group first.', 'error'); return; }
@@ -258,7 +257,7 @@ function identityProviderManager() { return {
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
-                    this.form = { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 };
+                    this.form = { id: null, name: '', domain_ids: [], is_active: true, html_content: '' };
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
@@ -266,9 +265,9 @@ function identityProviderManager() { return {
                     this.$nextTick(() => initSignatureRichEditor(this));
                 },
                 async editSignature(signature) {
-                    this.form = { id: signature.id, name: signature.name, mode: signature.mode,
+                    this.form = { id: signature.id, name: signature.name,
                         domain_ids: Array.isArray(signature.domain_ids) ? signature.domain_ids.map(Number) : (signature.domain_id == null ? [] : [Number(signature.domain_id)]),
-                        is_active: signature.is_active, html_content: '', weight: 1 };
+                        is_active: signature.is_active, html_content: '' };
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
@@ -320,8 +319,8 @@ function identityProviderManager() { return {
                     let response;
                     if (!this.form.id) {
                         response = await fetch('/api/admin/signatures', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ name: this.form.name, mode: this.form.mode, domain_ids: domainIds,
-                                is_active: this.form.is_active, html_content: this.form.html_content, weight: this.form.weight }) });
+                            body: JSON.stringify({ name: this.form.name, domain_ids: domainIds,
+                                is_active: this.form.is_active, html_content: this.form.html_content }) });
                     } else {
                         response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: this.form.name, domain_ids: domainIds, is_active: this.form.is_active }) });
@@ -335,22 +334,6 @@ function identityProviderManager() { return {
                     this.editing = false;
                     await this.fetchAll();
                     window.dispatchEvent(new window.Event('signature-catalog-updated'));
-                },
-                async manageVariants(signature) {
-                    this.variantSignature = signature;
-                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signature.id) + '/variants');
-                    if (!response.ok) { notify('Could not load variants.', 'error'); return; }
-                    this.variants = await response.json();
-                    this.variantEditor = true;
-                },
-                async saveVariant(variant) {
-                    const response = await fetch('/api/admin/signature-variants/' + encodeURIComponent(variant.id), {
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ weight: Number(variant.weight), is_enabled: variant.is_enabled })
-                    });
-                    if (!response.ok) { notify('Could not save variant: ' + (await response.text()), 'error'); return; }
-                    notify('Variant updated.');
-                    await this.fetchAll();
                 }
             };
         }
@@ -455,13 +438,19 @@ function identityProviderManager() { return {
         function ruleManager() {
             return {
                 rules: [], signatures: [], groups: [], editing: false,
-                form: { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', group_id: '', is_enabled: true, conditions: [] },
+                form: { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [] },
                 formatConditions(rule) {
                     return rule.conditions.length
                         ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
                         : 'Always matches';
                 },
-                get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.action_mode); },
+                get matchingSignatures() { return this.signatures.filter(item => item.is_active); },
+                ruleActionLabel(rule) {
+                    if (rule.action_mode === 'GROUP') return 'Signature group';
+                    if (rule.action_mode === 'NONE') return 'No signature';
+                    if (rule.action_mode === 'SIGNATURE' || rule.signature_id) return 'Signature';
+                    return 'Legacy rotation';
+                },
                 init() {
                     window.addEventListener('signature-groups-updated', () => this.fetchAll());
                     this.fetchAll();
@@ -476,11 +465,19 @@ function identityProviderManager() { return {
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newRule() {
-                    this.form = { id: null, name: '', priority: 0, action_mode: 'AUTO', signature_id: '', group_id: '', is_enabled: true, conditions: [] };
+                    this.form = { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [] };
                     this.editing = true;
                 },
                 editRule(rule) {
-                    this.form = JSON.parse(JSON.stringify({ ...rule, signature_id: rule.signature_id || '', group_id: rule.group_id || '' }));
+                    const normalizedAction = rule.action_mode === 'GROUP'
+                        ? 'GROUP'
+                        : (rule.action_mode === 'NONE' ? 'NONE' : 'SIGNATURE');
+                    this.form = JSON.parse(JSON.stringify({
+                        ...rule,
+                        action_mode: normalizedAction,
+                        signature_id: rule.signature_id || '',
+                        group_id: rule.group_id || ''
+                    }));
                     this.editing = true;
                 },
                 changeAction() { this.form.signature_id = ''; this.form.group_id = ''; },
@@ -488,8 +485,10 @@ function identityProviderManager() { return {
                 async saveRule() {
                     if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
                     if (this.form.conditions.some(condition => !condition.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
+                    if (this.form.action_mode === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
+                    if (this.form.action_mode === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
                     const payload = { ...this.form,
-                        signature_id: this.form.action_mode === 'GROUP' ? null : (this.form.signature_id || null),
+                        signature_id: this.form.action_mode === 'SIGNATURE' ? (this.form.signature_id || null) : null,
                         group_id: this.form.action_mode === 'GROUP' ? (this.form.group_id || null) : null };
                     const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
                     const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST',
