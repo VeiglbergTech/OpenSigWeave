@@ -110,7 +110,7 @@ class SignatureFileStoreTests(unittest.TestCase):
         # The losing upload must return the same asset URL, not a 422 error.
         with tempfile.TemporaryDirectory() as directory:
             store = SignatureFileStore(directory)
-            payload = b"\\x89PNG\\r\\n\\x1a\\nconcurrent"
+            payload = b"\x89PNG\r\n\x1a\nconcurrent"
             original_write = store._atomic_write
 
             def competing_write(destination, content, *, exclusive=False):
@@ -123,7 +123,7 @@ class SignatureFileStoreTests(unittest.TestCase):
             self.assertEqual(store.write_image(payload, "image/png"), filename)
 
             # A genuine disk error without a concurrent winner must still fail.
-            other_payload = b"\\x89PNG\\r\\n\\x1a\\nfailed"
+            other_payload = b"\x89PNG\r\n\x1a\nfailed"
             with patch.object(store, "_atomic_write",
                               side_effect=SignatureStorageError("Disk write failed")):
                 with self.assertRaises(SignatureStorageError):
