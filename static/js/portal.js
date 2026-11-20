@@ -862,6 +862,11 @@ function sanitizerModal() {
 function previewModal() {
     return {
         show: false,
+        closeOnEscape(event) {
+            if (!this.show) return;
+            event.stopImmediatePropagation();
+            this.show = false;
+        },
         open(event) {
             this.show = true;
             const detail = event.detail || {};
