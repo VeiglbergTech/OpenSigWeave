@@ -548,15 +548,39 @@ def managed_oidc_client(provider_id: str):
     return client.oidc, config
 
 
+# Keep callback diagnostics actionable without logging passwords, ID tokens,
+# access tokens, userinfo, addresses or provider-controlled exception messages.
+_OIDC_CALLBACK_FAILURE_CODES = {
+    "OIDC login state does not match the selected provider": "login_session_or_provider_mismatch",
+    "OIDC login state has an invalid email": "login_session_invalid_email",
+    "OIDC provider is no longer enabled": "provider_disabled",
+    "OIDC userinfo is missing the subject": "subject_missing",
+    "OIDC account email is missing or invalid": "email_missing_or_invalid",
+    "OIDC account email is not verified": "email_not_verified",
+    "OIDC account does not match the requested email": "submitted_email_mismatch",
+    "OIDC groups claim has an invalid format": "groups_claim_invalid",
+    "OIDC subject exceeds the supported length": "subject_too_long",
+    "Email domain is no longer assigned to this OIDC provider": "email_domain_not_assigned",
+}
+
+
+def _oidc_callback_failure_code(exc: Exception) -> str:
+    # Only literal, application-controlled errors are exposed to the log.
+    # Values from OAuth libraries must never be logged verbatim: an exception
+    # may contain an IdP response, claim or token.
+    if type(exc) is ValueError:
+        return _OIDC_CALLBACK_FAILURE_CODES.get(str(exc), "oauth_or_token_validation_error")
+    return "callback_exception"
+
+
 def _valid_oidc_identity(user: object, expected_email: str | None = None):
     if not isinstance(user, dict) or not user.get("sub"):
         raise ValueError("OIDC userinfo is missing the subject")
     email = user.get("email")
-    if (
-        not is_valid_email(email)
-        or user.get("email_verified") is not True
-    ):
-        raise ValueError("OIDC account email is missing, invalid or unverified")
+    if not is_valid_email(email):
+        raise ValueError("OIDC account email is missing or invalid")
+    if user.get("email_verified") is not True:
+        raise ValueError("OIDC account email is not verified")
     normalized_email = email.strip().casefold()
     if expected_email and not hmac.compare_digest(normalized_email, expected_email):
         raise ValueError("OIDC account does not match the requested email")
@@ -780,7 +804,10 @@ async def managed_oidc_callback(provider_id: str, request: Request, db: Session 
             "auth_provider_id": provider_id,
         }
     except Exception as exc:
-        logger.warning("Managed OIDC callback rejected for provider %s (%s)", provider_id, type(exc).__name__)
+        logger.warning(
+            "Managed OIDC callback rejected for provider %s (reason=%s, type=%s)",
+            provider_id, _oidc_callback_failure_code(exc), type(exc).__name__,
+        )
         request.session.clear()
         return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
     return RedirectResponse(url="/", status_code=303)

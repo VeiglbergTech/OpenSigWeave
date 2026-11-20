@@ -264,6 +264,37 @@ class ManagedLoginRoutingTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(request.session["user"]["auth_provider_id"], "auth-main")
 
 
+class OIDCCallbackDiagnosticsTests(unittest.TestCase):
+    def test_reasons_are_actionable_but_never_contain_user_data(self):
+        user = {"sub": "fixed-user-id", "email": "alice@example.org", "email_verified": False, "groups": ["signature-users"]}
+        with self.assertRaisesRegex(ValueError, "not verified") as ctx:
+            main._valid_oidc_identity(user)
+        self.assertEqual(main._oidc_callback_failure_code(ctx.exception), "email_not_verified")
+        user["email_verified"] = True
+        with self.assertRaises(ValueError) as ctx:
+            main._valid_oidc_identity(user, expected_email="different@example.org")
+        self.assertEqual(main._oidc_callback_failure_code(ctx.exception), "submitted_email_mismatch")
+        user["groups"] = "signature-users"
+        with self.assertRaises(ValueError) as ctx:
+            main._valid_oidc_identity(user)
+        self.assertEqual(main._oidc_callback_failure_code(ctx.exception), "groups_claim_invalid")
+
+    def test_unknown_exception_messages_are_never_logged(self):
+        secret = "token-NEVER-LOG-THIS"
+        self.assertEqual(main._oidc_callback_failure_code(ValueError(secret)), "oauth_or_token_validation_error")
+        self.assertEqual(main._oidc_callback_failure_code(RuntimeError(secret)), "callback_exception")
+
+    def test_specific_domain_and_session_diagnostics(self):
+        self.assertEqual(
+            main._oidc_callback_failure_code(ValueError("Email domain is no longer assigned to this OIDC provider")),
+            "email_domain_not_assigned",
+        )
+        self.assertEqual(
+            main._oidc_callback_failure_code(ValueError("OIDC login state does not match the selected provider")),
+            "login_session_or_provider_mismatch",
+        )
+
+
 class ManagedLogoutTests(unittest.TestCase):
     def test_managed_oidc_logout_uses_discovered_end_session_endpoint(self):
         request = SimpleNamespace(session={
