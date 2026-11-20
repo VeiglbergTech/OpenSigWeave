@@ -41,13 +41,15 @@ def branding_context(db: Session) -> dict:
 
 
 def _validate_png(payload: bytes) -> None:
-    """Check the complete PNG chunk structure and CRCs without inflating pixels."""
+    """Validate PNG chunks, checksums and bounded decompression of scanlines."""
     if not payload.startswith(PNG_SIGNATURE):
         raise ValueError("Branding image is not a valid PNG")
     offset = len(PNG_SIGNATURE)
     has_ihdr = False
     has_idat = False
     has_iend = False
+    idat_chunks = []
+    expected_bytes = None
     while offset + 12 <= len(payload):
         size = int.from_bytes(payload[offset:offset + 4], "big")
         end = offset + 12 + size
@@ -77,11 +79,17 @@ def _validate_png(payload: bytes) -> None:
                     or depth not in valid_depths.get(color, set())
                     or compression != 0 or filtering != 0 or interlace not in (0, 1)):
                 break
+            if interlace == 0:
+                channels = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}[color]
+                expected_bytes = height * (1 + (width * channels * depth + 7) // 8)
+                if expected_bytes > 32 * 1024 * 1024:
+                    break
             has_ihdr = True
         elif kind == b"IHDR":
             break
         if kind == b"IDAT":
             has_idat = True
+            idat_chunks.append(data)
         if kind == b"IEND":
             if size != 0 or not has_idat or end != len(payload):
                 break
@@ -93,6 +101,24 @@ def _validate_png(payload: bytes) -> None:
         offset = end
     if not (has_ihdr and has_idat and has_iend):
         raise ValueError("Branding image is not a valid PNG")
+    # CRCs alone do not prove that the IDAT stream contains valid PNG pixels.
+    # Never inflate untrusted user input without a strict output limit.
+    max_output = 32 * 1024 * 1024
+    inflater = zlib.decompressobj()
+    decompressed_size = 0
+    try:
+        for chunk in idat_chunks:
+            inflated = inflater.decompress(chunk, max_output + 1 - decompressed_size)
+            decompressed_size += len(inflated)
+            if decompressed_size > max_output or inflater.unconsumed_tail or inflater.unused_data:
+                raise ValueError("Branding image has an invalid PNG pixel stream")
+        inflated = inflater.flush(max_output + 1 - decompressed_size)
+        decompressed_size += len(inflated)
+    except zlib.error as exc:
+        raise ValueError("Branding image has an invalid PNG pixel stream") from exc
+    if (decompressed_size > max_output or not inflater.eof or inflater.unused_data
+            or (expected_bytes is not None and decompressed_size != expected_bytes)):
+        raise ValueError("Branding image has an invalid PNG pixel stream")
 
 
 def _validate_ico(payload: bytes) -> None:
@@ -107,15 +133,24 @@ def _validate_ico(payload: bytes) -> None:
         entry = payload[6 + 16 * index: 22 + 16 * index]
         image_size = int.from_bytes(entry[8:12], "little")
         image_offset = int.from_bytes(entry[12:16], "little")
-        if entry[3] != 0 or image_size < 40 and image_size < len(PNG_SIGNATURE):
+        if entry[3] != 0 or image_size < 8:
             raise ValueError("Branding image is not a valid ICO file")
         if image_offset < directory_end or image_size > len(payload) - image_offset:
             raise ValueError("Branding image is not a valid ICO file")
         image = payload[image_offset:image_offset + image_size]
         if image.startswith(PNG_SIGNATURE):
             _validate_png(image)
-        elif len(image) < 40 or int.from_bytes(image[0:4], "little") < 40:
-            raise ValueError("Branding image is not a valid ICO file")
+        else:
+            if len(image) < 44:
+                raise ValueError("Branding image is not a valid ICO file")
+            dib_header_size = int.from_bytes(image[0:4], "little")
+            bitmap_width = int.from_bytes(image[4:8], "little", signed=True)
+            bitmap_height = int.from_bytes(image[8:12], "little", signed=True)
+            bit_count = int.from_bytes(image[14:16], "little")
+            if (dib_header_size < 40 or dib_header_size >= len(image)
+                    or bitmap_width <= 0 or bitmap_height <= 0
+                    or bit_count not in {1, 4, 8, 16, 24, 32}):
+                raise ValueError("Branding image is not a valid ICO file")
 
 
 def decode_branding_data_url(data_url: str, *, allowed_mimes: set[str], max_bytes: int) -> tuple[bytes, str]:
