@@ -497,7 +497,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
 
-    def test_mode_selection_reads_name_based_signature_version(self):
+    def test_auto_selection_reads_name_based_signature_version(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         self.db.commit()
@@ -505,7 +505,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.SignatureCreateRequest(
                 name="Professional",
                 domain_id=None,
-                mode="PROFESSIONAL",
+                mode="AUTO",
                 html_content="<p>Selected variant signature</p>",
             ),
             self.admin_request,
@@ -520,7 +520,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="PROFESSIONAL",
+                x_signature_mode="AUTO",
                 db=self.db,
             ))
         self.assertIn("Selected variant signature", result["html"])
@@ -1117,7 +1117,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Source-preserved signature",
-                mode="PROFESSIONAL",
+                mode="AUTO",
                 html_content=source,
             ),
             self.admin_request,
@@ -1132,7 +1132,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="PROFESSIONAL",
+                x_signature_mode="AUTO",
                 db=self.db,
             ))
         self.assertIn("Safe", result["html"])
