@@ -1140,6 +1140,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             self.admin_request,
             self.db,
         )
+        code = __import__("hashlib").sha256(b"source-preserved signature").hexdigest()[:4]
         with patch.object(
             main.attribute_provider,
             "get_attributes",
@@ -1149,7 +1150,9 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_db=self.db,
+                x_signature_name="Source-preserved signature",
+                x_signature_code=code,
+                db=self.db,
             ))
         self.assertIn("Safe", result["html"])
         self.assertNotIn("<!--[if mso]", result["html"])
