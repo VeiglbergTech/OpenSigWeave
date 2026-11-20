@@ -519,10 +519,12 @@ function identityProviderManager() { return {
                     }));
                     this.editing = true;
                 },
-                changeAction(actionMode) {
-                    // Use the actual selected DOM value: Alpine CSP model updates and
-                    // change handlers can run in different orders during selection.
-                    this.form.action_mode = actionMode;
+                changeAction(event) {
+                    // Alpine CSP accepts a method reference and passes the change event.
+                    // Read the selected value directly to avoid model update ordering races.
+                    if (event && event.target && event.target.value) {
+                        this.form.action_mode = event.target.value;
+                    }
                     this.form.signature_id = '';
                     this.form.group_id = '';
                 },
