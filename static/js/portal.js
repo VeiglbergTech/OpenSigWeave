@@ -27,6 +27,9 @@ window.fetch = (resource, options = {}) => {
             const adapter = await window.OpenSigWeaveEditor.create(target, {
                 initialData: raw.value,
                 readOnly: !!options.readOnly,
+                imageUpload: !!options.imageUpload,
+                uploadUrl: options.uploadUrl,
+                csrfToken: options.csrfToken,
                 onChange: html => {
                     raw.value = html;
                     if (typeof options.onChange === "function") options.onChange(html);
@@ -48,6 +51,9 @@ window.fetch = (resource, options = {}) => {
             const source = document.getElementById("signature-html-source");
             if (source) source.value = manager.form.html_content || "";
             signatureRichEditor = await mountRichEditor("signature-template-editor", "signature-html-source", {
+                imageUpload: true,
+                uploadUrl: "/api/admin/signature-assets",
+                csrfToken: opensigweaveCsrfToken,
                 onChange: html => { manager.form.html_content = html; }
             });
         }
@@ -208,7 +214,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', variants: [], editing: false, variantEditor: false, variantSignature: null,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', variants: [], versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false, variantEditor: false, variantSignature: null,
                 form: { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active && item.mode === this.form.mode); },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
@@ -253,15 +259,58 @@ function identityProviderManager() { return {
                 },
                 newSignature() {
                     this.form = { id: null, name: '', mode: 'AUTO', domain_ids: [], is_active: true, html_content: '', weight: 1 };
+                    this.versions = [];
+                    this.selectedVersionId = '';
+                    this.loadedVersionHtml = '';
                     this.editing = true;
                     this.$nextTick(() => initSignatureRichEditor(this));
                 },
-                editSignature(signature) {
+                async editSignature(signature) {
                     this.form = { id: signature.id, name: signature.name, mode: signature.mode,
                         domain_ids: Array.isArray(signature.domain_ids) ? signature.domain_ids.map(Number) : (signature.domain_id == null ? [] : [Number(signature.domain_id)]),
                         is_active: signature.is_active, html_content: '', weight: 1 };
+                    this.versions = [];
+                    this.selectedVersionId = '';
+                    this.loadedVersionHtml = '';
                     this.editing = true;
+                    await this.loadVersions(signature.id);
                     this.$nextTick(() => initSignatureRichEditor(this));
+                },
+                versionLabel(version) {
+                    const created = version.created_at ? new Date(version.created_at).toLocaleString() : '';
+                    return 'v' + version.version_number + (created ? ' · ' + created : '') + (version.created_by ? ' · ' + version.created_by : '');
+                },
+                async loadVersions(signatureId) {
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions');
+                    if (!response.ok) { notify('Could not load signature versions.', 'error'); return; }
+                    this.versions = await response.json();
+                    if (this.versions.length) {
+                        this.selectedVersionId = this.versions[0].id;
+                        await this.loadVersion(this.selectedVersionId);
+                    }
+                },
+                async loadVersion(versionId) {
+                    if (!this.form.id || !versionId) return;
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions/' + encodeURIComponent(versionId));
+                    if (!response.ok) { notify('Could not load signature version.', 'error'); return; }
+                    const version = await response.json();
+                    this.selectedVersionId = version.id;
+                    this.loadedVersionHtml = version.html_content || '';
+                    this.form.html_content = this.loadedVersionHtml;
+                    const source = document.getElementById('signature-html-source');
+                    if (source) source.value = this.form.html_content;
+                    if (signatureRichEditor) signatureRichEditor.setData(this.form.html_content);
+                },
+                async restoreSelectedVersion() {
+                    if (!this.form.id || !this.selectedVersionId || !this.loadedVersionHtml.trim()) return;
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ html_content: this.loadedVersionHtml })
+                    });
+                    if (!response.ok) { notify('Could not restore signature version: ' + (await response.text()), 'error'); return; }
+                    notify('Selected version restored as a new latest version.');
+                    await this.loadVersions(this.form.id);
+                    await this.fetchAll();
                 },
                 async saveSignature() {
                     if (signatureRichEditor) this.form.html_content = signatureRichEditor.getData();
@@ -276,7 +325,7 @@ function identityProviderManager() { return {
                     } else {
                         response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: this.form.name, domain_ids: domainIds, is_active: this.form.is_active }) });
-                        if (response.ok && this.form.html_content.trim()) {
+                        if (response.ok && this.form.html_content.trim() && this.form.html_content !== this.loadedVersionHtml) {
                             response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
                                 { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
                         }

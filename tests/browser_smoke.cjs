@@ -227,7 +227,14 @@ async function main() {
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
     await signatureRow.waitFor();
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
-    await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 2");
+    const signatureEditEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
+    await signatureEditEditor.waitFor({ state: "visible" });
+    assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
+      "editing an existing signature must load the latest stored HTML version");
+    const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
+    assert.equal(await versionSelector.locator("option").count(), 1,
+      "newly created signature must expose its first version in version history");
+    await signatureEditEditor.fill("Browser smoke version 2");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
@@ -288,6 +295,21 @@ async function main() {
       "deleted schedule must be removed from persistence");
 
     checkpoint("scheduling lifecycle: complete");
+
+    const uploadedAssetUrl = await page.evaluate(async () => {
+      const bytes = new Uint8Array([137,80,78,71,13,10,26,10,1,2,3,4]);
+      const response = await fetch("/api/admin/signature-assets", {
+        method: "POST",
+        headers: { "Content-Type": "image/png" },
+        body: bytes
+      });
+      if (!response.ok) throw new Error("signature asset upload failed: " + await response.text());
+      return (await response.json()).url;
+    });
+    assert.match(uploadedAssetUrl, /^\/signature-assets\/[0-9a-f]{64}\.png$/,
+      "signature image upload must return a content-addressed public asset URL");
+    const uploadedAsset = await page.request.get(baseURL + uploadedAssetUrl);
+    assert.equal(uploadedAsset.status(), 200, "uploaded signature image must be publicly retrievable");
 
     // Exercise persistent branding and both asset upload paths. Restore defaults
     // afterwards so later smoke checks continue with the normal product identity.

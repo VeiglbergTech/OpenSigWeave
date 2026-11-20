@@ -235,6 +235,16 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertNotIn("<script", rendered_source)
         self.assertNotIn("position", rendered_source)
 
+    def test_signature_image_assets_are_content_addressed_and_validated(self):
+        payload = b"\x89PNG\r\n\x1a\n" + b"test-image"
+        filename = self.store.write_image(payload, "image/png")
+        self.assertRegex(filename, r"^[0-9a-f]{64}\.png$")
+        self.assertEqual(self.store.image_path(filename).read_bytes(), payload)
+        self.assertEqual(self.store.write_image(payload, "image/png"), filename)
+        self.assertEqual(self.store.image_media_type(filename), "image/png")
+        with self.assertRaises(Exception):
+            self.store.write_image(b"not-a-png", "image/png")
+
     def test_new_signature_versions_preserve_source_too(self):
         signature, _, _ = create_signature(
             self.session, self.store, name="Versioned", domain_id=None,

@@ -265,7 +265,20 @@
                     <label x-show="!form.id" class="text-sm text-gray-300">Initial variant weight<input type="number" min="1" max="1000" x-model.number="form.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                 </div>
                 <label class="block text-sm text-gray-300">
-                    <span x-text="form.id ? 'New HTML version (leave empty to keep current version)' : 'HTML template'"></span>
+                    <span>HTML template</span>
+                    <div x-show="form.id" x-cloak class="mt-2 rounded border border-gray-700 bg-gray-900/60 p-3">
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-xs text-gray-400 flex-1 min-w-[260px]">Version history
+                                <select x-model="selectedVersionId" @change="loadVersion($event.target.value)" class="mt-1 block w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                    <template x-for="version in versions" :key="version.id">
+                                        <option :value="version.id" x-text="versionLabel(version)"></option>
+                                    </template>
+                                </select>
+                            </label>
+                            <button type="button" @click="restoreSelectedVersion()" :disabled="!selectedVersionId" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Restore selected as latest</button>
+                        </div>
+                        <p class="mt-2 text-xs text-gray-500">Selecting a version loads its HTML into the editor. Changes are saved as a new immutable version; old versions remain available.</p>
+                    </div>
                     <div class="mt-2 flex flex-wrap items-end gap-2">
                         <label class="text-xs text-gray-400">Insert signature group tag
                             <select x-model="selectedGroupSlug" class="mt-1 block bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm">
@@ -279,6 +292,7 @@
                         <span class="text-xs text-gray-500">Adds the tag at the cursor or replaces selected text. Existing HTML remains unchanged.</span>
                     </div>
                     <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
+                    <p class="mt-2 text-xs text-gray-500">Drag & drop or paste PNG, JPEG or GIF images directly into the editor (maximum 2 MiB per image). Uploaded images use immutable OpenSigWeave asset URLs.</p>
                     <div x-data="htmlEditorToggle" class="mt-3">
                         <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit raw HTML</button>
                         <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>

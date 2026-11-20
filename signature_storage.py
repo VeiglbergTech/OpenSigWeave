@@ -15,6 +15,12 @@ class SignatureStorageError(Exception):
 
 
 MAX_SIGNATURE_BYTES = 65536
+MAX_SIGNATURE_IMAGE_BYTES = 2 * 1024 * 1024
+_SIGNATURE_IMAGE_TYPES = {
+    "image/png": (".png", b"\x89PNG\r\n\x1a\n"),
+    "image/jpeg": (".jpg", b"\xff\xd8\xff"),
+    "image/gif": (".gif", (b"GIF87a", b"GIF89a")),
+}
 
 
 @dataclass(frozen=True)
@@ -25,7 +31,7 @@ class StoredSignature:
 
 
 class SignatureFileStore:
-    """Store each signature at signatur/{name}/signature.html plus immutable snapshots."""
+    """Store signature HTML snapshots and immutable shared signature image assets."""
 
     def __init__(self, root: str | Path):
         self.root = Path(root).expanduser().resolve()
@@ -37,6 +43,10 @@ class SignatureFileStore:
         self.signatures_root.mkdir(mode=0o700, exist_ok=True)
         if self.signatures_root.is_symlink() or not self.signatures_root.is_dir():
             raise SignatureStorageError("Signature directory root must be a real directory")
+        self.assets_root = self.root / "assets"
+        self.assets_root.mkdir(mode=0o700, exist_ok=True)
+        if self.assets_root.is_symlink() or not self.assets_root.is_dir():
+            raise SignatureStorageError("Signature asset directory root must be a real directory")
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -186,6 +196,59 @@ class SignatureFileStore:
             raise
         except OSError as exc:
             raise SignatureStorageError("Unable to delete signature version") from exc
+
+    def write_image(self, payload: bytes, content_type: str) -> str:
+        """Persist a bounded immutable PNG/JPEG/GIF asset and return its hash filename."""
+        if not isinstance(payload, (bytes, bytearray)):
+            raise TypeError("image payload must be bytes")
+        payload = bytes(payload)
+        if not payload:
+            raise SignatureStorageError("Signature image is empty")
+        if len(payload) > MAX_SIGNATURE_IMAGE_BYTES:
+            raise SignatureStorageError("Signature image exceeds the maximum allowed size")
+
+        normalized_type = (content_type or "").split(";", 1)[0].strip().lower()
+        image_type = _SIGNATURE_IMAGE_TYPES.get(normalized_type)
+        if image_type is None:
+            raise SignatureStorageError("Unsupported signature image type")
+        extension, magic = image_type
+        valid_magic = any(payload.startswith(item) for item in magic) if isinstance(magic, tuple) else payload.startswith(magic)
+        if not valid_magic:
+            raise SignatureStorageError("Signature image content does not match its media type")
+
+        digest = hashlib.sha256(payload).hexdigest()
+        filename = digest + extension
+        destination = self.assets_root / filename
+        if destination.parent != self.assets_root:
+            raise SignatureStorageError("Invalid signature image path")
+        if destination.exists():
+            if destination.is_symlink() or not destination.is_file():
+                raise SignatureStorageError("Signature image destination is unsafe")
+            return filename
+        self._atomic_write(destination, payload, exclusive=True)
+        return filename
+
+    def image_path(self, filename: str) -> Path:
+        """Resolve one immutable signature image without permitting path traversal."""
+        if not isinstance(filename, str) or not re.fullmatch(r"[0-9a-f]{64}\.(?:png|jpg|gif)", filename):
+            raise SignatureStorageError("Invalid signature image name")
+        path = self.assets_root / filename
+        if path.parent != self.assets_root:
+            raise SignatureStorageError("Invalid signature image path")
+        try:
+            info = path.lstat()
+        except FileNotFoundError as exc:
+            raise SignatureStorageError("Signature image not found") from exc
+        if stat.S_ISLNK(info.st_mode) or not stat.S_ISREG(info.st_mode):
+            raise SignatureStorageError("Signature image is unavailable or unsafe")
+        if info.st_size > MAX_SIGNATURE_IMAGE_BYTES:
+            raise SignatureStorageError("Signature image exceeds the maximum allowed size")
+        return path
+
+    @staticmethod
+    def image_media_type(filename: str) -> str:
+        extension = Path(filename).suffix.lower()
+        return {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif"}.get(extension, "application/octet-stream")
 
     def restore_current(self, signature_name: str, version_id: uuid.UUID, expected_sha256: str) -> None:
         content = self.read(signature_name, version_id, expected_sha256)

@@ -77,6 +77,8 @@ jobs:
       - name: Check browser JavaScript syntax
         run: |
           node --check static/js/portal.js
+          node --check static/js/rich-editor.js
+          node --check static/js/ckeditor-entry.js
           node --check static/js/branding.js
           node --check static/js/logout.js
       - name: Test Alpine CSP evaluator in a DOM
