@@ -83,7 +83,8 @@ local function task_case(ct, cte, body, decoded, is_html, other_headers, reply)
     get_header_raw=function(_,name)
       if name:lower()=='content-type' then return ct end
       if name:lower()=='content-transfer-encoding' then return cte end
-      if name:lower()=='in-reply-to' and reply then return '<previous@example.test>' end
+      if name:lower()=='in-reply-to' and reply == true then return '<previous@example.test>' end
+      if name:lower()=='subject' and reply == 'forward' then return 'Fwd: Some earlier message' end
       return nil
     end,
     get_raw_headers=function() return top_headers end,
@@ -134,6 +135,13 @@ local _, occurrences = reply.modified:gsub('OpenSigWeave Footer','')
 assert(occurrences == 2, 'quoted previous signature must not suppress new signature')
 assert(reply.modified:find('OpenSigWeave Footer') < reply.modified:find('gmail_quote'),
   'signature must precede quoted history')
+
+local forward_content = '<html><body>Here is the requested message'
+  .. '<div class="gmail_quote">----- Original Message -----</div></body></html>'
+local forwarded=run_and_save(dir..'/flat_forward.eml',
+  'text/html; charset=utf-8','7bit', forward_content, forward_content, true, '', 'forward')
+assert(forwarded.modified:find('OpenSigWeave Footer') < forwarded.modified:find('gmail_quote'),
+  'signature must precede forwarded history')
 
 local errtask, err = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 status=503
