@@ -167,7 +167,8 @@ local function inject_signature(task)
     -- Forwards have no In-Reply-To header in many clients. Detect their
     -- subject so quote boundaries receive the same placement safeguards.
     local is_reply = task:get_header_raw('in-reply-to') ~= nil
-        or task:get_header_raw('references') ~= nil or is_forward
+        or task:get_header_raw('references') ~= nil
+    local has_quoted_history = is_reply or is_forward
 
     -- Only authenticated submissions reach this point (task:get_user() is required above).
     -- A deprecated mode selector is ignored, but stripped so it cannot leak downstream.
@@ -175,7 +176,7 @@ local function inject_signature(task)
     if deprecated_mode_header_count > 0 then
         task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
     end
-    local signature_marker = find_signature_text_marker(task, is_reply)
+    local signature_marker = find_signature_text_marker(task, has_quoted_history)
 
     local function remove_text_marker_from_message()
         if not signature_marker or not signature_marker.cleanup then return end
@@ -432,7 +433,7 @@ local function inject_signature(task)
             local html_spacer_top = '\n<br clear="all"><br>\n<div style="display:block; clear:both;">\n'
             local html_spacer_bottom = '\n</div>\n<br>\n'
 
-            if is_reply then
+            if has_quoted_history then
                 local best_s = nil
                 for _, pattern in ipairs(splitters) do
                     local s, e = string.find(spliced, pattern)
