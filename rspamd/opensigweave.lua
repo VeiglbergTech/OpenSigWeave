@@ -71,53 +71,7 @@ local plain_splitters = {
     '\r?\n> '
 }
 
-local function find_outlook_mode_marker(task, is_reply)
-    local parts = task:get_text_parts() or {}
-    local found_modes = {}
-    for _, part in ipairs(parts) do
-        if part:is_html() then
-            local content_data = part:get_content("raw_utf")
-            local html = content_data and tostring(content_data) or ""
-            if html ~= "" then
-                -- A marker must occur in the newest message section, never solely in quoted history.
-                local quote_start = #html + 1
-                for _, pattern in ipairs(html_splitters) do
-                    local start_pos = string.find(html, pattern)
-                    if start_pos and start_pos < quote_start then quote_start = start_pos end
-                end
-                -- On replies, fail closed if no known quote boundary can be identified.
-                if not (is_reply and quote_start == #html + 1) then
-                local current_html = string.sub(html, 1, quote_start - 1)
-                for value in string.gmatch(current_html, "<!%-%-%s*OpenSigWeave:MODE=([%a]+)%s*%-%->") do
-                    found_modes[string.upper(value)] = true
-                end
-                local lower_html = string.lower(current_html)
-                for value in string.gmatch(lower_html, "data%-opensigweave%-mode%s*=%s*[\"']([%a]+)[\"']") do
-                    found_modes[string.upper(value)] = true
-                end
-                end
-            end
-        end
-    end
-
-    local selected = nil
-    local count = 0
-    for value in pairs(found_modes) do
-        if value == "AUTO" or value == "PROFESSIONAL" or value == "INTERNAL" or value == "NONE" then
-            selected = value
-            count = count + 1
-        else
-            return nil
-        end
-    end
-    if count == 1 then return selected end
-    if count > 1 then
-        rspamd_logger.warnx(task, "OpenSigWeave: ignoring conflicting Outlook mode markers")
-    end
-    return nil
-end
-
-local function remove_outlook_mode_markers(html)
+local function remove_deprecated_selector_markers(html)
     -- Remove only the control marker, never the containing element or its user content.
     html = html:gsub("<!%-%-%s*OpenSigWeave:MODE=[%a]+%s*%-%->", "")
     html = html:gsub("%s+data%-opensigweave%-mode%s*=%s*[\"'][%a]+[\"']", "")
@@ -181,7 +135,7 @@ local function find_signature_text_marker(task, is_reply)
         and marker.name ~= "" and #marker.name <= 255
         and #marker.code == 4 and marker.code:match("^[%w][%w][%w][%w]$") ~= nil
     if not marker.valid then
-        -- Send an explicitly invalid selector so AUTO cannot silently bypass a malformed marker.
+        -- Send an explicitly invalid selector so a malformed marker cannot fall back silently.
         marker.name = ""
         marker.code = ""
         rspamd_logger.warnx(task, "OpenSigWeave: malformed or ambiguous signature text marker")
@@ -198,36 +152,12 @@ local function inject_signature(task)
     local is_reply = task:get_header_raw('in-reply-to') ~= nil or task:get_header_raw('references') ~= nil
 
     -- Only authenticated submissions reach this point (task:get_user() is required above).
-    -- Consume the control header so it cannot leak to recipients or be replayed downstream.
-    local requested_mode = nil
-    local mode_header_count = task:get_header_count('X-OpenSigWeave-Mode')
-    if mode_header_count == 1 then
-        local raw_mode = task:get_header('X-OpenSigWeave-Mode')
-        if type(raw_mode) == 'string' then
-            local candidate = raw_mode:gsub("^%s+", ""):gsub("%s+$", "")
-            candidate = candidate:upper()
-            if candidate == 'AUTO' or candidate == 'PROFESSIONAL'
-                or candidate == 'INTERNAL' or candidate == 'NONE' then
-                requested_mode = candidate
-            else
-                rspamd_logger.warnx(task, "OpenSigWeave: ignoring unsupported mode header value")
-            end
-        end
-    elseif mode_header_count > 1 then
-        rspamd_logger.warnx(task, "OpenSigWeave: ignoring duplicate mode headers")
-    end
-    if mode_header_count > 0 then
+    -- A deprecated mode selector is ignored, but stripped so it cannot leak downstream.
+    local deprecated_mode_header_count = task:get_header_count('X-OpenSigWeave-Mode')
+    if deprecated_mode_header_count > 0 then
         task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
     end
-    -- X-OpenSigWeave-Mode has strict precedence over both body marker formats.
-    -- Always inspect the body so a text marker can be consumed even when an
-    -- X-header has priority. Invalid X-headers simply fall through to the next selector.
     local signature_marker = find_signature_text_marker(task, is_reply)
-    if not requested_mode then
-        if not signature_marker or not signature_marker.valid then
-            requested_mode = find_outlook_mode_marker(task, is_reply)
-        end
-    end
 
     local function remove_text_marker_from_message()
         if not signature_marker or not signature_marker.cleanup then return end
@@ -397,7 +327,7 @@ local function inject_signature(task)
 
             -- A validly-shaped text marker is replaced at its exact position.
             -- The API has already verified its four-character SHA-256 check.
-            if signature_marker and signature_marker.valid and not requested_mode then
+            if signature_marker and signature_marker.valid then
                 local marker_pattern = "<%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
                     .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%->"
                 local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
@@ -628,7 +558,7 @@ local function inject_signature(task)
                 local dec = rspamd_util.decode_qp(raw_body)
                 if dec then decoded = tostring(dec) end
             end
-            decoded = remove_outlook_mode_markers(decoded)
+            decoded = remove_deprecated_selector_markers(decoded)
             local spliced_html, _ = splice_body_logic(decoded, html_splitters, html_sig, true)
             local encoded_html = tostring(rspamd_util.encode_qp(spliced_html, 76) or spliced_html)
             local new_headers = raw_headers:gsub("[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\r\n]*\r?\n", "")
@@ -642,7 +572,7 @@ local function inject_signature(task)
             -- Rspamd parses MIME boundaries; only decoded text is passed to the
             -- existing reply-placement algorithm. Attachments are unchanged.
             local message, changed_or_reason = mime_rewriter.rewrite(task, function(decoded, is_html)
-                if is_html then decoded = remove_outlook_mode_markers(decoded) end
+                if is_html then decoded = remove_deprecated_selector_markers(decoded) end
                 local rewritten = splice_body_logic(decoded,
                     is_html and html_splitters or plain_splitters,
                     is_html and html_sig or plain_sig, is_html)
@@ -660,9 +590,7 @@ local function inject_signature(task)
     end
 
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
-    if requested_mode then
-        request_headers['X-OpenSigWeave-Mode'] = requested_mode
-    elseif signature_marker then
+    if signature_marker then
         request_headers['X-OpenSigWeave-Signature'] = signature_marker.name or ""
         request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code or ""
     end
