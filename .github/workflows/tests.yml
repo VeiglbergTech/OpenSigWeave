@@ -172,6 +172,50 @@ jobs:
           printf 'Signature engine smoke response: %s\n' "$response"
           python -c 'import json,sys; result=json.loads(sys.argv[1]); assert "Best Regards" in result["html"]; assert "<strong>Smoke </strong>" in result["html"]' "$response"
           timeout --signal=TERM --kill-after=30s 12m docker run --rm --init --ipc=host --network host -v "$PWD:/work" -w /work -e BROWSER_TEST_EMAIL="admin@example.test" -e BROWSER_TEST_PASSWORD="ci-local-admin-password" -e BROWSER_TEST_NORMAL_USER_SESSION="$normal_user_session" -e BROWSER_TEST_RESTRICTED_USER_SESSION="$restricted_user_session" mcr.microsoft.com/playwright:v1.56.0-noble node tests/browser_smoke.cjs
+          # Verify administrator-provided branding survives a real application-container restart.
+          # PostgreSQL is kept running; only the stateless web container is restarted.
+          docker compose exec -T opensigweave python - <<'PY'
+          import base64
+          from database import SessionLocal
+          from models import BrandingSettingsDB
+          db = SessionLocal()
+          settings = db.get(BrandingSettingsDB, 1)
+          if settings is None:
+              settings = BrandingSettingsDB(id=1)
+              db.add(settings)
+          settings.app_name = "Branding restart test"
+          settings.app_color = "#123456"
+          settings.logo_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
+          settings.favicon_data = settings.logo_png
+          settings.favicon_mime = "image/png"
+          db.commit()
+          db.close()
+          PY
+          docker compose restart opensigweave
+          docker compose up -d --wait --wait-timeout 120
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/login | grep -q 'Branding restart test'
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/logo.png -o /tmp/osw-restart-logo.png
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/favicon -o /tmp/osw-restart-favicon.png
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          expected = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
+          assert Path("/tmp/osw-restart-logo.png").read_bytes() == expected
+          assert Path("/tmp/osw-restart-favicon.png").read_bytes() == expected
+          PY
+          docker compose exec -T opensigweave python - <<'PY'
+          from database import SessionLocal
+          from models import BrandingSettingsDB
+          db = SessionLocal()
+          settings = db.get(BrandingSettingsDB, 1)
+          settings.app_name = "OpenSigWeave"
+          settings.app_color = "#ff7043"
+          settings.logo_png = None
+          settings.favicon_data = None
+          settings.favicon_mime = None
+          db.commit()
+          db.close()
+          PY
       - name: Install age for backup integration
         run: |
           sudo apt-get update
