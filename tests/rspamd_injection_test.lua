@@ -126,16 +126,17 @@ local already_signed = '<html><body>Hi <b>OpenSigWeave Footer</b> '
   .. '<a href="https://example.test/contact">Contact</a></body></html>'
 local already=run_and_save(dir..'/flat_already_signed.eml',
   'text/html; charset=utf-8', '7bit', already_signed, already_signed, true)
-local _, count = already.modified:gsub('OpenSigWeave Footer','')
+-- The Lua mock QP encoder emits =20 for spaces; Python validates decoded content.
+local _, count = already.modified:gsub('OpenSigWeave=20Footer','')
 assert(count == 1, 'selected signature must not be inserted twice')
 
 local quoted = '<html><body>New reply<div class="gmail_quote">Old '
   .. response.html .. '</div></body></html>'
 local reply=run_and_save(dir..'/flat_reply.eml',
   'text/html; charset=utf-8','7bit', quoted, quoted, true, '', true)
-local _, occurrences = reply.modified:gsub('OpenSigWeave Footer','')
+local _, occurrences = reply.modified:gsub('OpenSigWeave=20Footer','')
 assert(occurrences == 2, 'quoted previous signature must not suppress new signature')
-assert(reply.modified:find('OpenSigWeave Footer') < reply.modified:find('gmail_quote'),
+assert(reply.modified:find('OpenSigWeave=20Footer') < reply.modified:find('gmail_quote'),
   'signature must precede quoted history')
 
 local forward_content = '<html><body>Here is the requested message'
@@ -143,7 +144,7 @@ local forward_content = '<html><body>Here is the requested message'
 response.inject_on_replies = false
 local forwarded=run_and_save(dir..'/flat_forward.eml',
   'text/html; charset=utf-8','7bit', forward_content, forward_content, true, '', 'forward')
-assert(forwarded.modified:find('OpenSigWeave Footer') < forwarded.modified:find('gmail_quote'),
+assert(forwarded.modified:find('OpenSigWeave=20Footer') < forwarded.modified:find('gmail_quote'),
   'signature must precede forwarded history')
 response.inject_on_replies = true
 
