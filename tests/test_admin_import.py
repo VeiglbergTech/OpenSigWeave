@@ -15,7 +15,6 @@ from admin_import import (
     inspect_admin_import,
     read_admin_import,
 )
-from core.modes import SignatureMode
 from database import Base
 from models import DomainDB, SignatureDB, SignatureVersionDB
 from signature_catalog import create_signature
@@ -55,7 +54,6 @@ class AdminImportTests(unittest.TestCase):
             self.store,
             name="Source signature",
             domain_ids=[domain.id],
-            mode=SignatureMode.AUTO,
             html_content="<p>Original HTML</p>",
             created_by="admin@example.test",
         )
@@ -79,6 +77,7 @@ class AdminImportTests(unittest.TestCase):
             self.assertEqual(result["status"], "imported")
             domain = target.query(DomainDB).filter_by(domain_name="source.example.test").one()
             signature = target.query(SignatureDB).filter_by(name="Source signature").one()
+            self.assertEqual(signature.mode, "UNUSED")
             self.assertEqual(signature.domain_id, domain.id)
             self.assertNotEqual(signature.domain_id, 1)
             version = target.query(SignatureVersionDB).filter_by(signature_id=signature.id).one()
@@ -134,7 +133,7 @@ class AdminImportTests(unittest.TestCase):
             plan = inspect_admin_import(target, target_store, archive)
             self.assertTrue(plan["can_apply"], plan["conflicts"])
             signature_id = "a" * 32
-            target.add(SignatureDB(id=signature_id, name="Source signature", scope="GLOBAL", mode="AUTO", is_active=False))
+            target.add(SignatureDB(id=signature_id, name="Source signature", scope="GLOBAL", mode="UNUSED", is_active=False))
             target.commit()
             plan = inspect_admin_import(target, target_store, archive)
             self.assertFalse(plan["can_apply"])
@@ -203,7 +202,6 @@ class AdminImportTests(unittest.TestCase):
             self.store,
             name="Second signature",
             domain_ids=[domain.id],
-            mode=SignatureMode.AUTO,
             html_content="<p>Second HTML</p>",
             created_by="admin@example.test",
         )
