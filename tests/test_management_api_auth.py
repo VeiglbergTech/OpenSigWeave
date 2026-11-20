@@ -59,6 +59,26 @@ class ManagementKeyAuthorizationTests(unittest.TestCase):
         signed = TimestampSigner(main.session_secret).sign(payload).decode("utf-8")
         self.client.cookies.set(self.COOKIE_NAME, signed)
 
+    def test_insecure_management_key_configuration_is_rejected_on_import(self):
+        import subprocess
+        import sys
+
+        for candidate in (
+            "too-short",
+            "REPLACE_WITH_AN_UNSAFE_PLACEHOLDER_VALUE",
+            main.ENGINE_API_KEY,
+            main.session_secret,
+        ):
+            with self.subTest(candidate=candidate[:10]):
+                env = os.environ.copy()
+                env["MANAGEMENT_API_KEY"] = candidate
+                result = subprocess.run(
+                    [sys.executable, "-c", "import main"],
+                    env=env, text=True, capture_output=True, check=False, timeout=20,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("MANAGEMENT_API_KEY must be an independent", result.stderr)
+
     def test_unconfigured_and_incorrect_keys_cannot_read_admin_endpoints(self):
         with patch.object(main, "MANAGEMENT_API_KEY", ""):
             self.assertEqual(self.client.get(
