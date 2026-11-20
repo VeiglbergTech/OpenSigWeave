@@ -311,6 +311,28 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const deleteRule = ruleRequests.find(request => request.url === "/api/admin/rules/r2" && request.options.method === "DELETE");
   assert.ok(deleteRule, "Deleting a rule must use its identifier in the DELETE endpoint");
 
+  // Exercise identity-provider form state without a second network fetch.
+  const identityManager = vm.runInNewContext("identityProviderManager()", signatureContext);
+  identityManager.changeType({ target: { value: "oidc" } });
+  assert.equal(identityManager.form.provider_type, "oidc");
+  assert.equal(identityManager.form.settings.OIDC_SCOPES, "openid email profile groups");
+  identityManager.editProvider({
+    id: "oidc-main",
+    display_name: "Company OIDC",
+    provider_type: "oidc",
+    is_enabled: true,
+    settings: {
+      OIDC_DISCOVERY_URL: "https://idp.example.org/.well-known/openid-configuration",
+      OIDC_CLIENT_ID: "opensigweave",
+      OIDC_REDIRECT_URI: "https://signatures.example.org/auth/oidc-main",
+    },
+  });
+  assert.equal(identityManager.editing, true);
+  assert.equal(identityManager.form.settings.OIDC_DISCOVERY_URL,
+    "https://idp.example.org/.well-known/openid-configuration");
+  assert.equal(identityManager.form.settings.OIDC_CLIENT_ID, "opensigweave");
+  assert.equal(identityManager.form.settings.OIDC_CLIENT_SECRET, "");
+
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.doesNotMatch(template, /<option>AUTO<\/option>|<option>PROFESSIONAL<\/option>|<option>INTERNAL<\/option>/,
