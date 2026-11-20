@@ -339,7 +339,10 @@ async function main() {
       const showMoreItems = signatureToolbar.getByRole("button", { name: /show more items/i }).first();
       await showMoreItems.waitFor({ state: "visible" });
       await showMoreItems.click();
-      toolbarUploadButton = signatureToolbar.getByRole("button", { name: /upload image/i }).first();
+      // CKEditor moves grouped items into a nested dropdown toolbar, outside the
+      // original toolbar items collection. Search the page after opening it so
+      // the real visible upload control is exercised.
+      toolbarUploadButton = page.getByRole("button", { name: /upload image/i }).first();
     }
     await toolbarUploadButton.waitFor({ state: "visible" });
     const fileChooserPromise = page.waitForEvent("filechooser");
