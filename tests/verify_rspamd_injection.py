@@ -24,7 +24,7 @@ html = read("flat_html.eml")
 assert html.get_content_type() == "text/html"
 assert html.get_content_charset() == "utf-8"
 assert "Grüße und Test" in html.get_content()
-assert html["X-Custom"] == "folded\r\n\tand intact"
+assert html["X-Custom"] == "folded\tand intact"
 
 already = read("flat_already_signed.eml")
 assert already.get_content().count("OpenSigWeave Footer") == 1
