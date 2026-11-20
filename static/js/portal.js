@@ -839,11 +839,6 @@ function sanitizerModal() {
         show: false,
         rawInput: '',
         targetEditor: '',
-        closeOnEscape(event) {
-            if (!this.show) return;
-            event.stopImmediatePropagation();
-            this.show = false;
-        },
         open(event) {
             this.show = true;
             this.targetEditor = event.detail;
