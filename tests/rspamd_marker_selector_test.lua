@@ -68,19 +68,19 @@ local function run(parts)
 end
 
 -- The same visible marker is expected in both alternatives of an HTML mail.
-local marker = '<---[Professional]--[a1b2]--->'
+local marker = '<---[Sales]--[a1b2]--->'
 local headers = run({
   text_part('Hello\r\n' .. marker, false),
   text_part('<html><body>Hello<br>' .. marker .. '</body></html>', true),
 })
-assert(headers['X-OpenSigWeave-Signature'] == 'Professional',
+assert(headers['X-OpenSigWeave-Signature'] == 'Sales',
   'identical marker across MIME alternatives must remain valid')
 assert(headers['X-OpenSigWeave-Signature-Code'] == 'a1b2')
 
 -- Conflicting selectors across alternatives must remain fail-closed.
 headers = run({
-  text_part('Hello\r\n<---[Professional]--[a1b2]--->', false),
-  text_part('<html><body><---[Internal]--[c3d4]---></body></html>', true),
+  text_part('Hello\r\n<---[Sales]--[a1b2]--->', false),
+  text_part('<html><body><---[Support]--[c3d4]---></body></html>', true),
 })
 assert(headers['X-OpenSigWeave-Signature'] == '')
 assert(headers['X-OpenSigWeave-Signature-Code'] == '')
