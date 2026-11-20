@@ -40,10 +40,10 @@ The local administrator account uses a salted scrypt hash and remains independen
 
 The implemented services cover:
 
-- Signature modes: `AUTO`, `PROFESSIONAL`, `INTERNAL`, `NONE`.
+- Signature catalog entries are mode-free; rules select a direct signature, a signature group or no signature.
 - Signature catalog metadata and active state.
 - Name-based signature directories at `signatur/{Signaturname}/signature.html`, with immutable UUID-addressed snapshots in each directory's `.versions/` subdirectory. PostgreSQL retains stable internal signature IDs, version metadata, SHA-256 hashes and integrity checks; renaming a signature moves its directory without changing its ID.
-- Weighted variants and selection state to avoid immediate repetition for a sender/mode pool.
+- Weighted signature-group membership and stable-principal selection state to avoid immediate repetition.
 - Rules with priorities and AND-combined conditions for sender, domain, groups, claims and attributes.
 - Exact editable HTML source preservation with allowlist sanitization at preview/delivery trust boundaries and automatic escaping of dynamic identity values.
 - Reusable signature groups with transactional weighted no-repeat selection.
@@ -54,7 +54,7 @@ The implemented services cover:
 
 PostgreSQL is the supported standalone deployment database. SQLAlchemy manages relational records and Alembic manages schema migrations. SQLite remains available for compatibility and unit-test scenarios.
 
-PostgreSQL stores domain and override configuration, signature metadata, version manifests, variants, groups, rules, schedules, branding settings/assets, selection state, identity caches and shared rate-limit buckets. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
+PostgreSQL stores domain and override configuration, signature metadata, version manifests, groups, rules, schedules, branding settings/assets, group selection state, identity caches and shared rate-limit buckets. Legacy mode/variant columns and tables are retained only for migration and rollback compatibility and are not read by normal runtime selection. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
 
 The application image stores files in `/data/signatures`; Compose persists this path in the `opensigweave-signatures` named volume. PostgreSQL uses the separate `opensigweave-postgres-data` volume. Both volumes must be backed up and restored together.
 
@@ -64,7 +64,7 @@ The Lua adapter is a separate integration. It:
 
 - Requires an authenticated Rspamd task and uses the SMTP envelope sender.
 - Calls the engine API with `X-Engine-Key`.
-- Supports a validated `X-OpenSigWeave-Mode` header and Outlook HTML markers.
+- Supports concrete signature-name/checksum markers; deprecated mode-selector artifacts are cleanup-only.
 - Uses bounded HTTP request time and response-size settings.
 - Deliberately leaves every top-level `multipart/*` message unchanged.
 
