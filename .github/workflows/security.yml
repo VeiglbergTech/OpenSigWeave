@@ -94,7 +94,9 @@ jobs:
           set -euo pipefail
           docker build --pull --tag opensigweave:security-scan .
           docker image inspect opensigweave:security-scan --format '{{.Id}}'
-      - name: Trivy scan of built image
+      # Report *all* OS/library issues, even when the distro has no patch yet.
+      # Reporting must not be mistaken for an all-clear on unfixed vulnerabilities.
+      - name: Full HIGH/CRITICAL vulnerability report (including unfixed)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -102,5 +104,24 @@ jobs:
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: false
+          exit-code: '0'
+          format: table
+      # Block deployment for a HIGH/CRITICAL vulnerability with an available fix.
+      # Debian-unfixed findings remain visible in the full report above.
+      - name: Block fixable HIGH/CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: opensigweave:security-scan
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           exit-code: '1'
           format: table
+      - name: Document image scan gate
+        shell: bash
+        run: |
+          echo '### Docker image security scan' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Full HIGH/CRITICAL findings (including unfixed) are reported in the first Trivy step.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The blocking step fails for HIGH/CRITICAL vulnerabilities with available upstream fixes.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Unfixed HIGH/CRITICAL findings remain a security risk and are **not** a clean bill of health.' >> "$GITHUB_STEP_SUMMARY"
