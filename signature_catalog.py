@@ -19,6 +19,10 @@ class SignatureNotFoundError(LookupError):
     pass
 
 
+class SignatureVersionNotFoundError(LookupError):
+    pass
+
+
 def _persist_version(
     session: Session,
     store: SignatureFileStore,
@@ -164,6 +168,45 @@ def add_signature_version(
             except Exception:
                 pass
         raise
+
+
+def restore_signature_version(
+    session: Session,
+    store: SignatureFileStore,
+    signature_id: str,
+    source_version_id: str,
+    created_by: str | None = None,
+) -> SignatureVersionDB:
+    """Restore an immutable historical snapshot by creating a new latest version."""
+    signature = session.get(SignatureDB, signature_id)
+    if signature is None:
+        raise SignatureNotFoundError(signature_id)
+
+    source_version = session.get(SignatureVersionDB, source_version_id)
+    if source_version is None or source_version.signature_id != signature_id:
+        raise SignatureVersionNotFoundError(source_version_id)
+
+    latest_version = session.execute(
+        select(SignatureVersionDB)
+        .where(SignatureVersionDB.signature_id == signature_id)
+        .order_by(SignatureVersionDB.version_number.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if latest_version is not None and latest_version.id == source_version.id:
+        raise ValueError("Selected version is already current")
+
+    html_content = store.read(
+        signature.name,
+        uuid.UUID(hex=source_version.id),
+        source_version.sha256,
+    )
+    return add_signature_version(
+        session,
+        store,
+        signature_id,
+        html_content,
+        created_by=created_by,
+    )
 
 
 def add_signature_variant(
