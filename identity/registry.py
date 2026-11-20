@@ -150,6 +150,17 @@ class IdentityProviderRegistry:
         if set(settings) - allowed:
             raise ProviderConfigError("Unknown settings supplied for this provider type.")
         values = {key: str(value) for key, value in settings.items() if value is not None}
+        # An empty secret in the admin form means keep the existing credential.
+        # Restore it BEFORE OIDC's required-fields validation, not afterwards.
+        existing_file = self._directory(slug) / ".env"
+        if existing_file.is_symlink():
+            raise ProviderConfigError("Provider configuration must not be a symbolic link.")
+        if existing_file.is_file():
+            previous = {k: str(v) for k, v in dotenv_values(existing_file).items() if v is not None}
+            secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
+            for key in secret_keys & allowed:
+                if not values.get(key) and previous.get("IDP_TYPE") == kind and previous.get(key):
+                    values[key] = previous[key]
         if kind in {"authentik", "oidc"}:
             oidc_keys = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
             if kind == "oidc" or any(values.get(key) for key in oidc_keys):
@@ -179,15 +190,6 @@ class IdentityProviderRegistry:
                         or post_logout_parts.query or post_logout_parts.fragment
                     ):
                         raise ProviderConfigError("OIDC post-logout redirect URI must be HTTPS without embedded credentials, query or fragment.")
-        existing_file = self._directory(slug) / ".env"
-        if existing_file.is_symlink():
-            raise ProviderConfigError("Provider configuration must not be a symbolic link.")
-        if existing_file.is_file():
-            previous = {k: str(v) for k, v in dotenv_values(existing_file).items() if v is not None}
-            secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
-            for key in secret_keys & allowed:
-                if not values.get(key) and previous.get("IDP_TYPE") == kind and previous.get(key):
-                    values[key] = previous[key]
         values.update({"IDP_TYPE": kind, "IDP_DISPLAY_NAME": display_name.strip(), "IDP_ENABLED": "true" if enabled else "false"})
         # Validate all values before touching disk.
         self._build(kind, values)
