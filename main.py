@@ -53,6 +53,8 @@ from core.branding import (
     DEFAULT_APP_NAME,
     branding_context,
     decode_branding_data_url,
+    BUILTIN_LOGO_PATH,
+    BUILTIN_FAVICON_PATH,
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
@@ -434,6 +436,29 @@ def signature_asset(asset_name: str):
     )
 
 
+def _bundled_branding_response(*, favicon: bool = False):
+    """Only serve explicitly named bundled files; never accept paths from requests."""
+    path = BUILTIN_FAVICON_PATH if favicon and BUILTIN_FAVICON_PATH.is_file() else BUILTIN_LOGO_PATH
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Bundled branding image is not configured")
+    media_type = "image/x-icon" if path == BUILTIN_FAVICON_PATH else "image/png"
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/branding/builtin/logo.png")
+def builtin_branding_logo():
+    return _bundled_branding_response()
+
+
+@app.get("/branding/builtin/favicon")
+def builtin_branding_favicon():
+    return _bundled_branding_response(favicon=True)
+
+
 @app.get("/branding/logo.png")
 def branding_logo(db: Session = Depends(get_db)):
     settings = db.get(BrandingSettingsDB, 1)
@@ -441,12 +466,9 @@ def branding_logo(db: Session = Depends(get_db)):
         return Response(
             content=settings.logo_png,
             media_type="image/png",
-            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
         )
-    path = "branding/logo.png"
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="Branding logo is not configured")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return _bundled_branding_response()
 
 
 @app.get("/branding/favicon")
@@ -457,15 +479,10 @@ def branding_favicon(db: Session = Depends(get_db)):
         return Response(
             content=settings.favicon_data,
             media_type=settings.favicon_mime or "image/x-icon",
-            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
         )
-    favicon_path = "branding/favicon.ico"
-    if os.path.isfile(favicon_path):
-        return FileResponse(favicon_path, media_type="image/x-icon", headers={"Cache-Control": "no-cache"})
-    logo_path = "branding/logo.png"
-    if os.path.isfile(logo_path):
-        return FileResponse(logo_path, media_type="image/png", headers={"Cache-Control": "no-cache"})
-    raise HTTPException(status_code=404, detail="Branding favicon is not configured")
+    return _bundled_branding_response(favicon=True)
+
 
 def session_user(request: Request) -> dict:
     user = request.session.get("user")
@@ -536,8 +553,8 @@ def login_page(request: Request, error: bool = False, status_code: int = 200, db
     brand = branding_context(db) if hasattr(db, "get") else {
         "app_name": DEFAULT_APP_NAME,
         "app_color": DEFAULT_APP_COLOR,
-        "has_logo": os.path.isfile("branding/logo.png"),
-        "has_favicon": os.path.isfile("branding/favicon.ico") or os.path.isfile("branding/logo.png"),
+        "has_logo": BUILTIN_LOGO_PATH.is_file(),
+        "has_favicon": BUILTIN_FAVICON_PATH.is_file() or os.path.isfile("branding/logo.png"),
         "has_custom_logo": False,
         "has_custom_favicon": False,
     }
@@ -1220,6 +1237,8 @@ def update_admin_branding(
 ):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
+    if not payload.app_name.strip() or any(ord(char) < 32 or ord(char) == 127 for char in payload.app_name):
+        raise HTTPException(status_code=422, detail="Application name must contain printable characters")
     if not re.fullmatch(r"#[0-9A-Fa-f]{6}", payload.app_color):
         raise HTTPException(status_code=422, detail="Brand color must be a six-digit hex color")
     if payload.reset_logo and payload.logo_data_url:
