@@ -314,7 +314,35 @@ local function inject_signature(task)
             rspamd_logger.infox(task, "OpenSigWeave: Reply detected, API flag is FALSE. Skipping.")
             return
         end
-        local plain_sig = html_sig:gsub("<br.->", "\n"):gsub("<p.->", "\n"):gsub("<li.->", "\n- "):gsub("<[^>]+>", ""):gsub("&nbsp;", " ")
+        local function html_signature_to_plain(html)
+            local plain = html
+            plain = plain:gsub("<[aA]%s+([^>]*)>(.-)</[aA]>", function(attrs, label)
+                local href = attrs:match('[Hh][Rr][Ee][Ff]%s*=%s*"([^"]+)"')
+                    or attrs:match("[Hh][Rr][Ee][Ff]%s*=%s*'([^']+)'")
+                local text = label:gsub("<[^>]+>", "")
+                text = text:gsub("&nbsp;", " "):gsub("&amp;", "&"):gsub("&lt;", "<"):gsub("&gt;", ">")
+                if not href or href == "" then return text end
+                local lower_href = href:lower()
+                if lower_href:sub(1, 7) == "mailto:" then
+                    local target = href:sub(8)
+                    if text == "" then return target end
+                    if text:lower() == target:lower() then return text end
+                    return text .. " (" .. target .. ")"
+                end
+                if text == "" or text == href then return href end
+                return text .. " (" .. href .. ")"
+            end)
+            return plain:gsub("<[bB][rR][^>]*>", "\n")
+                :gsub("<[pP][^>]*>", "\n")
+                :gsub("<[lL][iI][^>]*>", "\n- ")
+                :gsub("<[^>]+>", "")
+                :gsub("&nbsp;", " ")
+                :gsub("&amp;", "&")
+                :gsub("&lt;", "<")
+                :gsub("&gt;", ">")
+        end
+
+        local plain_sig = html_signature_to_plain(html_sig)
 
         local function clean_trailing_html(html)
             if not trim_whitespace then return html end
