@@ -56,6 +56,18 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         self.assertIn("{{ first_name }}", result)
         self.assertIn("{{ group:staff }}", result)
 
+    def test_persisted_asset_urls_survive_but_data_and_blob_urls_do_not(self):
+        asset_url = "https://signature.example.org/signature-assets/" + ("a" * 64) + ".webp"
+        source = (
+            f'<img src="{asset_url}" alt="Persisted">'
+            '<img src="data:image/png;base64,AAAA" alt="Inline">'
+            '<img src="blob:https://signature.example.org/temporary" alt="Blob">'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn(asset_url, result)
+        self.assertNotIn("data:image", result)
+        self.assertNotIn("blob:", result)
+
     def test_unsafe_markup_is_removed_without_losing_signature_text(self):
         source = (
             '<p onclick="alert(1)" style="color: red; position: fixed">'
