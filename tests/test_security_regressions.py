@@ -166,7 +166,6 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('@app.post("/api/admin/signatures", status_code=201)', self.source)
         self.assertIn('@app.get("/api/admin/signatures/{signature_id}/versions")', self.source)
         self.assertIn('@app.post("/api/admin/signatures/{signature_id}/versions", status_code=201)', self.source)
-        self.assertIn('@app.post("/api/admin/signatures/{signature_id}/variants", status_code=201)', self.source)
         self.assertGreaterEqual(self.source.count('raise HTTPException(status_code=403, detail="Admins only")'), 5)
 
     def test_hybrid_storage_uses_immutable_files_and_metadata(self):
@@ -189,35 +188,30 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertTrue((ROOT / "compose.yaml").exists())
 
 
-    def test_rspamd_resolution_uses_persisted_rules_and_explicit_mode_override(self):
+    def test_engine_uses_current_rules_without_legacy_mode_selection(self):
         service_source = (ROOT / "core" / "engine_service.py").read_text(encoding="utf-8")
         self.assertIn("class SignatureEngineService", service_source)
         self.assertIn("from core.rule_repository import load_signature_rules", service_source)
         self.assertIn("evaluate_rules(load_signature_rules(db), context)", service_source)
-        self.assertIn('alias="X-OpenSigWeave-Mode"', self.source)
-        self.assertIn("elif override and domain_obj.allow_overrides and not explicit_mode:", service_source)
-        self.assertIn("signature_id=signature_id", service_source)
+        self.assertNotIn("select_and_record_variant", service_source)
+        self.assertNotIn("explicit_mode", service_source)
+        self.assertNotIn("SignatureMode", service_source)
 
-
-    def test_rspamd_consumes_and_forwards_validated_mode_header(self):
+    def test_rspamd_only_strips_deprecated_mode_selector(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
         self.assertIn("task:get_header_count('X-OpenSigWeave-Mode')", lua)
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", lua)
-        self.assertIn("request_headers['X-OpenSigWeave-Mode'] = requested_mode", lua)
-        self.assertIn("candidate == 'INTERNAL' or candidate == 'NONE'", lua)
+        self.assertNotIn("request_headers['X-OpenSigWeave-Mode']", lua)
+        self.assertNotIn("requested_mode", lua)
         self.assertIn("local signature_marker = find_signature_text_marker(task, is_reply)", lua)
-        self.assertIn("if not requested_mode then", lua)
         self.assertIn("remove_text_marker_from_message()", lua)
-        self.assertIn("if signature_marker and signature_marker.valid and not requested_mode then", lua)
 
-    def test_rspamd_outlook_marker_is_decoded_and_removed(self):
+    def test_rspamd_deprecated_html_markers_are_cleanup_only(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
-        self.assertIn('task:get_text_parts()', lua)
-        self.assertIn('part:get_content("raw_utf")', lua)
         self.assertIn("OpenSigWeave:MODE=", lua)
         self.assertIn("data%-opensigweave%-mode", lua)
-        self.assertIn("remove_outlook_mode_markers(decoded)", lua)
-        self.assertIn("find_outlook_mode_marker(task, is_reply)", lua)
+        self.assertIn("remove_deprecated_selector_markers(decoded)", lua)
+        self.assertNotIn("find_outlook_mode_marker", lua)
         self.assertIn("if not requested_mode then", lua)
 
     def test_domain_routes_receive_request_context(self):
