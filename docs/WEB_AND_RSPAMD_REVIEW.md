@@ -68,7 +68,7 @@ The Lua adapter:
 - Bounds the HTTP timeout and maximum response size.
 - URL-encodes the sender email in the API path.
 - Sends the engine key in `X-Engine-Key`.
-- Supports one validated `X-OpenSigWeave-Mode` header on authenticated submissions, removes the control header and otherwise checks the supported Outlook HTML markers.
+- Supports concrete signature-name/checksum markers. The deprecated mode-selector header and old HTML selector markers are stripped for cleanup only and are never forwarded to the engine.
 - Requires `task:get_user()` and uses the SMTP envelope sender from `task:get_from(1)`.
 
 ### Multipart behavior
@@ -106,8 +106,8 @@ No production Mailcow configuration has been changed and no end-to-end SMTP/DKIM
 | Host/proxy | Canonical host, rejected unknown host, configured alias, proxy forwarding behavior |
 | HTML | Script, event handler, unsafe URL, SVG payload, valid table layout, dynamic value escaping |
 | Signature storage | Create version, read integrity, tamper detection, symlink rejection, backup/restore |
-| Rules | Priority, disabled rules, AND conditions, group/attribute matching, targeted signature mode |
-| Engine API | Missing/wrong key, malformed email, valid mode, duplicate mode header, oversized response, timeout |
+| Rules | Priority, disabled rules, AND conditions, group/attribute matching, direct signature/group/NONE targets |
+| Engine API | Missing/wrong key, malformed email, concrete signature selector, oversized response, timeout |
 | Rspamd MIME | Single-part plain text, single-part HTML, multipart/alternative, nested multipart, attachment, base64, quoted-printable |
 | Mail behavior | New message, reply, forward, repeated processing, no matching signature |
 | DKIM | Verify the final delivered message after injection |
