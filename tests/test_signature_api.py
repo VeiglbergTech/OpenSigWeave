@@ -28,7 +28,6 @@ from starlette.responses import Response
 from itsdangerous import TimestampSigner
 
 import main
-from core.modes import SignatureMode
 from core.engine_contract import SignatureEngineResult
 from database import Base
 from signature_storage import SignatureFileStore
@@ -69,7 +68,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             "message": {
                 "headers": [
                     ["From", " forged@example.net\r\n"],
-                    ["x-opensigweave-mode", "professional"],
+                    ["x-opensigweave-mode", "retired-selector"],
                     ["X-OpenSigWeave-Signature", "Sales"],
                     ["X-OpenSigWeave-Signature-Code", "a1b2"],
                 ],
@@ -92,7 +91,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertFalse(engine.await_args.kwargs["commit_selection"])
         engine_request = engine.await_args.args[1]
         self.assertEqual(engine_request.sender_email, "alias@example.org")
-        self.assertEqual(engine_request.mode, "PROFESSIONAL")
         self.assertEqual(engine_request.signature_name, "Sales")
         self.assertEqual(engine_request.signature_code, "a1b2")
 
@@ -251,7 +249,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         with patch.object(main, "ENGINE_API_KEY", "engine-secret"):
             with self.assertRaises(HTTPException) as raised:
                 asyncio.run(main.get_engine_signature(
-                    "sender@example.org", response, None, None, None, None, self.db
+                    "sender@example.org", response, None, None, None, self.db
                 ))
         self.assertEqual(raised.exception.status_code, 401)
         self.assertEqual(response.headers.get("cache-control"), "no-store, private")
@@ -269,15 +267,13 @@ class SignatureCatalogApiTests(unittest.TestCase):
         ):
             payload = asyncio.run(main.get_engine_signature(
                 " User@Example.ORG ", response, "engine-secret",
-                "professional", "Sales", "a1b2", self.db
+                "Sales", "a1b2", self.db
             ))
 
         self.assertEqual(payload, result.to_payload())
         self.assertEqual(response.headers.get("cache-control"), "no-store, private")
         engine_request = engine.await_args.args[1]
         self.assertEqual(engine_request.sender_email, "user@example.org")
-        self.assertEqual(engine_request.mode, "PROFESSIONAL")
-        self.assertTrue(engine_request.explicit_mode)
         self.assertEqual(engine_request.signature_name, "Sales")
         self.assertEqual(engine_request.signature_code, "a1b2")
 
@@ -300,7 +296,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                     with self.assertRaises(HTTPException) as raised:
                         asyncio.run(main.get_engine_signature(
                             "sender@example.org", response, "engine-secret",
-                            None, None, None, self.db
+                            None, None, self.db
                         ))
                 self.assertEqual(raised.exception.status_code, expected_status)
                 self.assertEqual(raised.exception.detail, safe_message)
@@ -331,7 +327,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Exported signature",
-                mode="AUTO",
                 html_content="<p>Export payload</p>",
             ),
             self.admin_request,
@@ -406,7 +401,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.SignatureCreateRequest(
                 name="Shared signature",
                 domain_ids=[first.id, second.id],
-                mode="AUTO",
                 html_content="<p>Shared</p>",
             ),
             self.admin_request,
@@ -421,7 +415,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.SignatureCreateRequest(
                 name="Second shared signature",
                 domain_ids=[first.id],
-                mode="PROFESSIONAL",
                 html_content="<p>Second</p>",
             ),
             self.admin_request,
@@ -443,19 +436,19 @@ class SignatureCatalogApiTests(unittest.TestCase):
         )
         self.assertEqual(updated["domain_ids"], [second.id])
 
-    def test_admin_can_create_update_and_manage_signature_variants(self):
+    def test_admin_can_create_and_update_signature_without_legacy_variant_api(self):
         payload = main.SignatureCreateRequest(
             name="Corporate",
             domain_id=None,
-            mode="PROFESSIONAL",
             html_content="<p>Hello {{ first_name }}</p>",
-            weight=2,
             is_active=False,
         )
         created = main.create_signature_endpoint(payload, self.admin_request, self.db)
         signature = self.db.get(main.SignatureDB, created["id"])
         self.assertIsNotNone(signature)
+        self.assertEqual(signature.mode, "UNUSED")
         self.assertFalse(signature.is_active)
+        self.assertNotIn("variant_id", created)
 
         updated = main.update_signature_endpoint(
             created["id"],
@@ -466,22 +459,10 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(updated["name"], "Corporate Active")
         self.assertTrue(updated["is_active"])
 
-        variants = main.list_signature_variants(created["id"], self.admin_request, self.db)
-        self.assertEqual(len(variants), 1)
-        changed = main.update_signature_variant_endpoint(
-            variants[0]["id"],
-            main.SignatureVariantUpdateRequest(weight=5, is_enabled=False),
-            self.admin_request,
-            self.db,
-        )
-        self.assertEqual(changed["weight"], 5)
-        self.assertFalse(changed["is_enabled"])
-
     def test_admin_can_add_list_and_preview_versions_without_changing_current(self):
         created = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Versioned",
-                mode="AUTO",
                 html_content="<p>Version 1</p>",
             ),
             self.admin_request,
@@ -514,7 +495,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         created = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Restorable API",
-                mode="AUTO",
                 html_content="<p>Version 1</p>",
             ),
             self.admin_request,
@@ -567,7 +547,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         first = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Restore source",
-                mode="AUTO",
                 html_content="<p>Source</p>",
             ),
             self.admin_request,
@@ -576,7 +555,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         second = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Restore target",
-                mode="AUTO",
                 html_content="<p>Target</p>",
             ),
             self.admin_request,
@@ -590,49 +568,20 @@ class SignatureCatalogApiTests(unittest.TestCase):
         target_versions = main.list_signature_versions(second["id"], self.admin_request, self.db)
         self.assertEqual([item["version_number"] for item in target_versions], [1])
 
-    def test_auto_selection_reads_name_based_signature_version(self):
+    def test_signature_text_marker_selects_named_signature(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         self.db.commit()
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
-                name="Professional",
+                name="Business",
                 domain_id=None,
-                mode="AUTO",
-                html_content="<p>Selected variant signature</p>",
-            ),
-            self.admin_request,
-            self.db,
-        )
-        with patch.object(
-            main.attribute_provider,
-            "get_attributes",
-            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
-        ):
-            result = asyncio.run(main.get_engine_signature(
-                "user@example.org",
-                Response(),
-                x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="AUTO",
-                db=self.db,
-            ))
-        self.assertIn("Selected variant signature", result["html"])
-
-    def test_signature_text_marker_is_used_when_mode_header_is_invalid(self):
-        domain = main.DomainDB(domain_name="example.org", is_active=True)
-        self.db.add(domain)
-        self.db.commit()
-        main.create_signature_endpoint(
-            main.SignatureCreateRequest(
-                name="Professional",
-                domain_id=None,
-                mode="PROFESSIONAL",
                 html_content="<p>Named marker signature</p>",
             ),
             self.admin_request,
             self.db,
         )
-        code = __import__("hashlib").sha256(b"professional").hexdigest()[:4]
+        code = __import__("hashlib").sha256(b"business").hexdigest()[:4]
         with patch.object(
             main.attribute_provider,
             "get_attributes",
@@ -642,8 +591,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="INVALID-MODE",
-                x_signature_name="pROfessional",
+                x_signature_name="bUSiness",
                 x_signature_code=code.upper(),
                 db=self.db,
             ))
@@ -657,7 +605,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
             main.SignatureCreateRequest(
                 name="Straße",
                 domain_id=None,
-                mode="PROFESSIONAL",
                 html_content="<p>Unicode marker signature</p>",
             ),
             self.admin_request,
@@ -673,7 +620,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode=None,
                 x_signature_name="STRASSE",
                 x_signature_code=code,
                 db=self.db,
@@ -686,8 +632,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.db.commit()
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
-                name="Professional",
-                mode="PROFESSIONAL",
+                name="Business",
                 html_content="<p>Must not be selected</p>",
             ),
             self.admin_request,
@@ -702,8 +647,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode=None,
-                x_signature_name="Professional",
+                x_signature_name="Business",
                 x_signature_code="0000",
                 db=self.db,
             ))
@@ -733,7 +677,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode=None,
                 db=self.db,
             ))
 
@@ -766,7 +709,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode=None,
                 db=self.db,
             ))
         self.assertIn("Personal Alice", result["html"])
@@ -942,7 +884,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
 
     def test_non_admin_cannot_mutate_signature_catalog(self):
         payload = main.SignatureCreateRequest(
-            name="Denied", mode="AUTO", html_content="<p>Denied</p>"
+            name="Denied", html_content="<p>Denied</p>"
         )
         with self.assertRaises(main.HTTPException) as raised:
             main.create_signature_endpoint(payload, self.user_request, self.db)
@@ -997,32 +939,12 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(stored.claims, {})
         self.assertEqual(stored.attributes, {})
 
-    def test_invalid_mode_header_falls_back_to_automatic_selection(self):
-        self.db.add(main.DomainDB(
-            domain_name="example.org", is_active=True,
-            template_html="<p>Automatic fallback</p>",
-        ))
-        self.db.commit()
-        with patch.object(
-            main.attribute_provider, "get_attributes",
-            new=AsyncMock(return_value=IdentityAttributes(first_name="Alice")),
-        ):
-            result = asyncio.run(main.get_engine_signature(
-                "user@example.org",
-                Response(),
-                x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="NOT-A-VALID-MODE",
-                db=self.db,
-            ))
-        self.assertIn("Automatic fallback", result["html"])
-
-
     def test_group_placeholder_resolves_once_and_reuses_same_signature(self):
         domain = main.DomainDB(domain_name="tags.example", is_active=True)
         self.db.add(domain)
         self.db.commit()
         child = main.create_signature_endpoint(
-            main.SignatureCreateRequest(name="Reusable Footer", mode="INTERNAL", html_content="<b>Reusable footer</b>"),
+            main.SignatureCreateRequest(name="Reusable Footer", html_content="<b>Reusable footer</b>"),
             self.admin_request, self.db,
         )
         group = main.create_signature_group(
@@ -1033,7 +955,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         )
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
-                name="Outer Template", mode="AUTO",
+                name="Outer Template",
                 html_content="<div>Top {{ group:footer-group }} Bottom {{ group:footer-group }}</div>",
             ),
             self.admin_request, self.db,
@@ -1062,7 +984,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         signature = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Group Engine Signature",
-                mode="AUTO",
                 html_content='<p>Group engine selected</p><img src="https://example.test/pixel.png" onerror="alert(1)"><script>alert(2)</script>',
             ),
             self.admin_request,
@@ -1103,7 +1024,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         signature = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Group member",
-                mode="AUTO",
                 html_content="<p>Group member</p>",
             ),
             self.admin_request,
@@ -1150,7 +1070,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         signature = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Preview Member",
-                mode="AUTO",
                 html_content="<p>Hello {{ first_name }} {{ last_name }}</p>",
             ),
             self.admin_request,
@@ -1216,7 +1135,6 @@ class SignatureCatalogApiTests(unittest.TestCase):
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Source-preserved signature",
-                mode="AUTO",
                 html_content=source,
             ),
             self.admin_request,
@@ -1231,8 +1149,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 "user@example.org",
                 Response(),
                 x_engine_key=main.ENGINE_API_KEY,
-                x_signature_mode="AUTO",
-                db=self.db,
+                x_signature_db=self.db,
             ))
         self.assertIn("Safe", result["html"])
         self.assertNotIn("<!--[if mso]", result["html"])
