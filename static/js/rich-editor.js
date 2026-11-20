@@ -94,7 +94,7 @@
         const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar,
+            toolbar: config.imageUpload ? { items: toolbar, shouldNotGroupWhenFull: true } : toolbar,
             table: {
                 contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"]
             },
