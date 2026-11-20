@@ -31,10 +31,11 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertRegex(SOURCE, r'if not envfrom or not uname then return false end')
         self.assertRegex(SOURCE, r'local sender_email = tostring\(envfrom\[1\]\.addr\):lower\(\)')
 
-    def test_control_header_is_single_valued_and_consumed(self):
+    def test_deprecated_mode_header_is_only_consumed(self):
         self.assertIn("task:get_header_count('X-OpenSigWeave-Mode')", SOURCE)
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", SOURCE)
-        self.assertIn("ignoring duplicate mode headers", SOURCE)
+        self.assertNotIn("request_headers['X-OpenSigWeave-Mode']", SOURCE)
+        self.assertNotIn("requested_mode", SOURCE)
 
     def test_plaintext_signature_preserves_link_targets(self):
         self.assertIn("html_signature_to_plain", SOURCE)
