@@ -236,6 +236,37 @@ async function main() {
     const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
     assert.equal(await versionSelector.locator("option").count(), 1,
       "newly created signature must expose its first version in version history");
+
+    // Clicking the editor must focus the editable surface. A surrounding label used
+    // to redirect clicks to the version selector, making typing possible only after tabbing.
+    await signatureEditEditor.click();
+    assert.equal(await signatureEditEditor.evaluate(element =>
+      element === document.activeElement || element.contains(document.activeElement)
+    ), true, "clicking the signature editor must focus the editor instead of version history");
+
+    // Exercise the real CKEditor drag-and-drop upload path, not only the backend endpoint.
+    const imageTransfer = await page.evaluateHandle(() => {
+      const binary = atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl+N8sAAAAASUVORK5CYII=");
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], "browser-smoke-pixel.png", { type: "image/png" }));
+      return transfer;
+    });
+    const editorImageUpload = page.waitForResponse(response =>
+      response.request().method() === "POST"
+      && response.url().endsWith("/api/admin/signature-assets")
+      && response.status() === 201
+    );
+    await signatureEditEditor.dispatchEvent("dragenter", { dataTransfer: imageTransfer });
+    await signatureEditEditor.dispatchEvent("dragover", { dataTransfer: imageTransfer });
+    await signatureEditEditor.dispatchEvent("drop", { dataTransfer: imageTransfer });
+    await editorImageUpload;
+    await signatureEditEditor.locator('img[src*="/signature-assets/"]').waitFor();
+    await page.waitForFunction(() =>
+      document.querySelector("#signature-html-source").value.includes("/signature-assets/")
+    );
+    await imageTransfer.dispose();
+
     await signatureEditEditor.fill("Browser smoke version 2");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await page.waitForFunction(() => {
@@ -466,6 +497,49 @@ async function main() {
     await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
     checkpoint("rule/group deletion: complete");
+
+    // Create a login-capable OIDC provider through the real UI and verify that its
+    // non-secret SSO settings survive a reload. Secrets intentionally remain hidden.
+    await page.getByRole("button", { name: "Identity Providers", exact: true }).click();
+    const ssoProviderPanel = page.locator('[x-data="identityProviderManager"]');
+    await ssoProviderPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
+    const ssoProviderDialog = ssoProviderPanel.locator('[x-show="editing"][role="dialog"]');
+    await ssoProviderDialog.getByLabel("Folder name / ID").fill("browser-smoke-login-provider");
+    await ssoProviderDialog.getByLabel("Display name").fill("Browser Smoke Login Provider");
+    await ssoProviderDialog.getByLabel("Provider type").selectOption("oidc");
+    const oidcFields = ssoProviderDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    await oidcFields.getByLabel("OIDC discovery URL").fill("https://idp.example.org/.well-known/openid-configuration");
+    await oidcFields.getByLabel("OIDC client ID").fill("browser-smoke-client");
+    await oidcFields.getByLabel("OIDC client secret").fill("browser-smoke-secret");
+    await oidcFields.getByLabel("OIDC scopes").fill("openid email profile groups");
+    await oidcFields.getByLabel("OIDC callback / redirect URI").fill("https://signatures.example.org/auth/browser-smoke-login-provider");
+    const createSsoProvider = page.waitForResponse(response =>
+      response.request().method() === "POST"
+      && response.url().endsWith("/api/admin/identity-providers")
+      && response.status() === 201
+    );
+    await ssoProviderDialog.getByRole("button", { name: "Save", exact: true }).click();
+    await createSsoProvider;
+    const ssoProviderRow = ssoProviderPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Login Provider" });
+    await ssoProviderRow.waitFor();
+
+    await page.reload();
+    await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
+    const reloadedSsoProviderRow = page.locator('[x-data="identityProviderManager"] tbody tr')
+      .filter({ hasText: "Browser Smoke Login Provider" });
+    await reloadedSsoProviderRow.getByRole("button", { name: "Edit", exact: true }).click();
+    const reloadedSsoDialog = page.locator('[x-data="identityProviderManager"] [x-show="editing"][role="dialog"]');
+    const reloadedOidcFields = reloadedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC discovery URL").inputValue(),
+      "https://idp.example.org/.well-known/openid-configuration");
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC client ID").inputValue(), "browser-smoke-client");
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC callback / redirect URI").inputValue(),
+      "https://signatures.example.org/auth/browser-smoke-login-provider");
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC client secret").inputValue(), "",
+      "saved OIDC secrets must remain write-only in the browser");
+    await reloadedSsoDialog.press("Escape");
+    await reloadedSsoDialog.waitFor({ state: "hidden" });
+
     // Exercise the complete domain lifecycle through the administrator UI.
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     const domainPanel = page.locator('[x-data="domainManager"]');
@@ -496,19 +570,36 @@ async function main() {
     await profileProviderSelect.selectOption("browser-smoke-profile-provider");
     const providerAssignment = await providerAssignmentResponse;
     assert.equal(providerAssignment.status(), 200, "profile provider assignment request must succeed");
-    // The endpoint's status is the immediate request assertion. Verify the
-    // persisted state after a full page reload through the actual admin UI;
-    // this avoids reading a response body from the intercepted browser event.
+
+    const loginProviderSelect = domainRow.locator("select").nth(1);
+    await page.waitForFunction(() => {
+      const select = document.querySelector('[x-data="domainManager"] tbody tr select:nth-of-type(2)');
+      return select && [...select.options].some(option => option.value === "browser-smoke-login-provider");
+    });
+    const loginProviderAssignmentResponse = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/domains/" + createdDomain.id + "/authentication-provider")
+    );
+    await loginProviderSelect.selectOption("browser-smoke-login-provider");
+    const loginProviderAssignment = await loginProviderAssignmentResponse;
+    assert.equal(loginProviderAssignment.status(), 200, "SSO login provider assignment request must succeed");
+
+    domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
+    createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.equal(createdDomain.authentication_provider_id, "browser-smoke-login-provider",
+      "SSO login provider assignment must be persisted by the domain API");
+
+    // The admin/domain page must remain selected across a reload and both provider
+    // assignments must be reconstructed from persisted state.
     await page.reload();
-    await page.getByRole("button", { name: "Admin", exact: true }).click();
-    await page.getByRole("button", { name: "Domains", exact: true }).click();
-    domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    domainRow = page.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.waitFor();
     assert.equal(await domainRow.locator("select").nth(0).inputValue(),
       "browser-smoke-profile-provider",
       "profile provider assignment must persist independently of the login provider");
-    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "",
-      "assigning a profile provider must not configure a login provider");
+    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "browser-smoke-login-provider",
+      "SSO login provider assignment must remain selected after page reload");
 
     checkpoint("provider assignment and persistence: complete");
     // Disable and re-enable the domain through the confirmation dialog.
@@ -616,15 +707,16 @@ async function main() {
     assert.equal(createdDomain.inject_on_replies, true);
     assert.equal(createdDomain.identity_provider_id, "browser-smoke-profile-provider",
       "saving domain settings must preserve the profile provider assignment");
+    assert.equal(createdDomain.authentication_provider_id, "browser-smoke-login-provider",
+      "saving domain settings must preserve the SSO login provider assignment");
 
     await page.reload();
-    await page.getByRole("button", { name: "Admin", exact: true }).click();
-    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     domainRow = page.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.waitFor();
     assert.equal(await domainRow.locator("select").nth(0).inputValue(), "browser-smoke-profile-provider");
-    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "",
-      "login provider must remain local after page reload");
+    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "browser-smoke-login-provider",
+      "login provider must remain selected after page reload");
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     const reloadedSettings = page.locator('[x-data="domainSettingsModal"]');
     await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
@@ -654,6 +746,13 @@ async function main() {
     assert.equal((await (await page.request.get(baseURL + "/domains/")).json())
       .some(item => item.domain_name === "browser-smoke-domain.test"), false,
       "deleted domain must no longer be returned by the API");
+
+    const deleteSsoProvider = await page.evaluate(async () => {
+      const response = await fetch("/api/admin/identity-providers/browser-smoke-login-provider", { method: "DELETE" });
+      return { status: response.status, body: await response.text() };
+    });
+    assert.equal(deleteSsoProvider.status, 200,
+      "browser smoke SSO provider cleanup failed: " + deleteSsoProvider.body);
 
     checkpoint("domain lifecycle: complete");
     // Exercise normal-user authorization with signed, non-admin browser sessions.
