@@ -94,12 +94,14 @@ class BrandingTests(unittest.TestCase):
             b"not a PNG", branding.PNG_SIGNATURE + b"payload",
             png[:-1], png + b"trailing-data", png[:40], png[:48] + b"evil" + png[52:],
             png[:20] + b"\x00" + png[21:],  # corrupt IHDR dimensions/CRC
+            (branding.PNG_SIGNATURE + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
+             + png_chunk(b"IDAT", b"not zlib") + png_chunk(b"IEND", b"")),
         ]
         for image in invalid:
             with self.subTest(size=len(image)):
                 with self.assertRaises(ValueError):
                     decode_branding_data_url(data_url(image), allowed_mimes={"image/png"}, max_bytes=512 * 1024)
-        for bad_ico in (b"\x00\x00\x01\x00", b"\x00\x00\x01\x00\x01\x00" + b"\x00" * 16, valid_ico()[:-10]):
+        for bad_ico in (b"\x00\x00\x01\x00", b"\x00\x00\x01\x00\x01\x00" + b"\x00" * 16, valid_ico()[:-10], valid_ico()[:22] + b"\x28" + b"\x00" * 39):
             with self.subTest(ico=len(bad_ico)):
                 with self.assertRaises(ValueError):
                     decode_branding_data_url(data_url(bad_ico, "image/x-icon"), allowed_mimes={"image/x-icon"}, max_bytes=1024)
