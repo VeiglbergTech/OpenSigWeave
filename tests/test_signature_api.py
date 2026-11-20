@@ -945,12 +945,18 @@ class SignatureCatalogApiTests(unittest.TestCase):
             ),
             self.admin_request, self.db,
         )
+        outer_code = __import__("hashlib").sha256(b"outer template").hexdigest()[:4]
         with patch.object(
             main, "get_identity_attributes",
             new=AsyncMock(return_value=IdentityAttributes(principal_id="idp-immutable:alice-42")),
         ):
             result = asyncio.run(main.get_engine_signature(
-                "alice@tags.example", Response(), x_engine_key=main.ENGINE_API_KEY, db=self.db,
+                "alice@tags.example",
+                Response(),
+                x_engine_key=main.ENGINE_API_KEY,
+                x_signature_name="Outer Template",
+                x_signature_code=outer_code,
+                db=self.db,
             ))
         self.assertEqual(result["html"].count("Reusable footer"), 2)
         states = self.db.query(main.GroupSelectionStateDB).all()
