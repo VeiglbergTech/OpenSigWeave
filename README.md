@@ -119,6 +119,29 @@ If the immediate reverse proxy is trusted and client-IP-aware rate limiting shou
 
 Do not disable certificate verification for OIDC, LDAP or adapter-to-engine HTTPS connections.
 
+### Signature images and publicly accessible asset URLs
+
+The administrator's **Signatures** CKEditor accepts PNG, JPEG and WebP files via
+file-manager drag & drop, image clipboard paste and the toolbar upload control
+(GIF remains supported for compatibility). Files up to **2 MiB** are stored
+under immutable SHA-256 names in the persistent `opensigweave-signatures`
+volume. Signature HTML references an absolute URL like
+`https://signature.example.org/signature-assets/<hash>.png`, not a temporary
+`blob:` URL or Base64 `data:` URL. Reopening signatures and selecting older
+versions does not change these asset URLs; deleting an image reference does
+not delete the file because other signatures/versions may use it.
+
+**Deployment requirement:** The public HTTPS hostname used to open the editor
+must also be reachable by mail recipients. Allow unauthenticated **GET** requests
+to `/signature-assets/<hash>.(png|jpg|webp|gif)` through the reverse proxy,
+even when the administration portal is behind SSO or proxy authentication.
+Keep all other administrator APIs protected; uploads to
+`POST /api/admin/signature-assets` require an administrator session and CSRF
+token. The application itself serves only validated, immutable image names.
+If the hostname is private-network-only or external-image loading is disabled
+by a recipient's mail client, images cannot appear there until the recipient
+permits remote images. Include the signature volume in backups.
+
 ## First sign-in and identity setup
 
 1. Sign in with the local emergency administrator configured in `.env`.
