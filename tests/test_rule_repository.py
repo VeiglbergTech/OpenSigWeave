@@ -16,10 +16,10 @@ class RuleRepositoryTests(unittest.TestCase):
         self.Session = sessionmaker(bind=self.engine, expire_on_commit=False)
         self.session = self.Session()
         self.signature = SignatureDB(
-            id="signature-professional",
-            name="Professional",
+            id="signature-direct",
+            name="Direct",
             scope="GLOBAL",
-            mode="PROFESSIONAL",
+            mode="UNUSED",
             is_active=True,
         )
         self.session.add(self.signature)
@@ -30,14 +30,15 @@ class RuleRepositoryTests(unittest.TestCase):
                 id="z-default",
                 name="Fallback",
                 priority=1,
-                action_mode="AUTO",
+                action_mode="SIGNATURE",
+                signature_id=self.signature.id,
                 is_enabled=True,
             ),
             SignatureRuleDB(
                 id="a-sales",
                 name="Sales team",
                 priority=20,
-                action_mode="PROFESSIONAL",
+                action_mode="SIGNATURE",
                 signature_id=self.signature.id,
                 is_enabled=True,
             ),
@@ -45,7 +46,7 @@ class RuleRepositoryTests(unittest.TestCase):
                 id="disabled-rule",
                 name="Disabled",
                 priority=100,
-                action_mode="INTERNAL",
+                action_mode="NONE",
                 is_enabled=False,
             ),
         ])
@@ -81,7 +82,7 @@ class RuleRepositoryTests(unittest.TestCase):
         selected = evaluate_rules(rules, context)
         self.assertIsNotNone(selected)
         self.assertEqual(selected.id, "a-sales")
-        self.assertEqual(selected.action, "PROFESSIONAL")
+        self.assertEqual(selected.action, "SIGNATURE")
         self.assertEqual(selected.signature_id, self.signature.id)
         self.assertEqual(len(selected.conditions), 2)
 
