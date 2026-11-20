@@ -61,7 +61,7 @@ A rule action should become one of:
 
 Rules continue to use priority ordering and AND-combined sender/domain/group/claim/attribute conditions. The group reference is a foreign key and must be validated when creating or editing a rule.
 
-Installed legacy rule actions are converted by migration `0014_retire_legacy_signature_modes` to ordinary generated groups before the current resolver runs.
+Installed legacy rule actions are converted by migration `0014_retire_signature_modes` to ordinary generated groups before the current resolver runs.
 
 ## 5. Template tags
 
@@ -81,7 +81,7 @@ Preview must not advance production rotation state. It should accept an explicit
 
 ## 7. Migration and compatibility
 
-Migration is intentionally additive. Earlier migrations and the historical mode/variant tables are kept so existing installations can upgrade without losing IDs, HTML versions, weights or rollback data. Migration `0014_retire_legacy_signature_modes` reconstructs/uses compatibility groups from historical variant rows, rewrites old pooled rules to `GROUP`, and neutralizes the retained signature metadata field to `UNUSED`. Normal API, UI, scheduling, rules and engine paths do not consume the historical fields afterward.
+Migration is intentionally additive. Earlier migrations and the historical mode/variant tables are kept so existing installations can upgrade without losing IDs, HTML versions, weights or rollback data. Migration `0014_retire_signature_modes` reconstructs/uses compatibility groups from historical variant rows, rewrites old pooled rules to `GROUP`, and neutralizes the retained signature metadata field to `UNUSED`. Normal API, UI, scheduling, rules and engine paths do not consume the historical fields afterward.
 
 ## 8. Acceptance criteria
 
