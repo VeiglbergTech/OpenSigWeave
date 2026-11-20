@@ -18,7 +18,7 @@ from signature_catalog import (
     update_signature,
     update_signature_variant,
 )
-from signature_storage import SignatureFileStore
+from signature_storage import SignatureFileStore, SignatureStorageError
 from signature_sanitizer import sanitize_signature_html
 
 
@@ -242,7 +242,7 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(self.store.image_path(filename).read_bytes(), payload)
         self.assertEqual(self.store.write_image(payload, "image/png"), filename)
         self.assertEqual(self.store.image_media_type(filename), "image/png")
-        with self.assertRaises(Exception):
+        with self.assertRaises(SignatureStorageError):
             self.store.write_image(b"not-a-png", "image/png")
 
     def test_new_signature_versions_preserve_source_too(self):
