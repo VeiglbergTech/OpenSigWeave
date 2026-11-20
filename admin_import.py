@@ -631,9 +631,16 @@ def apply_admin_import(
 
         if "rules" in components:
             for row in data["rules"]:
+                action_mode = row["action_mode"]
+                if (
+                    manifest["format_version"] == 1
+                    and action_mode in LEGACY_MODE_VALUES - {"NONE"}
+                    and row["signature_id"] is not None
+                ):
+                    action_mode = "SIGNATURE"
                 rule = SignatureRuleDB(
                     id=row["id"], name=row["name"], priority=row["priority"],
-                    action_mode=row["action_mode"], signature_id=row["signature_id"],
+                    action_mode=action_mode, signature_id=row["signature_id"],
                     group_id=row["group_id"], is_enabled=row["is_enabled"],
                 )
                 db.add(rule)
