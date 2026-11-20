@@ -25,8 +25,6 @@ from models import (
     SignatureRuleConditionDB,
     SignatureRuleDB,
     SignatureScheduleDB,
-    SignatureVariantDB,
-    SelectionStateDB,
     SignatureVersionDB,
     UserOverrideDB,
 )
@@ -48,7 +46,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.db.close()
         self.engine.dispose()
 
-    def _add_versioned_signature(self, name, mode, html):
+    def _add_versioned_signature(self, name, html):
         signature_id = uuid.uuid4().hex
         version_id = uuid.uuid4().hex
         signature = SignatureDB(
@@ -56,7 +54,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
             name=name,
             domain_id=None,
             scope="GLOBAL",
-            mode=mode,
+            mode="UNUSED",
             is_active=True,
         )
         version = SignatureVersionDB(
@@ -109,42 +107,10 @@ class SignatureEngineServiceTests(unittest.TestCase):
         identity_resolver.assert_awaited_once_with(self.db, "ada@example.org", None)
         file_store.read.assert_not_called()
 
-    def test_explicit_mode_selects_and_commits_a_versioned_variant(self):
+    def test_valid_body_marker_selects_global_signature(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         signature = self._add_versioned_signature(
-            "Professional", "PROFESSIONAL", "<p>Professional signature</p>"
-        )
-        variant = SignatureVariantDB(
-            id=uuid.uuid4().hex,
-            signature_id=signature.id,
-            pool_name="PROFESSIONAL",
-            weight=1,
-            is_enabled=True,
-        )
-        self.db.add(variant)
-        self.db.commit()
-
-        store = Mock()
-        store.read.return_value = "<p>Professional signature</p>"
-        service, resolver, _ = self._service(file_store=store)
-        result = asyncio.run(
-            service.resolve(
-                self.db,
-                normalize_engine_request("ada@example.org", "professional"),
-            )
-        )
-
-        self.assertEqual(result.html, "<p>Professional signature</p>")
-        store.read.assert_called_once()
-        resolver.assert_awaited_once()
-        state = self.db.query(SelectionStateDB).one()
-        self.assertEqual(state.sender_email, "ada@example.org")
-        self.assertEqual(state.last_variant_id, variant.id)
-
-    def test_valid_body_marker_selects_global_signature_without_explicit_mode(self):
-        self.db.add(DomainDB(domain_name="example.org", is_active=True))
-        signature = self._add_versioned_signature(
-            "Sales", "AUTO", "<p>Sales signature</p>"
+            "Sales", "<p>Sales signature</p>"
         )
         self.db.commit()
 
@@ -156,7 +122,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
             service.resolve(
                 self.db,
                 normalize_engine_request(
-                    "ada@example.org", None, "Sales", code.upper()
+                    "ada@example.org", "Sales", code.upper()
                 ),
             )
         )
@@ -173,7 +139,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         result = asyncio.run(
             service.resolve(
                 self.db,
-                normalize_engine_request("ada@example.org", None, "Sales", "0000"),
+                normalize_engine_request("ada@example.org", "Sales", "0000"),
             )
         )
 
@@ -208,7 +174,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.db.add(domain)
         self.db.flush()
         signature = self._add_versioned_signature(
-            "Christmas", "AUTO", "<p>Christmas schedule</p>"
+            "Christmas", "<p>Christmas schedule</p>"
         )
         self.db.add(UserOverrideDB(
             user_email="ada@example.org",
@@ -245,7 +211,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.db.add(domain)
         self.db.flush()
         signature = self._add_versioned_signature(
-            "Expired Christmas", "AUTO", "<p>Expired</p>"
+            "Expired Christmas", "<p>Expired</p>"
         )
         self.db.add(UserOverrideDB(
             user_email="ada@example.org",
@@ -279,7 +245,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.db.add(domain)
         self.db.flush()
         signature = self._add_versioned_signature(
-            "Christmas group member", "AUTO", "<p>Scheduled group</p>"
+            "Christmas group member", "<p>Scheduled group</p>"
         )
         group = SignatureGroupDB(
             id=uuid.uuid4().hex,
@@ -320,50 +286,10 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(state.group_id, group.id)
         self.assertEqual(state.last_signature_id, signature.id)
 
-    def test_persisted_rule_selects_its_target_signature_variant(self):
+    def test_signature_rule_selects_exact_signature(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         signature = self._add_versioned_signature(
-            "Rule target", "PROFESSIONAL", "<p>Rule selected</p>"
-        )
-        variant = SignatureVariantDB(
-            id=uuid.uuid4().hex,
-            signature_id=signature.id,
-            pool_name="PROFESSIONAL",
-            weight=1,
-            is_enabled=True,
-        )
-        rule = SignatureRuleDB(
-            id=uuid.uuid4().hex,
-            name="Domain rule",
-            priority=10,
-            action_mode="PROFESSIONAL",
-            signature_id=signature.id,
-            is_enabled=True,
-        )
-        condition = SignatureRuleConditionDB(
-            rule_id=rule.id,
-            kind="domain_equals",
-            key="",
-            value="example.org",
-        )
-        self.db.add_all([variant, rule, condition])
-        self.db.commit()
-
-        store = Mock()
-        store.read.return_value = "<p>Rule selected</p>"
-        service, _, _ = self._service(file_store=store)
-        result = asyncio.run(
-            service.resolve(self.db, normalize_engine_request("ada@example.org"))
-        )
-
-        self.assertEqual(result.html, "<p>Rule selected</p>")
-        state = self.db.query(SelectionStateDB).one()
-        self.assertEqual(state.last_variant_id, variant.id)
-
-    def test_signature_rule_selects_exact_signature_without_legacy_mode_pool(self):
-        self.db.add(DomainDB(domain_name="example.org", is_active=True))
-        signature = self._add_versioned_signature(
-            "Direct rule target", "INTERNAL", "<p>Direct rule selected</p>"
+            "Direct rule target", "<p>Direct rule selected</p>"
         )
         rule = SignatureRuleDB(
             id=uuid.uuid4().hex,
@@ -390,14 +316,13 @@ class SignatureEngineServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(result.html, "<p>Direct rule selected</p>")
-        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
         store.read.assert_called_once()
 
     def test_group_rule_selects_signature_and_persists_rotation_state(self):
         domain = DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         signature = self._add_versioned_signature(
-            "Group member", "AUTO", "<p>Group selected</p>"
+            "Group member", "<p>Group selected</p>"
         )
         group = SignatureGroupDB(
             id=uuid.uuid4().hex,
@@ -438,76 +363,57 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.assertEqual(state.principal_id, "idp-immutable:ada-1")
         self.assertEqual(state.last_signature_id, signature.id)
 
-    def test_adapter_can_defer_rotation_commit_until_message_is_accepted(self):
+    def test_adapter_can_defer_group_rotation_commit_until_message_is_accepted(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         signature = self._add_versioned_signature(
-            "Deferred professional", "PROFESSIONAL", "<p>Deferred signature</p>"
+            "Deferred group member", "<p>Deferred signature</p>"
         )
-        self.db.add(SignatureVariantDB(
+        group = SignatureGroupDB(
             id=uuid.uuid4().hex,
+            name="Deferred group",
+            slug="deferred-group",
+            is_active=True,
+        )
+        rule = SignatureRuleDB(
+            id=uuid.uuid4().hex,
+            name="Deferred group rule",
+            priority=10,
+            action_mode="GROUP",
+            group_id=group.id,
+            is_enabled=True,
+        )
+        member = SignatureGroupMemberDB(
+            group_id=group.id,
             signature_id=signature.id,
-            pool_name="PROFESSIONAL",
             weight=1,
             is_enabled=True,
-        ))
+        )
+        self.db.add_all([group, rule, member])
         self.db.commit()
 
         store = Mock()
         store.read.return_value = "<p>Deferred signature</p>"
         service, _, _ = self._service(file_store=store)
-        with patch.object(
-            self.db, "commit", wraps=self.db.commit
-        ) as commit:
+        with patch.object(self.db, "commit", wraps=self.db.commit) as commit:
             result = asyncio.run(
                 service.resolve(
                     self.db,
-                    normalize_engine_request("ada@example.org", "PROFESSIONAL"),
+                    normalize_engine_request("ada@example.org"),
                     commit_selection=False,
                 )
             )
 
         self.assertEqual(result.html, "<p>Deferred signature</p>")
         commit.assert_not_called()
-        self.assertEqual(self.db.query(SelectionStateDB).count(), 1)
+        self.assertEqual(self.db.query(GroupSelectionStateDB).count(), 1)
         self.db.rollback()
-        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
-
-    def test_failed_variant_render_does_not_commit_rotation_state(self):
-        self.db.add(DomainDB(domain_name="example.org", is_active=True))
-        signature = self._add_versioned_signature(
-            "Broken professional", "PROFESSIONAL", "<p>{% if %}</p>"
-        )
-        self.db.add(SignatureVariantDB(
-            id=uuid.uuid4().hex,
-            signature_id=signature.id,
-            pool_name="PROFESSIONAL",
-            weight=1,
-            is_enabled=True,
-        ))
-        self.db.commit()
-
-        store = Mock()
-        store.read.return_value = "<p>{% if %}</p>"
-        service, _, _ = self._service(file_store=store)
-        with self.assertRaises(SignatureEngineError) as raised:
-            asyncio.run(
-                service.resolve(
-                    self.db,
-                    normalize_engine_request("ada@example.org", "PROFESSIONAL"),
-                )
-            )
-
-        self.assertEqual(raised.exception.code, "INVALID_TEMPLATE")
-        # The service flushes the choice inside the caller's transaction, but
-        # only the successful-render path may commit it.
-        self.db.rollback()
-        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
+        self.assertEqual(self.db.query(GroupSelectionStateDB).count(), 0)
 
     def test_failed_group_render_does_not_commit_rotation_state(self):
         domain = DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
         signature = self._add_versioned_signature(
-            "Broken group member", "AUTO", "<p>{% if %}</p>"
+            "Broken group member", "<p>{% if %}</p>"
         )
         group = SignatureGroupDB(
             id=uuid.uuid4().hex,
@@ -550,15 +456,15 @@ class SignatureEngineServiceTests(unittest.TestCase):
 
     def test_unavailable_versioned_asset_returns_stable_engine_error(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
-        self._add_versioned_signature(
-            "Professional", "PROFESSIONAL", "<p>Not available</p>"
+        signature = self._add_versioned_signature(
+            "Unavailable", "<p>Not available</p>"
         )
-        signature = self.db.query(SignatureDB).one()
-        self.db.add(SignatureVariantDB(
+        self.db.add(SignatureRuleDB(
             id=uuid.uuid4().hex,
+            name="Unavailable signature rule",
+            priority=10,
+            action_mode="SIGNATURE",
             signature_id=signature.id,
-            pool_name="PROFESSIONAL",
-            weight=1,
             is_enabled=True,
         ))
         self.db.commit()
@@ -570,7 +476,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
             asyncio.run(
                 service.resolve(
                     self.db,
-                    normalize_engine_request("ada@example.org", "PROFESSIONAL"),
+                    normalize_engine_request("ada@example.org"),
                 )
             )
 
