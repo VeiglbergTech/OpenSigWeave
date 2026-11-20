@@ -299,52 +299,58 @@ async function main() {
       && response.status() === 201
     );
 
-    // 1) Use Chromium's native mouse-driven HTML5 drag sequence with an actual
-    // File in DataTransfer, rather than dispatching synthetic drop events. This
-    // exercises CKEditor's real dragenter/dragover/drop handling as closely as
-    // Playwright can emulate an external file manager in a headless browser.
-    await page.evaluate(fixture => {
-      const source = document.createElement("div");
-      source.id = "signature-native-file-drag-fixture";
-      source.draggable = true;
-      source.textContent = "Drag image file";
-      source.style.cssText =
-        "position:fixed;left:12px;top:12px;width:120px;height:36px;" +
-        "z-index:2147483647;background:#fff;color:#000";
-      source.addEventListener("dragstart", event => {
-        window.__signatureNativeDragStartTrusted = event.isTrusted;
-        const bytes = Uint8Array.from(atob(fixture.base64), character => character.charCodeAt(0));
-        event.dataTransfer.items.add(new File([bytes], fixture.name, { type: fixture.type }));
-        event.dataTransfer.effectAllowed = "copy";
-      });
-      document.querySelector("#signature-template-editor .ck-editor__editable")
-        .addEventListener("drop", event => {
-          window.__signatureNativeFileDrop = {
-            isTrusted: event.isTrusted,
-            fileNames: Array.from(event.dataTransfer.files, file => file.name),
-          };
-        }, { capture: true, once: true });
-      document.body.appendChild(source);
-    }, imageFixtures.png);
-    const dragUpload = waitForImageUpload();
-    // Prevent an unhandled pending response wait from masking the real error
-    // if the native drag assertion fails and the browser is closed.
-    void dragUpload.catch(() => {});
-    await page.locator("#signature-native-file-drag-fixture").dragTo(signatureEditEditor, {
-      targetPosition: { x: 80, y: 40 },
+    // 1) Emulate an external file-manager drop through Chromium's drag protocol.
+    // Browsers deliberately strip script-injected Files from a DOM-source drag,
+    // so dragTo() cannot test a real external file drop. CDP dispatches trusted
+    // OS-style drag events containing the on-disk PNG file instead.
+    const dragFixtureDirectory = fs.mkdtempSync("/tmp/opensigweave-file-drop-");
+    const dragFixturePath = dragFixtureDirectory + "/" + imageFixtures.png.name;
+    fs.writeFileSync(dragFixturePath, Buffer.from(imageFixtures.png.base64, "base64"));
+    await signatureEditEditor.evaluate(element => {
+      element.addEventListener("drop", event => {
+        window.__signatureNativeFileDrop = {
+          isTrusted: event.isTrusted,
+          fileNames: Array.from(event.dataTransfer.files, file => file.name),
+        };
+      }, { capture: true, once: true });
     });
-    const nativeDrop = await page.evaluate(() => ({
-      startTrusted: window.__signatureNativeDragStartTrusted,
-      drop: window.__signatureNativeFileDrop,
-    }));
-    await page.locator("#signature-native-file-drag-fixture").evaluate(element => element.remove());
-    process.stdout.write("Native image drag observation: " + JSON.stringify(nativeDrop) + "\\n");
-    assert.equal(nativeDrop.startTrusted, true, "browser must dispatch a trusted dragstart event");
-    assert.equal(nativeDrop.drop?.isTrusted, true, "browser must dispatch a trusted file drop event");
-    assert.deepEqual(nativeDrop.drop.fileNames, [imageFixtures.png.name],
-      "native file drop must deliver the PNG File to the CKEditor surface");
-    const dragUploadResponse = await dragUpload;
-    const dragAssetPath = (await dragUploadResponse.json()).url;
+    const dropBounds = await signatureEditEditor.boundingBox();
+    assert.ok(dropBounds, "signature editor must have a visible drop surface");
+    const dragPoint = {
+      x: Math.round(dropBounds.x + Math.min(80, dropBounds.width / 2)),
+      y: Math.round(dropBounds.y + Math.min(40, dropBounds.height / 2)),
+    };
+    const dragData = {
+      items: [],
+      files: [dragFixturePath],
+      dragOperationsMask: 1, // copy
+    };
+    const dragClient = await page.context().newCDPSession(page);
+    let dragAssetPath;
+    try {
+      const dragUpload = waitForImageUpload();
+      // Retain the response waiter without masking a native-drop assertion.
+      void dragUpload.catch(() => {});
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "dragEnter", ...dragPoint, data: dragData,
+      });
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "dragOver", ...dragPoint, data: dragData,
+      });
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "drop", ...dragPoint, data: dragData,
+      });
+      const nativeDrop = await page.evaluate(() => window.__signatureNativeFileDrop);
+      assert.equal(nativeDrop?.isTrusted, true,
+        "OS-style file drop must reach CKEditor as a browser-trusted drop");
+      assert.deepEqual(nativeDrop.fileNames, [imageFixtures.png.name],
+        "OS-style file drop must deliver the real PNG file to CKEditor");
+      const dragUploadResponse = await dragUpload;
+      dragAssetPath = (await dragUploadResponse.json()).url;
+    } finally {
+      await dragClient.detach();
+      fs.rmSync(dragFixtureDirectory, { recursive: true, force: true });
+    }
     await page.waitForFunction(path =>
       document.querySelector("#signature-html-source").value.includes(path), dragAssetPath);
     await signatureEditEditor.click();
