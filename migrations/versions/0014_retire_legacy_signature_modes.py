@@ -142,6 +142,38 @@ def upgrade() -> None:
         )
     )
 
+    # Earlier migrations created one generated group per historical pool even on
+    # a fresh database. Remove only those generated groups that are truly empty
+    # and unreferenced so new installations expose no compatibility artifacts.
+    for pool_name, _ordinal in LEGACY_POOLS:
+        group_id = _group_id(pool_name)
+        has_members = connection.execute(
+            sa.text("SELECT 1 FROM signature_group_members WHERE group_id = :id LIMIT 1"),
+            {"id": group_id},
+        ).first()
+        has_rules = connection.execute(
+            sa.text("SELECT 1 FROM signature_rules WHERE group_id = :id LIMIT 1"),
+            {"id": group_id},
+        ).first()
+        has_schedules = connection.execute(
+            sa.text("SELECT 1 FROM signature_schedules WHERE group_id = :id LIMIT 1"),
+            {"id": group_id},
+        ).first()
+        if has_members or has_rules or has_schedules:
+            continue
+        connection.execute(
+            sa.text("DELETE FROM signature_group_domains WHERE group_id = :id"),
+            {"id": group_id},
+        )
+        connection.execute(
+            sa.text("DELETE FROM group_selection_state WHERE group_id = :id"),
+            {"id": group_id},
+        )
+        connection.execute(
+            sa.text("DELETE FROM signature_groups WHERE id = :id"),
+            {"id": group_id},
+        )
+
 
 def downgrade() -> None:
     connection = op.get_bind()
