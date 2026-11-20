@@ -1,10 +1,10 @@
 # Signature groups: target design
 
-**Status:** Backend, administrator API/UI, rule selection, stable-principal rotation and group placeholders are implemented on the development branch. Existing AUTO / PROFESSIONAL / INTERNAL / NONE behavior remains available for compatibility. The migrations create reusable legacy groups from existing variants without rewriting existing rules.
+**Status:** Implemented. Signature groups are the reusable weighted selection pool; the hard-coded legacy mode model has been retired from runtime, API and UI. Historical database structures remain only for safe upgrades and rollback compatibility.
 
 ## 1. Why groups
 
-The current model couples a signature's identity to a fixed engine mode. That prevents administrators from creating arbitrary reusable pools and makes rule behavior depend on a small hard-coded set of modes.
+The previous model coupled a signature's identity to a fixed engine selector. The implemented group model removes that coupling: signatures are reusable templates and groups own weighted selection.
 
 A signature group should be the selection pool. The group owns the selection policy; signatures remain reusable HTML templates.
 
@@ -30,7 +30,7 @@ A signature may belong to multiple groups. A group may contain multiple signatur
 
 ### Selection state
 
-Selection history is keyed by a stable principal identifier and group ID, not by email address and a mode string. Email address is mutable and can change during a rename or domain migration.
+Selection history is keyed by a stable principal identifier and group ID, not by email address or a fixed selector. Email address is mutable and can change during a rename or domain migration.
 
 The principal identifier must be namespaced by the identity source:
 - Authentik: provider ID plus immutable user pk/UUID, not email.
@@ -61,7 +61,7 @@ A rule action should become one of:
 
 Rules continue to use priority ordering and AND-combined sender/domain/group/claim/attribute conditions. The group reference is a foreign key and must be validated when creating or editing a rule.
 
-The old mode actions remain readable during the compatibility period. They must be migrated to generated legacy groups before the new resolver becomes the default.
+Installed legacy rule actions are converted by migration `0014_retire_legacy_signature_modes` to ordinary generated groups before the current resolver runs.
 
 ## 5. Template tags
 
@@ -81,19 +81,7 @@ Preview must not advance production rotation state. It should accept an explicit
 
 ## 7. Migration and compatibility
 
-The migration must be additive and preserve existing IDs, HTML files, versions, hashes and rule ordering.
-
-1. Create group and group-membership tables.
-2. Create one generated legacy group for each existing mode pool (AUTO, PROFESSIONAL, INTERNAL).
-3. Add each existing signature to the matching generated group. Preserve its current variant weight and enabled state as membership metadata.
-4. Preserve NONE as a rule action; it does not become a group.
-5. Add a nullable group reference to rules and populate it for legacy mode rules.
-6. Keep old mode columns and variant rows during the compatibility release. Do not delete or rewrite signature files.
-7. Add stable identity IDs to provider attribute results and their cache. Backfill only where a trustworthy immutable provider ID can be retrieved; never infer it from email.
-8. Run old and new selection in isolated tests, then switch the engine to group selection behind an explicit feature flag.
-9. Remove legacy mode storage only in a later migration after compatibility and rollback windows have passed.
-
-Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `0011` creates `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing weighted variants while leaving existing rules and signature assets untouched. The populated legacy fixture verifies aggregation of multiple variants, disabled-only members, all three generated groups and preservation of existing rule action, group reference and priority.
+Migration is intentionally additive. Earlier migrations and the historical mode/variant tables are kept so existing installations can upgrade without losing IDs, HTML versions, weights or rollback data. Migration `0014_retire_legacy_signature_modes` reconstructs/uses compatibility groups from historical variant rows, rewrites old pooled rules to `GROUP`, and neutralizes the retained signature metadata field to `UNUSED`. Normal API, UI, scheduling, rules and engine paths do not consume the historical fields afterward.
 
 ## 8. Acceptance criteria
 
@@ -106,4 +94,4 @@ Migrations `0009`–`0011` are tested against PostgreSQL and SQLite. Migration `
 - Concurrent messages cannot race rotation state.
 - Preview does not mutate production rotation state.
 - Existing signature HTML, versions, IDs and current production behavior survive migration.
-- Group CRUD, membership, group rules, weighted no-repeat selection, stable principal validation, repeated group placeholders and the Rspamd engine path are covered by API/repository tests. The 12-worker PostgreSQL concurrency stress tests for both variant and group selection passed against PostgreSQL 17 in CI on 2026-11-14. Chromium/Playwright now also covers group creation, rename, membership weight updates, GROUP rule creation/update/deletion, and group deletion in the administration UI; live identity-provider group synchronization remains external acceptance work.
+- Group CRUD, membership, group rules, weighted no-repeat selection, stable principal validation, repeated group placeholders and the Rspamd engine path are covered by API/repository tests. The PostgreSQL concurrency stress test covers transactional group selection. Chromium/Playwright now also covers group creation, rename, membership weight updates, GROUP rule creation/update/deletion, and group deletion in the administration UI; live identity-provider group synchronization remains external acceptance work.
