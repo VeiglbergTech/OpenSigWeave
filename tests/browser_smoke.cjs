@@ -244,37 +244,187 @@ async function main() {
       element === document.activeElement || element.contains(document.activeElement)
     ), true, "clicking the signature editor must focus the editor instead of version history");
 
-    // Exercise the real CKEditor drag-and-drop upload path, not only the backend endpoint.
-    const imageTransfer = await page.evaluateHandle(() => {
-      const binary = atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl+N8sAAAAASUVORK5CYII=");
-      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([bytes], "browser-smoke-pixel.png", { type: "image/png" }));
-      return transfer;
-    });
-    const editorImageUpload = page.waitForResponse(response =>
+    // Exercise the real CKEditor upload paths, not only the backend endpoint.
+    // These fixtures are valid 1x1 images so Chromium and CKEditor both process them as images.
+    const imageFixtures = {
+      png: {
+        name: "browser-smoke-drag.png",
+        type: "image/png",
+        base64: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC",
+      },
+      jpeg: {
+        name: "browser-smoke-paste.jpg",
+        type: "image/jpeg",
+        base64: "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDi6KKK+ZP3E//Z",
+      },
+      webp: {
+        name: "browser-smoke-toolbar.webp",
+        type: "image/webp",
+        base64: "UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoBAAEAAUAmJaACdLoB+AADsAD+8ut//NgVzXPv9//S4P0uD9Lg/9KQAAA=",
+      },
+    };
+    const waitForImageUpload = () => page.waitForResponse(response =>
       response.request().method() === "POST"
       && response.url().endsWith("/api/admin/signature-assets")
       && response.status() === 201
     );
+
+    // 1) External-file style drag and drop into the editable surface.
+    const imageTransfer = await page.evaluateHandle(fixture => {
+      const binary = atob(fixture.base64);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], fixture.name, { type: fixture.type }));
+      return transfer;
+    }, imageFixtures.png);
+    const dragUpload = waitForImageUpload();
     await signatureEditEditor.dispatchEvent("dragenter", { dataTransfer: imageTransfer });
     await signatureEditEditor.dispatchEvent("dragover", { dataTransfer: imageTransfer });
     await signatureEditEditor.dispatchEvent("drop", { dataTransfer: imageTransfer });
-    await editorImageUpload;
-    await signatureEditEditor.locator('img[src*="/signature-assets/"]').waitFor();
-    await page.waitForFunction(() =>
-      document.querySelector("#signature-html-source").value.includes("/signature-assets/")
-    );
+    const dragUploadResponse = await dragUpload;
+    const dragAssetPath = (await dragUploadResponse.json()).url;
     await imageTransfer.dispose();
 
-    await signatureEditEditor.fill("Browser smoke version 2");
+    // 2) Clipboard image paste. CKEditor routes clipboard image files through the same upload adapter.
+    const pasteUpload = waitForImageUpload();
+    await signatureEditEditor.evaluate((element, fixture) => {
+      const binary = atob(fixture.base64);
+      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([bytes], fixture.name, { type: fixture.type }));
+      element.dispatchEvent(new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: transfer,
+      }));
+    }, imageFixtures.jpeg);
+    const pasteUploadResponse = await pasteUpload;
+    const pasteAssetPath = (await pasteUploadResponse.json()).url;
+
+    // 3) The normal CKEditor upload-image control. Set the control's native file input
+    // directly so the test remains stable even when the toolbar groups buttons responsively.
+    const toolbarImageControl = signaturePanel.locator("#signature-template-editor .ck-file-dialog-button").first();
+    await toolbarImageControl.waitFor({ state: "attached" });
+    const toolbarImageInput = toolbarImageControl.locator('input[type="file"]');
+    assert.equal(await toolbarImageInput.count(), 1, "CKEditor upload-image control must expose one file input");
+    const toolbarUpload = waitForImageUpload();
+    await toolbarImageInput.setInputFiles({
+      name: imageFixtures.webp.name,
+      mimeType: imageFixtures.webp.type,
+      buffer: Buffer.from(imageFixtures.webp.base64, "base64"),
+    });
+    const toolbarUploadResponse = await toolbarUpload;
+    const toolbarAssetPath = (await toolbarUploadResponse.json()).url;
+
+    const assetPaths = [dragAssetPath, pasteAssetPath, toolbarAssetPath];
+    assert.equal(new Set(assetPaths).size, 3, "three distinct images must produce three asset URLs");
+    await signatureEditEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
+    assert.equal(await signatureEditEditor.locator('img[src*="/signature-assets/"]').count(), 3,
+      "drag, paste and toolbar upload must all insert images into the signature");
+
+    await page.waitForFunction(paths => {
+      const value = document.querySelector("#signature-html-source").value;
+      return paths.every(path => value.includes(path));
+    }, assetPaths);
+    const uploadedSourceHtml = await signaturePanel.locator("#signature-html-source").inputValue();
+    for (const assetPath of assetPaths) {
+      assert.match(assetPath, /^\/signature-assets\/[0-9a-f]{64}\.(?:png|jpg|webp)$/);
+      assert.ok(uploadedSourceHtml.includes(baseURL + assetPath),
+        "saved editor HTML must use an absolute OpenSigWeave asset URL: " + assetPath);
+    }
+    assert.doesNotMatch(uploadedSourceHtml, /src=["'](?:data:|blob:)/i,
+      "signature HTML must not persist data: or blob: image URLs");
+
+    // Save the image-bearing HTML as version 2 and then reopen it from storage.
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Signature"));
       return row && row.children[2].textContent.trim() === "2";
     });
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    const persistedImageEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
+    await persistedImageEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
+    const persistedImageSrcs = await persistedImageEditor.locator('img[src*="/signature-assets/"]').evaluateAll(
+      images => images.map(image => image.getAttribute("src"))
+    );
+    assert.equal(persistedImageSrcs.length, 3, "all uploaded images must survive save and reopen");
+    for (const src of persistedImageSrcs) {
+      assert.ok(src.startsWith(baseURL + "/signature-assets/"), "persisted image URL must remain absolute");
+      assert.doesNotMatch(src, /^(?:data:|blob:)/i);
+    }
 
+    // Mail clients do not have an administrator session, so every persisted asset must
+    // remain fetchable from an anonymous browser context.
+    const anonymousContext = await browser.newContext();
+    try {
+      const anonymousPage = await anonymousContext.newPage();
+      for (const src of persistedImageSrcs) {
+        const response = await anonymousPage.request.get(src);
+        assert.equal(response.status(), 200, "signature asset must be public without an admin session");
+        assert.match(response.headers()["content-type"] || "", /^image\/(?:png|jpeg|webp)$/);
+        assert.match(response.headers()["cache-control"] || "", /public/);
+      }
+    } finally {
+      await anonymousContext.close();
+    }
+
+    const csrfToken = await page.locator("body").getAttribute("data-csrf-token");
+    assert.ok(csrfToken, "administrator page must expose a CSRF token");
+    const signatureCatalog = await (await page.request.get(baseURL + "/api/admin/signatures")).json();
+    const imageSignature = signatureCatalog.find(item => item.name === "Browser Smoke Signature");
+    assert.ok(imageSignature, "image-bearing signature must exist in the catalog");
+
+    // A second signature may reuse an immutable asset. Removing image references from
+    // the first signature must never delete that shared file.
+    const sharedCreateResponse = await page.request.post(baseURL + "/api/admin/signatures", {
+      headers: { "X-CSRF-Token": csrfToken },
+      data: {
+        name: "Browser Smoke Shared Asset",
+        domain_ids: [],
+        is_active: true,
+        html_content: '<p>Shared asset <img src="' + persistedImageSrcs[0] + '" alt="Shared asset"></p>',
+      },
+    });
+    assert.equal(sharedCreateResponse.status(), 201, await sharedCreateResponse.text());
+    const sharedSignature = await sharedCreateResponse.json();
+
+    await persistedImageEditor.fill("Browser smoke version 3 without image references");
+    await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await page.waitForFunction(() => {
+      const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
+        .find(item => item.textContent.includes("Browser Smoke Signature"));
+      return row && row.children[2].textContent.trim() === "3";
+    });
+
+    const stillPublic = await page.request.get(persistedImageSrcs[0]);
+    assert.equal(stillPublic.status(), 200,
+      "removing an image reference must not delete an immutable shared asset");
+    const sharedVersionResponse = await page.request.get(
+      baseURL + "/api/admin/signatures/" + encodeURIComponent(sharedSignature.id)
+      + "/versions/" + encodeURIComponent(sharedSignature.version_id)
+    );
+    assert.equal(sharedVersionResponse.status(), 200);
+    assert.ok((await sharedVersionResponse.json()).html_content.includes(persistedImageSrcs[0]),
+      "another signature must keep its shared image reference intact");
+
+    // Older versions must still render their images after a newer version removes them.
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    const historicalEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
+    const historicalVersionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
+    assert.equal(await historicalVersionSelector.locator("option").count(), 3,
+      "signature must expose all three stored versions");
+    const versionTwoId = await historicalVersionSelector.locator("option").evaluateAll(options => {
+      const option = options.find(item => (item.textContent || "").trim().startsWith("v2"));
+      return option ? option.value : "";
+    });
+    assert.ok(versionTwoId, "image-bearing version 2 must remain available");
+    await historicalVersionSelector.selectOption(versionTwoId);
+    await historicalEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
+    assert.equal(await historicalEditor.locator('img[src*="/signature-assets/"]').count(), 3,
+      "historical image-bearing version must still display all uploaded images");
+
+    checkpoint("signature image upload/persistence: complete");
     checkpoint("signature create/update: complete");
 
     // Re-open the signature and exercise immutable history, historical preview and restore.
