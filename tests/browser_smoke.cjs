@@ -573,7 +573,9 @@ async function main() {
 
     const loginProviderSelect = domainRow.locator("select").nth(1);
     await page.waitForFunction(() => {
-      const select = document.querySelector('[x-data="domainManager"] tbody tr select:nth-of-type(2)');
+      const row = [...document.querySelectorAll('[x-data="domainManager"] tbody tr')]
+        .find(item => item.textContent.includes("browser-smoke-domain.test"));
+      const select = row ? row.querySelectorAll("select")[1] : null;
       return select && [...select.options].some(option => option.value === "browser-smoke-login-provider");
     });
     const loginProviderAssignmentResponse = page.waitForResponse(response =>
