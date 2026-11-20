@@ -17,6 +17,9 @@ COMPATIBILITY_FILES = {
     "migrations/versions/0011_legacy_signature_groups.py",
     "migrations/versions/0014_retire_signature_modes.py",
     "tests/test_migration_compatibility.py",
+    # Adversarial Postfix tests intentionally inject retired values to ensure
+    # client-controlled legacy selector headers are ignored and stripped.
+    ".github/workflows/postfix-milter-compat.yml",
 }
 TEXT_SUFFIXES = {
     ".py", ".lua", ".js", ".cjs", ".html", ".md", ".yml", ".yaml",
@@ -73,7 +76,7 @@ class LegacyModeRetirementTests(unittest.TestCase):
     def test_retired_mode_tokens_only_remain_in_explicit_migration_compatibility(self):
         offenders = []
         for path in ROOT.rglob("*"):
-            if not path.is_file() or ".git" in path.parts or path.suffix not in TEXT_SUFFIXES:
+            if not path.is_file() or any(part in {".git", "node_modules", ".venv", "venv"} for part in path.parts) or path.suffix not in TEXT_SUFFIXES:
                 continue
             relative = path.relative_to(ROOT).as_posix()
             if relative in COMPATIBILITY_FILES or relative == "tests/test_legacy_mode_retirement.py":
