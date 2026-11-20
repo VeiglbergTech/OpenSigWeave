@@ -255,7 +255,7 @@ class SchedulingTests(unittest.TestCase):
         # Rspamd's legacy endpoint is an alias of the identical live service, not
         # a separately cached implementation.
         routes = {route.path: route.endpoint for route in main.app.routes
-                  if getattr(route, "path", None)}
+                  if getattr(route, "endpoint", None) is not None}
         self.assertIs(routes["/api/signature/{email}"],
                       routes["/api/v1/engine/signatures/{email}"])
         rspamd_lua = (Path(__file__).resolve().parents[1] /
