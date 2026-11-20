@@ -277,6 +277,83 @@ async function main() {
 
     checkpoint("signature create/update: complete");
 
+    // Re-open the signature and exercise immutable history, historical preview and restore.
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 2
+    );
+    assert.equal(await versionSelector.locator("option").count(), 2,
+      "saving changed HTML must append version 2 instead of replacing version 1");
+    await signatureDialog.getByText("Current version:", { exact: false }).waitFor();
+    assert.match(await signatureDialog.getByText("Current version:", { exact: false }).innerText(), /v2/,
+      "the current signature version must be clearly identified");
+
+    const versionOneOption = versionSelector.locator("option").filter({ hasText: /^v1(?:\s|·|$)/ }).first();
+    const versionOneId = await versionOneOption.getAttribute("value");
+    assert.ok(versionOneId, "version 1 must remain selectable after creating version 2");
+    await versionSelector.selectOption(versionOneId);
+    await page.waitForFunction(() =>
+      document.querySelector("#signature-template-editor .ck-editor__editable")?.innerHTML.includes("Browser smoke version 1")
+    );
+    assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
+      "selecting an old version must load its immutable HTML snapshot");
+    await signatureDialog.getByText("You are viewing", { exact: false }).waitFor();
+    assert.match(await signatureDialog.getByText("You are viewing", { exact: false }).innerText(), /current version remains\s+v2/i,
+      "previewing an old version must state that the current version is unchanged");
+
+    let versionHistory = await (await page.request.get(
+      baseURL + "/api/admin/signatures/" + encodeURIComponent((await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+        .find(item => item.name === "Browser Smoke Signature").id) + "/versions"
+    )).json();
+    assert.deepEqual(versionHistory.map(item => item.version_number), [2, 1]);
+    assert.deepEqual(versionHistory.map(item => item.is_current), [true, false],
+      "previewing version 1 must not change the current version");
+
+    const restoreResponse = page.waitForResponse(response =>
+      response.request().method() === "POST"
+      && response.url().endsWith("/versions/" + versionOneId + "/restore")
+      && response.status() === 201
+    );
+    await signatureDialog.getByRole("button", { name: "Restore selected version", exact: true }).click();
+    await restoreResponse;
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 3
+    );
+    assert.equal(await versionSelector.locator("option").count(), 3,
+      "restoring version 1 must create version 3 and retain versions 1 and 2");
+    assert.match(await signatureDialog.getByText("Current version:", { exact: false }).innerText(), /v3/,
+      "restored snapshot must become a new current version");
+    assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
+      "restored version 3 must contain the selected historical snapshot");
+
+    const restoredSignatureRecord = (await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+      .find(item => item.name === "Browser Smoke Signature");
+    versionHistory = await (await page.request.get(
+      baseURL + "/api/admin/signatures/" + encodeURIComponent(restoredSignatureRecord.id) + "/versions"
+    )).json();
+    assert.deepEqual(versionHistory.map(item => item.version_number), [3, 2, 1]);
+    assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false]);
+
+    await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await page.reload();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    const reloadedSignatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
+    await reloadedSignatureRow.waitFor();
+    await reloadedSignatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 3
+    );
+    assert.equal(await versionSelector.locator("option").count(), 3,
+      "signature version history must survive a full page reload");
+    assert.match(await signatureDialog.getByText("Current version:", { exact: false }).innerText(), /v3/,
+      "the current version marker must survive a full page reload");
+    assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
+      "re-opening after reload must load the restored current snapshot");
+    await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    checkpoint("signature version history/restore: complete");
+
     // Exercise scheduling create/update/delete through the real administrator UI.
     await page.getByRole("button", { name: "Scheduling", exact: true }).click();
     const schedulePanel = page.locator('[x-data="scheduleManager"]');
