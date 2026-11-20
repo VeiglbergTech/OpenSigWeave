@@ -462,6 +462,9 @@ async function main() {
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
     const historicalEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     const historicalVersionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 3
+    );
     assert.equal(await historicalVersionSelector.locator("option").count(), 3,
       "signature must expose all three stored versions");
     const versionTwoId = await historicalVersionSelector.locator("option").evaluateAll(options => {
