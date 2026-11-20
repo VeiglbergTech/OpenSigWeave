@@ -125,7 +125,10 @@ local function remove_outlook_mode_markers(html)
 end
 
 local function find_signature_text_marker(task, is_reply)
-    local found = {}
+    local unique_markers = {}
+    local unique_count = 0
+    local total_found = 0
+    local duplicate_within_part = false
     local marker_prefix_found = false
     local parts = task:get_text_parts() or {}
     for _, part in ipairs(parts) do
@@ -144,21 +147,38 @@ local function find_signature_text_marker(task, is_reply)
                 -- HTML clients may encode angle brackets in text nodes.
                 current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
                 if current:find("<%-%-%-%[") then marker_prefix_found = true end
+                local part_found = 0
                 for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->") do
-                    found[#found + 1] = { name = name, code = code }
+                    part_found = part_found + 1
+                    total_found = total_found + 1
+                    -- multipart/alternative normally contains the same visible
+                    -- marker once in text/plain and once in text/html. Treat
+                    -- those as one selector, while still rejecting two markers
+                    -- in the same representation or conflicting selectors.
+                    local key = name .. "\0" .. code
+                    if not unique_markers[key] then
+                        unique_markers[key] = { name = name, code = code }
+                        unique_count = unique_count + 1
+                    end
                 end
+                if part_found > 1 then duplicate_within_part = true end
             end
         end
     end
-    if #found == 0 then
+    if total_found == 0 then
         if marker_prefix_found then return { cleanup = true, valid = false, name = "", code = "" } end
         return nil
     end
-    local marker = found[1]
+    local marker = nil
+    for _, item in pairs(unique_markers) do
+        marker = item
+        break
+    end
     marker.raw = "<---[" .. marker.name .. "]--[" .. marker.code .. "]--->"
     marker.cleanup = true
-    marker.cleanup_all = #found > 1
-    marker.valid = #found == 1 and marker.name ~= "" and #marker.name <= 255
+    marker.cleanup_all = total_found > 1
+    marker.valid = unique_count == 1 and not duplicate_within_part
+        and marker.name ~= "" and #marker.name <= 255
         and #marker.code == 4 and marker.code:match("^[%w][%w][%w][%w]$") ~= nil
     if not marker.valid then
         -- Send an explicitly invalid selector so AUTO cannot silently bypass a malformed marker.
