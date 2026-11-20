@@ -81,7 +81,7 @@ Preview must not advance production rotation state. It should accept an explicit
 
 ## 7. Migration and compatibility
 
-Migration is intentionally additive. Earlier migrations and the historical mode/variant tables are kept so existing installations can upgrade without losing IDs, HTML versions, weights or rollback data. Migration `0014_retire_signature_modes` reconstructs/uses compatibility groups from historical variant rows, rewrites old pooled rules to `GROUP`, and neutralizes the retained signature metadata field to `UNUSED`. Normal API, UI, scheduling, rules and engine paths do not consume the historical fields afterward.
+Migration is intentionally additive. Earlier migrations and the historical mode/variant tables are kept so existing installations can upgrade without losing IDs, HTML versions, weights or rollback data. Migration `0014_retire_signature_modes` reconstructs/uses compatibility groups from historical variant rows, rewrites old pooled rules to `GROUP`, and neutralizes the retained signature metadata field to `UNUSED`. Empty generated groups are removed only if they have no memberships, rules, schedules **or administrator-assigned domain scopes**. Normal API, UI, scheduling, rules and engine paths do not consume the historical fields afterward. Compatibility-only stripping of deprecated email headers/HTML markers prevents stale selectors from leaking into outgoing messages; it does not reactivate old selection behavior.
 
 ## 8. Acceptance criteria
 
