@@ -18,8 +18,12 @@ local function parse_headers(raw)
         local raw_value = value:sub(#separator + 1)
         current = {
           name = name,
-          raw = raw_value,
+          -- Match real Rspamd FULL-header semantics: raw is the complete field.
+          raw = name .. ':' .. separator .. raw_value,
           value = raw_value,
+          decoded = raw_value,
+          tab_separated = separator == '\t',
+          empty_separator = separator == '',
           separator = separator,
         }
         out[#out + 1] = current
