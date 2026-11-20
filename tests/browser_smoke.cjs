@@ -241,7 +241,7 @@ async function main() {
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Signature"));
-      return row && row.children[3].textContent.trim() === "2";
+      return row && row.children[2].textContent.trim() === "2";
     });
 
     checkpoint("signature create/update: complete");
