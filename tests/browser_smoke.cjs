@@ -835,8 +835,39 @@ async function main() {
       "https://signatures.example.org/auth/browser-smoke-login-provider");
     assert.equal(await reloadedOidcFields.getByLabel("OIDC client secret").inputValue(), "",
       "saved OIDC secrets must remain write-only in the browser");
-    await reloadedSsoDialog.press("Escape");
-    await reloadedSsoDialog.waitFor({ state: "hidden" });
+
+    // Updating an existing OIDC provider intentionally leaves the write-only
+    // client-secret input blank. The existing credential must be retained before
+    // validation while changed non-secret settings persist across another reload.
+    await reloadedOidcFields.getByLabel("OIDC scopes").fill("openid email profile groups offline_access");
+    const updateSsoProvider = page.waitForResponse(response =>
+      response.request().method() === "PUT"
+      && response.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
+      && response.status() === 200
+    );
+    await reloadedSsoDialog.getByRole("button", { name: "Save", exact: true }).click();
+    await updateSsoProvider;
+    await page.reload();
+    await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
+
+    const updatedProviders = await (await page.request.get(baseURL + "/api/admin/identity-providers")).json();
+    const updatedSsoProvider = updatedProviders.find(item => item.id === "browser-smoke-login-provider");
+    assert.ok(updatedSsoProvider, "updated OIDC provider must still exist after reload");
+    assert.equal(updatedSsoProvider.settings.OIDC_SCOPES, "openid email profile groups offline_access",
+      "OIDC settings edited with a blank secret field must persist");
+    const updatedSsoProviderRow = page.locator('[x-data="identityProviderManager"] tbody tr')
+      .filter({ hasText: "Browser Smoke Login Provider" });
+    await updatedSsoProviderRow.getByRole("button", { name: "Edit", exact: true }).click();
+    const updatedSsoDialog = page.locator('[x-data="identityProviderManager"] [x-show="editing"][role="dialog"]');
+    await updatedSsoDialog.waitFor({ state: "visible" });
+    const updatedOidcFields = updatedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    await updatedOidcFields.waitFor({ state: "visible" });
+    assert.equal(await updatedOidcFields.getByLabel("OIDC scopes").inputValue(),
+      "openid email profile groups offline_access");
+    assert.equal(await updatedOidcFields.getByLabel("OIDC client secret").inputValue(), "",
+      "OIDC client secret must remain write-only after update and reload");
+    await updatedSsoDialog.press("Escape");
+    await updatedSsoDialog.waitFor({ state: "hidden" });
 
     // Exercise the complete domain lifecycle through the administrator UI.
     await page.getByRole("button", { name: "Domains", exact: true }).click();
