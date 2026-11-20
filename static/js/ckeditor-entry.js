@@ -15,7 +15,9 @@ import {
     GeneralHtmlSupport,
     PasteFromOffice,
     BlockQuote,
-    HorizontalLine
+    HorizontalLine,
+    Image,
+    ImageUpload
 } from "ckeditor5";
 
 import "ckeditor5/ckeditor5.css";
@@ -37,5 +39,7 @@ window.CKEDITOR = {
     GeneralHtmlSupport,
     PasteFromOffice,
     BlockQuote,
-    HorizontalLine
+    HorizontalLine,
+    Image,
+    ImageUpload
 };

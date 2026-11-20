@@ -56,7 +56,7 @@ from core.branding import (
     decode_branding_data_url,
 )
 from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
-from signature_storage import SignatureFileStore, SignatureStorageError
+from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
@@ -368,6 +368,7 @@ app.add_middleware(
         # Branding uploads are base64-encoded in JSON; keep a bounded budget
         # above the combined validated binary logo/favicon limits.
         "/api/admin/branding": 2 * 1024 * 1024,
+        "/api/admin/signature-assets": MAX_SIGNATURE_IMAGE_BYTES,
         # MTA hooks carry the complete message, including MIME attachments.
         "/api/v1/adapters/stalwart/mta-hook": 20 * 1024 * 1024,
     },
@@ -412,6 +413,23 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/signature-assets/{asset_name}")
+def signature_asset(asset_name: str):
+    try:
+        path = signature_file_store.image_path(asset_name)
+    except SignatureStorageError:
+        raise HTTPException(status_code=404, detail="Signature image not found")
+    return FileResponse(
+        path,
+        media_type=signature_file_store.image_media_type(asset_name),
+        headers={
+            "Cache-Control": "public, max-age=31536000, immutable",
+            "Cross-Origin-Resource-Policy": "cross-origin",
+            "Content-Disposition": "inline",
+        },
+    )
 
 
 @app.get("/branding/logo.png")
@@ -546,6 +564,7 @@ def managed_oidc_client(provider_id: str):
         client_kwargs={"scope": config.get("OIDC_SCOPES", "openid email profile groups")},
     )
     return client.oidc, config
+
 
 
 # Keep callback diagnostics actionable without logging passwords, ID tokens,
@@ -1304,6 +1323,18 @@ async def apply_admin_import_endpoint(request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+@app.post("/api/admin/signature-assets", status_code=201)
+async def upload_signature_asset(request: Request):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    try:
+        filename = signature_file_store.write_image(await request.body(), content_type)
+    except (SignatureStorageError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"url": f"/signature-assets/{filename}"}
+
+
 @app.get("/api/admin/signatures")
 def list_signatures(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
@@ -1445,6 +1476,36 @@ def list_signature_versions(signature_id: str, request: Request, db: Session = D
         }
         for item in versions
     ]
+
+
+@app.get("/api/admin/signatures/{signature_id}/versions/{version_id}")
+def get_signature_version(
+    signature_id: str,
+    version_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    signature = db.get(SignatureDB, signature_id)
+    version = db.get(SignatureVersionDB, version_id)
+    if signature is None or version is None or version.signature_id != signature_id:
+        raise HTTPException(status_code=404, detail="Signature version not found")
+    try:
+        html_content = signature_file_store.read(
+            signature.name, uuid.UUID(hex=version.id), version.sha256
+        )
+    except (SignatureStorageError, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Signature version asset unavailable")
+    return {
+        "id": version.id,
+        "version_number": version.version_number,
+        "sha256": version.sha256,
+        "size_bytes": version.size_bytes,
+        "created_by": version.created_by,
+        "created_at": version.created_at,
+        "html_content": html_content,
+    }
 
 
 @app.post("/api/admin/signatures/{signature_id}/versions", status_code=201)

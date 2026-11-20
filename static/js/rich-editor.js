@@ -4,7 +4,7 @@
     const allowedPlugins = [
         "Essentials", "Paragraph", "Heading", "Bold", "Italic", "Underline",
         "Font", "Link", "List", "Alignment", "Table", "TableToolbar",
-        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine"
+        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine", "Image"
     ];
 
     // Keep the editor's General HTML Support aligned with the server sanitizer.
@@ -18,6 +18,58 @@
         "blockquote", "hr"
     ];
 
+    class SignatureImageUploadAdapter {
+        constructor(loader, config) {
+            this.loader = loader;
+            this.config = config || {};
+            this.xhr = null;
+        }
+
+        upload() {
+            return this.loader.file.then(file => new Promise((resolve, reject) => {
+                const xhr = this.xhr = new XMLHttpRequest();
+                xhr.open("POST", this.config.uploadUrl || "/api/admin/signature-assets", true);
+                xhr.responseType = "json";
+                xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+                const csrfToken = this.config.csrfToken || document.body.dataset.csrfToken || "";
+                if (csrfToken) xhr.setRequestHeader("X-CSRF-Token", csrfToken);
+                xhr.setRequestHeader("Accept", "application/json");
+
+                xhr.addEventListener("error", () => reject("Image upload failed."));
+                xhr.addEventListener("abort", () => reject());
+                xhr.addEventListener("load", () => {
+                    const response = xhr.response;
+                    if (xhr.status < 200 || xhr.status >= 300 || !response || !response.url) {
+                        const detail = response && response.detail ? response.detail : "Image upload failed.";
+                        reject(detail);
+                        return;
+                    }
+                    resolve({ default: new URL(response.url, window.location.origin).href });
+                });
+                if (xhr.upload) {
+                    xhr.upload.addEventListener("progress", event => {
+                        if (event.lengthComputable) {
+                            this.loader.uploadTotal = event.total;
+                            this.loader.uploaded = event.loaded;
+                        }
+                    });
+                }
+                xhr.send(file);
+            }));
+        }
+
+        abort() {
+            if (this.xhr) this.xhr.abort();
+        }
+    }
+
+    function signatureImageUploadPlugin(config) {
+        return function (editor) {
+            editor.plugins.get("FileRepository").createUploadAdapter = loader =>
+                new SignatureImageUploadAdapter(loader, config);
+        };
+    }
+
     async function create(element, options) {
         const config = options || {};
         const library = window.CKEDITOR;
@@ -25,17 +77,20 @@
             throw new Error("CKEditor 5 failed to load.");
         }
 
-        const plugins = allowedPlugins.map(name => library[name]).filter(Boolean);
-        const editor = await library.ClassicEditor.create(element, {
+        const pluginNames = config.imageUpload ? [...allowedPlugins, "ImageUpload"] : allowedPlugins;
+        const plugins = pluginNames.map(name => library[name]).filter(Boolean);
+        const toolbar = [
+            "undo", "redo", "|", "heading", "|",
+            "fontFamily", "fontSize", "fontColor", "fontBackgroundColor", "|",
+            "bold", "italic", "underline", "link", "|",
+            "bulletedList", "numberedList", "|", "alignment", "insertTable"
+        ];
+        if (config.imageUpload) toolbar.push("insertImage");
+        toolbar.push("|", "blockQuote", "horizontalLine");
+        const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar: [
-                "undo", "redo", "|", "heading", "|",
-                "fontFamily", "fontSize", "fontColor", "fontBackgroundColor", "|",
-                "bold", "italic", "underline", "link", "|",
-                "bulletedList", "numberedList", "|", "alignment", "insertTable", "|",
-                "blockQuote", "horizontalLine"
-            ],
+            toolbar,
             table: {
                 contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"]
             },
@@ -53,9 +108,14 @@
                 }]
             },
             link: { addTargetToExternalLinks: false },
+            image: { insert: { type: "inline" } },
             initialData: typeof config.initialData === "string" ? config.initialData : "",
             placeholder: config.placeholder || "Create your email signature…"
-        });
+        };
+        if (config.imageUpload) {
+            editorConfig.extraPlugins = [signatureImageUploadPlugin(config)];
+        }
+        const editor = await library.ClassicEditor.create(element, editorConfig);
 
         let onChange = typeof config.onChange === "function" ? config.onChange : null;
         editor.model.document.on("change:data", function () {
