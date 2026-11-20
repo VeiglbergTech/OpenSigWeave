@@ -19,12 +19,12 @@ class SignatureRuleTests(unittest.TestCase):
         )
 
     def test_higher_priority_rule_wins(self):
-        default = SignatureRule("default", 1, (), "AUTO")
+        default = SignatureRule("default", 1, (), "SIGNATURE")
         sales = SignatureRule(
             "sales",
             20,
             (RuleCondition("group_contains", "sales"),),
-            "PROFESSIONAL",
+            "GROUP",
         )
         self.assertEqual(evaluate_rules([default, sales], self.context), sales)
 
@@ -36,24 +36,24 @@ class SignatureRuleTests(unittest.TestCase):
                 RuleCondition("sender_equals", "alice@example.org"),
                 RuleCondition("claim_equals", "Sales", key="department"),
             ),
-            "PROFESSIONAL",
+            "GROUP",
         )
         mismatch = SignatureRule(
             "sender-engineering",
             100,
             (RuleCondition("claim_equals", "Engineering", key="department"),),
-            "INTERNAL",
+            "NONE",
         )
         self.assertEqual(evaluate_rules([mismatch, matching], self.context), matching)
 
     def test_disabled_rules_are_ignored(self):
         disabled = SignatureRule("disabled", 100, (), "NONE", enabled=False)
-        default = SignatureRule("default", 1, (), "AUTO")
+        default = SignatureRule("default", 1, (), "SIGNATURE")
         self.assertEqual(evaluate_rules([disabled, default], self.context), default)
 
     def test_equal_priorities_use_stable_rule_id_order(self):
-        second = SignatureRule("z-rule", 10, (), "INTERNAL")
-        first = SignatureRule("a-rule", 10, (), "PROFESSIONAL")
+        second = SignatureRule("z-rule", 10, (), "NONE")
+        first = SignatureRule("a-rule", 10, (), "GROUP")
         self.assertEqual(evaluate_rules([second, first], self.context), first)
 
 
@@ -62,7 +62,7 @@ class SignatureRuleTests(unittest.TestCase):
             "department-list",
             10,
             (RuleCondition("attribute_equals", "Sales", key="departments"),),
-            "PROFESSIONAL",
+            "GROUP",
         )
         self.assertEqual(evaluate_rules([rule], self.context), rule)
 
@@ -72,7 +72,7 @@ class SignatureRuleTests(unittest.TestCase):
             "active-user",
             10,
             (RuleCondition("claim_equals", "true", key="is_active"),),
-            "PROFESSIONAL",
+            "GROUP",
         )
         self.assertEqual(evaluate_rules([rule], self.context), rule)
 
@@ -81,7 +81,7 @@ class SignatureRuleTests(unittest.TestCase):
             "invalid",
             1,
             (RuleCondition("arbitrary_python", "x"),),
-            "AUTO",
+            "SIGNATURE",
         )
         with self.assertRaises(ValueError):
             evaluate_rules([invalid], self.context)
