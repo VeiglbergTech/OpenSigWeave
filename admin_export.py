@@ -26,14 +26,13 @@ from models import (
     SignatureGroupMemberDB,
     SignatureRuleDB,
     SignatureRuleConditionDB,
-    SignatureVariantDB,
     SignatureVersionDB,
 )
 from signature_storage import SignatureFileStore, SignatureStorageError
 
 
 EXPORT_FORMAT = "opensigweave-component-export"
-EXPORT_VERSION = 1
+EXPORT_VERSION = 2
 MAX_EXPORT_BYTES = 20 * 1024 * 1024
 ALLOWED_COMPONENTS = frozenset({
     "signatures", "domains", "rules", "groups", "identity_providers",
@@ -131,25 +130,15 @@ def build_admin_export(
                         "created_at": _timestamp(version.created_at),
                         "asset": asset,
                     })
-                variants = db.query(SignatureVariantDB).filter(
-                    SignatureVariantDB.signature_id == signature.id
-                ).order_by(SignatureVariantDB.pool_name.asc(), SignatureVariantDB.id.asc()).all()
                 exported.append({
                     "id": signature.id,
                     "name": signature.name,
                     "domain_id": signature.domain_id,
                     "domain_ids": domain_ids,
                     "scope": signature.scope,
-                    "mode": signature.mode,
                     "is_active": signature.is_active,
                     "created_at": _timestamp(signature.created_at),
                     "versions": version_items,
-                    "variants": [{
-                        "id": item.id,
-                        "pool_name": item.pool_name,
-                        "weight": item.weight,
-                        "is_enabled": item.is_enabled,
-                    } for item in variants],
                 })
             manifest["data"]["signatures"] = exported
 
