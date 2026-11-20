@@ -138,10 +138,12 @@ assert(reply.modified:find('OpenSigWeave Footer') < reply.modified:find('gmail_q
 
 local forward_content = '<html><body>Here is the requested message'
   .. '<div class="gmail_quote">----- Original Message -----</div></body></html>'
+response.inject_on_replies = false
 local forwarded=run_and_save(dir..'/flat_forward.eml',
   'text/html; charset=utf-8','7bit', forward_content, forward_content, true, '', 'forward')
 assert(forwarded.modified:find('OpenSigWeave Footer') < forwarded.modified:find('gmail_quote'),
   'signature must precede forwarded history')
+response.inject_on_replies = true
 
 local errtask, err = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 status=503
