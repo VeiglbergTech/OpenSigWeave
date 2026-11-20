@@ -30,7 +30,7 @@ load_dotenv()
 
 # Database infrastructure is isolated from the application models and routes.
 from database import get_db, SessionLocal
-from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVariantDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB, SignatureScheduleDB, BrandingSettingsDB
+from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB, SignatureScheduleDB, BrandingSettingsDB
 from rate_limiter import RateLimitMiddleware
 
 from signature_renderer import render_signature_template
@@ -40,7 +40,6 @@ from identity.attributes import IdentityAttributes
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB
 from core.group_selection_repository import get_group_preview_signature
-from core.modes import SignatureMode
 from core.slug import slugify
 from core.engine_contract import (
     SignatureEngineError,
@@ -55,7 +54,7 @@ from core.branding import (
     branding_context,
     decode_branding_data_url,
 )
-from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_variant, add_signature_version, create_signature, restore_signature_version, update_signature, update_signature_variant
+from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
@@ -204,16 +203,8 @@ class SignatureUpdateRequest(BaseModel):
     domain_ids: Optional[List[int]] = None
     is_active: bool = True
 
-class SignatureVariantUpdateRequest(BaseModel):
-    weight: int = Field(ge=1, le=1000)
-    is_enabled: bool
-
 class SignatureVersionCreateRequest(BaseModel):
     html_content: str = Field(min_length=1, max_length=65536)
-
-class SignatureVariantCreateRequest(BaseModel):
-    pool_name: Literal["AUTO", "PROFESSIONAL", "INTERNAL"]
-    weight: int = Field(default=1, ge=1, le=1000)
 
 class SignatureRuleConditionRequest(BaseModel):
     kind: Literal["sender_equals", "domain_equals", "group_contains", "claim_equals", "attribute_equals"]
@@ -1346,13 +1337,9 @@ def list_signatures(request: Request, db: Session = Depends(get_db)):
             "domain_id": item.domain_id,
             "domain_ids": [row.domain_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == item.id).order_by(SignatureDomainDB.domain_id).all()],
             "scope": item.scope,
-            "mode": item.mode,
             "is_active": item.is_active,
             "versions": db.query(SignatureVersionDB)
                 .filter(SignatureVersionDB.signature_id == item.id)
-                .count(),
-            "variants": db.query(SignatureVariantDB)
-                .filter(SignatureVariantDB.signature_id == item.id)
                 .count(),
         }
         for item in signatures
@@ -1369,15 +1356,13 @@ def create_signature_endpoint(
         raise HTTPException(status_code=403, detail="Admins only")
     user = request.session.get("user") or {}
     try:
-        signature, version, variant = create_signature(
+        signature, version = create_signature(
             db,
             signature_file_store,
             name=payload.name,
             domain_id=payload.domain_id,
             domain_ids=payload.domain_ids,
-            mode=SignatureMode.AUTO,
             html_content=payload.html_content,
-            weight=1,
             is_active=payload.is_active,
             created_by=user.get("email"),
         )
@@ -1386,7 +1371,6 @@ def create_signature_endpoint(
     return {
         "id": signature.id,
         "version_id": version.id,
-        "variant_id": variant.id,
         "version_number": version.version_number,
     }
 
@@ -1412,42 +1396,6 @@ def update_signature_endpoint(
     domain_ids = [row.domain_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == signature.id).order_by(SignatureDomainDB.domain_id).all()]
     return {"id": signature.id, "name": signature.name, "domain_id": signature.domain_id,
             "domain_ids": domain_ids, "scope": signature.scope, "is_active": signature.is_active}
-
-
-@app.get("/api/admin/signatures/{signature_id}/variants")
-def list_signature_variants(signature_id: str, request: Request, db: Session = Depends(get_db)):
-    if not is_admin_user(request):
-        raise HTTPException(status_code=403, detail="Admins only")
-    if db.get(SignatureDB, signature_id) is None:
-        raise HTTPException(status_code=404, detail="Signature not found")
-    variants = (
-        db.query(SignatureVariantDB)
-        .filter(SignatureVariantDB.signature_id == signature_id)
-        .order_by(SignatureVariantDB.pool_name.asc(), SignatureVariantDB.id.asc())
-        .all()
-    )
-    return [{"id": item.id, "pool_name": item.pool_name, "weight": item.weight,
-             "is_enabled": item.is_enabled} for item in variants]
-
-
-@app.put("/api/admin/signature-variants/{variant_id}")
-def update_signature_variant_endpoint(
-    variant_id: str,
-    payload: SignatureVariantUpdateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    if not is_admin_user(request):
-        raise HTTPException(status_code=403, detail="Admins only")
-    try:
-        variant = update_signature_variant(
-            db, variant_id, weight=payload.weight, is_enabled=payload.is_enabled,
-        )
-    except SignatureNotFoundError:
-        raise HTTPException(status_code=404, detail="Signature variant not found")
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    return {"id": variant.id, "weight": variant.weight, "is_enabled": variant.is_enabled}
 
 
 @app.get("/api/admin/signatures/{signature_id}/versions")
@@ -1569,30 +1517,6 @@ def restore_signature_version_endpoint(
         "restored_from_version_id": version_id,
         "restored_from_version_number": source_version.version_number if source_version is not None else None,
     }
-
-
-@app.post("/api/admin/signatures/{signature_id}/variants", status_code=201)
-def create_signature_variant_endpoint(
-    signature_id: str,
-    payload: SignatureVariantCreateRequest,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    if not is_admin_user(request):
-        raise HTTPException(status_code=403, detail="Admins only")
-    try:
-        variant = add_signature_variant(
-            db,
-            signature_id,
-            pool_name=SignatureMode(payload.pool_name),
-            weight=payload.weight,
-        )
-    except SignatureNotFoundError:
-        raise HTTPException(status_code=404, detail="Signature not found")
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=str(exc))
-    return {"id": variant.id, "pool_name": variant.pool_name, "weight": variant.weight}
-
 
 
 @app.get("/api/admin/signature-groups/{group_id}/preview")
@@ -2078,10 +2002,8 @@ async def resolve_signature_engine(
 
 
 _ENGINE_ERROR_HTTP_STATUS = {
-    "INVALID_MODE": 400,
     "SIGNATURE_VERSION_METADATA_MISSING": 503,
     "SIGNATURE_ASSET_UNAVAILABLE": 503,
-    "SELECTED_SIGNATURE_METADATA_MISSING": 503,
     "INVALID_STORED_RULE": 500,
     "GROUP_SIGNATURE_VERSION_METADATA_MISSING": 503,
     "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
@@ -2102,7 +2024,6 @@ async def get_engine_signature(
     email: str,
     response: Response,
     x_engine_key: Optional[str] = Header(None),
-    x_signature_mode: Optional[str] = Header(None, alias="X-OpenSigWeave-Mode"),
     x_signature_name: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature"),
     x_signature_code: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature-Code"),
     db: Session = Depends(get_db),
@@ -2114,7 +2035,7 @@ async def get_engine_signature(
 
     try:
         engine_request = normalize_engine_request(
-            email, x_signature_mode, x_signature_name, x_signature_code
+            email, x_signature_name, x_signature_code
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -2179,16 +2100,14 @@ async def stalwart_mta_hook(
                 values.append(item[1].strip())
         return values
 
-    mode_values = header_values("X-OpenSigWeave-Mode")
     signature_values = header_values("X-OpenSigWeave-Signature")
     code_values = header_values("X-OpenSigWeave-Signature-Code")
-    mode = mode_values[0] if len(mode_values) == 1 else None
     signature_name = signature_values[0] if len(signature_values) == 1 else None
     signature_code = code_values[0] if len(code_values) == 1 else None
 
     try:
         engine_request = normalize_engine_request(
-            sender, mode, signature_name, signature_code
+            sender, signature_name, signature_code
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
