@@ -76,7 +76,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
 
             self.assertEqual(domain, ("example.org", "<p>Keep me</p>", "<p>Keep me</p>"))
             self.assertEqual(override, ("alice@example.org", "<p>Existing</p>", "<p>Existing</p>"))
-            self.assertEqual(revision, ("0013_branding_schedules",))
+            self.assertEqual(revision, ("0014_retire_legacy_signature_modes",))
             self.assertIn("signatures", tables)
             self.assertIn("signature_versions", tables)
             self.assertIn("signature_variants", tables)
@@ -103,12 +103,14 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertIn("group_id", rule_columns)
             cache_columns = {row[1] for row in connection.execute("PRAGMA table_info(identity_attribute_cache)")}
             self.assertIn("principal_id", cache_columns)
-            legacy_groups = connection.execute("SELECT slug FROM signature_groups ORDER BY slug").fetchall()
-            self.assertEqual(legacy_groups, [("legacy-auto",), ("legacy-internal",), ("legacy-professional",)])
+            compatibility_groups = connection.execute("SELECT name, slug FROM signature_groups ORDER BY slug").fetchall()
+            self.assertEqual(len(compatibility_groups), 3)
+            self.assertTrue(all(name.startswith("Migrated signature group ") for name, _ in compatibility_groups))
+            self.assertTrue(all(slug.startswith("compat-") for _, slug in compatibility_groups))
             connection.close()
 
 
-    def test_legacy_group_seed_aggregates_weights_and_preserves_rules(self):
+    def test_legacy_group_seed_is_converted_to_current_group_rules(self):
         with tempfile.TemporaryDirectory(prefix="opensigweave-group-seed-") as tmp:
             database_path = pathlib.Path(tmp) / "groups.db"
             environment = os.environ.copy()
@@ -168,33 +170,35 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(migrated.returncode, 0, migrated.stdout + migrated.stderr)
 
             connection = sqlite3.connect(database_path)
-            groups = {
-                slug: group_id
-                for group_id, slug in connection.execute(
-                    "SELECT id, slug FROM signature_groups"
-                ).fetchall()
-            }
+            auto_group_id = connection.execute(
+                "SELECT group_id FROM signature_group_members WHERE signature_id = 'sig-auto-1' LIMIT 1"
+            ).fetchone()[0]
+            professional_group_id = connection.execute(
+                "SELECT group_id FROM signature_group_members WHERE signature_id = 'sig-prof-1' LIMIT 1"
+            ).fetchone()[0]
+            internal_group_id = connection.execute(
+                "SELECT group_id FROM signature_group_members WHERE signature_id = 'sig-int-1' LIMIT 1"
+            ).fetchone()[0]
             auto_members = {
                 signature_id: (weight, bool(enabled))
                 for signature_id, weight, enabled in connection.execute(
-                    "SELECT signature_id, weight, is_enabled FROM signature_group_members "
-                    "WHERE group_id = ?",
-                    (groups["legacy-auto"],),
+                    "SELECT signature_id, weight, is_enabled FROM signature_group_members WHERE group_id = ?",
+                    (auto_group_id,),
                 ).fetchall()
             }
             professional_members = connection.execute(
-                "SELECT signature_id, weight, is_enabled FROM signature_group_members "
-                "WHERE group_id = ?",
-                (groups["legacy-professional"],),
+                "SELECT signature_id, weight, is_enabled FROM signature_group_members WHERE group_id = ?",
+                (professional_group_id,),
             ).fetchall()
             internal_members = connection.execute(
-                "SELECT signature_id, weight, is_enabled FROM signature_group_members "
-                "WHERE group_id = ?",
-                (groups["legacy-internal"],),
+                "SELECT signature_id, weight, is_enabled FROM signature_group_members WHERE group_id = ?",
+                (internal_group_id,),
             ).fetchall()
             existing_rule = connection.execute(
                 "SELECT action_mode, group_id, priority FROM signature_rules WHERE id = 'rule-auto'"
             ).fetchone()
+            signature_modes = connection.execute("SELECT DISTINCT mode FROM signatures").fetchall()
+            group_slugs = connection.execute("SELECT slug FROM signature_groups ORDER BY slug").fetchall()
             revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
             connection.close()
 
@@ -204,8 +208,10 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             })
             self.assertEqual(professional_members, [("sig-prof-1", 4, 1)])
             self.assertEqual(internal_members, [("sig-int-1", 6, 1)])
-            self.assertEqual(existing_rule, ("AUTO", None, 10))
-            self.assertEqual(revision, ("0013_branding_schedules",))
+            self.assertEqual(existing_rule, ("GROUP", auto_group_id, 10))
+            self.assertEqual(signature_modes, [("UNUSED",)])
+            self.assertTrue(all(slug.startswith("compat-") for (slug,) in group_slugs))
+            self.assertEqual(revision, ("0014_retire_legacy_signature_modes",))
 
 
 if __name__ == "__main__":
