@@ -18,7 +18,7 @@ COMPATIBILITY_FILES = {
     "migrations/versions/0003_signature_rules.py",
     "migrations/versions/0009_signature_groups.py",
     "migrations/versions/0011_legacy_signature_groups.py",
-    "migrations/versions/0014_retire_legacy_signature_modes.py",
+    "migrations/versions/0014_retire_signature_modes.py",
     "tests/test_migration_compatibility.py",
 }
 TEXT_SUFFIXES = {
