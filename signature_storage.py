@@ -231,10 +231,18 @@ class SignatureFileStore:
         if destination.parent != self.assets_root:
             raise SignatureStorageError("Invalid signature image path")
         if destination.exists():
-            if destination.is_symlink() or not destination.is_file():
-                raise SignatureStorageError("Signature image destination is unsafe")
+            self.image_path(filename)
             return filename
-        self._atomic_write(destination, payload, exclusive=True)
+        try:
+            self._atomic_write(destination, payload, exclusive=True)
+        except SignatureStorageError:
+            # Concurrent uploads of the same bytes share one hash filename.
+            # The second link may lose the race after the existence check.
+            # Reuse the winner only if a safe regular asset now exists; never
+            # mask a storage failure when the expected file is absent.
+            if not destination.exists():
+                raise
+            self.image_path(filename)
         return filename
 
     def image_path(self, filename: str) -> Path:
