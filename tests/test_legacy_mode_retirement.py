@@ -4,6 +4,7 @@ import inspect
 import unittest
 
 import main
+from pydantic import ValidationError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,6 +46,48 @@ class LegacyModeRetirementTests(unittest.TestCase):
             if getattr(route, "path", None)
         }
         self.assertFalse(any("/variants" in path or "/signature-variants" in path for path in paths))
+
+    def test_regular_api_explicitly_rejects_retired_selection_payloads(self):
+        # Ensure old clients receive a clear validation error instead of a
+        # successful response that silently ignores the removed fields.
+        valid_requests = (
+            (main.SignatureCreateRequest, {"name": "New", "html_content": "<p>New</p>"}),
+            (main.SignatureUpdateRequest, {"name": "Existing"}),
+            (main.SignatureVersionCreateRequest, {"html_content": "<p>Version</p>"}),
+            (main.SignatureRuleCreateRequest, {"name": "Rule"}),
+            (main.SignatureScheduleRequest, {
+                "name": "Schedule", "target_type": "SIGNATURE",
+                "signature_id": "a" * 32,
+                "starts_at": "2027-01-01T00:00:00Z",
+                "ends_at": "2027-01-02T00:00:00Z",
+            }),
+        )
+        retired_fields = (
+            ("mode", RETIRED[0]),
+            ("pool_name", RETIRED[1]),
+            ("variants", []),
+            ("variant_id", "legacy"),
+            ("weight", 2),
+        )
+        for model, valid in valid_requests:
+            model.model_validate(valid)  # Ensure each baseline really is valid.
+            for field, value in retired_fields:
+                with self.subTest(model=model.__name__, field=field):
+                    with self.assertRaises(ValidationError):
+                        model.model_validate({**valid, field: value})
+
+        for mode in RETIRED:
+            with self.subTest(action_mode=mode):
+                with self.assertRaises(ValidationError):
+                    main.SignatureRuleCreateRequest.model_validate(
+                        {"name": "Rule", "action_mode": mode}
+                    )
+                with self.assertRaises(ValidationError):
+                    main.SignatureScheduleRequest.model_validate({
+                        "name": "Schedule", "target_type": mode,
+                        "starts_at": "2027-01-01T00:00:00Z",
+                        "ends_at": "2027-01-02T00:00:00Z",
+                    })
 
     def test_frontend_does_not_expose_retired_modes(self):
         frontend = "\n".join(
