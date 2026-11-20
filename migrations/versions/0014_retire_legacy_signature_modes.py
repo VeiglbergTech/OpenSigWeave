@@ -115,6 +115,17 @@ def upgrade() -> None:
 
     for pool_name, ordinal in LEGACY_POOLS:
         group_id = _ensure_compat_group(connection, pool_name, ordinal)
+        # A legacy rule with a concrete signature target already expressed
+        # exact-selection intent. Preserve that behavior as a direct rule.
+        connection.execute(
+            sa.text(
+                "UPDATE signature_rules "
+                "SET action_mode = 'SIGNATURE', group_id = NULL "
+                "WHERE action_mode = :pool AND signature_id IS NOT NULL"
+            ),
+            {"pool": pool_name},
+        )
+        # Untargeted legacy pool rules become ordinary signature groups.
         connection.execute(
             sa.text(
                 "UPDATE signature_rules "
