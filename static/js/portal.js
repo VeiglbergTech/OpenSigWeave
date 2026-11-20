@@ -519,7 +519,13 @@ function identityProviderManager() { return {
                     }));
                     this.editing = true;
                 },
-                changeAction() { this.form.signature_id = ''; this.form.group_id = ''; },
+                changeAction(actionMode) {
+                    // Use the actual selected DOM value: Alpine CSP model updates and
+                    // change handlers can run in different orders during selection.
+                    this.form.action_mode = actionMode;
+                    this.form.signature_id = '';
+                    this.form.group_id = '';
+                },
                 addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
                 async saveRule() {
                     if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
