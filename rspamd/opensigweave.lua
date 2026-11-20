@@ -146,7 +146,19 @@ end
 local function inject_signature(task)
     local envfrom = task:get_from(1)
     local uname = task:get_user()
-    if not envfrom or not uname then return false end
+    if type(envfrom) ~= "table" or type(envfrom[1]) ~= "table"
+        or type(envfrom[1].addr) ~= "string" or envfrom[1].addr == ""
+        or type(uname) ~= "string" or uname == "" then return false end
+    local eligible, reason = mime_rewriter.preflight(task)
+    if not eligible then
+        rspamd_logger.infox(task, "OpenSigWeave: skipped unsafe mail (%s)", reason)
+        return false
+    end
+    local original_headers = task:get_raw_headers()
+    if original_headers and #original_headers > 256 * 1024 then
+        rspamd_logger.warnx(task, "OpenSigWeave: header block exceeds processing limit")
+        return false
+    end
 
     local sender_email = tostring(envfrom[1].addr):lower()
     local is_reply = task:get_header_raw('in-reply-to') ~= nil or task:get_header_raw('references') ~= nil
@@ -274,6 +286,18 @@ local function inject_signature(task)
 
         local plain_sig = html_signature_to_plain(html_sig)
 
+        -- Use Rspamd's MIME/charset decoding for flat messages as well.
+        -- Hand-decoding base64/quoted-printable is insufficient for ISO-8859
+        -- and malformed transfer encodings must not be passed through as text.
+        local function decoded_flat_body(expect_html)
+            local text_parts = task:get_text_parts() or {}
+            if #text_parts ~= 1 or text_parts[1]:is_html() ~= expect_html then
+                return nil
+            end
+            local utf = text_parts[1]:get_content("raw_utf")
+            return utf and tostring(utf) or nil
+        end
+
         local function clean_trailing_html(html)
             if not trim_whitespace then return html end
             html = html:gsub("=\r?\n", "")
@@ -324,6 +348,22 @@ local function inject_signature(task)
         local function splice_body_logic(decoded_payload, splitters, signature, is_html)
             local spliced = decoded_payload
             local success = false
+
+            -- A reprocessed mail that already carries the actual selected
+            -- signature in its newly authored portion must not get a second
+            -- identical copy. Quoted history alone never suppresses insertion.
+            local probe = signature:gsub("^%s+", ""):gsub("%s+$", "")
+            if #probe >= 12 then
+                local authored_end = #spliced + 1
+                for _, pattern in ipairs(splitters) do
+                    local start_pos = spliced:find(pattern)
+                    if start_pos and start_pos < authored_end then authored_end = start_pos end
+                end
+                if spliced:sub(1, authored_end - 1):find(probe, 1, true) then
+                    rspamd_logger.infox(task, "OpenSigWeave: selected signature already present in authored content")
+                    return decoded_payload, false
+                end
+            end
 
             -- A validly-shaped text marker is replaced at its exact position.
             -- The API has already verified its four-character SHA-256 check.
@@ -460,13 +500,10 @@ local function inject_signature(task)
             local enc_raw = task:get_header_raw('Content-Transfer-Encoding')
             local encoding = (enc_raw and tostring(enc_raw) or "7bit"):lower()
             
-            local decoded = tostring(raw_body)
-            if encoding:find("base64") then
-                local dec = rspamd_util.decode_base64(raw_body)
-                if dec then decoded = tostring(dec) end
-            elseif encoding:find("quoted%-printable") then
-                local dec = rspamd_util.decode_qp(raw_body)
-                if dec then decoded = tostring(dec) end
+            local decoded = decoded_flat_body(false)
+            if not decoded then
+                rspamd_logger.warnx(task, "OpenSigWeave: flat text part cannot be decoded")
+                return
             end
 
             decoded = decoded:gsub("^[%s\r\n]+", ""):gsub("[%s\r\n]+$", "")
@@ -550,19 +587,23 @@ local function inject_signature(task)
         elseif is_flat_html then
             local enc_raw = task:get_header_raw('Content-Transfer-Encoding')
             local encoding = (enc_raw and tostring(enc_raw) or "7bit"):lower()
-            local decoded = tostring(raw_body)
-            if encoding:find("base64", 1, true) then
-                local dec = rspamd_util.decode_base64(raw_body)
-                if dec then decoded = tostring(dec) end
-            elseif encoding:find("quoted-printable", 1, true) then
-                local dec = rspamd_util.decode_qp(raw_body)
-                if dec then decoded = tostring(dec) end
+            local decoded = decoded_flat_body(true)
+            if not decoded then
+                rspamd_logger.warnx(task, "OpenSigWeave: flat HTML part cannot be decoded")
+                return
             end
             decoded = remove_deprecated_selector_markers(decoded)
             local spliced_html, _ = splice_body_logic(decoded, html_splitters, html_sig, true)
             local encoded_html = tostring(rspamd_util.encode_qp(spliced_html, 76) or spliced_html)
-            local new_headers = raw_headers:gsub("[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\r\n]*\r?\n", "")
-            new_headers = new_headers:gsub("[\r\n]+$", "")
+            local kept_headers, dropping_cte = {}, false
+            for line in raw_headers:gmatch("([^\n]*\n?)") do
+                if line == "" then break end
+                if line:match("^[A-Za-z0-9%-]+:") then
+                    dropping_cte = line:lower():match("^content%-transfer%-encoding:") ~= nil
+                end
+                if not dropping_cte then kept_headers[#kept_headers + 1] = line end
+            end
+            local new_headers = table.concat(kept_headers):gsub("[\r\n]+$", "")
             task:set_message(new_headers .. "\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html)
             task:set_milter_reply({
                 remove_headers = { ['Content-Transfer-Encoding'] = 0 },
