@@ -425,7 +425,7 @@ async function main() {
     await assertFloatingDialog(ruleDialog, "signature rule editor");
     await rulesPanel.getByLabel("Name").fill("Browser Smoke Rule");
     await rulesPanel.getByLabel("Action").selectOption("GROUP");
-    const ruleGroupSelect = rulesPanel.getByLabel("Signature Group");
+    const ruleGroupSelect = rulesPanel.getByLabel("Signature Group", { exact: true });
     await ruleGroupSelect.waitFor({ state: "visible" });
     await page.waitForFunction(() => {
       const select = document.querySelector('[x-data="ruleManager"] select[x-model="form.group_id"]');
