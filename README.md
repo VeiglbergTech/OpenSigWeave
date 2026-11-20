@@ -228,7 +228,11 @@ The bundled OpenSigWeave logo is the default. In **Administration → Branding**
 - PNG logo, maximum 512 KiB
 - PNG/ICO favicon, maximum 256 KiB
 
-Uploaded branding is stored in PostgreSQL. Server-side validation checks allowed media type, base64 encoding, size and file signature. Resetting an asset falls back to the bundled branding.
+Uploaded branding is stored **in PostgreSQL** (the `opensigweave-postgres-data` volume), not in the writable container filesystem. Changes survive a restart or replacement of the application container, provided the database volume is retained and correctly backed up. Uploaded PNG/ICO files are checked server-side for MIME type, decoded size, valid chunk or directory structure, and PNG checksums. Invalid, truncated, oversized and disguised files are rejected; SVG and JPEG uploads are intentionally unsupported. The image URLs are public so login pages can display them, but only authenticated administrators may update branding.
+
+Click **Use built-in logo** or **Use built-in fallback** to preview the packaged images, then **Save Branding** to make either reset persistent. The shipped `branding/logo.png` is the fallback for both logo and favicon when no `branding/favicon.ico` is packaged. The bundled files are part of the read-only Docker image; they do not require a data volume. If neither bundled file is present, the public asset endpoint returns HTTP 404 rather than exposing another filesystem path.
+
+The public current-asset endpoints `/branding/logo.png` and `/branding/favicon` (also `/branding/favicon.ico`) require cache revalidation so an upload or reset takes effect on the next reload. The separate `/branding/builtin/logo.png` and `/branding/builtin/favicon` endpoints render bundled reset previews. None of these endpoints accepts a user-supplied filename.
 
 ## Update an existing beta deployment
 
