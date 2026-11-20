@@ -325,6 +325,33 @@ if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secu
 ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
 if len(ENGINE_API_KEY) < 32 or ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_")):
     raise RuntimeError("ENGINE_API_KEY must be configured with a generated value of at least 32 characters")
+
+# Optional, fully privileged management credential for unattended API clients.
+# This is deliberately distinct from the mail-adapter engine credential.
+MANAGEMENT_API_KEY = os.environ.get("MANAGEMENT_API_KEY", "")
+if MANAGEMENT_API_KEY and (
+    len(MANAGEMENT_API_KEY) < 32
+    or MANAGEMENT_API_KEY.lower().startswith(("replace_", "changeme", "your_"))
+    or MANAGEMENT_API_KEY in {ENGINE_API_KEY, session_secret}
+):
+    raise RuntimeError("MANAGEMENT_API_KEY must be an independent, generated value of at least 32 characters")
+
+
+def is_management_api_path(path: str) -> bool:
+    """Limit machine credentials to existing administrator REST endpoints."""
+    return path.startswith("/api/admin/") or path.startswith("/domains/")
+
+
+def has_valid_management_key(request: Request) -> bool:
+    """Authenticate only explicit administrator API requests, never browser/engine routes."""
+    return (
+        isinstance(request, Request)
+        and bool(MANAGEMENT_API_KEY)
+        and is_management_api_path(request.url.path)
+        and hmac.compare_digest(request.headers.get("X-Management-Key", ""), MANAGEMENT_API_KEY)
+    )
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -342,7 +369,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-        if request.url.path == "/login" or (
+        if is_management_api_path(request.url.path) or request.url.path == "/login" or (
             "session" in request.scope
             and request.session.get("user")
             and not request.url.path.startswith(("/static/", "/branding/"))
@@ -353,7 +380,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user"):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user") and not has_valid_management_key(request):
             expected = request.session.get("csrf_token")
             supplied = request.headers.get("X-CSRF-Token", "")
             if not expected or not supplied or not hmac.compare_digest(expected, supplied):
@@ -500,7 +527,9 @@ def session_user(request: Request) -> dict:
 def is_admin_user(request: Request):
     user = request.session.get("user")
     groups = user.get("groups", []) if isinstance(user, dict) else []
-    return isinstance(groups, (list, tuple, set)) and "signature-admins" in groups
+    if isinstance(groups, (list, tuple, set)) and "signature-admins" in groups:
+        return True
+    return has_valid_management_key(request)
 
 
 def require_signature_user(request: Request) -> dict:

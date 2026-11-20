@@ -77,7 +77,7 @@ cd /opt/opensigweave
 cp .env.example .env
 ```
 
-Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY`. Do not reuse one secret for another:
+Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY` (and optionally `MANAGEMENT_API_KEY`). Do not reuse one secret for another:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -95,6 +95,7 @@ Edit `.env` and set at least:
 - matching `DATABASE_URL` password
 - `SECRET_KEY` — at least 32 non-placeholder characters
 - `ENGINE_API_KEY` — separate value, at least 32 non-placeholder characters
+- `MANAGEMENT_API_KEY` — optional, separate random value (at least 32 characters) for fully privileged REST automation; empty disables it
 - `APP_ALLOWED_HOSTS` — explicit portal hostname(s), no wildcard
 - `LOCAL_ADMIN_EMAIL`
 - `LOCAL_ADMIN_PASSWORD_HASH`
@@ -250,6 +251,12 @@ docker compose logs --tail=100 opensigweave
 ```
 
 The container runs `alembic upgrade head` before starting Uvicorn. Never delete the PostgreSQL volume as an upgrade method.
+
+## Administration via browser, REST API and CLI
+
+For v1.0, the web portal remains the primary administrator interface. Existing management REST endpoints can also be called headlessly with an optional `MANAGEMENT_API_KEY` using the `X-Management-Key` HTTP header. This credential grants **full administrator access** to `/api/admin/*` and `/domains/*`, including destructive operations. It does not authenticate portal pages, personal overrides, login/logout, or mail-adapter engine calls, and it is **not** the `ENGINE_API_KEY`.
+
+Keep the management key unset unless an automation needs it. Generate a separate random secret, use HTTPS, restrict network access and protect the key like an administrator password; rotate it by changing the environment variable and restarting the service. Interactive sessions still require CSRF tokens, while correctly authenticated machine requests to administrator API paths do not. See [API authentication and usage](docs/API.md) and the [v1.0 CLI/API feature decision matrix](docs/CLI_API_V1.md). There is intentionally no second CRUD implementation in the CLI: scripts should use the documented REST API. `backup_cli.py` remains the operator CLI for full encrypted disaster recovery.
 
 ## Backups and restore
 

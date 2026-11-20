@@ -1,8 +1,26 @@
 # OpenSigWeave management and engine API
 
-This document describes the API implemented by the current beta/release-candidate application. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
+This document describes the API currently implemented on the `dev` branch. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group or an explicitly configured machine management key. Personal signature endpoints require a browser session with `signature-users` or `signature-admins`.
 
-State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests.
+State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests. Unattended administrator API calls can instead use the optional management credential described below.
+
+## Unattended administrator automation
+
+Set `MANAGEMENT_API_KEY` to a newly generated secret of at least 32 characters. This setting is optional; empty or unset disables management-key authentication. It must differ from both `ENGINE_API_KEY` and `SECRET_KEY`; obvious placeholder values are rejected at startup. Restart the application after changes.
+
+Send `X-Management-Key: <secret>` on the existing administrator endpoints: `/api/admin/*` and `/domains/*`. This is a **full administrator credential**, granting read and write access including imports, provider configuration, rule changes and deletions. Use it only for trusted automations on HTTPS connections with restricted access. Store it in a secret manager, never in Git, URLs, browser JavaScript, command history or request logs. Rotate by replacing the environment variable and restarting. There are no granular scopes or key-management UI in v1.0.
+
+For example, with the token loaded into the calling process's `MANAGEMENT_API_KEY` environment variable:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  -H "X-Management-Key: ${MANAGEMENT_API_KEY}" \
+  https://signature.example.org/api/admin/signatures
+```
+
+Valid management-key requests to these administrator paths do not need session cookies or CSRF tokens. Browser sessions **still** require `X-CSRF-Token` for changes unless a valid management key is explicitly supplied. An invalid token never authorizes an operation. Management keys do not authenticate `/api/my-signature`, browser pages, login, or `/api/v1/engine/*`. The mail-adapter `ENGINE_API_KEY` cannot access management routes. Key-authenticated responses are non-cacheable.
+
+For machine administration, prefer these existing REST resources over a duplicate CLI: domain management, signature catalog and versions, signature groups and memberships, rules, scheduling, branding, overrides, provider configuration, image assets, and selective import/export. The separate operator CLI supports encrypted full backups/restores; details are in [CLI/API v1.0 decisions](CLI_API_V1.md).
 
 ## Authentication and authorization
 
@@ -92,6 +110,8 @@ This changes the name, global/domain scope and active state. Deactivation preser
 
 - `GET /api/admin/signatures/{signature_id}/versions`: list version metadata, hashes and timestamps.
 - `POST /api/admin/signatures/{signature_id}/versions`: create a new HTML version.
+- `GET /api/admin/signatures/{signature_id}/versions/{version_id}`: preview immutable HTML without making it active.
+- `POST /api/admin/signatures/{signature_id}/versions/{version_id}/restore`: create a new active version from historical content, preserving the old history.
 Version files are immutable and integrity-checked when read. Prefer deactivation to deletion; catalog deletion is not implemented.
 
 ## Signature rules
