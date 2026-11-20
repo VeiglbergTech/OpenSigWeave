@@ -4,7 +4,7 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
 
-from core.variant_selector import SignatureVariant, select_variant
+from core.weighted_selector import WeightedCandidate, select_weighted_no_repeat
 from models import (
     DomainDB, GroupSelectionStateDB, SignatureDB, SignatureDomainDB,
     SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB,
@@ -87,10 +87,10 @@ def select_and_record_group_signature(
 
     eligible_rows = session.execute(candidates_query.with_for_update()).all()
     candidates = [
-        SignatureVariant(id=signature.id, payload=signature, enabled=True, weight=weight)
+        WeightedCandidate(id=signature.id, payload=signature, enabled=True, weight=weight)
         for signature, weight in eligible_rows
     ]
-    selected = select_variant(candidates, state.last_signature_id)
+    selected = select_weighted_no_repeat(candidates, state.last_signature_id)
     if selected is None:
         return None
     state.last_signature_id = selected.id
