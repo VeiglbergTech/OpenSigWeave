@@ -239,10 +239,42 @@ async function main() {
 
     // Clicking the editor must focus the editable surface. A surrounding label used
     // to redirect clicks to the version selector, making typing possible only after tabbing.
+    const selectedVersionBeforeEditorClick = await versionSelector.inputValue();
     await signatureEditEditor.click();
     assert.equal(await signatureEditEditor.evaluate(element =>
       element === document.activeElement || element.contains(document.activeElement)
     ), true, "clicking the signature editor must focus the editor instead of version history");
+    assert.equal(await versionSelector.inputValue(), selectedVersionBeforeEditorClick,
+      "clicking the signature editor must not activate or change version history");
+
+    // The global preview overlay must be above the floating signature editor. A
+    // lower stacking layer previously exposed editor/version controls underneath.
+    const signaturePreviewModal = page.locator('[x-data="previewModal"]');
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("open-preview", {
+        detail: { html: "<p>Browser smoke preview overlay</p>" }
+      }));
+    });
+    await signaturePreviewModal.waitFor({ state: "visible" });
+    const previewLayering = await page.evaluate(() => {
+      const preview = document.querySelector('[x-data="previewModal"]');
+      const editor = document.querySelector('[x-data="signatureManager"] [x-show="editing"][role="dialog"]');
+      return {
+        preview: Number.parseInt(getComputedStyle(preview).zIndex || "0", 10),
+        editor: Number.parseInt(getComputedStyle(editor).zIndex || "0", 10),
+        srcdoc: document.querySelector("#signature-preview-frame")?.getAttribute("srcdoc") || ""
+      };
+    });
+    assert.ok(previewLayering.preview > previewLayering.editor,
+      "signature preview must be layered above the floating signature editor: " + JSON.stringify(previewLayering));
+    assert.match(previewLayering.srcdoc, /Browser smoke preview overlay/,
+      "signature preview iframe must receive the requested HTML");
+    await page.keyboard.press("Escape");
+    await signaturePreviewModal.waitFor({ state: "hidden" });
+    await signatureEditEditor.click();
+    assert.equal(await signatureEditEditor.evaluate(element =>
+      element === document.activeElement || element.contains(document.activeElement)
+    ), true, "editor must regain focus directly after closing the preview");
 
     // Exercise the real CKEditor upload paths, not only the backend endpoint.
     // These fixtures are valid 1x1 images so Chromium and CKEditor both process them as images.
