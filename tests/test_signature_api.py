@@ -477,7 +477,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(changed["weight"], 5)
         self.assertFalse(changed["is_enabled"])
 
-    def test_admin_can_add_and_list_versions(self):
+    def test_admin_can_add_list_and_preview_versions_without_changing_current(self):
         created = main.create_signature_endpoint(
             main.SignatureCreateRequest(
                 name="Versioned",
@@ -496,6 +496,99 @@ class SignatureCatalogApiTests(unittest.TestCase):
         versions = main.list_signature_versions(created["id"], self.admin_request, self.db)
         self.assertEqual(version["version_number"], 2)
         self.assertEqual([item["version_number"] for item in versions], [2, 1])
+        self.assertEqual([item["is_current"] for item in versions], [True, False])
+
+        previewed = main.get_signature_version(
+            created["id"],
+            created["version_id"],
+            self.admin_request,
+            self.db,
+        )
+        self.assertEqual(previewed["html_content"], "<p>Version 1</p>")
+        self.assertFalse(previewed["is_current"])
+        after_preview = main.list_signature_versions(created["id"], self.admin_request, self.db)
+        self.assertEqual([item["version_number"] for item in after_preview], [2, 1])
+        self.assertEqual([item["is_current"] for item in after_preview], [True, False])
+
+    def test_admin_restore_creates_new_current_version_and_preserves_history(self):
+        created = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Restorable API",
+                mode="AUTO",
+                html_content="<p>Version 1</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        second = main.create_signature_version_endpoint(
+            created["id"],
+            main.SignatureVersionCreateRequest(html_content="<p>Version 2</p>"),
+            self.admin_request,
+            self.db,
+        )
+
+        restored = main.restore_signature_version_endpoint(
+            created["id"],
+            created["version_id"],
+            self.admin_request,
+            self.db,
+        )
+        self.assertEqual(restored["version_number"], 3)
+        self.assertEqual(restored["restored_from_version_id"], created["version_id"])
+        self.assertEqual(restored["restored_from_version_number"], 1)
+
+        versions = main.list_signature_versions(created["id"], self.admin_request, self.db)
+        self.assertEqual([item["version_number"] for item in versions], [3, 2, 1])
+        self.assertEqual([item["is_current"] for item in versions], [True, False, False])
+
+        first_snapshot = main.get_signature_version(
+            created["id"], created["version_id"], self.admin_request, self.db
+        )
+        second_snapshot = main.get_signature_version(
+            created["id"], second["id"], self.admin_request, self.db
+        )
+        restored_snapshot = main.get_signature_version(
+            created["id"], restored["id"], self.admin_request, self.db
+        )
+        self.assertEqual(first_snapshot["html_content"], "<p>Version 1</p>")
+        self.assertEqual(second_snapshot["html_content"], "<p>Version 2</p>")
+        self.assertEqual(restored_snapshot["html_content"], "<p>Version 1</p>")
+        self.assertFalse(first_snapshot["is_current"])
+        self.assertFalse(second_snapshot["is_current"])
+        self.assertTrue(restored_snapshot["is_current"])
+
+        with self.assertRaises(HTTPException) as current_restore:
+            main.restore_signature_version_endpoint(
+                created["id"], restored["id"], self.admin_request, self.db
+            )
+        self.assertEqual(current_restore.exception.status_code, 409)
+
+    def test_restore_rejects_version_owned_by_another_signature(self):
+        first = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Restore source",
+                mode="AUTO",
+                html_content="<p>Source</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        second = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Restore target",
+                mode="AUTO",
+                html_content="<p>Target</p>",
+            ),
+            self.admin_request,
+            self.db,
+        )
+        with self.assertRaises(HTTPException) as denied:
+            main.restore_signature_version_endpoint(
+                second["id"], first["version_id"], self.admin_request, self.db
+            )
+        self.assertEqual(denied.exception.status_code, 404)
+        target_versions = main.list_signature_versions(second["id"], self.admin_request, self.db)
+        self.assertEqual([item["version_number"] for item in target_versions], [1])
 
     def test_auto_selection_reads_name_based_signature_version(self):
         domain = main.DomainDB(domain_name="example.org", is_active=True)
@@ -1444,6 +1537,18 @@ class AuthorizationEndpointTests(unittest.TestCase):
     def test_authorized_signature_user_can_access_personal_signature_endpoint(self):
         result = main.get_my_signature(self.user_request, self.db)
         self.assertEqual(result, {"html_content": ""})
+
+    def test_signature_version_restore_endpoint_rejects_non_admin_sessions(self):
+        for request in (self.user_request, self.anonymous_request):
+            with self.subTest(request=request):
+                with self.assertRaises(HTTPException) as denied:
+                    main.restore_signature_version_endpoint(
+                        "missing-signature",
+                        "missing-version",
+                        request,
+                        self.db,
+                    )
+                self.assertEqual(denied.exception.status_code, 403)
 
     def test_signature_administrator_can_access_admin_read_endpoints(self):
         self.assertEqual(main.list_signatures(self.admin_request, self.db), [])
