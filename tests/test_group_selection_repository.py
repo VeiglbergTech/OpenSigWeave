@@ -21,8 +21,8 @@ class GroupSelectionRepositoryTests(unittest.TestCase):
         self.session = self.Session()
         self.domain = DomainDB(domain_name="example.org", is_active=True)
         self.group = SignatureGroupDB(id=uuid.uuid4().hex, name="Corporate", slug="corporate", is_active=True)
-        self.one = SignatureDB(id=uuid.uuid4().hex, name="One", scope="GLOBAL", mode="AUTO", is_active=True)
-        self.two = SignatureDB(id=uuid.uuid4().hex, name="Two", scope="GLOBAL", mode="AUTO", is_active=True)
+        self.one = SignatureDB(id=uuid.uuid4().hex, name="One", scope="GLOBAL", mode="UNUSED", is_active=True)
+        self.two = SignatureDB(id=uuid.uuid4().hex, name="Two", scope="GLOBAL", mode="UNUSED", is_active=True)
         self.session.add_all([self.domain, self.group, self.one, self.two])
         self.session.flush()
         self.session.add_all([
