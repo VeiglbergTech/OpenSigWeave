@@ -743,7 +743,7 @@
     </div>
 
     <div x-data="previewModal" 
-         @open-preview.window="open($event)" @keydown.escape.window.capture="if (show) { $event.stopImmediatePropagation(); show = false }" 
+         @open-preview.window="open($event)" @keydown.escape.window.capture="closeOnEscape" 
          x-show="show" x-cloak class="fixed inset-0 z-[100] overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
