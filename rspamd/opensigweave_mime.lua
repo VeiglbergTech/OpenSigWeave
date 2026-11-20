@@ -30,14 +30,26 @@ local function rewritten_part_headers(part, is_html, nl)
         end
         local field = header.name:lower()
         if field ~= "content-type" and field ~= "content-transfer-encoding" then
-            local value = header.raw
-            if value == nil then value = header.value end
-            if value == nil then value = header.decoded end
-            if type(value) ~= "string" then
-                return nil, "invalid parsed MIME header value"
+            -- In Rspamd's FULL header representation, raw is the complete
+            -- original header field (name, colon, separator, value and any
+            -- folding), not merely the value. Reuse it verbatim whenever
+            -- available so Content-ID/disposition/custom fields stay intact.
+            local serialized = header.raw
+            if type(serialized) ~= "string" or serialized == "" then
+                local value = header.value
+                if value == nil then value = header.decoded end
+                if type(value) ~= "string" then
+                    return nil, "invalid parsed MIME header value"
+                end
+                local separator = ""
+                if header.tab_separated then
+                    separator = "\t"
+                elseif not header.empty_separator then
+                    separator = " "
+                end
+                serialized = header.name .. ":" .. separator .. value
             end
-            local separator = type(header.separator) == "string" and header.separator or " "
-            result[#result + 1] = header.name .. ":" .. separator .. value
+            result[#result + 1] = serialized:gsub("[\r\n]+$", "")
         end
     end
 
