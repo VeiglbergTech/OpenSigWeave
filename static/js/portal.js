@@ -19,6 +19,11 @@ window.fetch = (resource, options = {}) => {
             const raw = document.getElementById(rawId);
             if (!host || !raw || !window.OpenSigWeaveEditor) return null;
             if (host.__openSigWeaveEditor) {
+                host.__openSigWeaveEditor.setOnChange(html => {
+                    raw.value = html;
+                    if (typeof options.onChange === "function") options.onChange(html);
+                    checkAllLocks();
+                });
                 host.__openSigWeaveEditor.setData(raw.value);
                 host.__openSigWeaveEditor.setReadOnly(!!options.readOnly);
                 return host.__openSigWeaveEditor;
@@ -161,7 +166,7 @@ window.fetch = (resource, options = {}) => {
         tab: isAdmin && savedState.tab === "admin" ? "admin" : "personal",
         adminTab: allowedAdminTabs.has(savedState.adminTab) ? savedState.adminTab : "domains",
         init() {
-            if (document.body.dataset.idpSetupRequired === "true" && isAdmin) {
+            if (document.body.dataset.idpSetupRequired === "true" && isAdmin && !savedState.tab) {
                 this.tab = "admin";
                 this.adminTab = "identity-providers";
             }
