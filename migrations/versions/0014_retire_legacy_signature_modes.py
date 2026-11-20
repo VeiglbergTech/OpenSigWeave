@@ -9,7 +9,7 @@ import uuid
 from alembic import op
 import sqlalchemy as sa
 
-revision = "0014_retire_legacy_signature_modes"
+revision = "0014_retire_signature_modes"
 down_revision = "0013_branding_schedules"
 branch_labels = None
 depends_on = None
