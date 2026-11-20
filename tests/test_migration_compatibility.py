@@ -104,9 +104,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             cache_columns = {row[1] for row in connection.execute("PRAGMA table_info(identity_attribute_cache)")}
             self.assertIn("principal_id", cache_columns)
             compatibility_groups = connection.execute("SELECT name, slug FROM signature_groups ORDER BY slug").fetchall()
-            self.assertEqual(len(compatibility_groups), 3)
-            self.assertTrue(all(name.startswith("Migrated signature group ") for name, _ in compatibility_groups))
-            self.assertTrue(all(slug.startswith("compat-") for _, slug in compatibility_groups))
+            self.assertEqual(compatibility_groups, [])
             connection.close()
 
 
@@ -150,7 +148,9 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
                     ('v-int-1', 'sig-int-1', 'INTERNAL', 6, 1);
 
                 INSERT INTO signature_rules (id, name, priority, action_mode, signature_id, is_enabled)
-                VALUES ('rule-auto', 'Existing AUTO rule', 10, 'AUTO', NULL, 1);
+                VALUES
+                    ('rule-auto', 'Existing AUTO rule', 10, 'AUTO', NULL, 1),
+                    ('rule-direct', 'Existing direct rule', 20, 'PROFESSIONAL', 'sig-prof-1', 1);
                 """
             )
             connection.commit()
@@ -197,6 +197,9 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             existing_rule = connection.execute(
                 "SELECT action_mode, group_id, priority FROM signature_rules WHERE id = 'rule-auto'"
             ).fetchone()
+            direct_rule = connection.execute(
+                "SELECT action_mode, signature_id, group_id FROM signature_rules WHERE id = 'rule-direct'"
+            ).fetchone()
             signature_modes = connection.execute("SELECT DISTINCT mode FROM signatures").fetchall()
             group_slugs = connection.execute("SELECT slug FROM signature_groups ORDER BY slug").fetchall()
             revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
@@ -209,6 +212,7 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(professional_members, [("sig-prof-1", 4, 1)])
             self.assertEqual(internal_members, [("sig-int-1", 6, 1)])
             self.assertEqual(existing_rule, ("GROUP", auto_group_id, 10))
+            self.assertEqual(direct_rule, ("SIGNATURE", "sig-prof-1", None))
             self.assertEqual(signature_modes, [("UNUSED",)])
             self.assertTrue(all(slug.startswith("compat-") for (slug,) in group_slugs))
             self.assertEqual(revision, ("0014_retire_legacy_signature_modes",))
