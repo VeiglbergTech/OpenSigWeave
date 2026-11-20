@@ -4,25 +4,43 @@ local M = {}
 local MAX_MESSAGE_BYTES = 20 * 1024 * 1024
 
 local function newline(task)
-    return task:get_newlines_type() == "crlf" and "\r\n" or "\n"
+    local t = task:get_newlines_type()
+    if t == "cr" then return "\r" end
+    if t == "lf" then return "\n" end
+    return "\r\n"
 end
 
--- Update text part metadata only; retain Content-ID, disposition and other fields.
-local function rewritten_part_headers(raw, is_html, nl)
-    local normalized = tostring(raw or ""):gsub("\r\n", "\n"):gsub("\r", "\n")
-    local result, skip, saw_header = {}, false, false
-    for line in (normalized .. "\n"):gmatch("(.-)\n") do
-        if line == "" then break end
-        local field = line:match("^([%w%-]+):")
-        if field then
-            saw_header = true
-            field = field:lower()
-            skip = field == "content-type" or field == "content-transfer-encoding"
-        elseif not line:match("^[ \t]") or not saw_header then
-            return nil, "malformed part headers"
-        end
-        if not skip then result[#result + 1] = line end
+-- Update text part metadata only. Rspamd already exposes an ordered, parsed
+-- MIME-header list, so do not attempt to parse its opaque raw-header buffer
+-- ourselves. Preserve every original field except the two metadata fields that
+-- must change when the body is re-encoded.
+local function rewritten_part_headers(part, is_html, nl)
+    if type(part.get_headers) ~= "function" then
+        return nil, "parsed MIME headers unavailable"
     end
+    local headers = part:get_headers()
+    if type(headers) ~= "table" then
+        return nil, "parsed MIME headers unavailable"
+    end
+
+    local result = {}
+    for _, header in ipairs(headers) do
+        if type(header) ~= "table" or type(header.name) ~= "string" or header.name == "" then
+            return nil, "invalid parsed MIME header"
+        end
+        local field = header.name:lower()
+        if field ~= "content-type" and field ~= "content-transfer-encoding" then
+            local value = header.raw
+            if value == nil then value = header.value end
+            if value == nil then value = header.decoded end
+            if type(value) ~= "string" then
+                return nil, "invalid parsed MIME header value"
+            end
+            local separator = type(header.separator) == "string" and header.separator or " "
+            result[#result + 1] = header.name .. ":" .. separator .. value
+        end
+    end
+
     result[#result + 1] = "Content-Type: text/" .. (is_html and "html" or "plain") .. "; charset=utf-8"
     result[#result + 1] = "Content-Transfer-Encoding: quoted-printable"
     return table.concat(result, nl) .. nl
@@ -103,7 +121,7 @@ function M.rewrite(task, transform)
                 local updated = transform(original, minor == "html")
                 if type(updated) ~= "string" then return nil, "text transform failed" end
                 if updated ~= original then
-                    local part_headers, err = rewritten_part_headers(part:get_raw_headers(), minor == "html", nl)
+                    local part_headers, err = rewritten_part_headers(part, minor == "html", nl)
                     if not part_headers then return nil, err end
                     local encoded = rspamd_util.encode_qp(updated, 76, task:get_newlines_type())
                     if not encoded then return nil, "quoted-printable encoding failed" end
