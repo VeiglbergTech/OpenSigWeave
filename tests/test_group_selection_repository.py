@@ -36,7 +36,7 @@ class GroupSelectionRepositoryTests(unittest.TestCase):
         self.engine.dispose()
 
     def test_weighted_selection_does_not_repeat_for_stable_principal(self):
-        with patch("core.variant_selector.secrets.randbelow", return_value=0):
+        with patch("core.weighted_selector.secrets.randbelow", return_value=0):
             expected_first = min([self.one.id, self.two.id])
             expected_second = max([self.one.id, self.two.id])
             first = select_and_record_group_signature(self.session, "idp-a:authentik:42", self.group.id, self.domain.id)
