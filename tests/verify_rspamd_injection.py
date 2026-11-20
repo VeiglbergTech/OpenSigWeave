@@ -31,4 +31,7 @@ assert already.get_content().count("OpenSigWeave Footer") == 1
 reply = read("flat_reply.eml")
 assert reply.get_content().count("OpenSigWeave Footer") == 2
 assert reply.get_content().index("OpenSigWeave Footer") < reply.get_content().index("gmail_quote")
+forward = read("flat_forward.eml")
+assert forward.get_content().index("OpenSigWeave Footer") < forward.get_content().index("gmail_quote")
+assert forward.get_content().count("OpenSigWeave Footer") == 1
 print("Rspamd callback matrix passed: flat plain/HTML, charset, folded headers, links, idempotency, quoted reply")
