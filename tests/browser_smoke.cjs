@@ -146,11 +146,17 @@ async function main() {
       { tab: "Branding", heading: "Branding" },
       { tab: "Exports", heading: "Configuration exports" },
       { tab: "Imports", heading: "Configuration imports" },
+      { tab: "System", heading: "System status" },
     ];
     for (const section of sections) {
       await page.getByRole("button", { name: section.tab, exact: true }).click();
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
+
+    const systemPanel = page.locator('[x-data="systemStatusManager"]');
+    await systemPanel.getByText("Healthy", { exact: true }).waitFor();
+    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();

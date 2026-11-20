@@ -13,7 +13,8 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
@@ -1244,6 +1245,57 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
     identity_provider_registry.delete(provider_id)
     db.delete(row); db.commit()
     return {"status": "deleted"}
+
+
+
+@app.get("/api/admin/system-status")
+def admin_system_status(request: Request, db: Session = Depends(get_db)):
+    """Safe, read-only diagnostics for an authorized application administrator."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    database_status, counts = "ok", {}
+    try:
+        db.execute(text("SELECT 1"))
+        counts = {
+            "domains": db.query(DomainDB).count(),
+            "identity_providers": db.query(IdentityProviderDB).count(),
+            "signatures": db.query(SignatureDB).count(),
+            "versions": db.query(SignatureVersionDB).count(),
+            "groups": db.query(SignatureGroupDB).count(),
+            "rules": db.query(SignatureRuleDB).count(),
+            "schedules": db.query(SignatureScheduleDB).count(),
+            "overrides": db.query(UserOverrideDB).count(),
+        }
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("System status database check failed (%s)", type(exc).__name__)
+        database_status = "unavailable"
+
+    def accessible(directory):
+        try:
+            return directory.is_dir() and not directory.is_symlink() and os.access(
+                directory, os.R_OK | os.W_OK | os.X_OK
+            )
+        except OSError:
+            return False
+
+    signatures = accessible(signature_file_store.signatures_root)
+    assets = accessible(signature_file_store.assets_root)
+    storage_status = "ok" if signatures and assets else "unavailable"
+    return {
+        "status": "healthy" if database_status == "ok" and storage_status == "ok" else "degraded",
+        "version": app.version,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "database": {"status": database_status},
+        "storage": {"status": storage_status, "signature_files": signatures, "image_assets": assets},
+        "counts": counts,
+        "configuration": {
+            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
+            "management_api_enabled": bool(MANAGEMENT_API_KEY),
+            "backup_management": "operator-cli",
+            "mail_adapters": "external",
+        },
+    }
 
 
 @app.get("/api/admin/branding")

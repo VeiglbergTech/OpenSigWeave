@@ -147,7 +147,7 @@ window.fetch = (resource, options = {}) => {
     const isAdmin = document.body.dataset.isAdmin === "true";
     const allowedAdminTabs = new Set([
         "identity-providers", "domains", "signatures", "signature-groups",
-        "rules", "scheduling", "branding", "exports", "imports"
+        "rules", "scheduling", "branding", "exports", "imports", "system"
     ]);
     let savedState = {};
     try {
@@ -1132,6 +1132,51 @@ function adminImportManager() {
     };
 }
 
+
+function systemStatusManager() {
+    const labels = {
+        domains: "Domains", identity_providers: "Identity providers",
+        signatures: "Signatures", versions: "Versions", groups: "Groups",
+        rules: "Rules", schedules: "Schedules", overrides: "User overrides"
+    };
+    return {
+        loading: false, error: "", state: "Not checked", version: "—",
+        checkedAt: "—", database: "Unknown", storage: "Unknown",
+        assets: "Unknown", localAdmin: "Unknown", managementApi: "Unknown",
+        records: [],
+        async refresh() {
+            if (this.loading) return;
+            this.loading = true;
+            this.error = "";
+            try {
+                const response = await fetch("/api/admin/system-status", {
+                    headers: { Accept: "application/json" },
+                    credentials: "same-origin", cache: "no-store"
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Status request failed");
+                this.state = data.status === "healthy" ? "Healthy" : "Degraded";
+                this.version = data.version || "Unknown";
+                this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
+                this.database = data.database?.status || "Unknown";
+                this.storage = data.storage?.status || "Unknown";
+                this.assets = data.storage?.image_assets ? "Accessible" : "Unavailable";
+                this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
+                this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
+                this.records = Object.entries(data.counts || {}).map(([key, count]) => ({
+                    key, label: labels[key] || key, count
+                }));
+            } catch (error) {
+                this.error = "Could not load system status: " + (error instanceof Error ? error.message : "Unknown error");
+                this.state = "Unavailable";
+                this.records = [];
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+
 document.addEventListener("alpine:init", () => {
     Alpine.data("portalShell", portalShell);
     Alpine.data("htmlEditorToggle", htmlEditorToggle);
@@ -1145,6 +1190,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("brandingManager", brandingManager);
     Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("adminImportManager", adminImportManager);
+    Alpine.data("systemStatusManager", systemStatusManager);
     Alpine.data("toastManager", toastManager);
     Alpine.data("sanitizerModal", sanitizerModal);
     Alpine.data("previewModal", previewModal);

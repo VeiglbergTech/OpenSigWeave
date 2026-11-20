@@ -79,6 +79,39 @@ class ManagementKeyAuthorizationTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("MANAGEMENT_API_KEY must be an independent", result.stderr)
 
+
+    def test_system_status_requires_admin_and_exposes_no_secrets(self):
+        endpoint = "/api/admin/system-status"
+        self.assertEqual(self.client.get(endpoint).status_code, 403)
+        self.authenticate(["signature-users"])
+        self.assertEqual(self.client.get(endpoint).status_code, 403)
+        self.authenticate(["signature-admins"])
+        response = self.client.get(endpoint)
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertEqual(data["database"]["status"], "ok")
+        self.assertEqual(data["storage"]["status"], "ok")
+        self.assertEqual(data["counts"]["signatures"], 0)
+        self.assertIn("no-store", response.headers.get("Cache-Control", ""))
+        self.assertNotIn(main.session_secret, response.text)
+        self.assertNotIn(main.ENGINE_API_KEY, response.text)
+        with patch.object(main, "MANAGEMENT_API_KEY", TEST_MANAGEMENT_KEY):
+            machine = self.client.get(endpoint, headers={"X-Management-Key": TEST_MANAGEMENT_KEY})
+        self.assertEqual(machine.status_code, 200, machine.text)
+        self.assertTrue(machine.json()["configuration"]["management_api_enabled"])
+        self.assertNotIn(TEST_MANAGEMENT_KEY, machine.text)
+
+    def test_system_status_reports_degraded_storage_without_writing(self):
+        from pathlib import Path
+
+        self.authenticate(["signature-admins"])
+        with patch.object(main.signature_file_store, "assets_root", Path("missing-diagnostic-assets")):
+            response = self.client.get("/api/admin/system-status")
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["status"], "degraded")
+        self.assertFalse(response.json()["storage"]["image_assets"])
+
     def test_unconfigured_and_incorrect_keys_cannot_read_admin_endpoints(self):
         with patch.object(main, "MANAGEMENT_API_KEY", ""):
             self.assertEqual(self.client.get(

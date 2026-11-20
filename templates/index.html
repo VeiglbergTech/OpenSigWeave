@@ -118,6 +118,7 @@
                 <button @click="adminTab = 'branding'" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
                 <button @click="adminTab = 'exports'" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
                 <button @click="adminTab = 'imports'" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
+                <button @click="adminTab = 'system'" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
             <div class="flex justify-between items-center gap-3 mb-6">
@@ -545,6 +546,46 @@
             </div>
             <div x-show="importComplete" x-cloak class="rounded border border-green-700 bg-green-950/30 p-4 text-sm text-green-200">
                 Configuration imported successfully. <span x-text="resultComponents"></span>
+            </div>
+        </div>
+        <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="space-y-5">
+            <div class="flex flex-wrap justify-between items-center gap-3">
+                <div><h2 class="text-xl font-semibold text-white">System status</h2>
+                <p class="text-sm text-gray-400 mt-1">Read-only diagnostics. No credentials or host paths are exposed.</p></div>
+                <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh status'"></button>
+            </div>
+            <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
+                    <h3 class="font-semibold">Application</h3>
+                    <p>State: <span x-text="state"></span></p>
+                    <p>Version: <span x-text="version"></span></p>
+                    <p>Checked: <span x-text="checkedAt"></span></p>
+                </div>
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
+                    <h3 class="font-semibold">Dependencies</h3>
+                    <p>Database: <span x-text="database"></span></p>
+                    <p>Signature storage: <span x-text="storage"></span></p>
+                    <p>Image assets: <span x-text="assets"></span></p>
+                </div>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                <h3 class="font-semibold">Configuration records</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <template x-for="item in records" :key="item.key">
+                        <div class="rounded bg-gray-900 border border-gray-700 p-3">
+                            <p class="text-sm text-gray-400" x-text="item.label"></p>
+                            <p class="text-xl font-semibold" x-text="item.count"></p>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="records.length === 0" class="text-sm text-gray-400">Counts unavailable until the database check succeeds.</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2 text-sm text-gray-300">
+                <h3 class="font-semibold">Operations</h3>
+                <p>Local emergency administrator: <span x-text="localAdmin"></span>. Management API key: <span x-text="managementApi"></span>.</p>
+                <p>Encrypted backups, disaster-recovery restore, secret rotation and mail-adapter configuration remain operator-only, not remote browser controls.</p>
+                <p>External identity providers and mail servers are not contacted. Use provider connection tests and mail adapter logs for external diagnostics.</p>
             </div>
         </div>
         </div>

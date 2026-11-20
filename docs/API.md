@@ -22,6 +22,19 @@ Valid management-key requests to these administrator paths do not need session c
 
 For machine administration, prefer these existing REST resources over a duplicate CLI: domain management, signature catalog and versions, signature groups and memberships, rules, scheduling, branding, overrides, provider configuration, image assets, and selective import/export. The separate operator CLI supports encrypted full backups/restores; details are in [CLI/API v1.0 decisions](CLI_API_V1.md).
 
+## Read-only system diagnostics
+
+`GET /api/admin/system-status` is accessible only to administrator sessions or a
+valid machine management key. It returns application version, UTC timestamp,
+database and signature storage status, aggregate configuration record counts,
+and non-secret flags for operator-managed configuration. Responses are
+non-cacheable. It never returns credentials, provider configuration, user
+identities or filesystem paths, writes no probe files and contacts neither
+identity providers nor mail servers. Degraded status does not expose exception
+details. The browser **System** tab shows the snapshot and a refresh control.
+Full encrypted backup/restore, deployment secrets and MTA diagnostics remain
+operator-only.
+
 ## Authentication and authorization
 
 - `GET /login`: renders the local administrator form, LDAP email/password login and buttons for configured managed OIDC providers.
