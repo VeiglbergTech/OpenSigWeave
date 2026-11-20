@@ -159,12 +159,14 @@ def upgrade() -> None:
             sa.text("SELECT 1 FROM signature_schedules WHERE group_id = :id LIMIT 1"),
             {"id": group_id},
         ).first()
-        if has_members or has_rules or has_schedules:
-            continue
-        connection.execute(
-            sa.text("DELETE FROM signature_group_domains WHERE group_id = :id"),
+        # Even an empty generated group may have been scoped by an administrator.
+        # Domain assignments are user data and must survive an upgrade.
+        has_domains = connection.execute(
+            sa.text("SELECT 1 FROM signature_group_domains WHERE group_id = :id LIMIT 1"),
             {"id": group_id},
-        )
+        ).first()
+        if has_members or has_rules or has_schedules or has_domains:
+            continue
         connection.execute(
             sa.text("DELETE FROM group_selection_state WHERE group_id = :id"),
             {"id": group_id},
