@@ -88,6 +88,50 @@ class SignatureFileStoreTests(unittest.TestCase):
                 with self.assertRaises(SignatureStorageError):
                     store.write(uuid.uuid4(), name, "unsafe")
 
+    def test_signature_images_support_png_jpeg_webp_and_content_addressing(self):
+        fixtures = (
+            ("image/png", b"\x89PNG\r\n\x1a\nfixture", ".png"),
+            ("image/jpeg", b"\xff\xd8\xfffixture", ".jpg"),
+            ("image/webp", b"RIFF\x08\x00\x00\x00WEBPfixture", ".webp"),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            for content_type, payload, extension in fixtures:
+                with self.subTest(content_type=content_type):
+                    filename = store.write_image(payload, content_type)
+                    self.assertTrue(filename.endswith(extension))
+                    self.assertEqual(filename, store.write_image(payload, content_type))
+                    self.assertEqual(store.image_path(filename).read_bytes(), payload)
+                    self.assertEqual(store.image_media_type(filename), content_type)
+
+    def test_signature_image_mime_spoofing_and_unsafe_names_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            with self.assertRaises(SignatureStorageError):
+                store.write_image(b"GIF89a-not-a-png", "image/png")
+            with self.assertRaises(SignatureStorageError):
+                store.write_image(b"RIFF\x08\x00\x00\x00NOPEfixture", "image/webp")
+            with self.assertRaises(SignatureStorageError):
+                store.write_image(b"\x89PNG\r\n\x1a\nfixture", "text/plain")
+            for unsafe in ("../image.png", "a" * 64 + ".svg", "A" * 64 + ".png"):
+                with self.subTest(filename=unsafe):
+                    with self.assertRaises(SignatureStorageError):
+                        store.image_path(unsafe)
+
+    def test_deleting_signature_html_does_not_delete_shared_image_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            image_name = store.write_image(b"\x89PNG\r\n\x1a\nshared", "image/png")
+            version_id = uuid.uuid4()
+            stored = store.write(
+                version_id,
+                "Brand",
+                f'<img src="https://signature.example.org/signature-assets/{image_name}">',
+            )
+            self.assertIn(image_name, store.read("Brand", version_id, stored.sha256))
+            store.delete("Brand", version_id)
+            self.assertEqual(store.image_path(image_name).read_bytes(), b"\x89PNG\r\n\x1a\nshared")
+
     def test_signature_directory_can_be_renamed(self):
         with tempfile.TemporaryDirectory() as directory:
             store = SignatureFileStore(directory)
