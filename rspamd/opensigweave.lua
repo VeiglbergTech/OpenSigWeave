@@ -161,7 +161,13 @@ local function inject_signature(task)
     end
 
     local sender_email = tostring(envfrom[1].addr):lower()
-    local is_reply = task:get_header_raw('in-reply-to') ~= nil or task:get_header_raw('references') ~= nil
+    local subject = (type(task.get_subject) == "function" and task:get_subject())
+        or task:get_header_raw("Subject")
+    local is_forward = subject and tostring(subject):lower():match("^%s*fw[d]?:") ~= nil
+    -- Forwards have no In-Reply-To header in many clients. Detect their
+    -- subject so quote boundaries receive the same placement safeguards.
+    local is_reply = task:get_header_raw('in-reply-to') ~= nil
+        or task:get_header_raw('references') ~= nil or is_forward
 
     -- Only authenticated submissions reach this point (task:get_user() is required above).
     -- A deprecated mode selector is ignored, but stripped so it cannot leak downstream.
