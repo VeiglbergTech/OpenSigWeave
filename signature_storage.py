@@ -239,7 +239,7 @@ class SignatureFileStore:
 
     def image_path(self, filename: str) -> Path:
         """Resolve one immutable signature image without permitting path traversal."""
-        if not isinstance(filename, str) or not re.fullmatch(r"[0-9a-f]{64}\.(?:png|jpg|gif)", filename):
+        if not isinstance(filename, str) or not re.fullmatch(r"[0-9a-f]{64}\.(?:png|jpg|webp|gif)", filename):
             raise SignatureStorageError("Invalid signature image name")
         path = self.assets_root / filename
         if path.parent != self.assets_root:
