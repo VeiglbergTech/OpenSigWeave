@@ -263,6 +263,11 @@ function identityProviderManager() { return {
                 signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
+                get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
+                get selectedVersion() { return this.versions.find(version => version.id === this.selectedVersionId) || null; },
+                get isViewingHistoricalVersion() {
+                    return Boolean(this.currentVersion && this.selectedVersion && this.currentVersion.id !== this.selectedVersion.id);
+                },
                 insertGroupTag(slug, editor) {
                     if (!slug) { notify('Select a signature group first.', 'error'); return; }
                     const token = '{{ group:' + slug + ' }}';
@@ -323,14 +328,14 @@ function identityProviderManager() { return {
                 },
                 versionLabel(version) {
                     const created = version.created_at ? new Date(version.created_at).toLocaleString() : '';
-                    return 'v' + version.version_number + (created ? ' · ' + created : '') + (version.created_by ? ' · ' + version.created_by : '');
+                    return 'v' + version.version_number + (version.is_current ? ' · Current' : '') + (created ? ' · ' + created : '') + (version.created_by ? ' · ' + version.created_by : '');
                 },
                 async loadVersions(signatureId) {
                     const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions');
                     if (!response.ok) { notify('Could not load signature versions.', 'error'); return; }
                     this.versions = await response.json();
                     if (this.versions.length) {
-                        this.selectedVersionId = this.versions[0].id;
+                        this.selectedVersionId = (this.currentVersion || this.versions[0]).id;
                         await this.loadVersion(this.selectedVersionId);
                     }
                 },
@@ -347,13 +352,14 @@ function identityProviderManager() { return {
                     if (signatureRichEditor) signatureRichEditor.setData(this.form.html_content);
                 },
                 async restoreSelectedVersion() {
-                    if (!this.form.id || !this.selectedVersionId || !this.loadedVersionHtml.trim()) return;
-                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions', {
-                        method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ html_content: this.loadedVersionHtml })
-                    });
+                    if (!this.form.id || !this.selectedVersionId || !this.isViewingHistoricalVersion) return;
+                    const response = await fetch(
+                        '/api/admin/signatures/' + encodeURIComponent(this.form.id)
+                        + '/versions/' + encodeURIComponent(this.selectedVersionId) + '/restore',
+                        { method: 'POST' }
+                    );
                     if (!response.ok) { notify('Could not restore signature version: ' + (await response.text()), 'error'); return; }
-                    notify('Selected version restored as a new latest version.');
+                    notify('Selected version restored as a new current version.');
                     await this.loadVersions(this.form.id);
                     await this.fetchAll();
                 },
