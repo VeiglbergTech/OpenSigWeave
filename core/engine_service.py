@@ -15,10 +15,8 @@ from core.engine_contract import (
     SignatureEngineResult,
 )
 from core.group_selection_repository import select_and_record_group_signature
-from core.modes import SignatureMode, resolve_mode
 from core.rule_repository import load_signature_rules
 from core.rules import RuleContext, evaluate_rules
-from core.selection_repository import select_and_record_variant
 from core.schedule_repository import load_active_schedule
 from models import (
     DomainDB,
@@ -77,22 +75,18 @@ class SignatureEngineService:
         if override and override.is_disabled:
             return empty_result
 
-        selected_from_variant = False
         selected_from_group = False
         selected_group_id = None
         selected_group_signature = None
-        signature_id = None
         marker_requested = request.marker_requested
-        explicit_mode = request.explicit_mode
         signature_name = request.signature_name
         signature_code = request.signature_code
 
         active_schedule = None
-        if not marker_requested and not explicit_mode:
+        if not marker_requested:
             active_schedule = load_active_schedule(db, domain_obj.id)
 
-        # Invalid mode headers are not fatal: continue with a body marker or automatic rules.
-        if marker_requested and not explicit_mode:
+        if marker_requested:
             # A text marker is a selector, not an authentication mechanism. It is
             # accepted only when its four-character SHA-256 check matches exactly.
             marker_name = (signature_name or "").strip()
@@ -229,7 +223,7 @@ class SignatureEngineService:
                     "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
                 )
 
-        elif override and domain_obj.allow_overrides and not explicit_mode:
+        elif override and domain_obj.allow_overrides:
             identity_attributes = await self.identity_resolver(
                 db, normalized_email, domain_obj.identity_provider_id
             )
@@ -239,154 +233,93 @@ class SignatureEngineService:
             identity_attributes = await self.identity_resolver(
                 db, normalized_email, domain_obj.identity_provider_id
             )
-            mode = None
-            if explicit_mode:
-                try:
-                    mode = resolve_mode(request.mode)
-                except ValueError:
-                    raise SignatureEngineError("INVALID_MODE", "Invalid signature mode")
-            else:
-                context = RuleContext(
-                    sender=normalized_email,
-                    domain=domain_part,
-                    groups=identity_attributes.groups,
-                    claims=identity_attributes.claims,
-                    attributes=identity_attributes.attributes,
-                )
-                matched_rule = evaluate_rules(load_signature_rules(db), context)
-                if matched_rule and matched_rule.action == "GROUP":
-                    if not matched_rule.group_id or not identity_attributes.principal_id:
-                        return empty_result
-                    selected_signature = select_and_record_group_signature(
-                        db,
-                        principal_id=identity_attributes.principal_id,
-                        group_id=matched_rule.group_id,
-                        domain_id=domain_obj.id,
-                    )
-                    if selected_signature is None:
-                        return empty_result
-                    selected_group_id = matched_rule.group_id
-                    selected_group_signature = selected_signature
-                    latest_version = (
-                        db.query(SignatureVersionDB)
-                        .filter(SignatureVersionDB.signature_id == selected_signature.id)
-                        .order_by(SignatureVersionDB.version_number.desc())
-                        .first()
-                    )
-                    if latest_version is None:
-                        raise SignatureEngineError(
-                            "SIGNATURE_VERSION_METADATA_MISSING",
-                            "Signature version metadata is missing",
-                        )
-                    try:
-                        raw_template = self.file_store.read(
-                            selected_signature.name,
-                            uuid.UUID(hex=latest_version.id),
-                            latest_version.sha256,
-                        )
-                        selected_from_group = True
-                    except (SignatureStorageError, ValueError, TypeError):
-                        raise SignatureEngineError(
-                            "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
-                        )
-                elif matched_rule and matched_rule.action == "SIGNATURE":
-                    if not matched_rule.signature_id:
-                        return empty_result
-                    selected_signature = db.get(SignatureDB, matched_rule.signature_id)
-                    if selected_signature is None or not selected_signature.is_active:
-                        return empty_result
-                    assigned_domains = {
-                        row.domain_id
-                        for row in db.query(SignatureDomainDB)
-                        .filter(SignatureDomainDB.signature_id == selected_signature.id)
-                        .all()
-                    }
-                    if assigned_domains and domain_obj.id not in assigned_domains:
-                        return empty_result
-                    latest_version = (
-                        db.query(SignatureVersionDB)
-                        .filter(SignatureVersionDB.signature_id == selected_signature.id)
-                        .order_by(SignatureVersionDB.version_number.desc())
-                        .first()
-                    )
-                    if latest_version is None:
-                        raise SignatureEngineError(
-                            "SIGNATURE_VERSION_METADATA_MISSING",
-                            "Signature version metadata is missing",
-                        )
-                    try:
-                        raw_template = self.file_store.read(
-                            selected_signature.name,
-                            uuid.UUID(hex=latest_version.id),
-                            latest_version.sha256,
-                        )
-                    except (SignatureStorageError, ValueError, TypeError):
-                        raise SignatureEngineError(
-                            "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
-                        )
-                else:
-                    try:
-                        mode = resolve_mode(
-                            matched_rule.action if matched_rule else None
-                        )
-                    except ValueError:
-                        raise SignatureEngineError(
-                            "INVALID_STORED_RULE",
-                            "A stored signature rule has an invalid action",
-                        )
-                    signature_id = matched_rule.signature_id if matched_rule else None
-
-            if mode == SignatureMode.NONE:
-                return empty_result
-
-            if mode is not None:
-                selected_variant = select_and_record_variant(
-                    db,
-                    sender_email=normalized_email,
-                    pool_name=mode.value,
-                    domain_id=domain_obj.id,
-                    signature_id=signature_id,
-                )
-                if selected_variant:
-                    latest_version = (
-                        db.query(SignatureVersionDB)
-                        .filter(
-                            SignatureVersionDB.signature_id
-                            == selected_variant.signature_id
-                        )
-                        .order_by(SignatureVersionDB.version_number.desc())
-                        .first()
-                    )
-                    if latest_version:
-                        selected_signature = db.get(
-                            SignatureDB, selected_variant.signature_id
-                        )
-                        if selected_signature is None:
-                            raise SignatureEngineError(
-                                "SELECTED_SIGNATURE_METADATA_MISSING",
-                                "Selected signature metadata is missing",
-                            )
-                        try:
-                            raw_template = self.file_store.read(
-                                selected_signature.name,
-                                uuid.UUID(hex=latest_version.id),
-                                latest_version.sha256,
-                            )
-                            selected_from_variant = True
-                        except (SignatureStorageError, ValueError, TypeError):
-                            raise SignatureEngineError(
-                                "SIGNATURE_ASSET_UNAVAILABLE",
-                                "Signature asset unavailable",
-                            )
-                    else:
-                        raise SignatureEngineError(
-                            "SIGNATURE_VERSION_METADATA_MISSING",
-                            "Signature version metadata is missing",
-                        )
-                elif mode == SignatureMode.AUTO and signature_id is None:
-                    raw_template = domain_obj.template_html
-                else:
+            context = RuleContext(
+                sender=normalized_email,
+                domain=domain_part,
+                groups=identity_attributes.groups,
+                claims=identity_attributes.claims,
+                attributes=identity_attributes.attributes,
+            )
+            matched_rule = evaluate_rules(load_signature_rules(db), context)
+            if matched_rule and matched_rule.action == "GROUP":
+                if not matched_rule.group_id or not identity_attributes.principal_id:
                     return empty_result
+                selected_signature = select_and_record_group_signature(
+                    db,
+                    principal_id=identity_attributes.principal_id,
+                    group_id=matched_rule.group_id,
+                    domain_id=domain_obj.id,
+                )
+                if selected_signature is None:
+                    return empty_result
+                selected_group_id = matched_rule.group_id
+                selected_group_signature = selected_signature
+                latest_version = (
+                    db.query(SignatureVersionDB)
+                    .filter(SignatureVersionDB.signature_id == selected_signature.id)
+                    .order_by(SignatureVersionDB.version_number.desc())
+                    .first()
+                )
+                if latest_version is None:
+                    raise SignatureEngineError(
+                        "SIGNATURE_VERSION_METADATA_MISSING",
+                        "Signature version metadata is missing",
+                    )
+                try:
+                    raw_template = self.file_store.read(
+                        selected_signature.name,
+                        uuid.UUID(hex=latest_version.id),
+                        latest_version.sha256,
+                    )
+                    selected_from_group = True
+                except (SignatureStorageError, ValueError, TypeError):
+                    raise SignatureEngineError(
+                        "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
+                    )
+            elif matched_rule and matched_rule.action == "SIGNATURE":
+                if not matched_rule.signature_id:
+                    return empty_result
+                selected_signature = db.get(SignatureDB, matched_rule.signature_id)
+                if selected_signature is None or not selected_signature.is_active:
+                    return empty_result
+                assigned_domains = {
+                    row.domain_id
+                    for row in db.query(SignatureDomainDB)
+                    .filter(SignatureDomainDB.signature_id == selected_signature.id)
+                    .all()
+                }
+                if assigned_domains and domain_obj.id not in assigned_domains:
+                    return empty_result
+                latest_version = (
+                    db.query(SignatureVersionDB)
+                    .filter(SignatureVersionDB.signature_id == selected_signature.id)
+                    .order_by(SignatureVersionDB.version_number.desc())
+                    .first()
+                )
+                if latest_version is None:
+                    raise SignatureEngineError(
+                        "SIGNATURE_VERSION_METADATA_MISSING",
+                        "Signature version metadata is missing",
+                    )
+                try:
+                    raw_template = self.file_store.read(
+                        selected_signature.name,
+                        uuid.UUID(hex=latest_version.id),
+                        latest_version.sha256,
+                    )
+                except (SignatureStorageError, ValueError, TypeError):
+                    raise SignatureEngineError(
+                        "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
+                    )
+            elif matched_rule and matched_rule.action == "NONE":
+                return empty_result
+            elif matched_rule:
+                raise SignatureEngineError(
+                    "INVALID_STORED_RULE",
+                    "A stored signature rule has an invalid action",
+                )
+            else:
+                raw_template = domain_obj.template_html
 
         if not raw_template:
             return empty_result
@@ -466,7 +399,7 @@ class SignatureEngineService:
                 "INVALID_TEMPLATE", "Invalid signature template"
             )
 
-        if commit_selection and (selected_from_variant or selected_from_group):
+        if commit_selection and selected_from_group:
             db.commit()
 
         return SignatureEngineResult(
