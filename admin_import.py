@@ -31,7 +31,6 @@ from models import (
     SignatureGroupMemberDB,
     SignatureRuleDB,
     SignatureRuleConditionDB,
-    SignatureVariantDB,
     SignatureVersionDB,
 )
 from signature_sanitizer import sanitize_signature_html
@@ -45,9 +44,10 @@ PROVIDER_ID_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 GROUP_SLUG_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
 ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-MODE_VALUES = frozenset({"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"})
+LEGACY_MODE_VALUES = frozenset({"AUTO", "PROFESSIONAL", "INTERNAL", "NONE"})
 SCOPE_VALUES = frozenset({"DOMAIN", "GLOBAL"})
-RULE_ACTIONS = frozenset({"AUTO", "PROFESSIONAL", "INTERNAL", "NONE", "GROUP"})
+RULE_ACTIONS = frozenset({"SIGNATURE", "GROUP", "NONE"})
+SUPPORTED_EXPORT_VERSIONS = frozenset({1, EXPORT_VERSION})
 
 
 class AdminImportError(Exception):
@@ -131,7 +131,7 @@ def read_admin_import(payload: bytes) -> tuple[dict, dict[str, bytes]]:
                 manifest.get("format") != EXPORT_FORMAT
                 or isinstance(format_version, bool)
                 or not isinstance(format_version, int)
-                or format_version != EXPORT_VERSION
+                or format_version not in SUPPORTED_EXPORT_VERSIONS
             ):
                 raise AdminImportError("Unsupported OpenSigWeave export format or version")
             components = manifest.get("components")
@@ -326,8 +326,13 @@ def inspect_admin_import(
                     conflicts.append(f"Signature storage name is already in use: {name}")
                 additions["signatures"] += 1
                 signature_ids.add(signature_id)
-            if row.get("scope") not in SCOPE_VALUES or row.get("mode") not in MODE_VALUES:
-                conflicts.append(f"Signature has an unsupported scope or mode: {name}")
+            if row.get("scope") not in SCOPE_VALUES:
+                conflicts.append(f"Signature has an unsupported scope: {name}")
+            if manifest["format_version"] == 1:
+                if row.get("mode") not in LEGACY_MODE_VALUES:
+                    conflicts.append(f"Legacy signature metadata is invalid: {name}")
+            elif "mode" in row or "variants" in row:
+                conflicts.append(f"Signature contains retired legacy mode metadata: {name}")
             if not isinstance(row.get("is_active"), bool):
                 conflicts.append(f"Signature active state is invalid: {name}")
             domain_ids = row.get("domain_ids", [])
@@ -365,17 +370,18 @@ def inspect_admin_import(
                     conflicts.append(f"Signature version exceeds the HTML size limit: {name}")
                 if not isinstance(version.get("sha256"), str) or not SHA256_PATTERN.fullmatch(version["sha256"]):
                     conflicts.append(f"Signature version checksum is invalid: {name}")
-            variants = row.get("variants", [])
-            if not isinstance(variants, list):
-                conflicts.append(f"Signature variants are invalid: {name}")
-            else:
-                for variant in variants:
-                    variant = _object(variant, "signature variant")
-                    if _integer(variant.get("weight"), "variant weight", 1) < 1:
-                        conflicts.append(f"Signature variant weight is invalid: {name}")
-                    if variant.get("pool_name") != row.get("mode"):
-                        conflicts.append(f"Signature variant pool does not match its signature mode: {name}")
-                    _boolean(variant.get("is_enabled"), "variant enabled state")
+            if manifest["format_version"] == 1:
+                variants = row.get("variants", [])
+                if not isinstance(variants, list):
+                    conflicts.append(f"Legacy signature variant metadata is invalid: {name}")
+                else:
+                    for variant in variants:
+                        variant = _object(variant, "legacy signature variant")
+                        _integer(variant.get("weight"), "legacy variant weight", 1)
+                        if variant.get("pool_name") not in LEGACY_MODE_VALUES:
+                            conflicts.append(f"Legacy signature variant pool is invalid: {name}")
+                        _boolean(variant.get("is_enabled"), "legacy variant enabled state")
+
 
     if "groups" in components:
         seen_group_ids = set()
@@ -472,7 +478,13 @@ def inspect_admin_import(
                 conflicts.append(f"Rule id already exists: {name}")
             else:
                 additions["rules"] += 1
-            if row.get("action_mode") not in RULE_ACTIONS:
+            action = row.get("action_mode")
+            if action in LEGACY_MODE_VALUES - {"NONE"}:
+                if manifest["format_version"] == 1 and row.get("signature_id") is not None:
+                    row["action_mode"] = "SIGNATURE"
+                else:
+                    conflicts.append(f"Legacy pooled rule {name} must be migrated on the source installation before import")
+            elif action not in RULE_ACTIONS:
                 conflicts.append(f"Rule action is unsupported: {name}")
             _integer(row.get("priority"), "rule priority", -100000)
             if row["priority"] > 100000:
@@ -483,9 +495,6 @@ def inspect_admin_import(
                 signature_id = _identifier(signature_id, "rule signature id")
                 if signature_id not in signature_ids and db.get(SignatureDB, signature_id) is None:
                     conflicts.append(f"Rule {name} references a signature not included in the import")
-                target_signature = db.get(SignatureDB, signature_id)
-                if target_signature is not None and target_signature.mode != row["action_mode"]:
-                    conflicts.append(f"Rule {name} action mode does not match its signature")
             group_id = row.get("group_id")
             if group_id is not None:
                 group_id = _identifier(group_id, "rule group id")
@@ -509,7 +518,7 @@ def inspect_admin_import(
 
     return {
         "format": EXPORT_FORMAT,
-        "format_version": EXPORT_VERSION,
+        "format_version": manifest["format_version"],
         "components": sorted(components),
         "additions": additions,
         "reusable": reusable,
@@ -579,7 +588,7 @@ def apply_admin_import(
                 ]
                 signature = SignatureDB(
                     id=row["id"], name=row["name"], domain_id=resolved_domains[0] if len(resolved_domains) == 1 else None,
-                    scope=row["scope"], mode=row["mode"], is_active=row["is_active"],
+                    scope=row["scope"], mode="UNUSED", is_active=row["is_active"],
                 )
                 store.ensure_name_available(row["name"])
                 db.add(signature)
@@ -598,12 +607,7 @@ def apply_admin_import(
                         relative_path=stored.relative_path, sha256=stored.sha256,
                         size_bytes=stored.size_bytes, created_by=version.get("created_by"),
                     ))
-                for variant in row.get("variants", []):
-                    db.add(SignatureVariantDB(
-                        id=uuid.uuid4().hex, signature_id=signature.id,
-                        pool_name=variant["pool_name"], weight=variant["weight"],
-                        is_enabled=variant["is_enabled"],
-                    ))
+
 
         if "groups" in components:
             for row in data["groups"]:
