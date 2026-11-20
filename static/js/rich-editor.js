@@ -78,14 +78,18 @@
         }
 
         const pluginNames = config.imageUpload ? [...allowedPlugins, "ImageUpload"] : allowedPlugins;
-        const plugins = pluginNames.map(name => library[name]).filter(Boolean);
+        const missingPlugins = pluginNames.filter(name => !library[name]);
+        if (missingPlugins.length) {
+            throw new Error("CKEditor plugins missing: " + missingPlugins.join(", "));
+        }
+        const plugins = pluginNames.map(name => library[name]);
         const toolbar = [
             "undo", "redo", "|", "heading", "|",
             "fontFamily", "fontSize", "fontColor", "fontBackgroundColor", "|",
             "bold", "italic", "underline", "link", "|",
             "bulletedList", "numberedList", "|", "alignment", "insertTable"
         ];
-        if (config.imageUpload) toolbar.push("insertImage");
+        if (config.imageUpload) toolbar.push("uploadImage");
         toolbar.push("|", "blockQuote", "horizontalLine");
         const editorConfig = {
             licenseKey: "GPL",
