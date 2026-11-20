@@ -32,7 +32,7 @@ class SignatureDB(Base):
     name = Column(String(255), nullable=False)
     domain_id = Column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), nullable=True, index=True)
     scope = Column(String(32), nullable=False, default="DOMAIN")
-    mode = Column(String(32), nullable=False, default="UNUSED")
+    # Legacy compatibility column retained for upgrades/rollback only; runtime/API selection does not read it.\n    mode = Column(String(32), nullable=False, default="UNUSED")
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
