@@ -112,7 +112,7 @@
                 }]
             },
             link: { addTargetToExternalLinks: false },
-            image: { insert: { type: "inline" } },
+            image: { insert: { type: "inline" }, upload: { types: ["png", "jpeg", "webp", "gif"] } },
             initialData: typeof config.initialData === "string" ? config.initialData : "",
             placeholder: config.placeholder || "Create your email signature…"
         };
