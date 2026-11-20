@@ -276,6 +276,26 @@ class IdentityProviderRegistryTests(unittest.TestCase):
             self.assertEqual(registry.get_config("oidc-main")["OIDC_CLIENT_SECRET"], "generic-oidc-secret")
             self.assertIsNone(registry.get("oidc-main"))
 
+    def test_oidc_provider_can_update_without_reentering_saved_secret(self):
+        import tempfile
+        from pathlib import Path
+        from identity.registry import IdentityProviderRegistry
+        with tempfile.TemporaryDirectory() as tmp:
+            registry = IdentityProviderRegistry(Path(tmp) / ".idp")
+            settings = {
+                "OIDC_DISCOVERY_URL": "https://idp.example.org/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "first-client",
+                "OIDC_CLIENT_SECRET": "keep-existing-secret",
+                "OIDC_REDIRECT_URI": "https://signatures.example.org/auth/oidc-main",
+            }
+            registry.save("oidc-main", "OIDC", "oidc", settings)
+            settings["OIDC_CLIENT_ID"] = "updated-client"
+            settings["OIDC_CLIENT_SECRET"] = ""
+            registry.save("oidc-main", "Updated OIDC", "oidc", settings)
+            saved = registry.get_config("oidc-main")
+            self.assertEqual(saved["OIDC_CLIENT_ID"], "updated-client")
+            self.assertEqual(saved["OIDC_CLIENT_SECRET"], "keep-existing-secret")
+
     def test_generic_oidc_provider_requires_complete_https_configuration(self):
         import tempfile
         from identity.registry import IdentityProviderRegistry, ProviderConfigError
