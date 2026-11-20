@@ -334,16 +334,7 @@ async function main() {
     // 3) The normal CKEditor upload-image control. Exercise the actual browser file
     // chooser instead of depending on CKEditor's private DOM classes for its hidden input.
     const signatureToolbar = signaturePanel.locator("#signature-template-editor .ck-toolbar");
-    let toolbarUploadButton = signatureToolbar.getByRole("button", { name: /(?:upload image|upload from computer)/i }).first();
-    if (!(await toolbarUploadButton.isVisible().catch(() => false))) {
-      const showMoreItems = signatureToolbar.getByRole("button", { name: /show more items/i }).first();
-      await showMoreItems.waitFor({ state: "visible" });
-      await showMoreItems.click();
-      // CKEditor moves grouped items into a nested dropdown toolbar, outside the
-      // original toolbar items collection. Search the page after opening it so
-      // the real visible upload control is exercised.
-      toolbarUploadButton = page.getByRole("button", { name: /(?:upload image|upload from computer)/i }).first();
-    }
+    const toolbarUploadButton = signatureToolbar.getByRole("button", { name: /image/i }).first();
     await toolbarUploadButton.waitFor({ state: "visible" });
     const fileChooserPromise = page.waitForEvent("filechooser");
     const toolbarUpload = waitForImageUpload();
