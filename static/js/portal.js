@@ -698,23 +698,37 @@ function identityProviderManager() { return {
         function brandingManager() {
             return {
                 settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', favicon_url: '/branding/favicon' },
-                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(),
+                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
                 async fetchSettings() {
-                    const response = await fetch('/api/admin/branding');
-                    if (!response.ok) { notify('Could not load branding settings.', 'error'); return; }
-                    this.settings = await response.json();
-                    this.cacheKey = Date.now();
+                    try {
+                        const response = await fetch('/api/admin/branding', { cache: 'no-store' });
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        this.settings = await response.json();
+                        this.cacheKey = Date.now();
+                    } catch (error) {
+                        notify('Could not load branding settings: ' + error.message, 'error');
+                    }
                 },
-                logoPreview() { return this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey; },
-                faviconPreview() { return this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey; },
-                readFile(file, fallbackMime) {
+                logoPreview() {
+                    return this.resetLogo ? '/branding/builtin/logo.png' : this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey;
+                },
+                faviconPreview() {
+                    return this.resetFavicon ? '/branding/builtin/favicon' : this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey;
+                },
+                readFile(file, mime) {
                     return new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onerror = () => reject(new Error('Could not read selected file'));
                         reader.onload = () => {
-                            let value = String(reader.result || '');
-                            if (fallbackMime && value.startsWith('data:;base64,')) value = 'data:' + fallbackMime + value.slice(5);
-                            resolve(value);
+                            const value = String(reader.result || '');
+                            const separator = value.indexOf(',');
+                            if (!value.startsWith('data:') || separator < 0 || !value.slice(0, separator).endsWith(';base64')) {
+                                reject(new Error('Selected file cannot be encoded as an image'));
+                                return;
+                            }
+                            // A .ico file may be reported as application/octet-stream by the OS.
+                            // The server still validates the actual ICO structure before accepting it.
+                            resolve('data:' + mime + ';base64,' + value.slice(separator + 1));
                         };
                         reader.readAsDataURL(file);
                     });
@@ -722,40 +736,56 @@ function identityProviderManager() { return {
                 async chooseLogo(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
-                    if (file.size > 512 * 1024 || file.type !== 'image/png') { notify('Logo must be a PNG up to 512 KiB.', 'error'); event.target.value = ''; return; }
+                    this.logoDataUrl = null;
+                    if (!file.size || file.size > 512 * 1024 || file.type !== 'image/png') {
+                        notify('Logo must be a PNG up to 512 KiB.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
                     try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.resetLogo = false; }
-                    catch (error) { notify(error.message, 'error'); }
+                    catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 async chooseFavicon(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
+                    this.faviconDataUrl = null;
                     const ico = file.name.toLowerCase().endsWith('.ico');
-                    if (file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) { notify('Favicon must be PNG or ICO up to 256 KiB.', 'error'); event.target.value = ''; return; }
+                    if (!file.size || file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) {
+                        notify('Favicon must be PNG or ICO up to 256 KiB.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
                     try { this.faviconDataUrl = await this.readFile(file, ico ? 'image/x-icon' : 'image/png'); this.resetFavicon = false; }
-                    catch (error) { notify(error.message, 'error'); }
+                    catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
                 restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
                 async save() {
+                    if (this.saving) return;
                     if (!this.settings.app_name || !this.settings.app_name.trim()) { notify('Application name is required.', 'error'); return; }
                     if (!/^#[0-9a-fA-F]{6}$/.test(this.settings.app_color || '')) { notify('Accent color must be a six-digit hex value.', 'error'); return; }
-                    const response = await fetch('/api/admin/branding', {
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
-                            logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
-                            reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
-                        })
-                    });
-                    if (!response.ok) {
-                        const problem = await response.json().catch(() => ({}));
-                        notify('Could not save branding: ' + (problem.detail || response.statusText), 'error'); return;
+                    this.saving = true;
+                    try {
+                        const response = await fetch('/api/admin/branding', {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
+                                logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
+                                reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
+                            })
+                        });
+                        if (!response.ok) {
+                            const problem = await response.json().catch(() => ({}));
+                            throw new Error(problem.detail || response.statusText);
+                        }
+                        window.location.reload();
+                    } catch (error) {
+                        notify('Could not save branding: ' + error.message, 'error');
+                        this.saving = false;
                     }
-                    window.location.reload();
                 }
             };
         }
-
 
         function domainSettingsModal() {
             return {
