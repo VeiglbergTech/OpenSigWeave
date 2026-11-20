@@ -166,9 +166,9 @@ TLS certificate verification is mandatory. Do not use `ldap://`, disable certifi
 
 Administration provides:
 
-- **Signatures** — create and update signatures, immutable versions, variants and domain scopes.
+- **Signatures** — create and update signatures, immutable versions and domain scopes.
 - **Signature Groups** — reusable sets of signatures with weighted no-repeat selection.
-- **Rules** — choose a mode, exact signature or group based on sender/domain/group/claim/attribute conditions.
+- **Rules** — choose an exact signature, a signature group or no signature based on sender/domain/group/claim/attribute conditions.
 - **Scheduling** — temporarily override normal selection with one signature or group during a concrete date/time range.
 - **Branding** — application name, accent color, logo and favicon.
 
@@ -189,8 +189,8 @@ Resolution order is:
 3. highest-priority active schedule
 4. allowed personal override
 5. highest-priority matching rule
-6. default `AUTO` selection / legacy domain template
-7. `NONE` → no signature
+6. domain template fallback when no rule matches
+7. a matching `NONE` rule → no signature
 
 Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC. At equal priority, a domain-specific schedule wins over an all-domain schedule.
 
@@ -279,28 +279,13 @@ Imports are additive and validated; existing records are not silently overwritte
 
 ## Explicit message selection
 
-Supported modes are:
-
-- `AUTO`
-- `PROFESSIONAL`
-- `INTERNAL`
-- `NONE`
-
-Adapters that support the control header use:
-
-```text
-X-OpenSigWeave-Mode: PROFESSIONAL
-```
-
-The message must be an authenticated submission; client-controlled selector headers are consumed by the adapter and never treated as sender authorization.
-
-A signature may also be selected by its body marker where the adapter supports marker extraction:
+Adapters may select a concrete signature with the body marker supported by the mail integration:
 
 ```text
 <---[Signature name]--[4-character code]--->
 ```
 
-The four-character code is the first four hexadecimal characters of SHA-256 over the Unicode-case-folded UTF-8 signature name. Copy the code shown in the administrator catalog.
+The four-character code is the first four hexadecimal characters of SHA-256 over the Unicode-case-folded UTF-8 signature name. Copy the code shown in the administrator catalog. Mode-based selectors are retired. Mail adapters strip the deprecated selector header and legacy HTML selector markers when encountered, but they no longer influence signature selection.
 
 ## Security model
 
