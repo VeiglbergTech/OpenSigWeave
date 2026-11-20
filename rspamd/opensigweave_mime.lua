@@ -69,6 +69,18 @@ local function is_protected(part)
     return false
 end
 
+-- Preflight before the engine HTTP request: signed/encrypted and encapsulated
+-- messages must not be touched, including their top-level headers.
+function M.preflight(task)
+    if task:get_size() > MAX_MESSAGE_BYTES then return false, "message exceeds MIME rewrite limit" end
+    local parts = task:get_parts() or {}
+    if #parts > MAX_MIME_PARTS then return false, "too many MIME parts" end
+    for _, part in ipairs(parts) do
+        if is_protected(part) then return false, "signed, encrypted or embedded message" end
+    end
+    return true
+end
+
 local function close_boundaries(emit, stack, target)
     local found = false
     for _, boundary in ipairs(stack) do
