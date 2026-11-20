@@ -266,9 +266,11 @@
                                     </template>
                                 </select>
                             </label>
-                            <button type="button" @click="restoreSelectedVersion()" :disabled="!selectedVersionId" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Restore selected as latest</button>
+                            <button type="button" @click="restoreSelectedVersion()" :disabled="!selectedVersionId || !isViewingHistoricalVersion" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Restore selected version</button>
                         </div>
-                        <p class="mt-2 text-xs text-gray-500">Selecting a version loads its HTML into the editor. Changes are saved as a new immutable version; old versions remain available.</p>
+                        <p x-show="currentVersion" class="mt-2 text-xs text-emerald-300">Current version: <strong x-text="'v' + currentVersion.version_number"></strong></p>
+                        <p x-show="isViewingHistoricalVersion" class="mt-1 text-xs text-amber-300">You are viewing <strong x-text="'v' + selectedVersion.version_number"></strong>. The current version remains <strong x-text="'v' + currentVersion.version_number"></strong> until you save or restore.</p>
+                        <p class="mt-2 text-xs text-gray-500">Selecting a version only previews that immutable snapshot in the editor. Saving changes or restoring a historical version creates a new current version; existing history is never overwritten.</p>
                     </div>
                     <div class="mt-2 flex flex-wrap items-end gap-2">
                         <label class="text-xs text-gray-400">Insert signature group tag
