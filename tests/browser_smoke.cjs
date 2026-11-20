@@ -331,14 +331,18 @@ async function main() {
     const pasteUploadResponse = await pasteUpload;
     const pasteAssetPath = (await pasteUploadResponse.json()).url;
 
-    // 3) The normal CKEditor upload-image control. Set the control's native file input
-    // directly so the test remains stable even when the toolbar groups buttons responsively.
-    const toolbarImageControl = signaturePanel.locator("#signature-template-editor .ck-file-dialog-button").first();
-    await toolbarImageControl.waitFor({ state: "attached" });
-    const toolbarImageInput = toolbarImageControl.locator('input[type="file"]');
-    assert.equal(await toolbarImageInput.count(), 1, "CKEditor upload-image control must expose one file input");
+    // 3) The normal CKEditor upload-image control. Exercise the actual browser file
+    // chooser instead of depending on CKEditor's private DOM classes for its hidden input.
+    const toolbarUploadButton = signaturePanel
+      .locator("#signature-template-editor .ck-toolbar")
+      .getByRole("button", { name: /upload image/i })
+      .first();
+    await toolbarUploadButton.waitFor({ state: "visible" });
+    const fileChooserPromise = page.waitForEvent("filechooser");
     const toolbarUpload = waitForImageUpload();
-    await toolbarImageInput.setInputFiles({
+    await toolbarUploadButton.click();
+    const fileChooser = await fileChooserPromise;
+    await fileChooser.setFiles({
       name: imageFixtures.webp.name,
       mimeType: imageFixtures.webp.type,
       buffer: Buffer.from(imageFixtures.webp.base64, "base64"),
