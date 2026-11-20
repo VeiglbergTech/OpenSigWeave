@@ -314,6 +314,11 @@ async function main() {
     const dragUploadResponse = await dragUpload;
     const dragAssetPath = (await dragUploadResponse.json()).url;
     await imageTransfer.dispose();
+    await page.waitForFunction(path =>
+      document.querySelector("#signature-html-source").value.includes(path), dragAssetPath);
+    await signatureEditEditor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" ");
 
     // 2) Clipboard image paste. CKEditor routes clipboard image files through the same upload adapter.
     const pasteUpload = waitForImageUpload();
@@ -330,6 +335,11 @@ async function main() {
     }, imageFixtures.jpeg);
     const pasteUploadResponse = await pasteUpload;
     const pasteAssetPath = (await pasteUploadResponse.json()).url;
+    await page.waitForFunction(path =>
+      document.querySelector("#signature-html-source").value.includes(path), pasteAssetPath);
+    await signatureEditEditor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type(" ");
 
     // 3) The normal CKEditor upload-image control. Exercise the actual browser file
     // chooser instead of depending on CKEditor's private DOM classes for its hidden input.
