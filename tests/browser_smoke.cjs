@@ -345,8 +345,13 @@ async function main() {
         "OS-style file drop must reach CKEditor as a browser-trusted drop");
       assert.deepEqual(nativeDrop.fileNames, [imageFixtures.png.name],
         "OS-style file drop must deliver the real PNG file to CKEditor");
-      const dragUploadResponse = await dragUpload;
-      dragAssetPath = (await dragUploadResponse.json()).url;
+      await dragUpload;
+      // CDP's external-file dispatch can evict the response body from the
+      // inspector cache. Check the persisted URL in CKEditor's rendered DOM
+      // instead of depending on Playwright's Network.getResponseBody().
+      const insertedImage = signatureEditEditor.locator('img[src*="/signature-assets/"]').first();
+      await insertedImage.waitFor({ state: "visible" });
+      dragAssetPath = new URL(await insertedImage.getAttribute("src"), baseURL).pathname;
     } finally {
       await dragClient.detach();
       fs.rmSync(dragFixtureDirectory, { recursive: true, force: true });
