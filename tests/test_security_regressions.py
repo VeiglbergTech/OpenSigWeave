@@ -254,15 +254,15 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn('=3[Cc]%-%-%-%[', lua)
         self.assertIn('local quoted_printable = signature_marker.raw:gsub("<", "=3C")', lua)
 
-    def test_rspamd_fails_closed_for_multipart_until_safe_rewriter_exists(self):
+    def test_rspamd_multipart_parser_rewrites_only_safe_text_parts(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
-        guard = lua.index('if multipart_message then')
-        warning = lua.index('multipart message left unchanged', guard)
-        early_return = lua.index('return', warning)
-        raw_rewriter = lua.index('process_mime_block(raw_body, "html")')
-        self.assertLess(guard, warning)
-        self.assertLess(warning, early_return)
-        self.assertLess(early_return, raw_rewriter)
+        mime = (ROOT / "rspamd" / "opensigweave_mime.lua").read_text(encoding="utf-8")
+        self.assertIn('mime_rewriter.rewrite(task, function(decoded, is_html)', lua)
+        self.assertIn('task:get_parts()', mime)
+        self.assertIn('part:is_attachment()', mime)
+        self.assertIn('signed, encrypted or embedded message', mime)
+        self.assertIn('message exceeds MIME rewrite limit', mime)
+        self.assertNotIn('process_mime_block(raw_body, "html")', lua)
 
 
     def test_templates_do_not_use_inline_scripts_or_event_handlers(self):

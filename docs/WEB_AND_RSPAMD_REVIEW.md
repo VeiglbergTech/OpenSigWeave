@@ -73,9 +73,9 @@ The Lua adapter:
 
 ### Multipart behavior
 
-The adapter detects the top-level Content-Type. If it is `multipart/*`, it logs a warning and returns without changing the message.
+The adapter now processes `multipart/alternative`, `multipart/related` and `multipart/mixed` through Rspamd's parsed MIME tree, decoding only `text/plain` and `text/html` leaves before placement and quoted-printable re-encoding. Binary attachments and inline CID/image parts are copied without decoding. Whole messages are skipped if they contain signed/encrypted or embedded message structures, malformed boundaries, undecodable text or exceed the 20 MiB rewrite limit. Raw boundary matching is not used.
 
-This includes common `multipart/alternative`, `multipart/related` and `multipart/mixed` messages. The current rewrite path is limited to non-multipart messages. This is deliberate fail-safe behavior; do not attempt to enable multipart rewriting through regular-expression boundary reconstruction.
+This is covered by Lua mock-parsed MIME-tree tests plus Python MIME parsing of serialized nested messages. Real Rspamd/Mailcow handling, Content-Transfer-Encoding variants and final DKIM remain an external acceptance requirement. See [Mailcow integration](MAILCOW_RSPAMD_INTEGRATION.md).
 
 ### Sender authorization
 
@@ -112,7 +112,7 @@ No production Mailcow configuration has been changed and no end-to-end SMTP/DKIM
 | Mail behavior | New message, reply, forward, repeated processing, no matching signature |
 | DKIM | Verify the final delivered message after injection |
 
-The multipart cases should currently confirm that the message remains unchanged. They must not be interpreted as supported injection cases.
+The automated nested-multipart fixture now checks the rewritten plain/HTML alternatives and unchanged binary attachment. A disposable Mailcow SMTP/DKIM test is still required before enabling production flow.
 
 ## 5. CI evidence and limits
 

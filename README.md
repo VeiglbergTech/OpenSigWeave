@@ -50,7 +50,7 @@ A green application workflow means the tested commit passed secret scanning, dep
 | Postfix Milter | PyMilter runtime, native protocol exchange and real disposable Postfix delivery through the actual adapter with a mock OpenSigWeave engine | Live HTTPS engine credentials/trust, production filter ordering and final DKIM still required. |
 | Stalwart | Shared-engine and MIME regression coverage, including multipart, reply placement, attachments and signed/encrypted fail-safe behavior | Live Stalwart SMTP/DKIM end-to-end acceptance still required. |
 
-See [adapter documentation](docs/ADAPTERS.md), [Postfix design](docs/POSTFIX_MILTER_DESIGN.md) and [web/Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
+See [adapter documentation](docs/ADAPTERS.md), [Mailcow/Rspamd staging integration](docs/MAILCOW_RSPAMD_INTEGRATION.md), [Postfix design](docs/POSTFIX_MILTER_DESIGN.md) and [web/Rspamd security review](docs/WEB_AND_RSPAMD_REVIEW.md).
 
 ## Requirements
 

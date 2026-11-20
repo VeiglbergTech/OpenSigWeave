@@ -2,6 +2,9 @@ local rspamd_logger = require "rspamd_logger"
 local rspamd_http = require "rspamd_http"
 local ucl = require "ucl"
 local rspamd_util = require "rspamd_util"
+-- Mailcow mounts custom Lua files under /etc/rspamd/lua.
+-- Extend module search path without replacing Rspamd's own library paths.
+package.path = package.path .. ";/etc/rspamd/lua/?.lua"
 local mime_rewriter = require "opensigweave_mime"
 
 -- ==========================================
