@@ -72,6 +72,7 @@ local task = {}
 function task:get_parts() return all end
 function task:get_size() return 4096 end
 function task:get_raw_headers() return h end
+function task:get_rawbody() return 'This is a MIME preamble.\r\n--outer\r\nSome parts\r\n--outer--\r\nAnd an epilogue.\r\n' end
 function task:get_newlines_type() return 'crlf' end
 local chunks, count = mime.rewrite(task, function(s, is_html)
   if s:find('On Wednesday wrote:',1,true) then
@@ -85,6 +86,8 @@ assert(chunks, count)
 assert(count == 4, 'four text alternatives must be edited')
 local output = table.concat(chunks)
 assert(output:find('X-Trace: value',1,true), 'top-level header lost')
+assert(output:find('This is a MIME preamble.',1,true), 'MIME preamble lost')
+assert(output:find('And an epilogue.',1,true), 'MIME epilogue lost')
 assert(output:find('X-Body-Trace: 123',1,true), 'nested header lost')
 assert(output:find('X-File-Trace: intact',1,true), 'attachment header lost')
 assert(output:find('AAEC/w==\r\n--rel--',1,true), 'inline image/boundary separator broken')
