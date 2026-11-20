@@ -186,7 +186,7 @@ Administrator-only endpoints:
 
 Rules accept `action_mode: "GROUP"` together with `group_id`; `signature_id` must be null. A group tag in signature HTML uses `{{ group:slug }}`. Repeated tags for the same slug reuse one selection during that message. Selection state requires a provider-namespaced immutable identity: Authentik user `pk` or Active Directory `objectGUID`; email is never used as the group rotation key.
 
-Migration `0014_retire_legacy_signature_modes` converts installed legacy pool rules to ordinary signature groups while retaining historical storage columns/tables only for database upgrade and rollback compatibility.
+Migration `0014_retire_signature_modes` converts installed legacy pool rules to ordinary signature groups while retaining historical storage columns/tables only for database upgrade and rollback compatibility.
 
 
 ## Scheduling
