@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
 
 from dotenv import load_dotenv
@@ -190,20 +190,33 @@ class AdminOverrideSave(BaseModel):
     html_content: str = Field(max_length=65536)
     is_disabled: bool = False
 
-class SignatureCreateRequest(BaseModel):
+class NoLegacySignatureSelectionRequest(BaseModel):
+    """Reject retired selectors without changing handling of unrelated extra fields."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_retired_selectors(cls, value):
+        if isinstance(value, dict) and any(
+            field in value for field in ("mode", "pool_name", "variants", "variant_id", "weight")
+        ):
+            raise ValueError("Legacy signature mode and variant fields are no longer supported")
+        return value
+
+
+class SignatureCreateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
     domain_ids: Optional[List[int]] = None
     html_content: str = Field(min_length=1, max_length=65536)
     is_active: bool = True
 
-class SignatureUpdateRequest(BaseModel):
+class SignatureUpdateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
     domain_ids: Optional[List[int]] = None
     is_active: bool = True
 
-class SignatureVersionCreateRequest(BaseModel):
+class SignatureVersionCreateRequest(NoLegacySignatureSelectionRequest):
     html_content: str = Field(min_length=1, max_length=65536)
 
 class SignatureRuleConditionRequest(BaseModel):
@@ -224,7 +237,7 @@ class SignatureGroupMemberRequest(BaseModel):
     is_enabled: bool = True
 
 
-class SignatureRuleCreateRequest(BaseModel):
+class SignatureRuleCreateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=0, ge=-100000, le=100000)
     action_mode: Literal["SIGNATURE", "GROUP", "NONE"] = "SIGNATURE"
@@ -242,7 +255,7 @@ class BrandingUpdateRequest(BaseModel):
     reset_favicon: bool = False
 
 
-class SignatureScheduleRequest(BaseModel):
+class SignatureScheduleRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     target_type: Literal["SIGNATURE", "GROUP"]
     signature_id: Optional[str] = Field(default=None, max_length=32)
