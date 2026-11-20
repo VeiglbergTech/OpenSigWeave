@@ -218,5 +218,65 @@ class LegacyMigrationCompatibilityTests(unittest.TestCase):
             self.assertEqual(revision, ("0014_retire_signature_modes",))
 
 
+    def test_scoped_empty_compatibility_group_survives_mode_retirement(self):
+        # An administrator may scope an otherwise empty seed group. The scope
+        # is user data and must not be deleted by compatibility cleanup.
+        with tempfile.TemporaryDirectory(prefix="opensigweave-scoped-legacy-") as tmp:
+            database_path = pathlib.Path(tmp) / "scoped.db"
+            environment = os.environ.copy()
+            environment["DATABASE_URL"] = f"sqlite:///{database_path}"
+
+            def migrate(target):
+                result = subprocess.run(
+                    [
+                        sys.executable, "-m", "alembic", "-c", str(ROOT / "alembic.ini"),
+                        "upgrade", target,
+                    ],
+                    cwd=ROOT, env=environment, capture_output=True,
+                    text=True, check=False,
+                )
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+            migrate("0013_branding_schedules")
+            connection = sqlite3.connect(database_path)
+            connection.execute(
+                "INSERT INTO domains (id, domain_name, is_active) VALUES (?, ?, ?)",
+                (1, "scoped.example.org", 1),
+            )
+            group_id = connection.execute(
+                "SELECT id FROM signature_groups WHERE slug = 'legacy-auto'"
+            ).fetchone()[0]
+            connection.execute(
+                "INSERT INTO signature_group_domains (group_id, domain_id) VALUES (?, ?)",
+                (group_id, 1),
+            )
+            connection.commit()
+            connection.close()
+
+            migrate("head")
+            connection = sqlite3.connect(database_path)
+            preserved_group = connection.execute(
+                "SELECT name, slug FROM signature_groups WHERE id = ?",
+                (group_id,),
+            ).fetchone()
+            preserved_scope = connection.execute(
+                "SELECT domain_id FROM signature_group_domains WHERE group_id = ?",
+                (group_id,),
+            ).fetchall()
+            other_generated_groups = connection.execute(
+                "SELECT COUNT(*) FROM signature_groups WHERE id <> ?",
+                (group_id,),
+            ).fetchone()[0]
+            revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+            connection.close()
+
+            self.assertIsNotNone(preserved_group)
+            self.assertEqual(preserved_group[0], "Migrated signature group 1")
+            self.assertTrue(preserved_group[1].startswith("compat-"))
+            self.assertEqual(preserved_scope, [(1,)])
+            self.assertEqual(other_generated_groups, 0)
+            self.assertEqual(revision, ("0014_retire_signature_modes",))
+
+
 if __name__ == "__main__":
     unittest.main()
