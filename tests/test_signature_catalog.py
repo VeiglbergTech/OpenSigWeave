@@ -7,18 +7,15 @@ from unittest.mock import patch
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import sessionmaker
 
-from core.modes import SignatureMode
 from database import Base
-from models import DomainDB, SignatureDB, SignatureVariantDB, SignatureVersionDB
+from models import DomainDB, SignatureDB, SignatureVersionDB
 from signature_catalog import (
     SignatureNotFoundError,
     SignatureVersionNotFoundError,
-    add_signature_variant,
     add_signature_version,
     create_signature,
     restore_signature_version,
     update_signature,
-    update_signature_variant,
 )
 from signature_storage import SignatureFileStore, SignatureStorageError
 from signature_sanitizer import sanitize_signature_html
@@ -38,23 +35,19 @@ class SignatureCatalogTests(unittest.TestCase):
         self.engine.dispose()
         self.tempdir.cleanup()
 
-    def test_create_signature_persists_metadata_variant_and_html_file(self):
-        signature, version, variant = create_signature(
+    def test_create_signature_persists_metadata_and_html_file(self):
+        signature, version = create_signature(
             self.session,
             self.store,
             name="Default signature",
             domain_id=None,
-            mode=SignatureMode.AUTO,
             html_content="<p>Hello {{ first_name }}</p>",
-            weight=2,
             created_by="admin@example.org",
         )
 
         self.assertEqual(signature.scope, "GLOBAL")
-        self.assertEqual(signature.mode, "AUTO")
+        self.assertEqual(signature.mode, "UNUSED")
         self.assertEqual(version.version_number, 1)
-        self.assertEqual(variant.pool_name, "AUTO")
-        self.assertEqual(variant.weight, 2)
         self.assertEqual(
             self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256),
             "<p>Hello {{ first_name }}</p>",
@@ -63,47 +56,46 @@ class SignatureCatalogTests(unittest.TestCase):
     def test_create_signature_rejects_duplicate_storage_name(self):
         create_signature(
             self.session, self.store, name="Shared name", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+            html_content="<p>First</p>",
         )
         with self.assertRaises(Exception):
             create_signature(
                 self.session, self.store, name="Shared name", domain_id=None,
-                mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+                html_content="<p>Second</p>",
             )
 
     def test_create_signature_rejects_case_insensitive_duplicate_name(self):
         create_signature(
             self.session, self.store, name="Corporate", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+            html_content="<p>First</p>",
         )
         with self.assertRaises(ValueError):
             create_signature(
                 self.session, self.store, name="corporate", domain_id=None,
-                mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+                html_content="<p>Second</p>",
             )
 
     def test_create_signature_rejects_blank_name(self):
         with self.assertRaises(ValueError):
             create_signature(
                 self.session, self.store, name="   ", domain_id=None,
-                mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+                html_content="<p>Signature</p>",
             )
 
     def test_create_signature_can_start_inactive(self):
-        signature, _, _ = create_signature(
+        signature, _ = create_signature(
             self.session, self.store, name="Inactive", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>Inactive</p>",
+            html_content="<p>Inactive</p>",
             is_active=False,
         )
         self.assertFalse(signature.is_active)
 
     def test_new_version_increments_version_number(self):
-        signature, first, _ = create_signature(
+        signature, first = create_signature(
             self.session,
             self.store,
             name="Versioned",
             domain_id=None,
-            mode=SignatureMode.PROFESSIONAL,
             html_content="<p>Version 1</p>",
         )
         second = add_signature_version(
@@ -120,12 +112,11 @@ class SignatureCatalogTests(unittest.TestCase):
         )
 
     def test_restore_signature_version_creates_new_current_without_overwriting_history(self):
-        signature, first, _ = create_signature(
+        signature, first = create_signature(
             self.session,
             self.store,
             name="Restorable",
             domain_id=None,
-            mode=SignatureMode.AUTO,
             html_content="<p>Version 1</p>",
         )
         second = add_signature_version(
@@ -177,13 +168,13 @@ class SignatureCatalogTests(unittest.TestCase):
             )
 
     def test_restore_signature_version_rejects_version_from_another_signature(self):
-        first_signature, first_version, _ = create_signature(
+        first_signature, first_version = create_signature(
             self.session, self.store, name="First", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>First</p>",
+            html_content="<p>First</p>",
         )
-        second_signature, _, _ = create_signature(
+        second_signature, _ = create_signature(
             self.session, self.store, name="Second", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>Second</p>",
+            html_content="<p>Second</p>",
         )
         with self.assertRaises(SignatureVersionNotFoundError):
             restore_signature_version(
@@ -199,22 +190,6 @@ class SignatureCatalogTests(unittest.TestCase):
             1,
         )
 
-    def test_add_variant_requires_matching_mode(self):
-        signature, _, _ = create_signature(
-            self.session,
-            self.store,
-            name="Professional",
-            domain_id=None,
-            mode=SignatureMode.PROFESSIONAL,
-            html_content="<p>Professional</p>",
-        )
-        with self.assertRaises(ValueError):
-            add_signature_variant(
-                self.session,
-                signature.id,
-                pool_name=SignatureMode.AUTO,
-            )
-
     def test_missing_signature_raises_not_found(self):
         with self.assertRaises(SignatureNotFoundError):
             add_signature_version(
@@ -225,9 +200,9 @@ class SignatureCatalogTests(unittest.TestCase):
             )
 
     def test_update_signature_metadata_and_deactivate(self):
-        signature, _, _ = create_signature(
+        signature, _ = create_signature(
             self.session, self.store, name="Original", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+            html_content="<p>Signature</p>",
         )
         domain = DomainDB(domain_name="example.org")
         self.session.add(domain)
@@ -248,21 +223,10 @@ class SignatureCatalogTests(unittest.TestCase):
         self.assertEqual(self.store.read("Renamed", uuid.UUID(hex=version.id), version.sha256), "<p>Signature</p>")
         self.assertTrue((Path(self.tempdir.name) / "signatur" / "Renamed" / "signature.html").exists())
 
-    def test_update_variant_weight_and_enabled_state(self):
-        _, _, variant = create_signature(
-            self.session, self.store, name="Variant", domain_id=None,
-            mode=SignatureMode.INTERNAL, html_content="<p>Internal</p>",
-        )
-        updated = update_signature_variant(
-            self.session, variant.id, weight=7, is_enabled=False,
-        )
-        self.assertEqual(updated.weight, 7)
-        self.assertFalse(updated.is_enabled)
-
     def test_update_signature_rejects_unknown_domain(self):
-        signature, _, _ = create_signature(
+        signature, _ = create_signature(
             self.session, self.store, name="Original", domain_id=None,
-            mode=SignatureMode.AUTO, html_content="<p>Signature</p>",
+            html_content="<p>Signature</p>",
         )
         with self.assertRaises(ValueError):
             update_signature(
@@ -278,8 +242,7 @@ class SignatureCatalogTests(unittest.TestCase):
                     self.store,
                     name="Rollback",
                     domain_id=None,
-                    mode=SignatureMode.AUTO,
-                    html_content="<p>Rollback</p>",
+                            html_content="<p>Rollback</p>",
                 )
         self.assertFalse((Path(self.tempdir.name) / "signatur" / "Rollback").exists())
         self.assertEqual(self.session.execute(select(SignatureDB)).scalars().all(), [])
@@ -295,12 +258,11 @@ class SignatureCatalogTests(unittest.TestCase):
             '<script>alert(1)</script>'
             '</p>'
         )
-        signature, version, _ = create_signature(
+        signature, version = create_signature(
             self.session,
             self.store,
             name="Untrusted template",
             domain_id=None,
-            mode=SignatureMode.AUTO,
             html_content=source,
         )
         stored = self.store.read(signature.name, uuid.UUID(hex=version.id), version.sha256)
@@ -328,9 +290,9 @@ class SignatureCatalogTests(unittest.TestCase):
             self.store.write_image(b"not-a-png", "image/png")
 
     def test_new_signature_versions_preserve_source_too(self):
-        signature, _, _ = create_signature(
+        signature, _ = create_signature(
             self.session, self.store, name="Versioned", domain_id=None,
-            mode=SignatureMode.PROFESSIONAL, html_content="<p>Version 1</p>",
+            html_content="<p>Version 1</p>",
         )
         source = '<div onmouseover="alert(1)">Version 2<script>bad()</script></div>'
         version = add_signature_version(
