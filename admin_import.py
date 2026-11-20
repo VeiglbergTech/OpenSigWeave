@@ -503,8 +503,11 @@ def inspect_admin_import(
             if row["action_mode"] == "GROUP":
                 if group_id is None or signature_id is not None:
                     conflicts.append(f"GROUP rule {name} must target a group only")
-            elif group_id is not None:
-                conflicts.append(f"Non-GROUP rule {name} cannot target a group")
+            elif row["action_mode"] == "SIGNATURE":
+                if signature_id is None or group_id is not None:
+                    conflicts.append(f"SIGNATURE rule {name} must target a signature only")
+            elif signature_id is not None or group_id is not None:
+                conflicts.append(f"NONE rule {name} cannot target a signature or group")
             if not isinstance(row.get("conditions"), list) or len(row["conditions"]) > 64:
                 conflicts.append(f"Rule conditions are invalid: {name}")
             else:
