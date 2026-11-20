@@ -599,15 +599,21 @@ local function inject_signature(task)
             for line in raw_headers:gmatch("([^\n]*\n?)") do
                 if line == "" then break end
                 if line:match("^[A-Za-z0-9%-]+:") then
-                    dropping_cte = line:lower():match("^content%-transfer%-encoding:") ~= nil
+                    local field = line:lower()
+                    dropping_cte = field:match("^content%-transfer%-encoding:") ~= nil
+                        or field:match("^content%-type:") ~= nil
                 end
                 if not dropping_cte then kept_headers[#kept_headers + 1] = line end
             end
             local new_headers = table.concat(kept_headers):gsub("[\r\n]+$", "")
-            task:set_message(new_headers .. "\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html)
+            task:set_message(new_headers .. "\r\nContent-Type: text/html; charset=utf-8\r\n"
+                .. "Content-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html)
             task:set_milter_reply({
-                remove_headers = { ['Content-Transfer-Encoding'] = 0 },
-                add_headers = { ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 } }
+                remove_headers = { ['Content-Type'] = 0, ['Content-Transfer-Encoding'] = 0 },
+                add_headers = {
+                    ['Content-Type'] = { value = 'text/html; charset=utf-8', order = 1 },
+                    ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 }
+                }
             })
         elseif is_multipart then
             -- Rspamd parses MIME boundaries; only decoded text is passed to the
