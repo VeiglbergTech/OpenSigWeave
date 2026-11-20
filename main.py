@@ -1802,6 +1802,8 @@ def create_signature_schedule(
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     starts_at, ends_at = _normalized_schedule_window(payload)
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Schedule name must not be blank")
     _schedule_target_scope(db, payload)
     item = SignatureScheduleDB(
         id=uuid.uuid4().hex,
@@ -1833,6 +1835,8 @@ def update_signature_schedule(
     if item is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
     starts_at, ends_at = _normalized_schedule_window(payload)
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Schedule name must not be blank")
     _schedule_target_scope(db, payload)
     item.name = payload.name.strip()
     item.target_type = payload.target_type

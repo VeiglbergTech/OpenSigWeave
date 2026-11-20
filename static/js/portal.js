@@ -657,13 +657,27 @@ function identityProviderManager() { return {
                     if (this.form.target_type === 'GROUP') this.form.signature_id = '';
                     else this.form.group_id = '';
                 },
+                validScheduleLocalTime(value) {
+                    // Reject nonexistent clock times and the repeated hour at a DST fallback.
+                    // datetime-local has no UTC offset, so guessing would silently shift campaigns.
+                    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')) return false;
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime()) || this.toInputValue(date) !== value) return false;
+                    for (const minutes of [-180, -120, -90, -60, -30, 30, 60, 90, 120, 180]) {
+                        if (this.toInputValue(new Date(date.getTime() + minutes * 60000)) === value) return false;
+                    }
+                    return true;
+                },
                 async saveSchedule() {
                     if (!this.form.name.trim()) { notify('Please enter a schedule name.', 'error'); return; }
                     if (this.form.target_type === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
                     if (this.form.target_type === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
+                    if (!this.validScheduleLocalTime(this.form.starts_local) || !this.validScheduleLocalTime(this.form.ends_local)) {
+                        notify('Select an existing, unambiguous local time (check daylight saving time changes).', 'error'); return;
+                    }
                     const start = new Date(this.form.starts_local);
                     const end = new Date(this.form.ends_local);
-                    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+                    if (start >= end) {
                         notify('Enter a valid start and end time.', 'error'); return;
                     }
                     const payload = {

@@ -701,6 +701,17 @@ async function main() {
     browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
     assert.equal(browserSchedule.priority, 42, "schedule update must persist");
 
+    // A browser reload must not discard or change any saved schedule fields.
+    await page.reload();
+    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    await scheduleRow.waitFor();
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(browserSchedule.priority, 42, "updated schedule survives page reload");
+    assert.equal(browserSchedule.target_type, "SIGNATURE");
+    assert.equal(browserSchedule.is_enabled, true);
+
     scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
     page.once("dialog", dialog => dialog.accept());
     await scheduleRow.getByRole("button", { name: "Delete", exact: true }).click();

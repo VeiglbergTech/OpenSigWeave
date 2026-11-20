@@ -215,7 +215,7 @@ Resolution order is:
 6. domain template fallback when no rule matches
 7. a matching `NONE` rule → no signature
 
-Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC. At equal priority, a domain-specific schedule wins over an all-domain schedule.
+Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC (using the timezone of the administrator's browser). Nonexistent or ambiguous DST-transition clock times are rejected rather than silently shifted. API clients must send timezone-aware ISO 8601 timestamps, e.g. `2026-12-01T00:00:00+01:00`. At equal priority, a domain-specific schedule wins over an all-domain schedule; a later start wins further ties, followed by the smallest schedule ID. A schedule does not require a timer or worker: the engine checks the database for every request, including Rspamd's legacy `/api/signature/{email}` endpoint. PostgreSQL persistence survives service restarts when its data volume is retained.
 
 The current scheduler intentionally supports concrete ranges only. Recurring annual/weekly schedules are not part of the beta contract.
 
