@@ -19,6 +19,7 @@ MAX_SIGNATURE_IMAGE_BYTES = 2 * 1024 * 1024
 _SIGNATURE_IMAGE_TYPES = {
     "image/png": (".png", b"\x89PNG\r\n\x1a\n"),
     "image/jpeg": (".jpg", b"\xff\xd8\xff"),
+    "image/webp": (".webp", b"RIFF"),
     "image/gif": (".gif", (b"GIF87a", b"GIF89a")),
 }
 
@@ -212,7 +213,15 @@ class SignatureFileStore:
         if image_type is None:
             raise SignatureStorageError("Unsupported signature image type")
         extension, magic = image_type
-        valid_magic = any(payload.startswith(item) for item in magic) if isinstance(magic, tuple) else payload.startswith(magic)
+        if normalized_type == "image/webp":
+            # WebP is a RIFF container and must also carry the WEBP form type.
+            valid_magic = (
+                len(payload) >= 12
+                and payload.startswith(b"RIFF")
+                and payload[8:12] == b"WEBP"
+            )
+        else:
+            valid_magic = any(payload.startswith(item) for item in magic) if isinstance(magic, tuple) else payload.startswith(magic)
         if not valid_magic:
             raise SignatureStorageError("Signature image content does not match its media type")
 
@@ -248,7 +257,7 @@ class SignatureFileStore:
     @staticmethod
     def image_media_type(filename: str) -> str:
         extension = Path(filename).suffix.lower()
-        return {".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif"}.get(extension, "application/octet-stream")
+        return {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp", ".gif": "image/gif"}.get(extension, "application/octet-stream")
 
     def restore_current(self, signature_name: str, version_id: uuid.UUID, expected_sha256: str) -> None:
         content = self.read(signature_name, version_id, expected_sha256)
