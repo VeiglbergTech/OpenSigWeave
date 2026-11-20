@@ -48,7 +48,7 @@ All catalog endpoints require the administrator group.
 
 `GET /api/admin/signatures`
 
-Returns logical signatures with scope, domain, mode, active state and version/variant counts. It does not return signature HTML.
+Returns logical signatures with scope, domain assignments, active state and version count. It does not return signature HTML.
 
 ### Create a signature
 
@@ -60,18 +60,15 @@ Example:
 {
   "name": "Default corporate signature",
   "domain_id": null,
-  "mode": "AUTO",
-  "weight": 2,
-  "html_content": "<table><tr><td>{{ first_name }} {{ last_name }}</td></tr></table>"
+  "html_content": "<table><tr><td>{{ first_name }} {{ last_name }}</td></tr></table>",
+  "is_active": true
 }
 ```
 
 - `domain_id` may be `null` for a global signature.
-- `mode` is `AUTO`, `PROFESSIONAL` or `INTERNAL`.
 - `is_active` defaults to `true`.
 - The submitted HTML source is stored as the immutable version source; it is allowlist-sanitized before preview and delivery.
 - PostgreSQL stores the version identifier, relative path, SHA-256 hash, size and metadata.
-- An initial variant is created in the same mode pool.
 
 Dynamic identity values are rendered with HTML autoescaping.
 
@@ -89,17 +86,13 @@ Example:
 }
 ```
 
-This changes the name, global/domain scope and active state. The mode is immutable after creation. Deactivation preserves the versions and metadata but excludes the signature from selection.
+This changes the name, global/domain scope and active state. Deactivation preserves the versions and metadata but excludes the signature from selection.
 
-### Versions and variants
+### Versions
 
 - `GET /api/admin/signatures/{signature_id}/versions`: list version metadata, hashes and timestamps.
 - `POST /api/admin/signatures/{signature_id}/versions`: create a new HTML version.
-- `GET /api/admin/signatures/{signature_id}/variants`: list variants.
-- `POST /api/admin/signatures/{signature_id}/variants`: add a variant to the matching mode pool.
-- `PUT /api/admin/signature-variants/{variant_id}`: update variant weight and enabled state.
-
-Weights must be positive. Version files are immutable and integrity-checked when read. Prefer deactivation to deletion; catalog deletion is not implemented.
+Version files are immutable and integrity-checked when read. Prefer deactivation to deletion; catalog deletion is not implemented.
 
 ## Signature rules
 
@@ -120,7 +113,7 @@ Supported condition kinds:
 - `claim_equals`
 - `attribute_equals`
 
-`claim_equals` currently evaluates selected Authentik user fields (`username`, `email`, `name`, `is_active`, `uid`, `path`, `type`). `attribute_equals` evaluates custom Authentik attributes. A selected signature's mode must match the rule's action mode.
+`claim_equals` currently evaluates selected Authentik user fields (`username`, `email`, `name`, `is_active`, `uid`, `path`, `type`). `attribute_equals` evaluates custom Authentik attributes. Rule actions are `SIGNATURE`, `GROUP` or `NONE`. `SIGNATURE` requires a signature target, `GROUP` requires a group target, and `NONE` deliberately suppresses injection.
 
 ## Adapter-neutral engine endpoint
 
@@ -155,34 +148,18 @@ Requires the `X-Engine-Key` header. The key must match the application's `ENGINE
 
 The sender email is normalized and validated. The Rspamd adapter sends the SMTP envelope sender; it also requires an authenticated SMTP user to be present in the Rspamd task. This alone does not prove that the authenticated mailbox is authorized to use that envelope sender. Mailcow/Postfix sender verification and explicit alias/delegated-send-as permissions must remain enabled.
 
-### Message mode
+### Per-message signature selector
 
-Rspamd may send one `X-OpenSigWeave-Mode` header with one of these values:
-
-- `AUTO`
-- `PROFESSIONAL`
-- `INTERNAL`
-- `NONE`
-
-The adapter accepts the header only for authenticated submissions, rejects duplicate or unsupported values, forwards a valid value to the engine API and removes the control header from the message.
-
-If no valid header is present, the adapter checks decoded HTML text parts for an Outlook marker such as:
-
-```html
-<!-- OpenSigWeave:MODE=PROFESSIONAL -->
-```
-
-or an element with `data-opensigweave-mode="PROFESSIONAL"`. Markers found only after recognized quoted-reply boundaries are ignored. On replies where no quote boundary can be identified, marker detection fails closed. The marker is removed before signature insertion. A valid explicit mode header takes precedence over the HTML marker.
+The engine accepts an optional concrete-signature selector through `X-OpenSigWeave-Signature` and `X-OpenSigWeave-Signature-Code`. The Rspamd/Postfix integrations may extract the same selector from the supported body marker. Mode-based selectors are retired; the deprecated mode header is consumed by adapters for cleanup only and is not forwarded to or evaluated by the engine.
 
 ## Resolution precedence
 
 1. An administrator-disabled user override returns no signature.
-2. Explicit per-message selection (validated body marker or authenticated message-mode header) overrides scheduling, personal overrides and rules.
+2. A validated concrete-signature marker selects that signature.
 3. Otherwise, the highest-priority active schedule for the sender's domain is applied. Domain-specific schedules win equal-priority ties against all-domain schedules.
 4. Without an active schedule, an enabled personal override is used only when the domain allows overrides.
-5. Otherwise, the highest-priority matching rule determines the mode and optional signature target.
-6. If no rule matches, the default mode is `AUTO`; the legacy domain template is used if no catalog variant is available in that pool.
-7. `NONE` returns an empty signature.
+5. Otherwise, the highest-priority matching rule selects a direct signature, a signature group or no signature.
+6. If no rule matches, the domain template is used.
 
 ## Current limitations and verification status
 
@@ -209,7 +186,7 @@ Administrator-only endpoints:
 
 Rules accept `action_mode: "GROUP"` together with `group_id`; `signature_id` must be null. A group tag in signature HTML uses `{{ group:slug }}`. Repeated tags for the same slug reuse one selection during that message. Selection state requires a provider-namespaced immutable identity: Authentik user `pk` or Active Directory `objectGUID`; email is never used as the group rotation key.
 
-Migrations seed `legacy-auto`, `legacy-professional` and `legacy-internal` groups from existing variant pools. Existing rules remain on their original modes until an administrator explicitly changes them.
+Migration `0014_retire_legacy_signature_modes` converts installed legacy pool rules to ordinary signature groups while retaining historical storage columns/tables only for database upgrade and rollback compatibility.
 
 
 ## Scheduling
