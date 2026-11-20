@@ -212,7 +212,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("data%-opensigweave%-mode", lua)
         self.assertIn("remove_deprecated_selector_markers(decoded)", lua)
         self.assertNotIn("find_outlook_mode_marker", lua)
-        self.assertIn("if not requested_mode then", lua)
+        self.assertNotIn("requested_mode", lua)
 
     def test_domain_routes_receive_request_context(self):
         for name in ("read_domains", "create_domain", "update_domain", "delete_domain"):
@@ -226,7 +226,7 @@ class SecurityRegressionTests(unittest.TestCase):
 
     def test_rspamd_marker_removal_preserves_the_marked_html_element(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
-        start = lua.index("local function remove_outlook_mode_markers")
+        start = lua.index("local function remove_deprecated_selector_markers")
         end = lua.index("\nend", start)
         remover = lua[start:end]
         self.assertIn('data%-opensigweave%-mode', remover)
