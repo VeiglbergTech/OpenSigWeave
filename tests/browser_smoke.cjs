@@ -336,6 +336,11 @@ async function main() {
     const signatureToolbar = signaturePanel.locator("#signature-template-editor .ck-toolbar");
     const toolbarUploadButton = signatureToolbar.getByRole("button", { name: /image/i }).first();
     await toolbarUploadButton.waitFor({ state: "visible" });
+    // Put the caret after the previously pasted image. Otherwise CKEditor can keep
+    // the image object selected and a subsequent image action may operate on that
+    // selection instead of inserting at a fresh text position.
+    await signatureEditEditor.click();
+    await page.keyboard.press("Control+End");
     const fileChooserPromise = page.waitForEvent("filechooser");
     const toolbarUpload = waitForImageUpload();
     await toolbarUploadButton.click();
@@ -347,6 +352,9 @@ async function main() {
     });
     const toolbarUploadResponse = await toolbarUpload;
     const toolbarAssetPath = (await toolbarUploadResponse.json()).url;
+    await page.waitForFunction(path =>
+      document.querySelector("#signature-html-source").value.includes(path)
+    , toolbarAssetPath);
 
     const assetPaths = [dragAssetPath, pasteAssetPath, toolbarAssetPath];
     assert.equal(new Set(assetPaths).size, 3, "three distinct images must produce three asset URLs");
