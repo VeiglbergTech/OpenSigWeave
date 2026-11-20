@@ -59,8 +59,12 @@ window.fetch = (resource, options = {}) => {
                 imageUpload: true,
                 uploadUrl: "/api/admin/signature-assets",
                 csrfToken: opensigweaveCsrfToken,
+                readOnly: manager.isViewingHistoricalVersion,
                 onChange: html => { manager.form.html_content = html; }
             });
+            // CKEditor may normalize stored HTML while loading. Treat its first
+            // rendered value as the baseline, not as a user edit.
+            manager.loadedEditorHtml = signatureRichEditor ? signatureRichEditor.getData() : manager.form.html_content;
         }
 
         // THE SMART LOCK ENGINE
@@ -260,7 +264,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
@@ -312,6 +316,8 @@ function identityProviderManager() { return {
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
+                    this.loadedEditorHtml = '';
+                    ++this.versionRequestToken;
                     this.editing = true;
                     this.$nextTick(() => initSignatureRichEditor(this));
                 },
@@ -322,6 +328,8 @@ function identityProviderManager() { return {
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
+                    this.loadedEditorHtml = '';
+                    ++this.versionRequestToken;
                     this.editing = true;
                     await this.loadVersions(signature.id);
                     this.$nextTick(() => initSignatureRichEditor(this));
@@ -333,7 +341,9 @@ function identityProviderManager() { return {
                 async loadVersions(signatureId) {
                     const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions');
                     if (!response.ok) { notify('Could not load signature versions.', 'error'); return; }
-                    this.versions = await response.json();
+                    const versions = await response.json();
+                    if (this.form.id !== signatureId || !this.editing) return;
+                    this.versions = versions;
                     if (this.versions.length) {
                         this.selectedVersionId = (this.currentVersion || this.versions[0]).id;
                         await this.loadVersion(this.selectedVersionId);
@@ -341,15 +351,25 @@ function identityProviderManager() { return {
                 },
                 async loadVersion(versionId) {
                     if (!this.form.id || !versionId) return;
-                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions/' + encodeURIComponent(versionId));
+                    const signatureId = this.form.id;
+                    const requestToken = ++this.versionRequestToken;
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions/' + encodeURIComponent(versionId));
+                    if (this.form.id !== signatureId || requestToken !== this.versionRequestToken || !this.editing) return;
                     if (!response.ok) { notify('Could not load signature version.', 'error'); return; }
                     const version = await response.json();
+                    if (this.form.id !== signatureId || requestToken !== this.versionRequestToken || !this.editing) return;
                     this.selectedVersionId = version.id;
                     this.loadedVersionHtml = version.html_content || '';
                     this.form.html_content = this.loadedVersionHtml;
                     const source = document.getElementById('signature-html-source');
                     if (source) source.value = this.form.html_content;
-                    if (signatureRichEditor) signatureRichEditor.setData(this.form.html_content);
+                    if (signatureRichEditor) {
+                        signatureRichEditor.setData(this.form.html_content);
+                        signatureRichEditor.setReadOnly(this.isViewingHistoricalVersion);
+                        this.loadedEditorHtml = signatureRichEditor.getData();
+                    } else {
+                        this.loadedEditorHtml = this.loadedVersionHtml;
+                    }
                 },
                 async restoreSelectedVersion() {
                     if (!this.form.id || !this.selectedVersionId || !this.isViewingHistoricalVersion) return;
@@ -364,7 +384,12 @@ function identityProviderManager() { return {
                     await this.fetchAll();
                 },
                 async saveSignature() {
-                    if (signatureRichEditor) this.form.html_content = signatureRichEditor.getData();
+                    const editorHtml = signatureRichEditor ? signatureRichEditor.getData() : this.form.html_content;
+                    // Never turn a read-only historical preview or CKEditor's load-time
+                    // HTML normalization into an accidental new current version.
+                    const hasContentChanges = Boolean(this.form.id && !this.isViewingHistoricalVersion
+                        && editorHtml !== this.loadedEditorHtml);
+                    if (!this.isViewingHistoricalVersion) this.form.html_content = editorHtml;
                     if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
                     const domainIds = [...new Set(this.form.domain_ids.map(Number))];
                     if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
@@ -376,7 +401,7 @@ function identityProviderManager() { return {
                     } else {
                         response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: this.form.name, domain_ids: domainIds, is_active: this.form.is_active }) });
-                        if (response.ok && this.form.html_content.trim() && this.form.html_content !== this.loadedVersionHtml) {
+                        if (response.ok && hasContentChanges && this.form.html_content.trim()) {
                             response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
                                 { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
                         }

@@ -1344,6 +1344,61 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         self.assertEqual(personal.status_code, 200)
         self.assertEqual(personal.json(), {"html_content": ""})
 
+    def test_signature_history_restore_over_http_requires_csrf_and_keeps_snapshots(self):
+        self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
+        headers = {"X-CSRF-Token": "csrf-test-token"}
+        with tempfile.TemporaryDirectory() as directory, patch.object(
+            main, "signature_file_store", SignatureFileStore(directory)
+        ):
+            created = self.client.post(
+                "/api/admin/signatures",
+                json={"name": "HTTP Restorable", "html_content": "<p>First</p>"},
+                headers=headers,
+            )
+            self.assertEqual(created.status_code, 201, created.text)
+            signature_id = created.json()["id"]
+            first_id = created.json()["version_id"]
+            base = f"/api/admin/signatures/{signature_id}/versions"
+
+            added = self.client.post(
+                base, json={"html_content": "<p>Second</p>"}, headers=headers
+            )
+            self.assertEqual(added.status_code, 201, added.text)
+            second_id = added.json()["id"]
+
+            preview = self.client.get(f"{base}/{first_id}")
+            self.assertEqual(preview.status_code, 200, preview.text)
+            self.assertEqual(preview.json()["html_content"], "<p>First</p>")
+            self.assertFalse(preview.json()["is_current"])
+            self.assertEqual(
+                [v["is_current"] for v in self.client.get(base).json()],
+                [True, False],
+            )
+
+            denied = self.client.post(f"{base}/{first_id}/restore")
+            self.assertEqual(denied.status_code, 403)
+            self.assertEqual(
+                [v["version_number"] for v in self.client.get(base).json()],
+                [2, 1],
+            )
+
+            restored = self.client.post(f"{base}/{first_id}/restore", headers=headers)
+            self.assertEqual(restored.status_code, 201, restored.text)
+            self.assertEqual(restored.json()["version_number"], 3)
+            latest_id = restored.json()["id"]
+            self.assertEqual(
+                [(v["version_number"], v["is_current"]) for v in self.client.get(base).json()],
+                [(3, True), (2, False), (1, False)],
+            )
+            self.assertEqual(self.client.get(f"{base}/{latest_id}").json()["html_content"], "<p>First</p>")
+            self.assertEqual(self.client.get(f"{base}/{second_id}").json()["html_content"], "<p>Second</p>")
+            self.assertEqual(self.client.post(f"{base}/{latest_id}/restore", headers=headers).status_code, 409)
+
+            self.authenticate({"email": "user@example.org", "groups": ["signature-users"]})
+            self.assertEqual(self.client.get(base).status_code, 403)
+            self.assertEqual(self.client.post(f"{base}/{first_id}/restore", headers=headers).status_code, 403)
+            self.assertEqual(self.client.get(f"{base}/{first_id}").status_code, 403)
+
     def test_admin_mutation_requires_session_bound_csrf_token(self):
         self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
         payload = {"name": "HTTP CSRF Group", "domain_ids": [], "is_active": True}

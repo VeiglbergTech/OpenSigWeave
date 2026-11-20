@@ -547,6 +547,10 @@ async function main() {
     );
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "selecting an old version must load its immutable HTML snapshot");
+    assert.equal(await signatureEditEditor.getAttribute("contenteditable"), "false",
+      "previewing an old version must lock the editor against accidental edits");
+    assert.equal(await signatureDialog.locator("#signature-html-source").isDisabled(), true,
+      "historical source HTML must also be locked");
     await signatureDialog.getByText("You are viewing", { exact: false }).waitFor();
     assert.match(await signatureDialog.getByText("You are viewing", { exact: false }).innerText(), /current version remains\s+v3/i,
       "previewing an old version must state that the current version is unchanged");
@@ -558,6 +562,22 @@ async function main() {
     assert.deepEqual(versionHistory.map(item => item.version_number), [3, 2, 1]);
     assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false],
       "previewing version 1 must not change the current version");
+
+    // Saving metadata while previewing old HTML may not implicitly restore it.
+    await signatureDialog.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await signatureDialog.waitFor({ state: "hidden" });
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 3
+    );
+    versionHistory = await (await page.request.get(
+      baseURL + "/api/admin/signatures/" + encodeURIComponent((await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+        .find(item => item.name === "Browser Smoke Signature").id) + "/versions"
+    )).json();
+    assert.deepEqual(versionHistory.map(item => item.version_number), [3, 2, 1],
+      "saving after historical preview must not create or activate another version");
+    assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false]);
+    await versionSelector.selectOption(versionOneId);
 
     const restoreResponse = page.waitForResponse(response =>
       response.request().method() === "POST"
@@ -601,6 +621,36 @@ async function main() {
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "re-opening after reload must load the restored current snapshot");
     await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    // HTML comments and other source-only markup must not create phantom
+    // revisions when CKEditor normalizes them during opening.
+    const sourceOnly = await page.evaluate(async () => {
+      const response = await fetch("/api/admin/signatures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Browser Source Only",
+          html_content: "<p>Source-only markup</p><!--historical-raw-comment-->"
+        })
+      });
+      return { status: response.status, data: await response.json() };
+    });
+    assert.equal(sourceOnly.status, 201, JSON.stringify(sourceOnly.data));
+    await page.reload();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    const sourceOnlyRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Source Only" });
+    await sourceOnlyRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await signatureEditEditor.waitFor({ state: "visible" });
+    await signatureDialog.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await signatureDialog.waitFor({ state: "hidden" });
+    const sourceOnlyHistoryResponse = await page.request.get(
+      baseURL + "/api/admin/signatures/" + sourceOnly.data.id + "/versions"
+    );
+    assert.equal(sourceOnlyHistoryResponse.status(), 200);
+    const sourceOnlyHistory = await sourceOnlyHistoryResponse.json();
+    assert.deepEqual(sourceOnlyHistory.map(item => item.version_number), [1],
+      "loading source-only markup through CKEditor must not auto-create a version on save");
 
     checkpoint("signature version history/restore: complete");
 
