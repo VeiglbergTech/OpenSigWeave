@@ -2,6 +2,7 @@
 local rspamd_util = require "rspamd_util"
 local M = {}
 local MAX_MESSAGE_BYTES = 20 * 1024 * 1024
+local MAX_MIME_PARTS = 256
 
 local function newline(task)
     local t = task:get_newlines_type()
@@ -84,12 +85,19 @@ end
 -- Returns a complete message as chunks for task:set_message, or nil + reason.
 function M.rewrite(task, transform)
     local parts = task:get_parts() or {}
-    if #parts == 0 then return nil, "no MIME parts" end
+    if #parts == 0 or not parts[1]:is_multipart() then
+        return nil, "expected a multipart MIME root"
+    end
+    if #parts > MAX_MIME_PARTS then return nil, "too many MIME parts" end
     if task:get_size() > MAX_MESSAGE_BYTES then return nil, "message exceeds MIME rewrite limit" end
     for _, part in ipairs(parts) do
         if is_protected(part) then return nil, "signed, encrypted or embedded message" end
-        if part:is_multipart() and not part:get_boundary() then
-            return nil, "multipart container without parsed boundary"
+        if part:is_multipart() then
+            local boundary = part:get_boundary()
+            if type(boundary) ~= "string" or boundary == "" or #boundary > 70
+                or boundary:find("[\r\n]") then
+                return nil, "multipart container without safe parsed boundary"
+            end
         end
     end
     local nl = newline(task)
@@ -100,11 +108,28 @@ function M.rewrite(task, transform)
         chunks[#chunks + 1] = content
         if add_nl ~= false then chunks[#chunks + 1] = nl end
     end
+    local function emit_boundary(line)
+        -- Boundary delimiters MUST start on a new line. Rspamd's raw
+        -- attachment payload need not end with CRLF; do not concatenate
+        -- a delimiter directly onto the final encoded byte.
+        local last = tostring(chunks[#chunks] or "")
+        if last:sub(-#nl) ~= nl then chunks[#chunks + 1] = nl end
+        emit(line)
+    end
     local stack, active, changed = {}, nil, 0
     for index, part in ipairs(parts) do
         local boundary = part:get_boundary()
         if part:is_multipart() then
-            if active then emit("--" .. stack[#stack]) end
+            if index > 1 then
+                -- A nested multipart is a CHILD of its enclosing boundary,
+                -- not a child of whichever multipart happened to be visited
+                -- previously. Unwind siblings before opening this container.
+                local enclosing = part:get_enclosing_boundary()
+                if not enclosing or not close_boundaries(emit_boundary, stack, enclosing) then
+                    return nil, "inconsistent multipart parent boundary"
+                end
+                emit_boundary("--" .. enclosing)
+            end
             stack[#stack + 1] = boundary
             active = boundary
             if index > 1 then
@@ -114,12 +139,12 @@ function M.rewrite(task, transform)
         else
             if boundary then
                 if active and boundary ~= active then
-                    if not close_boundaries(emit, stack, boundary) then
+                    if not close_boundaries(emit_boundary, stack, boundary) then
                         return nil, "inconsistent MIME boundary tree"
                     end
                 end
                 active = boundary
-                emit("--" .. boundary)
+                emit_boundary("--" .. boundary)
             end
             local major, minor = part:get_type()
             major, minor = (major or ""):lower(), (minor or ""):lower()
@@ -151,7 +176,7 @@ function M.rewrite(task, transform)
             end
         end
     end
-    while #stack > 0 do emit("--" .. table.remove(stack) .. "--") end
+    while #stack > 0 do emit_boundary("--" .. table.remove(stack) .. "--") end
     if changed == 0 then return nil, "no editable text was changed" end
     return chunks, changed
 end
