@@ -36,23 +36,25 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", SOURCE)
         self.assertIn("ignoring duplicate mode headers", SOURCE)
 
-    def test_multipart_is_rejected_before_any_body_rewrite(self):
-        guard = SOURCE.index("if multipart_message then")
-        guard_end = SOURCE.index("\n        end", guard)
-        body_rewrite = SOURCE.index("local function splice_body_logic")
-        self.assertLess(guard, guard_end)
-        self.assertLess(guard_end, body_rewrite)
-        self.assertIn("multipart message left unchanged; safe MIME rewrite is not yet available", SOURCE[guard:guard_end])
-        self.assertIn("remove_text_marker_from_message()", SOURCE[guard:guard_end])
-        self.assertRegex(SOURCE[guard:guard_end], r"return\s*$")
-        # There must be one authoritative top-level multipart guard, not a
-        # misleading second guard hidden in an unreachable branch.
-        self.assertNotIn("if is_multipart then", SOURCE)
+    def test_multipart_uses_rspamd_parsed_mime_tree(self):
+        self.assertIn('require "opensigweave_mime"', SOURCE)
+        self.assertIn('mime_rewriter.rewrite(task, function(decoded, is_html)', SOURCE)
+        self.assertIn('task:set_message(message)', SOURCE)
+        self.assertNotIn('multipart message left unchanged; safe MIME rewrite is not yet available', SOURCE)
+        self.assertNotIn('local function process_mime_block(', SOURCE)
 
-    def test_no_regular_expression_mime_boundary_reconstruction_is_enabled(self):
-        # Multipart support requires a parser-backed implementation and fixtures
-        # for nested boundaries, attachments and transfer encodings.
-        self.assertNotRegex(SOURCE, r'parse_multipart\s*\(')
+    def test_raw_marker_cleanup_cannot_touch_multipart_attachments(self):
+        self.assertIn('original_ct and tostring(original_ct):lower():match("^%s*multipart/")', SOURCE)
+        self.assertIn('skipping raw marker cleanup for multipart MIME', SOURCE)
+
+    def test_mime_serializer_is_bounded_and_parser_based(self):
+        mime = (ROOT / "rspamd" / "opensigweave_mime.lua").read_text(encoding="utf-8")
+        self.assertIn('task:get_parts()', mime)
+        self.assertIn('part:get_boundary()', mime)
+        self.assertIn('part:is_attachment()', mime)
+        self.assertIn('raw_utf', mime)
+        self.assertIn('signed, encrypted or embedded message', mime)
+        self.assertNotIn('parse_multipart(', mime)
 
 
 if __name__ == "__main__":

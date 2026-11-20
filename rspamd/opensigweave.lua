@@ -2,6 +2,7 @@ local rspamd_logger = require "rspamd_logger"
 local rspamd_http = require "rspamd_http"
 local ucl = require "ucl"
 local rspamd_util = require "rspamd_util"
+local mime_rewriter = require "opensigweave_mime"
 
 -- ==========================================
 -- OPENSIGWEAVE CONFIGURATION
@@ -207,6 +208,12 @@ local function inject_signature(task)
 
     local function remove_text_marker_from_message()
         if not signature_marker or not signature_marker.cleanup then return end
+        -- Never mutate multipart boundaries or attachments with raw string replacement.
+        local original_ct = task:get_header_raw("Content-Type")
+        if original_ct and tostring(original_ct):lower():match("^%s*multipart/") then
+            rspamd_logger.warnx(task, "OpenSigWeave: skipping raw marker cleanup for multipart MIME")
+            return
+        end
         local body_data = task:get_rawbody()
         local headers_data = task:get_raw_headers()
         local body = body_data and tostring(body_data) or ""
@@ -273,7 +280,7 @@ local function inject_signature(task)
 
 
         local content_type = task:get_header_raw("Content-Type")
-        local multipart_message = content_type and tostring(content_type):lower():find("multipart", 1, true) ~= nil
+        local multipart_message = content_type and tostring(content_type):lower():match("^%s*multipart/") ~= nil
         if not html_sig or html_sig == "" then
             remove_text_marker_from_message()
             return
@@ -284,12 +291,6 @@ local function inject_signature(task)
             rspamd_logger.infox(task, "OpenSigWeave: Reply detected, API flag is FALSE. Skipping.")
             return
         end
-        if multipart_message then
-            remove_text_marker_from_message()
-            rspamd_logger.warnx(task, "OpenSigWeave: multipart message left unchanged; safe MIME rewrite is not yet available")
-            return
-        end
-
         local plain_sig = html_sig:gsub("<br.->", "\n"):gsub("<p.->", "\n"):gsub("<li.->", "\n- "):gsub("<[^>]+>", ""):gsub("&nbsp;", " ")
 
         local function clean_trailing_html(html)
@@ -459,58 +460,6 @@ local function inject_signature(task)
             return spliced, success
         end
 
-        local function process_mime_block(raw_body_str, target_type)
-            local tgt_regex = ""
-            for i = 1, #target_type do
-                local c = target_type:sub(i, i)
-                tgt_regex = tgt_regex .. "[" .. c:upper() .. c:lower() .. "]"
-            end
-
-            local ctype_pattern = "[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Yy][Pp][Ee]:%s*[Tt][Ee][Xx][Tt]/" .. tgt_regex .. ".-(\r?\n\r?\n)"
-            local start_idx, header_end_idx = string.find(raw_body_str, ctype_pattern)
-            
-            if not start_idx then 
-                return raw_body_str, false 
-            end
-
-            local part_headers = string.sub(raw_body_str, start_idx, header_end_idx)
-            local end_idx = string.find(raw_body_str, "\r?\n%-%-", header_end_idx)
-            if not end_idx then end_idx = #raw_body_str + 1 end
-            
-            local raw_payload = string.sub(raw_body_str, header_end_idx + 1, end_idx - 1)
-
-            local encoding = "7bit"
-            local cte_match = string.match(part_headers:lower(), "content%-transfer%-encoding:%s*([%w%-]+)")
-            if cte_match then encoding = cte_match end
-
-            local decoded = tostring(raw_payload)
-            if encoding == "base64" then
-                local dec = rspamd_util.decode_base64(raw_payload)
-                if dec then decoded = tostring(dec) end
-            elseif encoding == "quoted-printable" then
-                local dec = rspamd_util.decode_qp(raw_payload)
-                if dec then decoded = tostring(dec) end
-            end
-
-            local is_html = (target_type == "html")
-            if is_html then
-                decoded = remove_outlook_mode_markers(decoded)
-            end
-            local spliced_payload, _ = splice_body_logic(decoded, is_html and html_splitters or plain_splitters, is_html and html_sig or plain_sig, is_html)
-
-            local enc_payload = rspamd_util.encode_qp(spliced_payload, 76)
-            local encoded_payload = enc_payload and tostring(enc_payload) or spliced_payload
-
-            local stripped_headers = part_headers:gsub("\r?\n[Cc][Oo][Nn][Tt][Ee][Nn][Tt]%-[Tt][Rr][Aa][Nn][Ss][Ff][Ee][Rr]%-[Ee][Nn][Cc][Oo][Dd][Ii][Nn][Gg]:[^\r\n]*", "")
-            stripped_headers = stripped_headers:gsub("\r?\n\r?\n$", "")
-            local new_headers = stripped_headers .. "\r\nContent-Transfer-Encoding: quoted-printable\r\n\r\n"
-
-            local before_body = string.sub(raw_body_str, 1, start_idx - 1)
-            local after_body = string.sub(raw_body_str, end_idx)
-
-            return before_body .. new_headers .. encoded_payload .. after_body, true
-        end
-
         local raw_body_data = task:get_rawbody()
         local raw_body = raw_body_data and tostring(raw_body_data) or ""
         
@@ -520,7 +469,7 @@ local function inject_signature(task)
         local ct_raw = task:get_header_raw('Content-Type')
         local ct_header = ct_raw and tostring(ct_raw):lower() or ""
         
-        local is_multipart = string.find(ct_header, "multipart") ~= nil
+        local is_multipart = ct_header:match("^%s*multipart/") ~= nil
         local is_flat_plain = not is_multipart and (ct_header == "" or string.find(ct_header, "text/plain") ~= nil)
         local is_flat_html = not is_multipart and string.find(ct_header, "text/html", 1, true) ~= nil
 
@@ -638,15 +587,24 @@ local function inject_signature(task)
                 remove_headers = { ['Content-Transfer-Encoding'] = 0 },
                 add_headers = { ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 } }
             })
+        elseif is_multipart then
+            -- Rspamd parses MIME boundaries; only decoded text is passed to the
+            -- existing reply-placement algorithm. Attachments are unchanged.
+            local message, changed_or_reason = mime_rewriter.rewrite(task, function(decoded, is_html)
+                if is_html then decoded = remove_outlook_mode_markers(decoded) end
+                local rewritten = splice_body_logic(decoded,
+                    is_html and html_splitters or plain_splitters,
+                    is_html and html_sig or plain_sig, is_html)
+                return rewritten
+            end)
+            if message then
+                task:set_message(message)
+                rspamd_logger.infox(task, "OpenSigWeave: rewritten %s multipart MIME text parts", changed_or_reason)
+            else
+                rspamd_logger.warnx(task, "OpenSigWeave: multipart rewrite skipped safely (%s)", changed_or_reason)
+            end
         else
-            local html_success, plain_success = false, false
-            raw_body, html_success = process_mime_block(raw_body, "html")
-            raw_body, plain_success = process_mime_block(raw_body, "plain")
-            
-            local new_headers = raw_headers:gsub("\r?\n*$", "")
-            local full_msg = new_headers .. "\r\n\r\n" .. raw_body
-            
-            task:set_message(full_msg)
+            rspamd_logger.infox(task, "OpenSigWeave: unsupported non-text content left unchanged")
         end
     end
 

@@ -18,7 +18,7 @@
 - **Security controls:** strong secret validation, CSRF, Secure/HttpOnly/SameSite session cookies, explicit trusted hosts, request limits, database-backed rate limiting, proxy-CIDR validation, server-side HTML sanitization and symlink-safe atomic signature storage.
 - **Deployment:** non-root Python 3.12 application container, read-only root filesystem, bounded noexec/nosuid tmpfs, dropped Linux capabilities, `no-new-privileges`, PostgreSQL 17 and loopback-only default application binding.
 - **Backups:** encrypted Docker-aware full backup, verification, fresh-target restore, retention and guarded systemd scheduling to mounted remote storage.
-- **Rspamd:** external Lua adapter using the versioned engine API; top-level `multipart/*` is intentionally left unchanged.
+- **Rspamd:** external Lua adapter using the versioned engine API, now with parser-backed nested multipart plain/HTML text rewriting and attachment preservation. Signed/encrypted/embedded structures fail safely. Lua fixture + Python MIME parsing in CI; live Mailcow DKIM/SMTP acceptance still open.
 - **Postfix:** experimental PyMilter sidecar with dedicated disposable-Postfix compatibility CI.
 - **Stalwart:** experimental DATA-stage hook using the shared engine service and parser-backed MIME mutation.
 

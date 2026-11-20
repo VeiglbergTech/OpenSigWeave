@@ -65,7 +65,7 @@ Every adapter implementation must document and test:
 
 | Adapter | Integration mechanism | Status |
 |---|---|---|
-| Rspamd | Lua prefilter / HTTP engine call | Existing; non-multipart rewrite only |
+| Rspamd | Lua prefilter / HTTP engine call | Parser-backed multipart text rewrite implemented on dev; nested plain/HTML MIME and attachment fixture CI; live Mailcow SMTP/DKIM acceptance still required |
 | Postfix | PyMilter sidecar using the versioned engine HTTP API | Experimental; isolated Postfix E2E verifies authenticated injection, unauthenticated no-op, control-header removal and final local delivery using a mock engine. Live engine HTTPS/API and DKIM-chain tests remain open |
 | Stalwart | Native SMTP/MTA hook at DATA | Experimental adapter implemented; MIME and live SMTP validation still required |
 | Exim | ACL/system-filter integration or external content filter | Planned |

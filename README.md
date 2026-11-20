@@ -39,14 +39,14 @@ A green application workflow means the tested commit passed secret scanning, dep
 - Source-preserving HTML storage with sanitization at delivery/preview boundaries.
 - Reply-aware placement for supported adapters.
 - Encrypted disaster-recovery backup, verification, fresh restore and guarded off-host scheduling.
-- Rspamd adapter plus experimental Postfix Milter and Stalwart MTA-hook adapters.
+- Rspamd adapter with parser-backed multipart rewriting plus experimental Postfix Milter and Stalwart MTA-hook adapters.
 - Selective, validated administrator ZIP export/import for portable non-secret configuration.
 
 ## Adapter status
 
 | Adapter | Current automated evidence | Important remaining acceptance |
 |---|---|---|
-| Rspamd | Lua syntax and contract/regression tests | Current rewrite path intentionally leaves top-level `multipart/*` unchanged. Disposable Mailcow sender-authorization, processing-order and final-DKIM acceptance still required. |
+| Rspamd | Lua syntax, nested multipart/alternative + attachment MIME fixture and contract tests | Parser-backed rewriting for text/plain and text/html while keeping attachments intact; signed/encrypted/embedded MIME skipped. Live Mailcow sender authorization, filter order and DKIM acceptance still required. |
 | Postfix Milter | PyMilter runtime, native protocol exchange and real disposable Postfix delivery through the actual adapter with a mock OpenSigWeave engine | Live HTTPS engine credentials/trust, production filter ordering and final DKIM still required. |
 | Stalwart | Shared-engine and MIME regression coverage, including multipart, reply placement, attachments and signed/encrypted fail-safe behavior | Live Stalwart SMTP/DKIM end-to-end acceptance still required. |
 
