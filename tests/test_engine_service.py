@@ -360,6 +360,39 @@ class SignatureEngineServiceTests(unittest.TestCase):
         state = self.db.query(SelectionStateDB).one()
         self.assertEqual(state.last_variant_id, variant.id)
 
+    def test_signature_rule_selects_exact_signature_without_legacy_mode_pool(self):
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        signature = self._add_versioned_signature(
+            "Direct rule target", "INTERNAL", "<p>Direct rule selected</p>"
+        )
+        rule = SignatureRuleDB(
+            id=uuid.uuid4().hex,
+            name="Direct signature rule",
+            priority=20,
+            action_mode="SIGNATURE",
+            signature_id=signature.id,
+            is_enabled=True,
+        )
+        condition = SignatureRuleConditionDB(
+            rule_id=rule.id,
+            kind="domain_equals",
+            key="",
+            value="example.org",
+        )
+        self.db.add_all([rule, condition])
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>Direct rule selected</p>"
+        service, _, _ = self._service(file_store=store)
+        result = asyncio.run(
+            service.resolve(self.db, normalize_engine_request("ada@example.org"))
+        )
+
+        self.assertEqual(result.html, "<p>Direct rule selected</p>")
+        self.assertEqual(self.db.query(SelectionStateDB).count(), 0)
+        store.read.assert_called_once()
+
     def test_group_rule_selects_signature_and_persists_rotation_state(self):
         domain = DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)
