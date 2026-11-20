@@ -98,12 +98,15 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y lua5.1
-          luac5.1 -p rspamd/opensigweave.lua rspamd/opensigweave_mime.lua tests/rspamd_multipart_test.lua tests/rspamd_mime_matrix_test.lua tests/rspamd_marker_selector_test.lua
+          luac5.1 -p rspamd/opensigweave.lua rspamd/opensigweave_mime.lua tests/rspamd_multipart_test.lua tests/rspamd_mime_matrix_test.lua tests/rspamd_injection_test.lua tests/rspamd_marker_selector_test.lua
           lua5.1 tests/rspamd_marker_selector_test.lua
           lua5.1 tests/rspamd_multipart_test.lua > /tmp/opensigweave-multipart-test.eml
           python tests/verify_rspamd_multipart.py /tmp/opensigweave-multipart-test.eml
           lua5.1 tests/rspamd_mime_matrix_test.lua /tmp/opensigweave-mime-matrix.eml
           python tests/verify_rspamd_mime_matrix.py /tmp/opensigweave-mime-matrix.eml
+          mkdir -p /tmp/opensigweave-injection-fixtures
+          lua5.1 tests/rspamd_injection_test.lua /tmp/opensigweave-injection-fixtures
+          python tests/verify_rspamd_injection.py /tmp/opensigweave-injection-fixtures
       - name: Test PostgreSQL schema migrations
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
