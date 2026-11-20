@@ -17,6 +17,7 @@ import {
     BlockQuote,
     HorizontalLine,
     Image,
+    ImageInline,
     ImageUpload
 } from "ckeditor5";
 
@@ -41,5 +42,6 @@ window.CKEDITOR = {
     BlockQuote,
     HorizontalLine,
     Image,
+    ImageInline,
     ImageUpload
 };
