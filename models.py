@@ -32,7 +32,7 @@ class SignatureDB(Base):
     name = Column(String(255), nullable=False)
     domain_id = Column(Integer, ForeignKey("domains.id", ondelete="CASCADE"), nullable=True, index=True)
     scope = Column(String(32), nullable=False, default="DOMAIN")
-    mode = Column(String(32), nullable=False, default="AUTO")
+    mode = Column(String(32), nullable=False, default="UNUSED")
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
@@ -99,10 +99,11 @@ class GroupSelectionStateDB(Base):
 
 
 class SignatureVariantDB(Base):
+    """Legacy compatibility table; runtime selection no longer reads variants."""
     __tablename__ = "signature_variants"
     id = Column(String(32), primary_key=True)
     signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="CASCADE"), nullable=False, index=True)
-    pool_name = Column(String(32), nullable=False, default="AUTO")
+    pool_name = Column(String(32), nullable=False, default="UNUSED")
     weight = Column(Integer, nullable=False, default=1)
     is_enabled = Column(Boolean, nullable=False, default=True)
     __table_args__ = (
@@ -111,6 +112,7 @@ class SignatureVariantDB(Base):
 
 
 class SelectionStateDB(Base):
+    """Legacy compatibility table retained for existing database upgrades only."""
     __tablename__ = "selection_state"
     id = Column(Integer, primary_key=True)
     sender_email = Column(String(320), nullable=False)
@@ -126,7 +128,7 @@ class SignatureRuleDB(Base):
     id = Column(String(32), primary_key=True)
     name = Column(String(255), nullable=False)
     priority = Column(Integer, nullable=False, default=0)
-    action_mode = Column(String(32), nullable=False, default="AUTO")
+    action_mode = Column(String(32), nullable=False, default="SIGNATURE")
     signature_id = Column(String(32), ForeignKey("signatures.id", ondelete="SET NULL"), nullable=True)
     group_id = Column(String(32), ForeignKey("signature_groups.id", ondelete="SET NULL"), nullable=True, index=True)
     is_enabled = Column(Boolean, nullable=False, default=True)
