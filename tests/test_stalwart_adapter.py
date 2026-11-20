@@ -148,7 +148,7 @@ class StalwartAdapterTests(unittest.TestCase):
 
     def test_removes_control_headers_when_no_signature_is_selected(self):
         payload = request(
-            [["From", " sender@example.org\r\n"], ["X-OpenSigWeave-Mode", " PROFESSIONAL\r\n"]],
+            [["From", " sender@example.org\r\n"], ["X-OpenSigWeave-Mode", " retired-one\r\n"]],
             "Hello",
         )
         # A header-only hook response could overwrite an earlier Milter body
@@ -160,10 +160,10 @@ class StalwartAdapterTests(unittest.TestCase):
         payload = request(
             [
                 ["From", " sender@example.org\r\n"],
-                ["X-OpenSigWeave-Mode", " PROFESSIONAL\r\n"],
-                ["X-OpenSigWeave-Mode", " INTERNAL\r\n"],
+                ["X-OpenSigWeave-Mode", " retired-one\r\n"],
+                ["X-OpenSigWeave-Mode", " retired-two\r\n"],
                 ["X-OpenSigWeave-Signature", " Old\r\n"],
-                ["X-OpenSigWeave-Mode", " NONE\r\n"],
+                ["X-OpenSigWeave-Mode", " retired-three\r\n"],
                 ["X-OpenSigWeave-Signature", " New\r\n"],
             ],
             "Hello",
