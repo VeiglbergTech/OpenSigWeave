@@ -15,7 +15,7 @@
     <link href="/static/css/portal.css" rel="stylesheet">
     <script defer src="/static/js/branding.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
 
     <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
@@ -194,7 +194,7 @@
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
                                 <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
-                                <td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" x-model="domain.identity_provider_id" @change="setProvider(domain, $event.target.value)"><option value="">No provider</option><template x-for="provider in providers" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td><td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" :value="domain.authentication_provider_id || ''" @change="setAuthenticationProvider(domain, $event.target.value)"><option value="">Local / no SSO</option><template x-for="provider in loginProviders()" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td>
+                                <td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" x-model="domain.identity_provider_id" @change="setProvider(domain, $event.target.value)"><option value="">No provider</option><template x-for="provider in providers" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td><td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" x-model="domain.authentication_provider_id" @change="setAuthenticationProvider(domain, $event.target.value)"><option value="">Local / no SSO</option><template x-for="provider in loginProviders()" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td>
                                 <td class="px-6 py-4 text-right space-x-3">
                                     <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Settings & Users</button>
                                     <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
@@ -255,7 +255,7 @@
                     </div>
                     <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
                 </div>
-                <label class="block text-sm text-gray-300">
+                <div class="block text-sm text-gray-300">
                     <span>HTML template</span>
                     <div x-show="form.id" x-cloak class="mt-2 rounded border border-gray-700 bg-gray-900/60 p-3">
                         <div class="flex flex-wrap items-end gap-2">
@@ -288,7 +288,7 @@
                         <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit raw HTML</button>
                         <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
                     </div>
-                </label>
+                </div>
                 <div class="flex justify-end gap-3"><button @click="editing=false" class="px-4 py-2 text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
             </div>
         </div>
