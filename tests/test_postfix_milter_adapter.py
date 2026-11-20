@@ -163,7 +163,6 @@ class PostfixMilterAdapterTests(unittest.TestCase):
                 "https://engine.example/",
                 "k" * 40,
                 "User+tag@Example.org",
-                mode="PROFESSIONAL",
                 signature_name="Sales",
                 signature_code="A1B2",
                 timeout=3.5,
@@ -176,7 +175,7 @@ class PostfixMilterAdapterTests(unittest.TestCase):
         )
         headers = {name.casefold(): value for name, value in opener.request.header_items()}
         self.assertEqual(headers["x-engine-key"], "k" * 40)
-        self.assertEqual(headers["x-opensigweave-mode"], "PROFESSIONAL")
+        self.assertNotIn("x-opensigweave-mode", headers)
         self.assertEqual(headers["x-opensigweave-signature"], "Sales")
         self.assertEqual(headers["x-opensigweave-signature-code"], "A1B2")
         self.assertEqual(headers["accept"], "application/json")
