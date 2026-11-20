@@ -4,7 +4,7 @@
     const allowedPlugins = [
         "Essentials", "Paragraph", "Heading", "Bold", "Italic", "Underline",
         "Font", "Link", "List", "Alignment", "Table", "TableToolbar",
-        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine", "Image"
+        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine", "Image", "ImageInline"
     ];
 
     // Keep the editor's General HTML Support aligned with the server sanitizer.
@@ -134,6 +134,7 @@
 
         return {
             getData: function () { return editor.getData(); },
+            setOnChange: function (callback) { onChange = typeof callback === "function" ? callback : null; },
             setData: function (html) { editor.setData(typeof html === "string" ? html : ""); },
             focus: function () { editor.editing.view.focus(); },
             insertText: function (value) {
