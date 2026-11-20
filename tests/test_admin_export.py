@@ -12,7 +12,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from admin_export import AdminExportError, build_admin_export
-from core.modes import SignatureMode
 from database import Base
 from models import (
     DomainDB,
@@ -57,12 +56,11 @@ class AdminExportTests(unittest.TestCase):
         self.db.add_all([domain, provider])
         self.db.commit()
 
-        signature, version, variant = create_signature(
+        signature, version = create_signature(
             self.db,
             self.store,
             name="Corporate",
             domain_ids=[domain.id],
-            mode=SignatureMode.AUTO,
             html_content="<!--[if mso]><p>Signature source</p><![endif]-->",
             created_by="admin@example.org",
         )
@@ -117,6 +115,9 @@ class AdminExportTests(unittest.TestCase):
             )
             signature_item = manifest["data"]["signatures"][0]
             self.assertEqual(signature_item["id"], signature.id)
+            self.assertNotIn("mode", signature_item)
+            self.assertNotIn("variants", signature_item)
+            self.assertEqual(manifest["format_version"], 2)
             self.assertEqual(len(signature_item["versions"]), 2)
             original_bytes = archive.read(signature_item["versions"][0]["asset"])
             original = original_bytes.decode()
