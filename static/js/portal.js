@@ -220,11 +220,18 @@ function identityProviderManager() { return {
         else notify('Could not load identity providers.', 'error');
     },
     newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5'}}; this.editing=true; },
-    changeType() { this.form.settings = this.form.provider_type === 'ldap' ? {LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'} : (this.form.provider_type === 'oidc' ? {OIDC_SCOPES:'openid email profile groups'} : {AUTHENTIK_TIMEOUT:'5'}); },
-    async editProvider(provider) {
-        const response=await fetch('/api/admin/identity-providers');
-        if(!response.ok) { notify('Could not load provider settings.','error'); return; }
-        const item=(await response.json()).find(x=>x.id===provider.id);
+    changeType(event) {
+        const providerType = event && event.target && event.target.value ? event.target.value : this.form.provider_type;
+        this.form.provider_type = providerType;
+        this.form.settings = providerType === 'ldap'
+            ? {LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'}
+            : (providerType === 'oidc' ? {OIDC_SCOPES:'openid email profile groups'} : {AUTHENTIK_TIMEOUT:'5'});
+    },
+    editProvider(provider) {
+        // The table row is rendered from the latest API result and already contains
+        // all non-secret settings. Reusing it avoids a second async fetch and a
+        // visible/editable dialog with temporarily empty fields.
+        const item = provider;
         if(!item) return;
         const settings={...(item.settings||{})}; if(item.provider_type==='authentik') settings.AUTHENTIK_API_TOKEN=''; if(item.provider_type==='authentik'||item.provider_type==='oidc') settings.OIDC_CLIENT_SECRET=''; if(item.provider_type==='ldap') settings.LDAP_BIND_PASSWORD='';
         this.form={id:item.id,original_id:item.id,display_name:item.display_name,provider_type:item.provider_type,is_enabled:item.is_enabled,settings};
