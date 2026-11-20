@@ -93,7 +93,7 @@ class BrandingTests(unittest.TestCase):
         invalid = [
             b"not a PNG", branding.PNG_SIGNATURE + b"payload",
             png[:-1], png + b"trailing-data", png[:40], png[:48] + b"evil" + png[52:],
-            png[:20] + b"\x00" + png[21:],  # corrupt IHDR dimensions/CRC
+            png[:20] + bytes([png[20] ^ 0xff]) + png[21:],  # corrupt IHDR dimensions/CRC
             (branding.PNG_SIGNATURE + png_chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 6, 0, 0, 0))
              + png_chunk(b"IDAT", b"not zlib") + png_chunk(b"IEND", b"")),
         ]
@@ -176,6 +176,7 @@ class BrandingTests(unittest.TestCase):
             yield self.db
         previous = main.app.dependency_overrides.get(get_db)
         main.app.dependency_overrides[get_db] = db_override
+        previous_attribute_provider = main.attribute_provider
         try:
             with TestClient(main.app, base_url="http://signature-test.example.org") as client:
                 bundled = client.get("/branding/builtin/logo.png")
@@ -203,6 +204,9 @@ class BrandingTests(unittest.TestCase):
                 self.assertEqual(client.get("/api/admin/branding").status_code, 403)
                 self.assertEqual(client.get("/branding/../../etc/passwd").status_code, 404)
         finally:
+            # App startup disables the legacy bridge; do not leak that global
+            # mutation into independent signature API tests in this process.
+            main.attribute_provider = previous_attribute_provider
             if previous is None:
                 main.app.dependency_overrides.pop(get_db, None)
             else:
