@@ -55,7 +55,7 @@ from core.branding import (
     branding_context,
     decode_branding_data_url,
 )
-from signature_catalog import SignatureNotFoundError, add_signature_variant, add_signature_version, create_signature, update_signature, update_signature_variant
+from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_variant, add_signature_version, create_signature, restore_signature_version, update_signature, update_signature_variant
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
@@ -1463,6 +1463,7 @@ def list_signature_versions(signature_id: str, request: Request, db: Session = D
         .order_by(SignatureVersionDB.version_number.desc())
         .all()
     )
+    current_version_id = versions[0].id if versions else None
     return [
         {
             "id": item.id,
@@ -1471,6 +1472,7 @@ def list_signature_versions(signature_id: str, request: Request, db: Session = D
             "size_bytes": item.size_bytes,
             "created_by": item.created_by,
             "created_at": item.created_at,
+            "is_current": item.id == current_version_id,
         }
         for item in versions
     ]
@@ -1495,6 +1497,9 @@ def get_signature_version(
         )
     except (SignatureStorageError, ValueError, TypeError):
         raise HTTPException(status_code=503, detail="Signature version asset unavailable")
+    latest_version_id = db.query(SignatureVersionDB.id).filter(
+        SignatureVersionDB.signature_id == signature_id
+    ).order_by(SignatureVersionDB.version_number.desc()).limit(1).scalar()
     return {
         "id": version.id,
         "version_number": version.version_number,
@@ -1503,6 +1508,7 @@ def get_signature_version(
         "created_by": version.created_by,
         "created_at": version.created_at,
         "html_content": html_content,
+        "is_current": version.id == latest_version_id,
     }
 
 
@@ -1527,6 +1533,42 @@ def create_signature_version_endpoint(
     except SignatureNotFoundError:
         raise HTTPException(status_code=404, detail="Signature not found")
     return {"id": version.id, "version_number": version.version_number, "sha256": version.sha256}
+
+
+@app.post("/api/admin/signatures/{signature_id}/versions/{version_id}/restore", status_code=201)
+def restore_signature_version_endpoint(
+    signature_id: str,
+    version_id: str,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    user = request.session.get("user") or {}
+    try:
+        source_version = db.get(SignatureVersionDB, version_id)
+        version = restore_signature_version(
+            db,
+            signature_file_store,
+            signature_id,
+            version_id,
+            created_by=user.get("email"),
+        )
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    except SignatureVersionNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature version not found")
+    except SignatureStorageError:
+        raise HTTPException(status_code=503, detail="Signature version asset unavailable")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {
+        "id": version.id,
+        "version_number": version.version_number,
+        "sha256": version.sha256,
+        "restored_from_version_id": version_id,
+        "restored_from_version_number": source_version.version_number if source_version is not None else None,
+    }
 
 
 @app.post("/api/admin/signatures/{signature_id}/variants", status_code=201)
