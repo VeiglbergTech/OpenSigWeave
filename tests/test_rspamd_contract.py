@@ -21,7 +21,8 @@ class RspamdAdapterContractTests(unittest.TestCase):
 
     def test_remote_request_limits_are_bounded(self):
         self.assertRegex(SOURCE, r'REQUEST_TIMEOUT\s*=\s*math\.min\(math\.max\(REQUEST_TIMEOUT,\s*0\.5\),\s*15\.0\)')
-        self.assertRegex(SOURCE, r'MAX_RESPONSE_SIZE\s*=\s*math\.min\(math\.max\(math\.floor\(MAX_RESPONSE_SIZE\),\s*1024\),\s*1048576\)')
+        self.assertIn('INLINE_IMAGE_MODE == "cid" and 8388608 or 1048576', SOURCE)
+        self.assertIn('INLINE_IMAGE_MODE == "cid" and 6291456 or 65536', SOURCE)
         self.assertRegex(SOURCE, r'timeout\s*=\s*REQUEST_TIMEOUT')
         self.assertRegex(SOURCE, r'max_size\s*=\s*MAX_RESPONSE_SIZE')
 
