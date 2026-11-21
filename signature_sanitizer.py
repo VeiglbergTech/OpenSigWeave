@@ -110,15 +110,15 @@ def _mask_templated_link_urls(source: str) -> tuple[str, dict[str, str]]:
 
 # Inline link styling is required: email clients do not load portal.css.
 # Run this only after nh3 has sanitized the markup and style properties.
-_ANCHOR_OPEN = re.compile(r"<a\\b[^>]*>", re.I)
-_ANCHOR_STYLE = re.compile(r'\\bstyle="([^"]*)"', re.I)
-_TEXT_DECORATION = re.compile(r"(?:^|;)\\s*text-decoration\\s*:[^;]*", re.I)
+_ANCHOR_OPEN = re.compile(r"<a\b[^>]*>", re.I)
+_ANCHOR_STYLE = re.compile(r'\bstyle="([^"]*)"', re.I)
+_TEXT_DECORATION = re.compile(r"(?:^|;)\s*text-decoration\s*:[^;]*", re.I)
 
 
 def _without_underlined_links(html_content: str) -> str:
     def strip_underline(match: re.Match[str]) -> str:
         tag = match.group(0)
-        if not re.search(r"\\bhref=", tag, re.I):
+        if not re.search(r"\bhref=", tag, re.I):
             return tag
         style = _ANCHOR_STYLE.search(tag)
         if style:

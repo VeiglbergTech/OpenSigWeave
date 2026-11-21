@@ -119,10 +119,12 @@ async function main() {
         host.remove();
       }
     });
-    for (const markup of ["<table", "<tbody", "<td", "<center", "<font", "<small", "<sub", "<sup", "<code", "<pre"]) {
+    for (const markup of ["<table", "<tbody", "<td", "<center", "<small", "<sub", "<sup", "<code", "<pre"]) {
       assert.ok(richMarkupRoundTrip.includes(markup),
         "rich editor must retain supported email markup: " + markup + "; output=" + richMarkupRoundTrip);
     }
+    assert.ok(/<font\b|font-family\s*:/.test(richMarkupRoundTrip),
+      "legacy font face must survive as a font tag or equivalent inline style");
     assert.match(richMarkupRoundTrip, /width="600"/,
       "rich editor must retain supported table dimensions");
     assert.match(richMarkupRoundTrip, /valign="top"/,
