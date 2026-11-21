@@ -1,6 +1,7 @@
 -- Execute the Rspamd plugin with mocked network/parser but genuine body logic.
 package.path = 'rspamd/?.lua;' .. package.path
 local callback, status = nil, 200
+local failure_policy = 'fail_open'
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
   inject_on_replies = true,
@@ -54,6 +55,7 @@ rspamd_config = {
   get_all_opt=function() return {
     api_url='https://signature.example.test/api/v1/engine/signatures/',
     engine_api_key=string.rep('x',40),
+    failure_policy=failure_policy,
   } end,
   register_symbol=function(_,sym) callback=sym.callback end,
 }
@@ -64,7 +66,7 @@ local function task_case(ct, cte, body, decoded, is_html, other_headers, reply)
   local top_headers = 'From: sender@example.test\r\nTo: receiver@example.test\r\nMIME-Version: 1.0\r\n'
     .. 'Subject: Grüße und Prüfung\r\n' .. (other_headers or '')
     .. 'Content-Type: ' .. ct .. '\r\nContent-Transfer-Encoding: ' .. cte .. '\r\n'
-  local result = {modified=nil, mime_actions=nil}
+  local result = {modified=nil, mime_actions=nil, pre_result=nil}
   local textpart = {is_html=function() return is_html end, get_content=function(_, form)
     assert(form=='raw_utf')
     return decoded
@@ -95,6 +97,7 @@ local function task_case(ct, cte, body, decoded, is_html, other_headers, reply)
       return true
     end,
     set_milter_reply=function(_, val) result.mime_actions=val end,
+    set_pre_result=function(_,action,message,module) result.pre_result={action=action,message=message,module=module} end,
   }
   return task,result
 end
@@ -252,3 +255,30 @@ status=200
 assert(callback(signed)==false, 'signed MIME must be skipped before HTTP')
 assert(signed_res.modified==nil)
 io.stderr:write('Flat encoding, signature idempotency, reply/forward placement and fail-open checks passed\n')
+
+-- The strict policy must never return a permanent rejection on technical failure.
+failure_policy = 'tempfail'
+dofile('rspamd/opensigweave.lua')
+for _, http_status in ipairs({401, 422, 503}) do
+  status = http_status
+  local t, r = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+  assert(callback(t))
+  assert(r.modified == nil, 'engine failure should not mutate mail')
+  assert(r.pre_result and r.pre_result.action == 'soft reject', 'strict mode must defer')
+  assert(r.pre_result.message:find('Fehler-ID:', 1, true))
+end
+status = 200
+response.html = 123
+local invalid, invalid_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(invalid))
+assert(invalid_result.pre_result and invalid_result.pre_result.action == 'soft reject',
+  'malformed API payload must defer')
+response.html = '<b>OpenSigWeave Footer</b>'
+local mut, mut_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+mut.set_message = function() return false end
+assert(callback(mut))
+assert(mut_result.pre_result and mut_result.pre_result.action == 'soft reject',
+  'failed MIME mutation must defer')
+local valid, valid_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(valid))
+assert(valid_result.modified and not valid_result.pre_result, 'healthy submission must pass')
