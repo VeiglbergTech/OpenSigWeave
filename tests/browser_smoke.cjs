@@ -119,10 +119,12 @@ async function main() {
         host.remove();
       }
     });
-    for (const markup of ["<table", "<tbody", "<td", "<center", "<font", "<small", "<sub", "<sup", "<code", "<pre"]) {
+    for (const markup of ["<table", "<tbody", "<td", "<center", "<small", "<sub", "<sup", "<code", "<pre"]) {
       assert.ok(richMarkupRoundTrip.includes(markup),
         "rich editor must retain supported email markup: " + markup + "; output=" + richMarkupRoundTrip);
     }
+    assert.ok(/<font\b|font-family\s*:/.test(richMarkupRoundTrip),
+      "legacy font face must survive as a font tag or equivalent inline style");
     assert.match(richMarkupRoundTrip, /width="600"/,
       "rich editor must retain supported table dimensions");
     assert.match(richMarkupRoundTrip, /valign="top"/,
@@ -133,6 +135,8 @@ async function main() {
     assert.equal(personal.status(), 200, "signed-in administrator can load personal signature");
 
     await page.getByRole("button", { name: "Admin", exact: true }).click();
+    assert.equal(await page.locator('div[x-show="tab === \'admin\'"] > div').first().locator('button').first().textContent(), "System",
+      "System must be the first administrator navigation item");
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
     assert.match(page.url(), /[?&]section=identity-providers(?:&|$)/,
       "first administrator opening must use Identity Providers and persist it in the URL");
@@ -174,6 +178,12 @@ async function main() {
 
     const systemPanel = page.locator('[x-data="systemStatusManager"]');
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
+    const cardGap = await systemPanel.evaluate(section => {
+      const summary = section.querySelector(':scope > .grid');
+      const next = section.querySelector(':scope > .bg-gray-800');
+      return next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom;
+    });
+    assert.ok(cardGap >= 20, "separate system context cards need visible spacing: " + cardGap);
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     await page.route("**/api/admin/system-status", route => route.fulfill({
@@ -264,6 +274,30 @@ async function main() {
     }).count(), 0, "signature editor must not list retired mode values");
     assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
       "signature editor must not submit retired selector fields");
+    const fontToolbar = signatureDialog.locator("#signature-template-editor .ck-toolbar");
+    await fontToolbar.getByRole("button", { name: /Font Size/i }).waitFor();
+    await fontToolbar.getByRole("button", { name: /Font Family/i }).waitFor();
+    const formattingSample = await page.evaluate(async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      let instance;
+      try {
+        instance = await window.OpenSigWeaveEditor.create(host, {
+          initialData: '<p><span style="font-size: 14px; font-family: Arial, Helvetica, sans-serif;">' +
+            'Pixel font</span> <span style="font-size: 17px; font-family: Georgia, serif;">Custom</span></p>'
+        });
+        return instance.getData();
+      } finally {
+        if (instance) await instance.destroy();
+        host.remove();
+      }
+    });
+    assert.match(formattingSample, /font-size:\s*14px/i,
+      "font size must be serialized as an inline px style");
+    assert.match(formattingSample, /font-size:\s*17px/i,
+      "custom px sizes from existing signatures must survive editor loading");
+    assert.match(formattingSample, /font-family:\s*Arial/i,
+      "email-safe font family must survive editor loading");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();

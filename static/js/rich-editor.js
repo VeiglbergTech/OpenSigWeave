@@ -95,6 +95,26 @@
             licenseKey: "GPL",
             plugins,
             toolbar: config.imageUpload ? { items: toolbar, shouldNotGroupWhenFull: true } : toolbar,
+            // Numeric values produce inline font-size: Npx (not CKEditor text-size classes).
+            // Keep other safe sizes and fonts when loading existing HTML signatures.
+            fontSize: {
+                options: ["default", 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 60, 72],
+                supportAllValues: true
+            },
+            fontFamily: {
+                options: [
+                    "default",
+                    "Arial, Helvetica, sans-serif",
+                    "Calibri, Arial, sans-serif",
+                    "Verdana, Geneva, sans-serif",
+                    "Tahoma, Geneva, sans-serif",
+                    "Trebuchet MS, Helvetica, sans-serif",
+                    "Georgia, serif",
+                    "Times New Roman, Times, serif",
+                    "Courier New, Courier, monospace"
+                ],
+                supportAllValues: true
+            },
             table: {
                 contentToolbar: ["tableColumn", "tableRow", "mergeTableCells"]
             },
