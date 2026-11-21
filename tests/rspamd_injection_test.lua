@@ -139,6 +139,34 @@ assert(occurrences == 2, 'quoted previous signature must not suppress new signat
 assert(reply.modified:find('OpenSigWeave=20Footer') < reply.modified:find('gmail_quote'),
   'signature must precede quoted history')
 
+-- SOGo HTML replies place the German attribution inside a div/p *before*
+-- the actual quoted block. Inserting directly before blockquote is too late.
+-- The quote contains an earlier signature to exercise repeated replies.
+local sogo_nested_content = '<html><body><div>test 4</div>'
+  .. '<div class="reply-attribution">Am Samstag, November 21, 2026 16:20 CET, schrieb '
+  .. '<a href="mailto:admin@dev.veiglbergtech.com">admin@dev.veiglbergtech.com</a>:</div>'
+  .. '<blockquote type="cite"><p>hi martin</p><p>test</p>'
+  .. '<div>Am Samstag, November 21, 2026 16:20 CET, schrieb Martin:</div>'
+  .. '<blockquote type="cite"><p>test</p><div>' .. response.html
+  .. '</div></blockquote></blockquote></body></html>'
+local sogo=run_and_save(dir..'/flat_sogo_nested_reply.eml',
+  'text/html; charset=utf-8', '7bit', sogo_nested_content, sogo_nested_content, true, '', true)
+local sogo_new_signature = sogo.modified:find('OpenSigWeave=20Footer', 1, true)
+local sogo_attribution = sogo.modified:find('Am=20Samstag', 1, true)
+assert(sogo_new_signature and sogo_attribution and sogo_new_signature < sogo_attribution,
+  'SOGo signature must precede the first German attribution, not just blockquote')
+local _, sogo_count = sogo.modified:gsub('OpenSigWeave=20Footer', '')
+assert(sogo_count == 2, 'nested quote must retain its original signature exactly once')
+
+local sogo_paragraph_content = '<html><body><p>New response</p>'
+  .. '<p>Am Samstag, November 21, 2026 16:20 CET, schrieb admin@dev.veiglbergtech.com:</p>'
+  .. '<blockquote type="cite"><p>Original response</p></blockquote></body></html>'
+local sogo_paragraph=run_and_save(dir..'/flat_sogo_paragraph_reply.eml',
+  'text/html; charset=utf-8', '7bit', sogo_paragraph_content, sogo_paragraph_content, true, '', true)
+assert(sogo_paragraph.modified:find('OpenSigWeave=20Footer', 1, true)
+  < sogo_paragraph.modified:find('Am=20Samstag', 1, true),
+  'paragraph-wrapped SOGo quote introduction is quoted history too')
+
 local forward_content = '<html><body>Here is the requested message'
   .. '<div class="gmail_quote">----- Original Message -----</div></body></html>'
 response.inject_on_replies = false
