@@ -232,3 +232,117 @@ a, a:hover, a:focus-visible,
     .osw-modal-header, .osw-modal-footer { padding: .875rem 1rem; }
     .osw-modal-body { padding: 1rem; }
 }
+
+
+/* Accessible light/dark portal surface. Email composition remains white. */
+:root {
+  --osw-text: #f4f4f5; --osw-heading: #fff; --osw-input: #121215;
+  --osw-link: #ffad87; --osw-readable-accent: #ffad87;
+  --osw-action-accent: #a63b1b; --osw-action-hover: #8f3016;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --osw-black: #f5f7fa; --osw-charcoal: #fff; --osw-panel: #fff;
+  --osw-panel-raised: #e9edf2; --osw-border: #bdc7d4;
+  --osw-muted: #536173; --osw-text: #182332; --osw-heading: #101827;
+  --osw-input: #fff; --osw-link: #963718; --osw-readable-accent: #963718;
+  --osw-action-accent: #a63b1b; --osw-action-hover: #852d14;
+}
+body { color: var(--osw-text) !important; }
+.bg-gray-950 { background-color: var(--osw-input) !important; }
+.bg-blue-600, .bg-blue-700 { background-color: var(--osw-action-accent) !important; }
+.hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-action-hover) !important; }
+.text-blue-300, .text-blue-400, .text-blue-500 { color: var(--osw-link) !important; }
+.hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: var(--osw-readable-accent) !important; }
+.border-blue-500, .border-blue-600, .border-green-600 { border-color: var(--osw-action-accent) !important; }
+.focus\:border-blue-500:focus, .focus\:ring-blue-500:focus {
+  --tw-ring-color: var(--osw-action-accent) !important;
+  border-color: var(--osw-action-accent) !important;
+}
+.app-brand { color: var(--osw-readable-accent) !important; }
+
+/* Native select menus (including their option popup) and form inputs. */
+body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
+body select, body textarea {
+  background-color: var(--osw-input) !important;
+  color: var(--osw-text) !important;
+  border-color: var(--osw-border) !important;
+  caret-color: var(--osw-text);
+}
+body select option, body select optgroup { background-color: var(--osw-input); color: var(--osw-text); }
+body input::placeholder, body textarea::placeholder { color: var(--osw-muted); opacity: 1; }
+body :is(input, select, textarea, button):focus-visible { outline-color: var(--osw-action-accent); }
+html[data-theme="light"] .hover\:bg-gray-800:hover,
+html[data-theme="light"] .hover\:bg-gray-700:hover,
+html[data-theme="light"] .osw-file-button:hover,
+html[data-theme="light"] .osw-file-button:focus-within { background-color: #dfe5ed !important; }
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-gray-100,
+html[data-theme="light"] .text-gray-200,
+html[data-theme="light"] .text-gray-300 { color: var(--osw-text) !important; }
+html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
+html[data-theme="light"] .text-gray-500 { color: #526071 !important; }
+html[data-theme="light"] .hover\:text-white:hover { color: var(--osw-heading) !important; }
+html[data-theme="light"] .text-red-400,
+html[data-theme="light"] .text-red-500 { color: #a51f2f !important; }
+html[data-theme="light"] .text-green-400 { color: #166534 !important; }
+html[data-theme="light"] .osw-info-banner {
+  background: #fff4df !important; color: #713d10 !important; border-color: #c58c48 !important;
+}
+html[data-theme="light"] .osw-modal-dismiss:hover,
+html[data-theme="light"] .osw-modal-dismiss:focus-visible { color: var(--osw-heading); }
+html[data-theme="light"] :is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
+  .bg-red-600, .bg-red-500, .bg-yellow-600).text-white,
+html[data-theme="light"] .bg-gray-900\/95 .text-white,
+html[data-theme="light"] .bg-gray-900\/80 .text-white { color: #fff !important; }
+html[data-theme="light"] .bg-gray-900\/95 .text-gray-300,
+html[data-theme="light"] .bg-gray-900\/80 .text-gray-300 { color: #e5e7eb !important; }
+html[data-theme="light"] .form-dialog,
+html[data-theme="light"] .osw-modal-shell { box-shadow: 0 20px 60px rgba(19, 31, 48, .18); }
+#theme-toggle { white-space: nowrap; }
+
+/* CKEditor 5: all menus/dialogs are themed; avoid overwriting font-color swatches. */
+.ck {
+  --ck-color-base-background: var(--osw-panel);
+  --ck-color-base-foreground: var(--osw-panel-raised);
+  --ck-color-base-border: var(--osw-border);
+  --ck-color-text: var(--osw-text);
+  --ck-color-button-default-background: var(--osw-panel);
+  --ck-color-button-default-hover-background: var(--osw-panel-raised);
+  --ck-color-button-default-active-background: var(--osw-panel-raised);
+  --ck-color-button-on-background: var(--osw-panel-raised);
+  --ck-color-button-on-color: var(--osw-text);
+  --ck-color-list-button-hover-background: var(--osw-panel-raised);
+  --ck-color-panel-background: var(--osw-panel);
+  --ck-color-input-background: var(--osw-input);
+  --ck-color-input-text: var(--osw-text);
+  --ck-color-input-border: var(--osw-border);
+}
+.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-balloon-panel,
+.ck.ck-list, .ck.ck-color-selector, .ck.ck-color-grid {
+  background-color: var(--osw-panel) !important;
+  color: var(--osw-text) !important;
+  border-color: var(--osw-border) !important;
+}
+.ck.ck-toolbar .ck-button, .ck.ck-toolbar .ck-dropdown__button,
+.ck.ck-dropdown__panel .ck-button, .ck.ck-dropdown__panel .ck-button__label,
+.ck.ck-balloon-panel .ck-button,
+.ck.ck-labeled-field-view .ck-label, .ck.ck-dropdown__panel .ck-label {
+  color: var(--osw-text) !important;
+}
+.ck.ck-toolbar .ck-button:hover, .ck.ck-toolbar .ck-button.ck-on,
+.ck.ck-dropdown__panel .ck-button:hover, .ck.ck-dropdown__panel .ck-button.ck-on,
+.ck.ck-balloon-panel .ck-button:hover {
+  color: var(--osw-text) !important;
+  background-color: var(--osw-panel-raised) !important;
+}
+.ck.ck-dropdown__panel .ck-input, .ck.ck-dropdown__panel .ck-input-text,
+.ck.ck-balloon-panel .ck-input, .ck.ck-balloon-panel .ck-input-text {
+  color: var(--osw-text) !important;
+  background: var(--osw-input) !important;
+  border-color: var(--osw-border) !important;
+}
+/* Preserve the real (white) email canvas in either UI appearance. */
+.ck.ck-editor__main > .ck-editor__editable,
+.ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
+.ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }

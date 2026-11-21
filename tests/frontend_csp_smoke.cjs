@@ -333,6 +333,15 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(identityManager.form.settings.OIDC_CLIENT_ID, "opensigweave");
   assert.equal(identityManager.form.settings.OIDC_CLIENT_SECRET, "");
 
+  const themeScript = fs.readFileSync("static/js/theme.js", "utf8");
+  const portalCss = fs.readFileSync("static/css/portal.css", "utf8");
+  assert.match(template, /id="theme-toggle"/, "Portal must expose an appearance toggle");
+  assert.match(template, /src="\/static\/js\/theme.js"/, "Theme must initialize before first paint");
+  assert.match(themeScript, /opensigweave\.theme\.v1/, "Browser should retain the selected theme");
+  assert.match(themeScript, /aria-pressed/, "Toggle must advertise its active state");
+  assert.match(portalCss, /\.ck\.ck-dropdown__panel/, "CKEditor menus need themed surfaces");
+  assert.match(portalCss, /--osw-text/, "Theme foreground colors must be defined");
+  assert.match(portalCss, /ck-editor__editable[\s\S]*?background: #fff !important/, "Email canvas must be white");
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.match(template, /Advanced: Insert signature group tag/, "Group tags must be behind advanced disclosure");
