@@ -32,7 +32,7 @@
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
-                <button @click="tab = 'personal'" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
+                <button @click="openPersonal()" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
                 {% if is_admin %}<button @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <div class="h-6 w-px bg-gray-600"></div>
@@ -99,9 +99,8 @@
                     </div>
                 </div>
                 
-                <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
-                    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Default Domain Template (Read-Only)</h2>
-                    <iframe title="Default domain signature preview" sandbox="" srcdoc="{{ domain_template | e }}" class="w-full min-h-[120px] bg-white border border-gray-700 rounded"></iframe>
+                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 text-sm text-gray-300">
+                    Your managed signature is selected by rules, schedules or an authorized override. Domain master templates are no longer used.
                 </div>
             </div>
         </div>
@@ -109,16 +108,16 @@
         {% if is_admin %}
         <div x-show="tab === 'admin'" x-cloak>
             <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
-                <button @click="adminTab = 'identity-providers'" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
-                <button @click="adminTab = 'domains'" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
-                <button @click="adminTab = 'signatures'" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
-                <button @click="adminTab = 'signature-groups'" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
-                <button @click="adminTab = 'rules'" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
-                <button @click="adminTab = 'scheduling'" :class="adminTab === 'scheduling' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Scheduling</button>
-                <button @click="adminTab = 'branding'" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
-                <button @click="adminTab = 'exports'" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
-                <button @click="adminTab = 'imports'" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
-                <button @click="adminTab = 'system'" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
+                <button @click="setAdminTab('identity-providers')" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
+                <button @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
+                <button @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button @click="setAdminTab('signature-groups')" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
+                <button @click="setAdminTab('rules')" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button @click="setAdminTab('scheduling')" :class="adminTab === 'scheduling' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Scheduling</button>
+                <button @click="setAdminTab('branding')" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
+                <button @click="setAdminTab('exports')" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
+                <button @click="setAdminTab('imports')" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
+                <button @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
             <div class="flex justify-between items-center gap-3 mb-6">
@@ -273,8 +272,11 @@
                         <p x-show="isViewingHistoricalVersion" class="mt-1 text-xs text-amber-300">You are viewing <strong x-text="selectedVersion ? 'v' + selectedVersion.version_number : ''"></strong>. The current version remains <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong> until you save or restore.</p>
                         <p class="mt-2 text-xs text-gray-500">Historical versions are read-only previews. Only "Restore selected version" activates a historical snapshot, creating a new version without overwriting history.</p>
                     </div>
-                    <div class="mt-2 flex flex-wrap items-end gap-2">
-                        <label class="text-xs text-gray-400">Insert signature group tag
+                    <details class="mt-3 rounded border border-gray-700 bg-gray-900/60 p-3">
+                        <summary class="cursor-pointer text-sm text-gray-200">Advanced: Insert signature group tag</summary>
+                        <p class="mt-2 text-xs text-gray-400">The tag <code>{% raw %}{{ group:slug }}{% endraw %}</code> inserts a signature from the selected group when the message is processed.</p>
+                        <div class="mt-3 flex flex-wrap items-end gap-2">
+                        <label class="text-xs text-gray-400">Select signature group
                             <select x-model="selectedGroupSlug" class="mt-1 block bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white text-sm">
                                 <option value="">Select active group</option>
                                 <template x-for="group in availableGroups" :key="group.id">
@@ -283,8 +285,8 @@
                             </select>
                         </label>
                         <button type="button" @click="insertGroupTag(selectedGroupSlug, $refs.signatureHtmlTemplate)" :disabled="!selectedGroupSlug || isViewingHistoricalVersion" class="px-3 py-2 rounded text-sm bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Insert at cursor</button>
-                        <span class="text-xs text-gray-500">Adds the tag at the cursor or replaces selected text. Existing HTML remains unchanged.</span>
-                    </div>
+                        </div>
+                    </details>
                     <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
                     <p class="mt-2 text-xs text-gray-500">Drag & drop or paste PNG, JPEG or GIF images directly into the editor (maximum 2 MiB per image). Uploaded images use immutable OpenSigWeave asset URLs.</p>
                     <div x-data="htmlEditorToggle" class="mt-3">
@@ -435,14 +437,14 @@
                 <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
             </div>
-            <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">Explicit per-message signature selection still has priority. Active schedules override personal overrides and normal rules. Start is inclusive and end is exclusive.</div>
+            <div class="osw-info-banner rounded border p-3 text-sm" role="note">Active schedules take priority over personal overrides and rules. <details class="mt-2"><summary class="cursor-pointer">Priority details</summary><p class="mt-2">Explicit per-message selection takes precedence. Start is inclusive; end is exclusive.</p></details></div>
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                 <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>
                         <td class="px-4 py-3 font-medium" x-text="schedule.name"></td><td class="px-4 py-3 text-sm" x-text="targetLabel(schedule)"></td><td class="px-4 py-3 text-sm" x-text="domainLabel(schedule.domain_id)"></td>
                         <td class="px-4 py-3 text-xs text-gray-300"><div x-text="formatLocal(schedule.starts_at)"></div><div class="text-gray-500">to <span x-text="formatLocal(schedule.ends_at)"></span></div></td>
                         <td class="px-4 py-3 tabular-nums" x-text="schedule.priority"></td><td class="px-4 py-3"><span class="text-xs" :class="schedule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="schedule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
-                        <td class="px-4 py-3 text-right whitespace-nowrap"><button @click="editSchedule(schedule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button><button @click="deleteSchedule(schedule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button></td>
+                        <td class="px-4 py-3"><div class="osw-actions justify-end"><button @click="editSchedule(schedule)" class="text-blue-400 hover:text-blue-300 text-sm">Edit</button><button @click="deleteSchedule(schedule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button></div></td>
                     </tr></template><tr x-show="schedules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No scheduled signature windows configured.</td></tr></tbody>
                 </table>
             </div>
@@ -514,10 +516,12 @@
             </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <label class="block text-sm font-medium text-gray-200" for="admin-import-file">OpenSigWeave export archive</label>
-                <input id="admin-import-file" type="file" accept=".zip,application/zip" @change="selectFile($event)" :disabled="busy" class="block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white">
-                <p class="text-xs text-gray-400" x-show="fileName" x-text="fileName + ' · ' + fileSize + ' MiB'"></p>
+                <button type="button" @click="openFilePicker()" :disabled="busy" class="osw-file-button inline-flex cursor-pointer rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Choose ZIP file</button>
+                <input id="admin-import-file" type="file" accept=".zip,application/zip" @change="selectFile($event)" :disabled="busy" class="sr-only">
+                <p x-show="!fileName" class="text-sm text-gray-400">No file selected</p>
+                <p class="text-sm text-gray-200" x-show="fileName" x-text="fileName + ' · ' + fileSize + ' MiB'"></p>
                 <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
-                    Imports are additive: existing records are never overwritten. Matching domains and identity providers are reused only when their metadata matches exactly. Provider credentials, personal overrides and identity caches are not imported. Newly imported identity providers have no credentials and must be configured separately.
+                    Imports never overwrite existing records. Credentials and personal identities are not imported. <details class="mt-2"><summary class="cursor-pointer">Import details</summary><p class="mt-2">Domains and identity providers are reused only when metadata matches exactly. New providers require credentials after import.</p></details>
                 </div>
                 <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
                 <div class="flex justify-end">
@@ -552,21 +556,21 @@
             <div class="flex flex-wrap justify-between items-center gap-3">
                 <div><h2 class="text-xl font-semibold text-white">System status</h2>
                 <p class="text-sm text-gray-400 mt-1">Read-only diagnostics. No credentials or host paths are exposed.</p></div>
-                <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh status'"></button>
+                <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh status'">Refresh status</button>
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
                     <h3 class="font-semibold">Application</h3>
-                    <p>State: <span x-text="state"></span></p>
-                    <p>Version: <span x-text="version"></span></p>
-                    <p>Checked: <span x-text="checkedAt"></span></p>
+                    <p>State: <span x-text="state">Not checked</span></p>
+                    <p>Version: <span x-text="version">Not checked</span></p>
+                    <p>Checked: <span x-text="checkedAt">Not checked</span></p>
                 </div>
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
                     <h3 class="font-semibold">Dependencies</h3>
-                    <p>Database: <span x-text="database"></span></p>
-                    <p>Signature storage: <span x-text="storage"></span></p>
-                    <p>Image assets: <span x-text="assets"></span></p>
+                    <p>PostgreSQL: <span x-text="database">Not checked</span></p>
+                    <p>Signature storage: <span x-text="storage">Not checked</span></p>
+                    <p>Image storage: <span x-text="assets">Not checked</span></p>
                 </div>
             </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
@@ -583,7 +587,7 @@
             </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2 text-sm text-gray-300">
                 <h3 class="font-semibold">Operations</h3>
-                <p>Local emergency administrator: <span x-text="localAdmin"></span>. Management API key: <span x-text="managementApi"></span>.</p>
+                <p>Local emergency administrator: <span x-text="localAdmin">Not checked</span>. Management API key: <span x-text="managementApi">Not checked</span>.</p>
                 <p>Encrypted backups, disaster-recovery restore, secret rotation and mail-adapter configuration remain operator-only, not remote browser controls.</p>
                 <p>External identity providers and mail servers are not contacted. Use provider connection tests and mail adapter logs for external diagnostics.</p>
             </div>
@@ -593,17 +597,17 @@
 
     </div>
 
-    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="refreshDomainUsers()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
+        <div class="flex items-center justify-center h-full p-4 text-center">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
-                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center bg-gray-900">
+                <div class="osw-domain-modal-header px-6 py-4 border-b border-gray-700 flex justify-between items-center gap-3 bg-gray-900">
                     <div class="flex items-center gap-4">
                         <div><h3 class="text-lg font-bold text-white">Domain Management</h3><p class="text-sm text-blue-400" x-text="domain ? domain.domain_name : ''"></p></div>
                         <div class="h-8 w-px bg-gray-700 ml-4"></div>
                         <div class="flex gap-2 ml-4">
-                            <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings & Template</button>
-                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
+                            <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings</button>
+                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Users & Overrides</button>
                         </div>
                     </div>
                     <button @click="show = false" class="text-gray-500 hover:text-gray-300"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
@@ -652,37 +656,11 @@
                             </label>
                         </div>
 
-                        <div>
-                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Master Template Editor</h4>
-                            <div class="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
-                                <div class="relative p-4 bg-gray-900">
-                                    <div id="domain-rich-editor-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
-                                        <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                                        <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
-                                        <p class="text-sm text-gray-300 mt-1 max-w-sm">Visual editing is locked to prevent data loss.</p>
-                                    </div>
-                                    <div id="domain-rich-editor" class="h-[250px]"><div data-editor-target></div></div>
-                                </div>
-                                <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
-                                    <div class="flex justify-between items-center px-4 py-3">
-                                        <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
-                                        <div class="flex gap-2">
-                                            <button @click="$dispatch('open-sanitizer', 'domain')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
-                                            </button>
-                                            <button @click="previewDomainSignature(domain)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
-                                        </div>
-                                    </div>
-                                    <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
-<div id="domain-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-spezifische Conditional Comments oder VML wurden erkannt. Der Originalcode bleibt gespeichert; der Sanitizer entfernt diese Inhalte jedoch aus Vorschau und versendeter Signatur.</div></div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
                     <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
                         <div class="flex justify-between items-center">
-                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Active User Overrides</h4>
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Domain users</h4>
                             <div class="flex gap-2">
                                 <input type="text" x-model="newOverrideEmail" placeholder="user@domain.com" class="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
                                 <button @click="loadAdminEditor(newOverrideEmail)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm transition">+ Add / Edit</button>
@@ -724,25 +702,35 @@
                             </div>
                         </div>
 
-                        <div class="bg-gray-900 rounded-lg border border-gray-700">
-                            <table class="w-full text-left text-sm">
-                                <thead class="border-b border-gray-700 text-gray-400"><tr><th class="px-4 py-2 font-medium">User Email</th><th class="px-4 py-2 font-medium text-right">Actions</th></tr></thead>
-                                <tbody class="divide-y divide-gray-800">
-                                    <template x-for="user in userOverrides" :key="user.id">
-                                        <tr class="hover:bg-gray-800 transition">
-                                            <td class="px-4 py-3 text-gray-200 flex items-center gap-3">
-                                                <span x-text="user.user_email"></span>
-                                                <span x-show="user.is_disabled" class="bg-red-900/50 text-red-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-red-800">Disabled</span>
-                                            </td>
-                                            <td class="px-4 py-3 text-right space-x-3">
-                                                <button @click="loadAdminEditor(user.user_email, user.html_content, user.is_disabled)" class="text-blue-400 hover:text-blue-300">Edit</button>
-                                                <button @click="confirmClearAdmin(user.id)" class="text-red-400 hover:text-red-300">Clear</button>
-                                            </td>
-                                        </tr>
+                        <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
+                            <label class="text-sm text-gray-300">Search users<input type="search" x-model="userQuery" @input.debounce.300ms="fetchUsersFirstPage()" placeholder="Name or email" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"></label>
+                            <label class="text-sm text-gray-300">Source<select x-model="userSource" @change="fetchUsersFirstPage()" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"><option value="all">All known users</option><option value="ldap">LDAP</option><option value="authentik">Authentik</option><option value="local">Local identity cache</option><option value="override">Override only</option></select></label>
+                            <button type="button" @click="fetchUsers()" class="rounded bg-gray-700 px-4 py-2 text-sm">Refresh list</button>
+                        </div>
+                        <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>
+                        <p x-show="userError" x-text="userError" role="alert" class="text-sm text-red-300"></p>
+                        <div class="overflow-x-auto rounded border border-gray-700 bg-gray-900">
+                            <table class="w-full min-w-[32rem] text-left text-sm">
+                                <thead class="border-b border-gray-700 text-gray-300"><tr><th class="px-4 py-2">Email</th><th class="px-4 py-2">Display name</th><th class="px-4 py-2">Source</th><th class="px-4 py-2">Override</th><th class="px-4 py-2 text-right">Action</th></tr></thead>
+                                <tbody class="divide-y divide-gray-700">
+                                    <template x-for="user in users" :key="user.email">
+                                        <tr><td class="px-4 py-3 break-all" x-text="user.email"></td>
+                                        <td class="px-4 py-3" x-text="user.display_name || '—'"></td>
+                                        <td class="px-4 py-3" x-text="user.source"></td>
+                                        <td class="px-4 py-3" x-text="user.override_status"></td>
+                                        <td class="px-4 py-3 text-right"><button type="button" class="text-blue-400" @click="loadAdminEditor(user.email)">Edit override</button></td></tr>
                                     </template>
-                                    <tr x-show="userOverrides.length === 0"><td colspan="2" class="px-4 py-6 text-center text-gray-500">No custom overrides exist for this domain yet.</td></tr>
+                                    <tr x-show="!userLoading && users.length === 0"><td colspan="5" class="px-4 py-5 text-center text-gray-400">No known users match the filter.</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <p x-show="userLoading" class="text-sm text-gray-400" role="status">Loading users…</p>
+                        <div class="osw-actions justify-between text-sm">
+                            <span x-text="userTotal + ' known user(s) · page ' + userPage"></span>
+                            <div class="osw-actions">
+                                <button type="button" @click="previousUsersPage()" :disabled="userLoading || userPage <= 1" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Previous</button>
+                                <button type="button" @click="nextUsersPage()" :disabled="userLoading || userPage * 20 >= userTotal" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -762,7 +750,7 @@
          @open-sanitizer.window="open($event)" 
          @keydown.escape.window="show = false" 
          x-show="show" x-cloak class="fixed inset-0 z-[70] overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="flex items-center justify-center h-full p-4 text-center">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl border border-gray-700 sm:my-8 sm:align-middle sm:max-w-3xl w-full transform transition-all flex flex-col">
                 <div class="px-6 py-5 border-b border-gray-700 bg-gray-900">
@@ -786,7 +774,7 @@
     <div x-data="previewModal" 
          @open-preview.window="open($event)" @keydown.escape.window.capture="closeOnEscape($event)" 
          x-show="show" x-cloak class="fixed inset-0 z-[100] overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+        <div class="flex items-center justify-center h-full p-4 text-center">
             <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-gray-300">
                 <div class="bg-gray-100 px-6 py-4 border-b border-gray-300 flex justify-between items-center">
@@ -798,9 +786,9 @@
         </div>
     </div>
     
-    <div x-data="addDomainModal" @open-add-domain.window="open()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="submit()" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="submit()" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="addDomainModal" @open-add-domain.window="open()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center h-full p-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="submit()" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="submit()" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
     
-    <div x-data="confirmModal" @open-confirm.window="open($event)" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="confirm()" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="confirmModal" @open-confirm.window="open($event)" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center h-full p-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="confirm()" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
 
 
     <script src="/static/js/portal.js"></script>

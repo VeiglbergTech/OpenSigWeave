@@ -77,7 +77,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
         store = file_store or Mock()
         return SignatureEngineService(resolver, store), resolver, store
 
-    def test_service_renders_default_domain_template_with_injected_dependencies(self):
+    def test_no_matching_rule_never_uses_legacy_domain_template(self):
         domain = DomainDB(
             domain_name="example.org",
             is_active=True,
@@ -100,7 +100,7 @@ class SignatureEngineServiceTests(unittest.TestCase):
             service.resolve(self.db, normalize_engine_request("Ada@Example.org"))
         )
 
-        self.assertEqual(result.html, "<p>Hello Ada Lovelace</p>")
+        self.assertEqual(result.html, "")
         self.assertTrue(result.inject_on_replies)
         self.assertFalse(result.trim_whitespace)
         self.assertTrue(result.strip_device_signatures)

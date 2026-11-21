@@ -1,5 +1,6 @@
 """Allowlist-based HTML sanitization for untrusted signature templates."""
 import nh3
+import re
 
 
 _ALLOWED_TAGS = {
@@ -45,8 +46,34 @@ _CLEANER = nh3.Cleaner(
 )
 
 
+_RESIZED_FIGURE = re.compile(r'<figure\b(?P<attrs>[^>]*)>\s*(?P<img><img\b[^>]*>)\s*</figure>', re.I | re.S)
+_RESIZE_WIDTH = re.compile(r'(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)(px|%)(?=\s|;|$)', re.I)
+
+
+def _flatten_resized_figure(match: re.Match) -> str:
+    """Mirror CKEditor figure sizing onto <img> for email clients."""
+    attrs = match.group("attrs")
+    if not re.search(r'image_resized', attrs, re.I):
+        return match.group(0)
+    style = re.search(r"""\bstyle\s*=\s*(["'])(.*?)\1""", attrs, re.I | re.S)
+    width = _RESIZE_WIDTH.search(style.group(2)) if style else None
+    if not width:
+        return match.group(0)
+    size = float(width.group(1))
+    unit = width.group(2).lower()
+    if not (1 <= size <= (2000 if unit == "px" else 100)):
+        return match.group(0)
+    value = f"{size:g}{unit}"
+    attribute_width = f"{size:g}" if unit == "px" else value
+    img = match.group("img")
+    img = re.sub(r"""\s+(?:style|width)\s*=\s*(["']).*?\1""", "", img, flags=re.I | re.S)
+    img = img.rstrip()
+    img = img[:-1].rstrip().removesuffix("/").rstrip()
+    return img + f' width="{attribute_width}" style="width: {value}; height: auto;">'
+
+
 def sanitize_signature_html(html_content: str) -> str:
     """Strip unsafe markup while preserving common email-signature layout markup."""
     if not isinstance(html_content, str):
         raise TypeError("html_content must be a string")
-    return _CLEANER.clean(html_content)
+    return _CLEANER.clean(_RESIZED_FIGURE.sub(_flatten_resized_figure, html_content))

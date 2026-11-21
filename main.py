@@ -181,7 +181,7 @@ class DomainUpdate(BaseModel):
     inject_on_replies: bool
     trim_whitespace: bool
     strip_device_signatures: bool
-    template_html: str = Field(max_length=65536)
+    template_html: Optional[str] = Field(default=None, max_length=65536)  # Retired, accepted for old clients only
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
     authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
@@ -961,33 +961,16 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
         if not domain_obj.is_active:
             lock_reason = "Signatures for your domain are currently disabled by the administrator."
         elif not domain_obj.allow_overrides:
-            lock_reason = "Custom overrides have been disabled for your domain. The master template will be used."
+            lock_reason = "Custom overrides are disabled. Rules and schedules determine the managed signature."
         else:
             can_edit = True
             lock_reason = ""
     
-    raw_template = sanitize_signature_html(
-        (domain_obj.template_html if domain_obj else None)
-        or "<p>No active domain template found for your email domain.</p>"
-    )
-    
-    try:
-        parsed_template = render_signature_template(raw_template, {
-            "first_name": first_name,
-            "last_name": last_name,
-            "title": title,
-            "phone": phone,
-            "email": email,
-            "domain_name": domain_part,
-        })
-    except TemplateError:
-        parsed_template = "<p>Signature template is invalid. Please contact an administrator.</p>"
-
     return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin,
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
-        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
+        "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
         "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0
     })
 
@@ -1038,8 +1021,10 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
-    db_domain.template_html_source = domain_update.template_html
-    db_domain.template_html = sanitize_signature_html(domain_update.template_html)
+    # Legacy master-template data is retained for rollback, but no longer edited by the UI.
+    if domain_update.template_html is not None:
+        db_domain.template_html_source = domain_update.template_html
+        db_domain.template_html = sanitize_signature_html(domain_update.template_html)
     if "identity_provider_id" in domain_update.model_fields_set:
         if domain_update.identity_provider_id and db.get(IdentityProviderDB, domain_update.identity_provider_id) is None:
             raise HTTPException(status_code=422, detail="Identity provider not found")
@@ -1132,6 +1117,95 @@ def delete_my_signature(request: Request, db: Session = Depends(get_db)):
         db.commit()
         return {"status": "deleted"}
     return {"status": "not_found"}
+
+@app.get("/api/admin/domains/{domain_id}/users")
+async def list_domain_users(
+    domain_id: int, request: Request, q: str = "", source: str = "all",
+    page: int = 1, page_size: int = 20, db: Session = Depends(get_db),
+):
+    """Admin-only paginated user directory; never disclose credentials, claims or override HTML."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    domain = db.get(DomainDB, domain_id)
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    if page < 1 or page_size < 1 or page_size > 100 or len(q) > 200:
+        raise HTTPException(status_code=422, detail="Invalid search or pagination")
+    if source not in {"all", "ldap", "authentik", "local", "override"}:
+        raise HTTPException(status_code=422, detail="Invalid source filter")
+    suffix = "@" + domain.domain_name.strip().casefold()
+    users: dict[str, dict] = {}
+
+    def merge(email, display_name="", origin="local", is_disabled=None):
+        if not isinstance(email, str):
+            return
+        normalized = email.strip().casefold()
+        if not normalized.endswith(suffix) or normalized.count("@") != 1 or len(normalized) > 320:
+            return
+        item = users.setdefault(normalized, {
+            "email": normalized, "display_name": "", "source": origin,
+            "override_status": "None", "directory_disabled": False,
+        })
+        if display_name and (not item["display_name"] or origin in {"ldap", "authentik"}):
+            item["display_name"] = str(display_name)[:256]
+        if origin in {"ldap", "authentik"}:
+            item["source"] = origin
+        elif origin == "override" and item["source"] not in {"ldap", "authentik"}:
+            item["source"] = "override"
+        if is_disabled is not None:
+            item["directory_disabled"] = bool(is_disabled)
+
+    for cached in db.query(IdentityCacheDB).filter(
+        func.lower(IdentityCacheDB.email).endswith(suffix, autoescape=True)
+    ).all():
+        email = (cached.email or "").rsplit(":", 1)[-1]
+        merge(email, " ".join(filter(None, (cached.first_name, cached.last_name))), "local")
+    if LOCAL_ADMIN_EMAIL:
+        merge(LOCAL_ADMIN_EMAIL, origin="local")
+    for override in db.query(UserOverrideDB).filter(
+        func.lower(UserOverrideDB.user_email).endswith(suffix, autoescape=True)
+    ).all():
+        merge(override.user_email, origin="override")
+        users[override.user_email.strip().casefold()]["override_status"] = (
+            "Disabled" if override.is_disabled else "Configured"
+        )
+
+    warning = ""
+    truncated = False
+    provider = db.get(IdentityProviderDB, domain.identity_provider_id) if domain.identity_provider_id else None
+    if provider and provider.is_enabled and provider.provider_type in {"ldap", "authentik"}:
+        try:
+            directory = identity_provider_registry.get(provider.id)
+            if directory is None or not hasattr(directory, "list_users"):
+                raise IdentityProviderUnavailable("Provider enumeration unavailable")
+            directory_users, truncated = await directory.list_users(domain.domain_name)
+            for account in directory_users:
+                merge(account.get("email"), account.get("display_name", ""),
+                      provider.provider_type, account.get("disabled", False))
+        except (IdentityProviderUnavailable, ProviderConfigError, OSError, ValueError):
+            warning = "Identity provider users could not be loaded; cached identities and overrides are shown."
+    elif provider and provider.provider_type == "oidc":
+        warning = "OpenID Connect has no standard user-list API; locally known identities are shown."
+    else:
+        warning = "No browsable identity provider is configured; locally known identities are shown."
+    if truncated:
+        warning = (warning + " " if warning else "") + "Identity provider result limit reached; the user list is incomplete."
+    partial = bool(truncated or warning)
+
+    needle = q.strip().casefold()
+    filtered = [
+        item for item in users.values()
+        if (source == "all" or item["source"] == source)
+        and (not needle or needle in item["email"] or needle in item["display_name"].casefold())
+    ]
+    filtered.sort(key=lambda item: (item["email"], item["source"]))
+    begin = (page - 1) * page_size
+    return {
+        "items": filtered[begin:begin + page_size],
+        "total": len(filtered), "page": page, "page_size": page_size,
+        "warning": warning, "partial": partial,
+    }
+
 
 @app.get("/api/admin/overrides/{domain_name}")
 def get_domain_overrides(domain_name: str, request: Request, db: Session = Depends(get_db)):

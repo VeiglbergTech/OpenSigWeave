@@ -323,6 +323,99 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.engine.dispose()
         self.tempdir.cleanup()
 
+    def test_domain_user_directory_is_admin_only_and_never_leaks_override_html(self):
+        domain = main.DomainDB(domain_name="directory.test", is_active=True)
+        self.db.add(domain)
+        self.db.flush()
+        self.db.add_all([
+            IdentityCacheDB(
+                email="oidc:alice@directory.test", first_name="Alice", last_name="Smith",
+                groups=["confidential"], claims={"secret": "never-return"},
+            ),
+            main.UserOverrideDB(
+                user_email="bob@directory.test",
+                html_content="<p>private signature</p>", is_disabled=True,
+            ),
+        ])
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as denied:
+            asyncio.run(main.list_domain_users(
+                domain.id, self.user_request, db=self.db,
+            ))
+        self.assertEqual(denied.exception.status_code, 403)
+
+        first = asyncio.run(main.list_domain_users(
+            domain.id, self.admin_request, page=1, page_size=1, db=self.db,
+        ))
+        second = asyncio.run(main.list_domain_users(
+            domain.id, self.admin_request, page=2, page_size=1, db=self.db,
+        ))
+        self.assertEqual(first["total"], 2)
+        self.assertEqual(first["items"][0]["email"], "alice@directory.test")
+        self.assertEqual(first["items"][0]["display_name"], "Alice Smith")
+        self.assertEqual(second["items"][0]["email"], "bob@directory.test")
+        self.assertEqual(second["items"][0]["override_status"], "Disabled")
+        self.assertNotIn("private signature", str(first) + str(second))
+        self.assertNotIn("never-return", str(first) + str(second))
+
+        filtered = asyncio.run(main.list_domain_users(
+            domain.id, self.admin_request, q="BOB", source="override", db=self.db,
+        ))
+        self.assertEqual([x["email"] for x in filtered["items"]], ["bob@directory.test"])
+        with self.assertRaises(HTTPException) as too_large:
+            asyncio.run(main.list_domain_users(
+                domain.id, self.admin_request, page_size=101, db=self.db,
+            ))
+        self.assertEqual(too_large.exception.status_code, 422)
+
+    def test_live_ldap_domain_directory_and_oidc_limitation(self):
+        directory_domain = main.DomainDB(domain_name="enterprise.test", is_active=True)
+        ldap_provider = main.IdentityProviderDB(
+            id="directory-ldap", display_name="Directory", provider_type="ldap", is_enabled=True,
+        )
+        self.db.add_all([ldap_provider, directory_domain])
+        self.db.flush()
+        directory_domain.identity_provider_id = ldap_provider.id
+        self.db.commit()
+        directory_stub = SimpleNamespace(list_users=AsyncMock(return_value=([
+            {"email": "person@enterprise.test", "display_name": "Person A", "disabled": False},
+            {"email": "ignored@other.test", "display_name": "Other", "disabled": False},
+        ], False)))
+        with patch.object(main.identity_provider_registry, "get", return_value=directory_stub):
+            listing = asyncio.run(main.list_domain_users(
+                directory_domain.id, self.admin_request, source="ldap", db=self.db,
+            ))
+        self.assertEqual(listing["total"], 1)
+        self.assertEqual(listing["items"][0]["email"], "person@enterprise.test")
+        directory_stub.list_users.assert_awaited_once_with("enterprise.test")
+        with patch.object(main.identity_provider_registry, "get",
+                          side_effect=main.ProviderConfigError("Unavailable")):
+            degraded = asyncio.run(main.list_domain_users(
+                directory_domain.id, self.admin_request, db=self.db,
+            ))
+        self.assertTrue(degraded["partial"])
+        self.assertIn("could not be loaded", degraded["warning"])
+        ldap_provider.provider_type = "authentik"
+        self.db.commit()
+        authentik_stub = SimpleNamespace(list_users=AsyncMock(return_value=([
+            {"email": "user@enterprise.test", "display_name": "Authentik User", "disabled": False},
+        ], False)))
+        with patch.object(main.identity_provider_registry, "get", return_value=authentik_stub):
+            authentik_users = asyncio.run(main.list_domain_users(
+                directory_domain.id, self.admin_request, source="authentik", db=self.db,
+            ))
+        self.assertEqual(authentik_users["total"], 1)
+        self.assertEqual(authentik_users["items"][0]["source"], "authentik")
+        authentik_stub.list_users.assert_awaited_once()
+        ldap_provider.provider_type = "oidc"
+        self.db.commit()
+        oidc = asyncio.run(main.list_domain_users(
+            directory_domain.id, self.admin_request, db=self.db,
+        ))
+        self.assertTrue(oidc["partial"])
+        self.assertIn("no standard user-list API", oidc["warning"])
+
     def test_admin_component_export_requires_admin_and_returns_private_zip(self):
         main.create_signature_endpoint(
             main.SignatureCreateRequest(
@@ -680,8 +773,9 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 db=self.db,
             ))
 
-        self.assertIn("Domain Alice", result["html"])
-        self.assertNotIn("Personal override", result["html"])
+        # Domain policy prevents personal overrides. Without a matching rule,
+        # the retired master template must not be used either.
+        self.assertEqual(result["html"], "")
 
     def test_personal_override_email_matching_is_case_insensitive(self):
         self.db.add(main.DomainDB(

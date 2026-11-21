@@ -37,6 +37,64 @@ class AuthentikAttributeProvider:
         self.api_token = api_token
         self.timeout = timeout
 
+    async def list_users(self, domain: str, max_results: int = 2000):
+        """Bounded Authentik API listing; never expose tokens or arbitrary user claims."""
+        import re
+
+        if not self.base_url or not self.api_token:
+            raise IdentityProviderUnavailable("Authentik user listing is not configured")
+        if not isinstance(domain, str) or not re.fullmatch(r"[a-zA-Z0-9.-]{1,253}", domain):
+            raise ValueError("Invalid directory domain")
+        if max_results < 1 or max_results > 2000:
+            raise ValueError("Invalid directory limit")
+        users = {}
+        page_size = min(100, max_results)
+        max_pages = (max_results + page_size - 1) // page_size
+        truncated = False
+        headers = {"Authorization": f"Bearer {self.api_token}", "Accept": "application/json"}
+        url = f"{self.base_url}/api/v3/core/users/"
+        try:
+            async with httpx.AsyncClient(verify=True, timeout=httpx.Timeout(self.timeout)) as client:
+                for page in range(1, max_pages + 1):
+                    response = await client.get(
+                        url, params={"page": page, "page_size": page_size}, headers=headers,
+                    )
+                    if response.status_code != 200:
+                        raise IdentityProviderUnavailable(
+                            f"Authentik listing returned HTTP {response.status_code}"
+                        )
+                    payload = response.json()
+                    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+                        raise IdentityProviderUnavailable("Invalid Authentik user listing response")
+                    results = payload["results"]
+                    for item in results:
+                        if not isinstance(item, dict):
+                            continue
+                        email = item.get("email")
+                        if not isinstance(email, str):
+                            continue
+                        email = email.strip().casefold()
+                        if not email.endswith("@" + domain.casefold()) or email.count("@") != 1:
+                            continue
+                        users[email] = {
+                            "email": email,
+                            "display_name": str(item.get("name") or "")[:256],
+                            "disabled": item.get("is_active") is False,
+                        }
+                    pagination = payload.get("pagination")
+                    has_next = (bool(pagination.get("next")) if isinstance(pagination, dict)
+                                else len(results) >= page_size)
+                    if not has_next:
+                        return list(users.values()), False
+                    if page == max_pages:
+                        truncated = True
+            return list(users.values()), truncated
+        except IdentityProviderUnavailable:
+            raise
+        except (httpx.HTTPError, ValueError, TypeError, KeyError) as exc:
+            logger.warning("Authentik directory listing failed: %s", type(exc).__name__)
+            raise IdentityProviderUnavailable("Authentik user listing failed") from exc
+
     async def get_attributes(self, email: str) -> IdentityAttributes:
         if not self.base_url or not self.api_token:
             raise IdentityProviderUnavailable("Authentik attribute provider is not configured")
