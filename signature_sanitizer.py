@@ -1,6 +1,7 @@
 """Allowlist-based HTML sanitization for untrusted signature templates."""
 import nh3
 import re
+import secrets
 
 
 _ALLOWED_TAGS = {
@@ -72,8 +73,49 @@ def _flatten_resized_figure(match: re.Match) -> str:
     return img + f' width="{attribute_width}" style="width: {value}; height: auto;">'
 
 
+
+# Only recognized, plain profile variables are protected in already-safe URL schemes.
+# An opaque URL-safe placeholder prevents nh3 from discarding e.g.
+# href="https://{{ domain_name }}" before Jinja can render the domain.
+_LINK_VARIABLE = re.compile(r"\{\{\s*(?:first_name|last_name|title|phone|email|domain_name)\s*\}\}")
+_HREF_ATTRIBUTE = re.compile(
+    r"""(?P<prefix>\bhref\s*=\s*)(?P<quote>["'])(?P<value>.*?)(?P=quote)""",
+    re.I | re.S,
+)
+_SAFE_LINK_PREFIX = re.compile(r"^(?:https?://|mailto:|tel:)", re.I)
+
+
+def _mask_templated_link_urls(source: str) -> tuple[str, dict[str, str]]:
+    replacements: dict[str, str] = {}
+
+    def replace_attribute(match: re.Match[str]) -> str:
+        value = match.group("value")
+        # Never protect a dynamic scheme, relative URL or forbidden scheme.
+        # nh3 must remain responsible for rejecting those links.
+        if not _SAFE_LINK_PREFIX.match(value):
+            return match.group(0)
+
+        def replace_variable(variable: re.Match[str]) -> str:
+            token = "oswlinkvar" + secrets.token_hex(16)
+            replacements[token] = variable.group(0)
+            return token
+
+        masked = _LINK_VARIABLE.sub(replace_variable, value)
+        if masked == value:
+            return match.group(0)
+        return match.group("prefix") + match.group("quote") + masked + match.group("quote")
+
+    return _HREF_ATTRIBUTE.sub(replace_attribute, source), replacements
+
+
 def sanitize_signature_html(html_content: str) -> str:
     """Strip unsafe markup while preserving common email-signature layout markup."""
     if not isinstance(html_content, str):
         raise TypeError("html_content must be a string")
-    return _CLEANER.clean(_RESIZED_FIGURE.sub(_flatten_resized_figure, html_content))
+    source, placeholders = _mask_templated_link_urls(
+        _RESIZED_FIGURE.sub(_flatten_resized_figure, html_content)
+    )
+    sanitized = _CLEANER.clean(source)
+    for placeholder, variable in placeholders.items():
+        sanitized = sanitized.replace(placeholder, variable)
+    return sanitized

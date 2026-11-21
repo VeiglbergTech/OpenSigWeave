@@ -7,6 +7,7 @@ survive: nh3 currently strips comments and disallowed VML elements.
 import unittest
 
 from signature_sanitizer import sanitize_signature_html
+from signature_renderer import render_signature_template
 
 
 class SignatureEditorCompatibilityTests(unittest.TestCase):
@@ -55,6 +56,32 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         self.assertIn('width="120"', result)
         self.assertIn("{{ first_name }}", result)
         self.assertIn("{{ group:staff }}", result)
+
+    def test_https_link_with_profile_variables_survives_rendering(self):
+        source = (
+            '<a href="https://{{ domain_name }}/contact?email={{ email }}">Contact</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertIn('href="https://{{ domain_name }}/contact?email={{ email }}"', sanitized)
+        rendered = render_signature_template(
+            sanitized, {"domain_name": "example.org", "email": "alice@example.org"}
+        )
+        self.assertIn('href="https://example.org/contact?email=alice@example.org"', rendered)
+        # The output must also pass strict URL sanitization after substitution.
+        self.assertIn('href="https://example.org/', sanitize_signature_html(rendered))
+
+    def test_unsafe_or_relative_templated_link_schemes_remain_disallowed(self):
+        source = (
+            '<a href="javascript:{{ email }}">Script</a>'
+            '<a href="data:text/html,{{ email }}">Data</a>'
+            '<a href="{{ domain_name }}">Relative</a>'
+            '<a href="https://{{ domain_name }}">Safe</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertNotIn('href="javascript:', sanitized)
+        self.assertNotIn('href="data:', sanitized)
+        self.assertNotIn('href="{{ domain_name }}"', sanitized)
+        self.assertIn('href="https://{{ domain_name }}"', sanitized)
 
     def test_persisted_asset_urls_survive_but_data_and_blob_urls_do_not(self):
         asset_url = "https://signature.example.org/signature-assets/" + ("a" * 64) + ".webp"
