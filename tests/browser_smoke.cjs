@@ -212,6 +212,21 @@ async function main() {
     await providerPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
     const providerDialog = providerPanel.locator('[x-show="editing"][role="dialog"]');
     await assertFloatingDialog(providerDialog, "identity provider editor");
+    // All admin create/edit dialogs use the same Domains-style header, scrollable body and footer.
+    const unifiedDialogs = await page.evaluate(() => [...document.querySelectorAll(".form-dialog")].map(dialog => ({
+      header: !!dialog.querySelector(":scope > .osw-modal-header"),
+      body: !!dialog.querySelector(":scope > .osw-modal-body"),
+      footer: !!dialog.querySelector(":scope > .osw-modal-footer"),
+      shell: dialog.classList.contains("osw-modal-shell"),
+    })));
+    assert.equal(unifiedDialogs.length, 6, "six administrator create/edit dialogs should share one layout");
+    for (const item of unifiedDialogs) assert.deepEqual(item, {
+      header: true, body: true, footer: true, shell: true,
+    }, "each administrator dialog must have the shared Domains-style shell");
+    assert.equal(await page.locator('[x-data="addDomainModal"] input[x-model="domainName"]').getAttribute("placeholder"), "example.com",
+      "domain placeholder must use the neutral example.com address");
+    assert.equal(await providerDialog.locator(".osw-modal-footer").isVisible(), true,
+      "identity provider dialog must show a fixed action footer");
     await providerDialog.press("Escape");
     await providerDialog.waitFor({ state: "hidden" });
     await page.getByRole("button", { name: "Exports", exact: true }).click();
