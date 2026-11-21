@@ -83,7 +83,7 @@ The repository validates the Rspamd adapter's **Lua logic and MIME output**, but
 
 **Signed mail / DKIM:** S/MIME/PGP content and attached `message/rfc822` structures are skipped. The adapter must run before DKIM signing and any downstream body mutation must be disabled or ordered appropriately. **Do not assume** that registering a `prefilter` alone proves the final DKIM signature is valid. Inspect the delivered message and authentication results on an external mailbox. Official Rspamd DKIM guidance: https://docs.rspamd.com/modules/dkim_signing/
 
-**Failure behavior:** On engine errors or timeouts, multipart bodies are not rewritten; signature insertion is not guaranteed. Decide whether your beta should fail open (deliver unsigned-by-policy) or fail closed (temporary SMTP rejection). The current Rspamd adapter uses a fail-open model; it must not be described as fail-closed on engine outages. Test API 401/503, timeouts, TLS failures and key mismatch with a disposable mailbox. The outbound engine timeout is bounded to 0.5–15 seconds; the maximum response size is 1 KiB–1 MiB.
+**Failure behavior:** On engine errors or timeouts, multipart bodies are not rewritten; signature insertion is not guaranteed. Decide whether your beta should fail open (deliver unsigned-by-policy) or fail closed (temporary SMTP rejection). The adapter defaults to fail-open. An experimental `failure_policy = "tempfail"` opt-in covers the Lua-side error paths only; it does not guarantee fail-closed when Rspamd is offline. Test API 401/503, timeouts, TLS failures and key mismatch with a disposable mailbox. The outbound engine timeout is bounded to 0.5–15 seconds; response size is bounded to 1 KiB–1 MiB by default, with up to 8 MiB exclusively in opt-in CID mode.
 
 ### Manual acceptance checklist (Mailcow beta)
 
@@ -117,7 +117,39 @@ docker compose exec postfix-mailcow postconf -P | grep -E '(^submission/|^smtps/
 
 If either authenticated submission service has an override such as empty `smtpd_milters`, global settings do not protect it. Test and configure the actual SMTP entrypoint to call Rspamd with temporary failure on Milter unavailability. Do not change the inbound port-25 policy blindly. In an **isolated test mailbox/domain**, induce HTTP 401/422/503, failed TLS, timeouts, invalid JSON, lost OpenSigWeave database, Rspamd shutdown, and Postfix-to-Milter disconnection. Capture the actual SMTP exchange: there must be **no `250 queued`** for signature-required mail after the failure, then a single successful injection after recovery. Test SOGo, Outlook, Thunderbird, DKIM and attachment hashes. Clients may show generic retry errors rather than Rspamd's text.
 
-The independent durable, rate-limited support-alert queue, recovery notices and optional out-of-band end-user notification are **not yet implemented**. Full Mailcow SMTP end-to-end acceptance has **not** occurred. Issue #14 remains open until these requirements are met; do not activate the experimental option globally in production.
+An **independent, opt-in support notifier** now exists at `scripts/opensigweave_support_notifier.py` with persistent SQLite outbox, retry after SMTP failure, rate limiting (one failure summary per error class per 15 minutes), deduplication by random event ID and a Docker-container outage probe. It is not automatically deployed and must send through a **separate authenticated, verified-TLS SMTP relay**. Its recovery event means successful signature mutation was observed, not that the full SMTP chain is certified healthy. Optional user-facing out-of-band notifications, integrated admin UI status and real Mailcow SMTP end-to-end acceptance are still outstanding; leave issue #14 open until these are validated.
+
+### Independent support notifier (test deployment)
+
+Set up a dedicated service host with Python 3.12+ and Docker CLI access to the Mailcow host. Place the notifier's database on a persistent, backed-up filesystem separate from Rspamd and the OpenSigWeave database. Use an **independent** relay, never the same Mailcow submission path being monitored. Configure a root-owned environment file (mode 0600) containing:
+
+```dotenv
+OSW_ALERT_DATABASE=/var/lib/opensigweave-alerts/alerts.sqlite3
+OSW_ALERT_SUPPORT_TO=support@example.org
+OSW_ALERT_FROM=alerts@example.org
+OSW_ALERT_SMTP_HOST=smtp.independent-relay.example
+OSW_ALERT_SMTP_PORT=587
+OSW_ALERT_SMTP_USER=REPLACE_WITH_RELAY_ACCOUNT
+OSW_ALERT_SMTP_PASSWORD=REPLACE_WITH_RELAY_SECRET
+```
+
+Do not store real credentials in Git. Import the environment from a restricted service manager secret or `EnvironmentFile`; never pass the password as a command-line argument. Run these commands from the repository checkout on that service host:
+
+```bash
+# Ingest Rspamd structured error/success logs continuously.
+docker logs --timestamps --since 5m -f rspamd-mailcow-1 | python3 scripts/opensigweave_support_notifier.py ingest
+
+# From a separate systemd timer/cron job every 1 minute:
+python3 scripts/opensigweave_support_notifier.py health --container rspamd-mailcow-1
+python3 scripts/opensigweave_support_notifier.py flush
+
+# Inspect pending notifications without exposing mail contents:
+python3 scripts/opensigweave_support_notifier.py status
+```
+
+Supervise the continuous log reader with a restart-on-failure policy. A Docker CLI credential has host-level privileges and must be protected. If the notifier is remote, access Docker over a separately secured channel rather than exposing its socket unauthenticated. `health` treats inaccessible Docker state as unavailable and records one synthetic event per five-minute bucket; verify the correct container ID on your installation. The SMTP relay only accepts implicit TLS on port 465 or STARTTLS on port 587, with certificate verification. Notifications never contain the original email body, sender header or engine token.
+
+Simulate repeated failure events and a relay outage; verify a single grouped pending notification survives a notifier restart and is delivered after the relay returns. After a logged successful signature mutation, validate the explicitly qualified recovery notice. Do not expect this reporter to make SMTP acceptance decisions: only Postfix/Milter and the Rspamd failure policy can do that. Review log retention and notifier outage recovery (the example tail reads the last five minutes) before production use.
 
 ## Opt-in CID signature images (issue #8, experimental)
 
