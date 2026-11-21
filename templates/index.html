@@ -597,7 +597,7 @@
 
     </div>
 
-    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides(); fetchUsers()" @keydown.escape.window="show = false" x-show="show" x-cloak class="fixed inset-0 z-50 overflow-y-auto">
         <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
             <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
             <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
@@ -660,7 +660,7 @@
 
                     <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
                         <div class="flex justify-between items-center">
-                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Active User Overrides</h4>
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Domain users</h4>
                             <div class="flex gap-2">
                                 <input type="text" x-model="newOverrideEmail" placeholder="user@domain.com" class="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
                                 <button @click="loadAdminEditor(newOverrideEmail)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm transition">+ Add / Edit</button>
@@ -702,25 +702,35 @@
                             </div>
                         </div>
 
-                        <div class="bg-gray-900 rounded-lg border border-gray-700">
-                            <table class="w-full text-left text-sm">
-                                <thead class="border-b border-gray-700 text-gray-400"><tr><th class="px-4 py-2 font-medium">User Email</th><th class="px-4 py-2 font-medium text-right">Actions</th></tr></thead>
-                                <tbody class="divide-y divide-gray-800">
-                                    <template x-for="user in userOverrides" :key="user.id">
-                                        <tr class="hover:bg-gray-800 transition">
-                                            <td class="px-4 py-3 text-gray-200 flex items-center gap-3">
-                                                <span x-text="user.user_email"></span>
-                                                <span x-show="user.is_disabled" class="bg-red-900/50 text-red-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-red-800">Disabled</span>
-                                            </td>
-                                            <td class="px-4 py-3 text-right space-x-3">
-                                                <button @click="loadAdminEditor(user.user_email, user.html_content, user.is_disabled)" class="text-blue-400 hover:text-blue-300">Edit</button>
-                                                <button @click="confirmClearAdmin(user.id)" class="text-red-400 hover:text-red-300">Clear</button>
-                                            </td>
-                                        </tr>
+                        <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
+                            <label class="text-sm text-gray-300">Search users<input type="search" x-model="userQuery" @input.debounce.300ms="fetchUsersFirstPage()" placeholder="Name or email" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"></label>
+                            <label class="text-sm text-gray-300">Source<select x-model="userSource" @change="fetchUsersFirstPage()" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"><option value="all">All known users</option><option value="ldap">LDAP</option><option value="local">Local identity cache</option><option value="override">Override only</option></select></label>
+                            <button type="button" @click="fetchUsers()" class="rounded bg-gray-700 px-4 py-2 text-sm">Refresh list</button>
+                        </div>
+                        <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>
+                        <p x-show="userError" x-text="userError" role="alert" class="text-sm text-red-300"></p>
+                        <div class="overflow-x-auto rounded border border-gray-700 bg-gray-900">
+                            <table class="w-full min-w-[32rem] text-left text-sm">
+                                <thead class="border-b border-gray-700 text-gray-300"><tr><th class="px-4 py-2">Email</th><th class="px-4 py-2">Display name</th><th class="px-4 py-2">Source</th><th class="px-4 py-2">Override</th><th class="px-4 py-2 text-right">Action</th></tr></thead>
+                                <tbody class="divide-y divide-gray-700">
+                                    <template x-for="user in users" :key="user.email">
+                                        <tr><td class="px-4 py-3 break-all" x-text="user.email"></td>
+                                        <td class="px-4 py-3" x-text="user.display_name || '—'"></td>
+                                        <td class="px-4 py-3" x-text="user.source"></td>
+                                        <td class="px-4 py-3" x-text="user.override_status"></td>
+                                        <td class="px-4 py-3 text-right"><button type="button" class="text-blue-400" @click="loadAdminEditor(user.email)">Edit override</button></td></tr>
                                     </template>
-                                    <tr x-show="userOverrides.length === 0"><td colspan="2" class="px-4 py-6 text-center text-gray-500">No custom overrides exist for this domain yet.</td></tr>
+                                    <tr x-show="!userLoading && users.length === 0"><td colspan="5" class="px-4 py-5 text-center text-gray-400">No known users match the filter.</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <p x-show="userLoading" class="text-sm text-gray-400" role="status">Loading users…</p>
+                        <div class="osw-actions justify-between text-sm">
+                            <span x-text="userTotal + ' known user(s) · page ' + userPage"></span>
+                            <div class="osw-actions">
+                                <button type="button" @click="previousUsersPage()" :disabled="userLoading || userPage <= 1" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Previous</button>
+                                <button type="button" @click="nextUsersPage()" :disabled="userLoading || userPage * 20 >= userTotal" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>

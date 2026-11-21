@@ -814,14 +814,47 @@ function identityProviderManager() { return {
         function domainSettingsModal() {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
+                users: [], userQuery: '', userSource: 'all', userPage: 1, userTotal: 0,
+                userLoading: false, userError: '', userWarning: '', userRequestId: 0,
                 async open(domainData) {
                     this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
                     await this.$nextTick();
                 },
                 async openUsers() {
                     this.modalTab = 'users';
-                    await this.fetchOverrides();
+                    this.userPage = 1;
+                    await Promise.all([this.fetchOverrides(), this.fetchUsers()]);
                 },
+                async fetchUsers() {
+                    if (!this.domain) return;
+                    const requestId = ++this.userRequestId;
+                    this.userLoading = true;
+                    this.userError = "";
+                    try {
+                        const params = new URLSearchParams({
+                            q: this.userQuery, source: this.userSource,
+                            page: String(this.userPage), page_size: "20"
+                        });
+                        const response = await fetch("/api/admin/domains/" + this.domain.id + "/users?" + params);
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(data.detail || "User directory request failed");
+                        if (requestId !== this.userRequestId) return;
+                        this.users = data.items || [];
+                        this.userTotal = data.total || 0;
+                        this.userWarning = data.warning || "";
+                    } catch (error) {
+                        if (requestId !== this.userRequestId) return;
+                        this.users = [];
+                        this.userTotal = 0;
+                        this.userError = "Could not load domain users: " + (error instanceof Error ? error.message : "Unknown error");
+                    } finally {
+                        if (requestId === this.userRequestId) this.userLoading = false;
+                    }
+                },
+                fetchUsersFirstPage() { this.userPage = 1; this.fetchUsers(); },
+                previousUsersPage() { if (this.userPage > 1) { this.userPage--; this.fetchUsers(); } },
+                nextUsersPage() { if (this.userPage * 20 < this.userTotal) { this.userPage++; this.fetchUsers(); } },
+
                 saveSettings() {
                     window.dispatchEvent(new CustomEvent('save-domain-settings', { detail: {
                         domain: this.domain,
@@ -835,6 +868,7 @@ function identityProviderManager() { return {
                 async fetchOverrides() {
                     const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
                     if(res.ok) this.userOverrides = await res.json();
+                    else notify("Could not load user overrides.", "error");
                 },
                 async loadAdminEditor(email, directHtml = null, isDisabled = false) {
                     if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }
@@ -859,7 +893,7 @@ function identityProviderManager() { return {
                 async saveAdminOverride() {
                     const finalHtml = document.getElementById('admin-raw-html-editor').value;
                     const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); }
+                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); this.fetchUsers(); }
                 }
             }
         }
