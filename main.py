@@ -1118,6 +1118,93 @@ def delete_my_signature(request: Request, db: Session = Depends(get_db)):
         return {"status": "deleted"}
     return {"status": "not_found"}
 
+@app.get("/api/admin/domains/{domain_id}/users")
+async def list_domain_users(
+    domain_id: int, request: Request, q: str = "", source: str = "all",
+    page: int = 1, page_size: int = 20, db: Session = Depends(get_db),
+):
+    """Admin-only paginated user directory; never disclose credentials, claims or override HTML."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    domain = db.get(DomainDB, domain_id)
+    if domain is None:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    if page < 1 or page_size < 1 or page_size > 100 or len(q) > 200:
+        raise HTTPException(status_code=422, detail="Invalid search or pagination")
+    if source not in {"all", "ldap", "local", "override"}:
+        raise HTTPException(status_code=422, detail="Invalid source filter")
+    suffix = "@" + domain.domain_name.strip().casefold()
+    users: dict[str, dict] = {}
+
+    def merge(email, display_name="", origin="local", is_disabled=None):
+        if not isinstance(email, str):
+            return
+        normalized = email.strip().casefold()
+        if not normalized.endswith(suffix) or normalized.count("@") != 1 or len(normalized) > 320:
+            return
+        item = users.setdefault(normalized, {
+            "email": normalized, "display_name": "", "source": origin,
+            "override_status": "None", "directory_disabled": False,
+        })
+        if display_name and (not item["display_name"] or origin == "ldap"):
+            item["display_name"] = str(display_name)[:256]
+        if origin == "ldap":
+            item["source"] = "ldap"
+        elif origin == "override" and item["source"] != "ldap":
+            item["source"] = "override"
+        if is_disabled is not None:
+            item["directory_disabled"] = bool(is_disabled)
+
+    for cached in db.query(IdentityCacheDB).filter(
+        func.lower(IdentityCacheDB.email).endswith(suffix, autoescape=True)
+    ).all():
+        email = (cached.email or "").rsplit(":", 1)[-1]
+        merge(email, " ".join(filter(None, (cached.first_name, cached.last_name))), "local")
+    if LOCAL_ADMIN_EMAIL:
+        merge(LOCAL_ADMIN_EMAIL, origin="local")
+    for override in db.query(UserOverrideDB).filter(
+        func.lower(UserOverrideDB.user_email).endswith(suffix, autoescape=True)
+    ).all():
+        merge(override.user_email, origin="override")
+        users[override.user_email.strip().casefold()]["override_status"] = (
+            "Disabled" if override.is_disabled else "Configured"
+        )
+
+    warning = ""
+    truncated = False
+    provider = db.get(IdentityProviderDB, domain.identity_provider_id) if domain.identity_provider_id else None
+    if provider and provider.is_enabled and provider.provider_type == "ldap":
+        try:
+            directory = identity_provider_registry.get(provider.id)
+            if directory is None or not hasattr(directory, "list_users"):
+                raise IdentityProviderUnavailable("LDAP enumeration unavailable")
+            directory_users, truncated = await directory.list_users(domain.domain_name)
+            for account in directory_users:
+                merge(account.get("email"), account.get("display_name", ""), "ldap", account.get("disabled", False))
+        except (IdentityProviderUnavailable, ProviderConfigError, OSError, ValueError):
+            warning = "LDAP users could not be loaded; cached identities and overrides are shown."
+    elif provider and provider.provider_type in {"oidc", "authentik"}:
+        warning = "OpenID Connect has no standard user-list API; locally known identities are shown."
+    else:
+        warning = "No browsable LDAP directory is configured; locally known identities are shown."
+    if truncated:
+        warning = (warning + " " if warning else "") + "LDAP result limit reached; this directory list is incomplete."
+
+    needle = q.strip().casefold()
+    filtered = [
+        item for item in users.values()
+        if (source == "all" or item["source"] == source)
+        and (not needle or needle in item["email"] or needle in item["display_name"].casefold())
+    ]
+    filtered.sort(key=lambda item: (item["email"], item["source"]))
+    begin = (page - 1) * page_size
+    return {
+        "items": filtered[begin:begin + page_size],
+        "total": len(filtered), "page": page, "page_size": page_size,
+        "warning": warning, "partial": bool(truncated or (provider and provider.provider_type != "ldap")),
+    }
+
+
 @app.get("/api/admin/overrides/{domain_name}")
 def get_domain_overrides(domain_name: str, request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")

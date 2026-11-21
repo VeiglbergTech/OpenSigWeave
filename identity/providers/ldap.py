@@ -73,6 +73,68 @@ class LDAPAttributeProvider:
         if "{email}" not in self.user_filter:
             raise ValueError("LDAP_USER_FILTER must contain the {email} placeholder")
 
+    async def list_users(self, domain: str, max_results: int = 2000):
+        """Return a bounded, minimal set of directory users using validated LDAPS."""
+        if not all((self.url, self.bind_dn, self.bind_password, self.base_dn)):
+            raise IdentityProviderUnavailable("LDAP directory is not fully configured")
+        if not domain or len(domain) > 253 or not re.fullmatch(r"[a-zA-Z0-9.-]+", domain):
+            raise ValueError("Invalid directory domain")
+        try:
+            return await asyncio.to_thread(self._list_users, domain.casefold(), max_results)
+        except (LDAPException, OSError, ValueError, TypeError) as exc:
+            logger.warning("LDAP directory listing failed: %s", type(exc).__name__)
+            raise IdentityProviderUnavailable("LDAP directory unavailable") from exc
+
+    def _list_users(self, domain: str, max_results: int):
+        if max_results < 1 or max_results > 2000:
+            raise ValueError("Invalid directory listing limit")
+        parsed = urlsplit(self.url)
+        server = ldap3.Server(
+            parsed.hostname, port=parsed.port or 636, use_ssl=True,
+            tls=ldap3.Tls(validate=ssl.CERT_REQUIRED, ca_certs_file=self.ca_cert_file),
+            get_info=ldap3.NONE, connect_timeout=self.timeout,
+        )
+        connection = None
+        found = {}
+        truncated = False
+        try:
+            connection = ldap3.Connection(
+                server, user=self.bind_dn, password=self.bind_password,
+                auto_bind=True, receive_timeout=self.timeout, raise_exceptions=True,
+            )
+            ldap_filter = "(&(objectClass=user)(mail=*" + escape_filter_chars("@" + domain) + "))"
+            entries = connection.extend.standard.paged_search(
+                search_base=self.base_dn, search_filter=ldap_filter,
+                search_scope=ldap3.SUBTREE,
+                attributes=["mail", "displayName", "givenName", "sn", "userAccountControl"],
+                paged_size=100, generator=True,
+            )
+            for entry in entries:
+                if entry.get("type") != "searchResEntry":
+                    continue
+                data = {str(k).casefold(): v for k, v in entry.get("attributes", {}).items()}
+                email = _first(data.get("mail")).strip().casefold()
+                if not email.endswith("@" + domain) or email.count("@") != 1:
+                    continue
+                if email in found:
+                    continue
+                if len(found) == max_results:
+                    truncated = True
+                    break
+                display = _first(data.get("displayname")).strip()
+                if not display:
+                    display = " ".join(filter(None, (_first(data.get("givenname")), _first(data.get("sn")))))
+                control = _first(data.get("useraccountcontrol"))
+                try:
+                    disabled = bool(int(control) & 2) if control else False
+                except ValueError:
+                    disabled = False
+                found[email] = {"email": email, "display_name": display[:256], "disabled": disabled}
+            return list(found.values()), truncated
+        finally:
+            if connection is not None:
+                connection.unbind()
+
     async def get_attributes(self, email: str) -> IdentityAttributes:
         if not all((self.url, self.bind_dn, self.bind_password, self.base_dn)):
             raise IdentityProviderUnavailable("LDAP attribute provider is not fully configured")
