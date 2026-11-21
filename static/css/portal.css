@@ -125,3 +125,24 @@ body { background: var(--osw-black) !important; color: #f4f4f5; }
 .ck.ck-toolbar .ck-button:focus, .ck.ck-toolbar .ck-dropdown__button:focus { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 2px rgba(240, 120, 50, .25) !important; }
 .ck.ck-editor__main > .ck-editor__editable { border-color: var(--osw-border) !important; }
 .ck.ck-editor__main > .ck-editor__editable.ck-focused { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 1px var(--osw-orange) !important; }
+
+/* Shared form and responsive spacing rules for administrators and mobile clients. */
+.osw-domain-modal-header > div { min-width: 0; flex-wrap: wrap; }
+.osw-user-controls label { min-width: 0; max-width: 100%; }
+.osw-user-controls input, .osw-user-controls select { max-width: 100%; width: 100%; }
+label > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+label > select, label > textarea { margin-top: .375rem; }
+.osw-actions > button { flex-shrink: 0; }
+@media (max-width: 640px) {
+    nav { flex-wrap: wrap; gap: .75rem; padding: .75rem 1rem !important; }
+    nav > div { min-width: 0; flex-wrap: wrap; gap: .5rem; }
+    nav .app-brand, nav .text-sm { overflow-wrap: anywhere; }
+    body > div.max-w-7xl { padding: .75rem !important; }
+    .osw-domain-modal-header { padding: .75rem 1rem; }
+    .osw-domain-modal-header > div { gap: .75rem; }
+    .osw-domain-modal-header .h-8.w-px { display: none; }
+    .osw-domain-modal-header .ml-4 { margin-left: 0; }
+    .osw-domain-modal-header button { white-space: nowrap; }
+    [x-data="domainSettingsModal"] > div > div.relative { margin: .75rem; max-height: calc(100dvh - 1.5rem); }
+    [x-data="domainSettingsModal"] .p-6 { padding: 1rem; }
+}

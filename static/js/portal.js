@@ -1197,9 +1197,9 @@ function systemStatusManager() {
                 this.state = data.status === "healthy" ? "Healthy" : "Degraded";
                 this.version = data.version || "Unknown";
                 this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
-                this.database = data.database?.status || "Unknown";
-                this.storage = data.storage?.status || "Unknown";
-                this.assets = data.storage?.image_assets ? "Accessible" : "Unavailable";
+                this.database = data.database?.status === "ok" ? "OK" : "Unavailable";
+                this.storage = data.storage?.signature_files === true ? "Accessible" : "Unavailable";
+                this.assets = data.storage?.image_assets === true ? "Accessible" : "Unavailable";
                 this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
                 this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
                 this.records = Object.entries(data.counts || {}).map(([key, count]) => ({
@@ -1208,6 +1208,12 @@ function systemStatusManager() {
             } catch (error) {
                 this.error = "Could not load system status: " + (error instanceof Error ? error.message : "Unknown error");
                 this.state = "Unavailable";
+                this.checkedAt = new Date().toLocaleString();
+                this.database = "Unknown";
+                this.storage = "Unknown";
+                this.assets = "Unknown";
+                this.localAdmin = "Unknown";
+                this.managementApi = "Unknown";
                 this.records = [];
             } finally {
                 this.loading = false;

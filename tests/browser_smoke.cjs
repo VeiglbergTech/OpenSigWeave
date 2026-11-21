@@ -176,6 +176,15 @@ async function main() {
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
+    await page.route("**/api/admin/system-status", route => route.fulfill({
+      status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Synthetic dependency outage" }),
+    }));
+    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByRole("alert").getByText(/Synthetic dependency outage/).waitFor();
+    await systemPanel.getByText("Unavailable", { exact: true }).first().waitFor();
+    await page.unroute("**/api/admin/system-status");
+    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();
@@ -441,6 +450,12 @@ async function main() {
     const assetPaths = [dragAssetPath, pasteAssetPath, toolbarAssetPath];
     assert.equal(new Set(assetPaths).size, 3, "three distinct images must produce three asset URLs");
     await signatureEditEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
+    await signatureEditEditor.locator('img[src*="/signature-assets/"]').nth(2).click();
+    const imageResizeControl = page.getByRole("button", { name: /resize image/i }).first();
+    await imageResizeControl.waitFor({ state: "visible" });
+    await imageResizeControl.click();
+    await page.getByText("120 px", { exact: true }).first().click();
+    await page.waitForFunction(() => /120(?:px)?/.test(document.querySelector("#signature-html-source").value));
     assert.equal(await signatureEditEditor.locator('img[src*="/signature-assets/"]').count(), 3,
       "drag, paste and toolbar upload must all insert images into the signature");
 
@@ -1262,6 +1277,28 @@ async function main() {
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
 
     checkpoint("domain settings: complete");
+    // Run the same administrative path with a narrow mobile viewport.
+    const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await mobileContext.addCookies(await page.context().cookies());
+    const mobilePage = await mobileContext.newPage();
+    await mobilePage.goto(baseURL + "/?view=admin&section=domains");
+    await mobilePage.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    const mobileLayout = await mobilePage.evaluate(() => ({
+      documentWidth: document.documentElement.scrollWidth,
+      viewportWidth: document.documentElement.clientWidth,
+    }));
+    assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
+      "mobile administrative view must not scroll horizontally: " + JSON.stringify(mobileLayout));
+    const mobileRow = mobilePage.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
+    await mobileRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Users & Overrides", exact: true }).click();
+    await mobilePage.getByRole("heading", { name: "Domain users" }).waitFor({ state: "visible" });
+    assert.equal(await mobilePage.evaluate(() => document.body.classList.contains("osw-overlay-open")), true,
+      "opening a dialog must lock background scrolling");
+    await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Close Manager", exact: true }).click();
+    await mobilePage.waitForFunction(() => !document.body.classList.contains("osw-overlay-open"));
+    await mobileContext.close();
+
     // Delete the test domain and verify it is removed from persistence and the UI.
     await domainRow.getByRole("button", { name: "Delete", exact: true }).click();
     const deleteDomainResponse = page.waitForResponse(response =>

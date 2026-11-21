@@ -66,7 +66,9 @@ def _flatten_resized_figure(match: re.Match) -> str:
     value = f"{size:g}{unit}"
     img = match.group("img")
     img = re.sub(r"""\s+(?:style|width)\s*=\s*(["']).*?\1""", "", img, flags=re.I | re.S)
-    return img[:-1] + f' width="{value}" style="width: {value}; height: auto;">'
+    img = img.rstrip()
+    img = img[:-1].rstrip().removesuffix("/").rstrip()
+    return img + f' width="{value}" style="width: {value}; height: auto;">'
 
 
 def sanitize_signature_html(html_content: str) -> str:
