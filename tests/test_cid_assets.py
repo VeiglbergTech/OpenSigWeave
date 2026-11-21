@@ -17,7 +17,7 @@ class CIDAssetsTests(unittest.TestCase):
         self.directory.cleanup()
 
     def test_inline_image_is_local_and_duplicate_asset_is_reused(self):
-        png = b"\\x89PNG\\r\\n\\x1a\\n" + b"test"
+        png = b"\x89PNG\r\n\x1a\n" + b"test"
         filename = self.store.write_image(png, "image/png")
         source = f"https://signature.example.org/signature-assets/{filename}"
         html = f'<p>Person <img src="{source}"><img src="{source}"></p>'
@@ -51,7 +51,7 @@ class CIDAssetsTests(unittest.TestCase):
     def test_maximum_unique_asset_count_is_enforced(self):
         sources = []
         for i in range(7):
-            image = b"\\x89PNG\\r\\n\\x1a\\n" + bytes([i])
+            image = b"\x89PNG\r\n\x1a\n" + bytes([i])
             filename = self.store.write_image(image, "image/png")
             sources.append(f'<img src="https://assets.example.com/signature-assets/{filename}">')
         with self.assertRaises(SignatureEngineError) as raised:
