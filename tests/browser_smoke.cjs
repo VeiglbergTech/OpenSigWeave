@@ -85,6 +85,49 @@ async function main() {
     // Exercise the self-hosted CKEditor 5 surface and verify synchronization to the source textarea.
     const personalEditor = page.locator("#user-rich-editor .ck-editor__editable");
     await personalEditor.waitFor({ state: "visible" });
+    // Appearance is stored in this browser, not with any signature.
+    checkpoint("appearance: light/dark and CKEditor dropdown contrast");
+    const themeToggle = page.locator("#theme-toggle");
+    await themeToggle.click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    assert.equal(await page.evaluate(() => localStorage.getItem("opensigweave.theme.v1")), "light");
+    const lightContrast = await page.evaluate(() => {
+      const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = value => channels(value).reduce((sum, v, i) => {
+        const s = v / 255, linear = s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
+        return sum + linear * [.2126, .7152, .0722][i];
+      }, 0);
+      const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
+      return ratio(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor);
+    });
+    assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
+    const fontDropdown = page.locator("#user-rich-editor .ck-toolbar").getByRole("button", { name: /Font Family/i });
+    await fontDropdown.click();
+    const dropdownPanel = page.locator("#user-rich-editor .ck-dropdown__panel-visible").first();
+    await dropdownPanel.waitFor({ state: "visible" });
+    const menuContrast = await dropdownPanel.evaluate(panel => {
+      const item = panel.querySelector(".ck-button");
+      if (!item) return 0;
+      const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const lum = value => channels(value).reduce((sum, v, i) => {
+        const s = v / 255, linear = s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
+        return sum + linear * [.2126, .7152, .0722][i];
+      }, 0);
+      const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
+      return ratio(getComputedStyle(item).color, getComputedStyle(panel).backgroundColor);
+    });
+    assert.ok(menuContrast >= 4.5, "CKEditor dropdown items must meet WCAG AA contrast");
+    await fontDropdown.click();
+    assert.equal(await personalEditor.evaluate(el => getComputedStyle(el).backgroundColor),
+      "rgb(255, 255, 255)", "email composition canvas stays white in light mode");
+    await page.reload();
+    await personalEditor.waitFor({ state: "visible" });
+    assert.equal(await page.locator("#theme-toggle").getAttribute("aria-pressed"), "true",
+      "appearance must be retained across reloads");
+    await page.locator("#theme-toggle").click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+
+
     await personalEditor.fill("CSP editor smoke");
     await personalEditor.press("Control+A");
     // Use CKEditor's keyboard shortcut instead of a localized toolbar label.
