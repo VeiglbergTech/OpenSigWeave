@@ -102,7 +102,7 @@ class SignatureRuleTests(unittest.TestCase):
                 self.assertEqual(evaluate_rules([different_rule], self.context), different_rule)
                 self.assertIsNone(evaluate_rules([missing_rule], self.context))
 
-        for missing in (None, [], [None]):
+        for missing in (None, [], [None], "", ["", None], ["  "]):
             with self.subTest(missing=missing):
                 context = RuleContext(sender="a@test.org", domain="test.org", attributes={"departments": missing})
                 rule = SignatureRule("empty", 10, (RuleCondition("attribute_not_equals", "sales", key="departments"),), "NONE")

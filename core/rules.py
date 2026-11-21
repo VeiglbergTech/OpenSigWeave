@@ -38,7 +38,10 @@ def _matches_value(actual: Any, expected: str) -> bool:
 def _not_matches_value(actual: Any, expected: str) -> bool:
     """Missing or entirely empty identity values never satisfy a negative test."""
     values = actual if isinstance(actual, (list, tuple, set, frozenset)) else (actual,)
-    present = [value for value in values if value is not None]
+    present = [
+        value for value in values
+        if value is not None and (not isinstance(value, str) or value.strip())
+    ]
     return bool(present) and not _matches_value(present, expected)
 
 
