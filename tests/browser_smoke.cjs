@@ -292,11 +292,11 @@ async function main() {
         host.remove();
       }
     });
-    assert.match(formattingSample, /font-size:\\s*14px/i,
+    assert.match(formattingSample, /font-size:\s*14px/i,
       "font size must be serialized as an inline px style");
-    assert.match(formattingSample, /font-size:\\s*17px/i,
+    assert.match(formattingSample, /font-size:\s*17px/i,
       "custom px sizes from existing signatures must survive editor loading");
-    assert.match(formattingSample, /font-family:\\s*Arial/i,
+    assert.match(formattingSample, /font-family:\s*Arial/i,
       "email-safe font family must survive editor loading");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
