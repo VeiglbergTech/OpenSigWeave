@@ -4,7 +4,7 @@
     const allowedPlugins = [
         "Essentials", "Paragraph", "Heading", "Bold", "Italic", "Underline",
         "Font", "Link", "List", "Alignment", "Table", "TableToolbar",
-        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine", "Image", "ImageInline"
+        "GeneralHtmlSupport", "PasteFromOffice", "BlockQuote", "HorizontalLine", "Image", "ImageInline", "ImageBlock", "ImageToolbar", "ImageResize"
     ];
 
     // Keep the editor's General HTML Support aligned with the server sanitizer.
@@ -112,7 +112,19 @@
                 }]
             },
             link: { addTargetToExternalLinks: false },
-            image: { insert: { type: "inline" }, upload: { types: ["png", "jpeg", "webp", "gif"] } },
+            image: {
+                insert: { type: "inline" },
+                toolbar: ["resizeImage"],
+                resizeUnit: "px",
+                resizeOptions: [
+                    { name: "resizeImage:original", value: null, label: "Original" },
+                    { name: "resizeImage:custom", value: "custom", label: "Custom width" },
+                    { name: "resizeImage:120", value: "120", label: "120 px" },
+                    { name: "resizeImage:240", value: "240", label: "240 px" },
+                    { name: "resizeImage:480", value: "480", label: "480 px" }
+                ],
+                upload: { types: ["png", "jpeg", "webp", "gif"] }
+            },
             initialData: typeof config.initialData === "string" ? config.initialData : "",
             placeholder: config.placeholder || "Create your email signature…"
         };

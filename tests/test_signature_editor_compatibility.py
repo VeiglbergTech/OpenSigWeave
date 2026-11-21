@@ -81,6 +81,22 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         self.assertNotIn("<script", result)
         self.assertNotIn("position", result)
 
+    def test_resized_image_width_survives_email_sanitization(self):
+        source = (
+            '<figure class="image image_resized" style="width: 220px;">'
+            '<img src="https://example.org/logo.png" alt="Brand"></figure>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('width="220px"', result)
+        self.assertIn("width: 220px", result)
+        self.assertNotIn("<figure", result)
+        malicious = sanitize_signature_html(
+            '<figure class="image_resized" style="width: 200px">'
+            '<img src="javascript:alert(1)" onclick="alert(1)"></figure>'
+        )
+        self.assertNotIn("javascript:", malicious)
+        self.assertNotIn("onclick", malicious)
+
     def test_outlook_conditional_vml_is_not_currently_preserved(self):
         source = (
             '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml">'

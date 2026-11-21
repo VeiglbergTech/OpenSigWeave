@@ -18,6 +18,9 @@ import {
     HorizontalLine,
     Image,
     ImageInline,
+    ImageBlock,
+    ImageToolbar,
+    ImageResize,
     ImageUpload
 } from "ckeditor5";
 
@@ -43,5 +46,8 @@ window.CKEDITOR = {
     HorizontalLine,
     Image,
     ImageInline,
+    ImageBlock,
+    ImageToolbar,
+    ImageResize,
     ImageUpload
 };
