@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import uuid
 from pathlib import Path
+from unittest.mock import patch
 
 from signature_storage import SignatureFileStore, SignatureStorageError
 
@@ -103,6 +104,30 @@ class SignatureFileStoreTests(unittest.TestCase):
                     self.assertEqual(filename, store.write_image(payload, content_type))
                     self.assertEqual(store.image_path(filename).read_bytes(), payload)
                     self.assertEqual(store.image_media_type(filename), content_type)
+
+    def test_identical_concurrent_image_upload_reuses_completed_asset(self):
+        # Model another upload winning the exclusive filesystem link race.
+        # The losing upload must return the same asset URL, not a 422 error.
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            payload = b"\x89PNG\r\n\x1a\nconcurrent"
+            original_write = store._atomic_write
+
+            def competing_write(destination, content, *, exclusive=False):
+                original_write(destination, content, exclusive=exclusive)
+                raise SignatureStorageError("Signature version already exists")
+
+            with patch.object(store, "_atomic_write", side_effect=competing_write):
+                filename = store.write_image(payload, "image/png")
+            self.assertEqual(store.image_path(filename).read_bytes(), payload)
+            self.assertEqual(store.write_image(payload, "image/png"), filename)
+
+            # A genuine disk error without a concurrent winner must still fail.
+            other_payload = b"\x89PNG\r\n\x1a\nfailed"
+            with patch.object(store, "_atomic_write",
+                              side_effect=SignatureStorageError("Disk write failed")):
+                with self.assertRaises(SignatureStorageError):
+                    store.write_image(other_payload, "image/png")
 
     def test_signature_image_mime_spoofing_and_unsafe_names_are_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

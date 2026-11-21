@@ -146,11 +146,17 @@ async function main() {
       { tab: "Branding", heading: "Branding" },
       { tab: "Exports", heading: "Configuration exports" },
       { tab: "Imports", heading: "Configuration imports" },
+      { tab: "System", heading: "System status" },
     ];
     for (const section of sections) {
       await page.getByRole("button", { name: section.tab, exact: true }).click();
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
+
+    const systemPanel = page.locator('[x-data="systemStatusManager"]');
+    await systemPanel.getByText("Healthy", { exact: true }).waitFor();
+    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();
@@ -220,6 +226,11 @@ async function main() {
     await assertFloatingDialog(signatureDialog, "signature editor");
     assert.equal(await signatureDialog.getByLabel("Mode").count(), 0,
       "signature editor must not expose the retired mode selector");
+    assert.equal(await signatureDialog.getByRole("option", {
+      name: new RegExp("^(" + ["AU" + "TO", "INTER" + "NAL", "PROF" + "ESSIONAL"].join("|") + ")$", "i"),
+    }).count(), 0, "signature editor must not list retired mode values");
+    assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
+      "signature editor must not submit retired selector fields");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
@@ -299,21 +310,63 @@ async function main() {
       && response.status() === 201
     );
 
-    // 1) External-file style drag and drop into the editable surface.
-    const imageTransfer = await page.evaluateHandle(fixture => {
-      const binary = atob(fixture.base64);
-      const bytes = Uint8Array.from(binary, character => character.charCodeAt(0));
-      const transfer = new DataTransfer();
-      transfer.items.add(new File([bytes], fixture.name, { type: fixture.type }));
-      return transfer;
-    }, imageFixtures.png);
-    const dragUpload = waitForImageUpload();
-    await signatureEditEditor.dispatchEvent("dragenter", { dataTransfer: imageTransfer });
-    await signatureEditEditor.dispatchEvent("dragover", { dataTransfer: imageTransfer });
-    await signatureEditEditor.dispatchEvent("drop", { dataTransfer: imageTransfer });
-    const dragUploadResponse = await dragUpload;
-    const dragAssetPath = (await dragUploadResponse.json()).url;
-    await imageTransfer.dispose();
+    // 1) Emulate an external file-manager drop through Chromium's drag protocol.
+    // Browsers deliberately strip script-injected Files from a DOM-source drag,
+    // so dragTo() cannot test a real external file drop. CDP dispatches trusted
+    // OS-style drag events containing the on-disk PNG file instead.
+    const dragFixtureDirectory = fs.mkdtempSync("/tmp/opensigweave-file-drop-");
+    const dragFixturePath = dragFixtureDirectory + "/" + imageFixtures.png.name;
+    fs.writeFileSync(dragFixturePath, Buffer.from(imageFixtures.png.base64, "base64"));
+    await signatureEditEditor.evaluate(element => {
+      element.addEventListener("drop", event => {
+        window.__signatureNativeFileDrop = {
+          isTrusted: event.isTrusted,
+          fileNames: Array.from(event.dataTransfer.files, file => file.name),
+        };
+      }, { capture: true, once: true });
+    });
+    const dropBounds = await signatureEditEditor.boundingBox();
+    assert.ok(dropBounds, "signature editor must have a visible drop surface");
+    const dragPoint = {
+      x: Math.round(dropBounds.x + Math.min(80, dropBounds.width / 2)),
+      y: Math.round(dropBounds.y + Math.min(40, dropBounds.height / 2)),
+    };
+    const dragData = {
+      items: [],
+      files: [dragFixturePath],
+      dragOperationsMask: 1, // copy
+    };
+    const dragClient = await page.context().newCDPSession(page);
+    let dragAssetPath;
+    try {
+      const dragUpload = waitForImageUpload();
+      // Retain the response waiter without masking a native-drop assertion.
+      void dragUpload.catch(() => {});
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "dragEnter", ...dragPoint, data: dragData,
+      });
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "dragOver", ...dragPoint, data: dragData,
+      });
+      await dragClient.send("Input.dispatchDragEvent", {
+        type: "drop", ...dragPoint, data: dragData,
+      });
+      const nativeDrop = await page.evaluate(() => window.__signatureNativeFileDrop);
+      assert.equal(nativeDrop?.isTrusted, true,
+        "OS-style file drop must reach CKEditor as a browser-trusted drop");
+      assert.deepEqual(nativeDrop.fileNames, [imageFixtures.png.name],
+        "OS-style file drop must deliver the real PNG file to CKEditor");
+      await dragUpload;
+      // CDP's external-file dispatch can evict the response body from the
+      // inspector cache. Check the persisted URL in CKEditor's rendered DOM
+      // instead of depending on Playwright's Network.getResponseBody().
+      const insertedImage = signatureEditEditor.locator('img[src*="/signature-assets/"]').first();
+      await insertedImage.waitFor({ state: "visible" });
+      dragAssetPath = new URL(await insertedImage.getAttribute("src"), baseURL).pathname;
+    } finally {
+      await dragClient.detach();
+      fs.rmSync(dragFixtureDirectory, { recursive: true, force: true });
+    }
     await page.waitForFunction(path =>
       document.querySelector("#signature-html-source").value.includes(path), dragAssetPath);
     await signatureEditEditor.click();
@@ -505,6 +558,10 @@ async function main() {
     );
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "selecting an old version must load its immutable HTML snapshot");
+    assert.equal(await signatureEditEditor.getAttribute("contenteditable"), "false",
+      "previewing an old version must lock the editor against accidental edits");
+    assert.equal(await signatureDialog.locator("#signature-html-source").isDisabled(), true,
+      "historical source HTML must also be locked");
     await signatureDialog.getByText("You are viewing", { exact: false }).waitFor();
     assert.match(await signatureDialog.getByText("You are viewing", { exact: false }).innerText(), /current version remains\s+v3/i,
       "previewing an old version must state that the current version is unchanged");
@@ -516,6 +573,22 @@ async function main() {
     assert.deepEqual(versionHistory.map(item => item.version_number), [3, 2, 1]);
     assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false],
       "previewing version 1 must not change the current version");
+
+    // Saving metadata while previewing old HTML may not implicitly restore it.
+    await signatureDialog.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await signatureDialog.waitFor({ state: "hidden" });
+    await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await page.waitForFunction(() =>
+      document.querySelectorAll('[x-data="signatureManager"] select[x-model="selectedVersionId"] option').length === 3
+    );
+    versionHistory = await (await page.request.get(
+      baseURL + "/api/admin/signatures/" + encodeURIComponent((await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+        .find(item => item.name === "Browser Smoke Signature").id) + "/versions"
+    )).json();
+    assert.deepEqual(versionHistory.map(item => item.version_number), [3, 2, 1],
+      "saving after historical preview must not create or activate another version");
+    assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false]);
+    await versionSelector.selectOption(versionOneId);
 
     const restoreResponse = page.waitForResponse(response =>
       response.request().method() === "POST"
@@ -559,6 +632,36 @@ async function main() {
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "re-opening after reload must load the restored current snapshot");
     await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+    // HTML comments and other source-only markup must not create phantom
+    // revisions when CKEditor normalizes them during opening.
+    const sourceOnly = await page.evaluate(async () => {
+      const response = await fetch("/api/admin/signatures", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Browser Source Only",
+          html_content: "<p>Source-only markup</p><!--historical-raw-comment-->"
+        })
+      });
+      return { status: response.status, data: await response.json() };
+    });
+    assert.equal(sourceOnly.status, 201, JSON.stringify(sourceOnly.data));
+    await page.reload();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    const sourceOnlyRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Source Only" });
+    await sourceOnlyRow.getByRole("button", { name: "Edit", exact: true }).click();
+    await signatureEditEditor.waitFor({ state: "visible" });
+    await signatureDialog.getByRole("button", { name: "Save Signature", exact: true }).click();
+    await signatureDialog.waitFor({ state: "hidden" });
+    const sourceOnlyHistoryResponse = await page.request.get(
+      baseURL + "/api/admin/signatures/" + sourceOnly.data.id + "/versions"
+    );
+    assert.equal(sourceOnlyHistoryResponse.status(), 200);
+    const sourceOnlyHistory = await sourceOnlyHistoryResponse.json();
+    assert.deepEqual(sourceOnlyHistory.map(item => item.version_number), [1],
+      "loading source-only markup through CKEditor must not auto-create a version on save");
 
     checkpoint("signature version history/restore: complete");
 
@@ -604,6 +707,17 @@ async function main() {
     browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
     assert.equal(browserSchedule.priority, 42, "schedule update must persist");
 
+    // A browser reload must not discard or change any saved schedule fields.
+    await page.reload();
+    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    await scheduleRow.waitFor();
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(browserSchedule.priority, 42, "updated schedule survives page reload");
+    assert.equal(browserSchedule.target_type, "SIGNATURE");
+    assert.equal(browserSchedule.is_enabled, true);
+
     scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
     page.once("dialog", dialog => dialog.accept());
     await scheduleRow.getByRole("button", { name: "Delete", exact: true }).click();
@@ -637,18 +751,26 @@ async function main() {
     await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#f97316");
     const brandingFiles = brandingPanel.locator('input[type="file"]');
     const brandingLogoBytes = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl+N8sAAAAASUVORK5CYII=",
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==",
       "base64"
     );
     const brandingLogoFile = { name: "logo.png", mimeType: "image/png", buffer: brandingLogoBytes };
+    const icoDirectory = Buffer.alloc(16);
+    icoDirectory[0] = 1;
+    icoDirectory[1] = 1;
+    icoDirectory.writeUInt16LE(1, 4);
+    icoDirectory.writeUInt16LE(32, 6);
+    icoDirectory.writeUInt32LE(brandingLogoBytes.length, 8);
+    icoDirectory.writeUInt32LE(22, 12);
+    const faviconBytes = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0]), icoDirectory, brandingLogoBytes]);
     await brandingFiles.nth(0).setInputFiles(brandingLogoFile);
-    await brandingFiles.nth(1).setInputFiles(brandingLogoFile);
+    await brandingFiles.nth(1).setInputFiles({ name: "favicon.ico", mimeType: "application/octet-stream", buffer: faviconBytes });
     await page.waitForFunction(() => {
       const logo = document.querySelector('img[alt="Brand logo preview"]');
       const favicon = document.querySelector('img[alt="Favicon preview"]');
       return logo && favicon
         && logo.getAttribute("src").startsWith("data:image/png;base64,")
-        && favicon.getAttribute("src").startsWith("data:image/png;base64,");
+        && favicon.getAttribute("src").startsWith("data:image/x-icon;base64,");
     });
     const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
     await Promise.all([
@@ -662,6 +784,40 @@ async function main() {
     assert.equal(customBranding.has_custom_logo, true);
     assert.equal(customBranding.has_custom_favicon, true);
 
+    const customLogoResponse = await page.request.get(baseURL + "/branding/logo.png");
+    const customFaviconResponse = await page.request.get(baseURL + "/branding/favicon.ico");
+    assert.equal(customLogoResponse.status(), 200);
+    assert.equal(customFaviconResponse.status(), 200);
+    assert.deepEqual(await customLogoResponse.body(), brandingLogoBytes, "uploaded logo must be served verbatim");
+    assert.deepEqual(await customFaviconResponse.body(), faviconBytes, "uploaded ICO favicon must be served verbatim");
+    assert.match(customLogoResponse.headers()["cache-control"], /no-cache/, "branding logo must revalidate after updates");
+    assert.match(customFaviconResponse.headers()["cache-control"], /no-cache/, "branding favicon must revalidate after updates");
+    assert.match(customFaviconResponse.headers()["content-type"], /^image\/x-icon/);
+    assert.equal(await page.locator('img[alt="Company Logo"]').evaluate(img => img.complete && img.naturalWidth > 0), true);
+    const appliedColor = await page.locator(".app-brand").first().evaluate(el => getComputedStyle(el).color);
+    assert.equal(appliedColor, "rgb(249, 115, 22)", "saved accent color must affect the actual UI");
+    const loginBranding = await page.request.get(baseURL + "/login");
+    assert.match(await loginBranding.text(), /OpenSigWeave Browser Smoke/);
+
+    for (const invalid of [
+      { name: "truncated PNG", logo_data_url: "data:image/png;base64," + Buffer.from([137,80,78,71,13,10,26,10,1]).toString("base64") },
+      { name: "SVG", logo_data_url: "data:image/svg+xml;base64," + Buffer.from("<svg></svg>").toString("base64") },
+      { name: "oversized PNG", logo_data_url: "data:image/png;base64," + Buffer.alloc(512 * 1024 + 1).toString("base64") },
+      { name: "corrupt ICO", favicon_data_url: "data:image/x-icon;base64," + Buffer.from([0,0,1,0,1,0]).toString("base64") },
+    ]) {
+      const responseStatus = await page.evaluate(async change => {
+        const response = await fetch("/api/admin/branding", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ app_name: "OpenSigWeave Browser Smoke", app_color: "#f97316", ...change })
+        });
+        return response.status;
+      }, Object.fromEntries(Object.entries(invalid).filter(([key]) => key !== "name")));
+      assert.equal(responseStatus, 422, invalid.name + " must be rejected server-side");
+    }
+    const unchangedBrand = await (await page.request.get(baseURL + "/api/admin/branding")).json();
+    assert.equal(unchangedBrand.has_custom_logo, true, "failed uploads must not replace the existing logo");
+    assert.equal(unchangedBrand.has_custom_favicon, true, "failed uploads must not replace the existing favicon");
+
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Branding", exact: true }).click();
     brandingPanel = page.locator('[x-data="brandingManager"]');
@@ -669,6 +825,9 @@ async function main() {
     await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#ff7043");
     await brandingPanel.getByRole("button", { name: "Use built-in logo", exact: true }).click();
     await brandingPanel.getByRole("button", { name: "Use built-in fallback", exact: true }).click();
+    assert.match(await brandingPanel.locator('img[alt="Brand logo preview"]').getAttribute("src"), /^\/branding\/builtin\/logo\.png/, "reset action must preview the bundled logo");
+    assert.match(await brandingPanel.locator('img[alt="Favicon preview"]').getAttribute("src"), /^\/branding\/builtin\/favicon/, "reset action must preview the bundled favicon");
+
     await Promise.all([
       page.waitForNavigation({ waitUntil: "domcontentloaded" }),
       brandingPanel.getByRole("button", { name: "Save Branding", exact: true }).click(),
@@ -681,6 +840,10 @@ async function main() {
     assert.equal(restoredBranding.has_custom_favicon, false);
     const bundledLogo = await page.request.get(baseURL + "/branding/logo.png");
     assert.equal(bundledLogo.status(), 200, "built-in logo must remain available after restoring defaults");
+    assert.notDeepEqual(await bundledLogo.body(), brandingLogoBytes, "built-in image must replace the custom logo");
+    const restoredFavicon = await page.request.get(baseURL + "/branding/favicon");
+    assert.deepEqual(await restoredFavicon.body(), await bundledLogo.body(), "bundled logo must also be the favicon fallback");
+
 
     checkpoint("branding lifecycle: complete");
 

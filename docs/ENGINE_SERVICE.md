@@ -17,7 +17,7 @@ The service module does not import FastAPI, inspect HTTP request/response object
 
 ## Contracts
 
-`normalize_engine_request()` validates and normalizes the envelope sender and translates optional mode/selector inputs into an immutable request. Invalid sender addresses are rejected. An unsupported mode header intentionally falls back to automatic selection for compatibility; selector checksum validation remains in the service.
+`normalize_engine_request()` validates and normalizes the envelope sender and carries an optional concrete signature name/checksum selector in an immutable request. Invalid sender addresses are rejected. The retired AUTO/INTERNAL/PROFESSIONAL modes are **not** engine inputs. Adapters may strip old mode headers for cleanup, but mode values never select a signature. Selector checksum validation remains in the service.
 
 The result contract preserves the established response fields:
 
@@ -33,11 +33,11 @@ The result contract preserves the established response fields:
 The extraction preserves the existing decision order and persistence boundaries:
 
 1. Reject inactive or unknown domains and administrator-disabled user overrides with an empty result.
-2. Validate explicit body-marker selectors using the four-character SHA-256 checksum; authenticated explicit mode selection is handled before automatic policy.
+2. Validate explicit concrete-signature selectors using the four-character SHA-256 checksum before automatic policy; legacy mode selectors have no effect.
 3. Prefer an exact-domain signature-name match; use a global signature only when no exact-domain match exists, and reject ambiguous matches.
 4. When there is no explicit selector, apply the highest-priority active schedule for the domain. A schedule may target one signature or one group.
 5. Without an active schedule, apply a permitted personal override.
-6. Otherwise resolve the explicit/default mode or evaluate persisted rules for automatic selection.
+6. Otherwise evaluate persisted rules for automatic selection, falling back to the domain default when none matches.
 7. Use the existing group and variant selection repositories; keep rotation state in the caller's database transaction.
 8. Sanitize stored HTML and nested group fragments before rendering; keep profile values autoescaped.
 9. Keep rotation changes pending until rendering succeeds; an adapter may defer the commit until its final message mutation succeeds.
@@ -80,7 +80,6 @@ Current typed engine error mapping:
 
 | Engine error | HTTP status |
 |---|---:|
-| `INVALID_MODE` | 400 |
 | `INVALID_STORED_RULE` | 500 |
 | `INVALID_TEMPLATE` | 422 |
 | Missing signature/version metadata or unavailable assets | 503 |
@@ -102,7 +101,7 @@ Rspamd and other separate-process/host adapters use the versioned HTTP endpoint 
 ## Remaining verification and release gates
 
 - Keep direct service tests alongside HTTP-route and Stalwart contract tests.
-- Verify parity for default templates, explicit modes, body markers, user overrides, persisted rules, group/variant selection, missing assets, template failures and transaction rollback.
+- Verify parity for default templates, explicit concrete-signature selectors, body markers, user overrides, persisted rules, group selection, missing assets, template failures and transaction rollback.
 - Run the complete CI suite, including static security checks, migrations, Docker smoke tests and encrypted backup/restore.
 - Stalwart remains experimental until isolated SMTP/DKIM end-to-end tests cover the complete filter chain, sender spoofing/alias authorization, MIME edge cases, retries and duplicate prevention.
 - Do not infer production readiness or deployment from CI success. No live deployment is part of this refactor.

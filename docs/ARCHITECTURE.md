@@ -117,15 +117,15 @@ Current persisted concepts include:
 
 - Domains and their injection/override policy.
 - Personal user overrides.
-- Logical signatures and their scope/mode/active state.
+- Logical signatures and their scope/active state.
 - Immutable signature versions and file integrity metadata.
-- Signature variants and weights.
 - Signature rules and typed conditions.
-- Signature groups, memberships and per-principal group-selection state.
+- Signature groups, independently weighted memberships and per-principal group-selection state.
 - Time-bounded signature/group schedules and priorities.
 - Persistent branding settings and uploaded assets.
-- Per-sender variant-selection state.
 - Shared database-backed rate-limit buckets.
+
+Historical `signatures.mode`, `signature_variants` and `selection_state` storage is retained exclusively for old installations and rollback compatibility. Active selection uses signatures, groups, rules and schedules; retired selectors are rejected by the administrator API.
 - Identity-provider metadata and separate per-domain login/profile-provider associations.
 - Provider-scoped cached identity attributes keyed by normalized email.
 

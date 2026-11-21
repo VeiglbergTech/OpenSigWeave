@@ -59,8 +59,12 @@ window.fetch = (resource, options = {}) => {
                 imageUpload: true,
                 uploadUrl: "/api/admin/signature-assets",
                 csrfToken: opensigweaveCsrfToken,
+                readOnly: manager.isViewingHistoricalVersion,
                 onChange: html => { manager.form.html_content = html; }
             });
+            // CKEditor may normalize stored HTML while loading. Treat its first
+            // rendered value as the baseline, not as a user edit.
+            manager.loadedEditorHtml = signatureRichEditor ? signatureRichEditor.getData() : manager.form.html_content;
         }
 
         // THE SMART LOCK ENGINE
@@ -143,7 +147,7 @@ window.fetch = (resource, options = {}) => {
     const isAdmin = document.body.dataset.isAdmin === "true";
     const allowedAdminTabs = new Set([
         "identity-providers", "domains", "signatures", "signature-groups",
-        "rules", "scheduling", "branding", "exports", "imports"
+        "rules", "scheduling", "branding", "exports", "imports", "system"
     ]);
     let savedState = {};
     try {
@@ -260,7 +264,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', editing: false,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
@@ -312,6 +316,8 @@ function identityProviderManager() { return {
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
+                    this.loadedEditorHtml = '';
+                    ++this.versionRequestToken;
                     this.editing = true;
                     this.$nextTick(() => initSignatureRichEditor(this));
                 },
@@ -322,6 +328,8 @@ function identityProviderManager() { return {
                     this.versions = [];
                     this.selectedVersionId = '';
                     this.loadedVersionHtml = '';
+                    this.loadedEditorHtml = '';
+                    ++this.versionRequestToken;
                     this.editing = true;
                     await this.loadVersions(signature.id);
                     this.$nextTick(() => initSignatureRichEditor(this));
@@ -333,7 +341,9 @@ function identityProviderManager() { return {
                 async loadVersions(signatureId) {
                     const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions');
                     if (!response.ok) { notify('Could not load signature versions.', 'error'); return; }
-                    this.versions = await response.json();
+                    const versions = await response.json();
+                    if (this.form.id !== signatureId || !this.editing) return;
+                    this.versions = versions;
                     if (this.versions.length) {
                         this.selectedVersionId = (this.currentVersion || this.versions[0]).id;
                         await this.loadVersion(this.selectedVersionId);
@@ -341,15 +351,25 @@ function identityProviderManager() { return {
                 },
                 async loadVersion(versionId) {
                     if (!this.form.id || !versionId) return;
-                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions/' + encodeURIComponent(versionId));
+                    const signatureId = this.form.id;
+                    const requestToken = ++this.versionRequestToken;
+                    const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signatureId) + '/versions/' + encodeURIComponent(versionId));
+                    if (this.form.id !== signatureId || requestToken !== this.versionRequestToken || !this.editing) return;
                     if (!response.ok) { notify('Could not load signature version.', 'error'); return; }
                     const version = await response.json();
+                    if (this.form.id !== signatureId || requestToken !== this.versionRequestToken || !this.editing) return;
                     this.selectedVersionId = version.id;
                     this.loadedVersionHtml = version.html_content || '';
                     this.form.html_content = this.loadedVersionHtml;
                     const source = document.getElementById('signature-html-source');
                     if (source) source.value = this.form.html_content;
-                    if (signatureRichEditor) signatureRichEditor.setData(this.form.html_content);
+                    if (signatureRichEditor) {
+                        signatureRichEditor.setData(this.form.html_content);
+                        signatureRichEditor.setReadOnly(this.isViewingHistoricalVersion);
+                        this.loadedEditorHtml = signatureRichEditor.getData();
+                    } else {
+                        this.loadedEditorHtml = this.loadedVersionHtml;
+                    }
                 },
                 async restoreSelectedVersion() {
                     if (!this.form.id || !this.selectedVersionId || !this.isViewingHistoricalVersion) return;
@@ -364,7 +384,12 @@ function identityProviderManager() { return {
                     await this.fetchAll();
                 },
                 async saveSignature() {
-                    if (signatureRichEditor) this.form.html_content = signatureRichEditor.getData();
+                    const editorHtml = signatureRichEditor ? signatureRichEditor.getData() : this.form.html_content;
+                    // Never turn a read-only historical preview or CKEditor's load-time
+                    // HTML normalization into an accidental new current version.
+                    const hasContentChanges = Boolean(this.form.id && !this.isViewingHistoricalVersion
+                        && editorHtml !== this.loadedEditorHtml);
+                    if (!this.isViewingHistoricalVersion) this.form.html_content = editorHtml;
                     if (!this.form.name.trim()) { notify('Please enter a signature name.', 'error'); return; }
                     const domainIds = [...new Set(this.form.domain_ids.map(Number))];
                     if (!this.form.id && !this.form.html_content.trim()) { notify('HTML template is required.', 'error'); return; }
@@ -376,7 +401,7 @@ function identityProviderManager() { return {
                     } else {
                         response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id), { method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name: this.form.name, domain_ids: domainIds, is_active: this.form.is_active }) });
-                        if (response.ok && this.form.html_content.trim() && this.form.html_content !== this.loadedVersionHtml) {
+                        if (response.ok && hasContentChanges && this.form.html_content.trim()) {
                             response = await fetch('/api/admin/signatures/' + encodeURIComponent(this.form.id) + '/versions',
                                 { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: this.form.html_content }) });
                         }
@@ -632,13 +657,27 @@ function identityProviderManager() { return {
                     if (this.form.target_type === 'GROUP') this.form.signature_id = '';
                     else this.form.group_id = '';
                 },
+                validScheduleLocalTime(value) {
+                    // Reject nonexistent clock times and the repeated hour at a DST fallback.
+                    // datetime-local has no UTC offset, so guessing would silently shift campaigns.
+                    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')) return false;
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime()) || this.toInputValue(date) !== value) return false;
+                    for (const minutes of [-180, -120, -90, -60, -30, 30, 60, 90, 120, 180]) {
+                        if (this.toInputValue(new Date(date.getTime() + minutes * 60000)) === value) return false;
+                    }
+                    return true;
+                },
                 async saveSchedule() {
                     if (!this.form.name.trim()) { notify('Please enter a schedule name.', 'error'); return; }
                     if (this.form.target_type === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
                     if (this.form.target_type === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
+                    if (!this.validScheduleLocalTime(this.form.starts_local) || !this.validScheduleLocalTime(this.form.ends_local)) {
+                        notify('Select an existing, unambiguous local time (check daylight saving time changes).', 'error'); return;
+                    }
                     const start = new Date(this.form.starts_local);
                     const end = new Date(this.form.ends_local);
-                    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start >= end) {
+                    if (start >= end) {
                         notify('Enter a valid start and end time.', 'error'); return;
                     }
                     const payload = {
@@ -673,23 +712,37 @@ function identityProviderManager() { return {
         function brandingManager() {
             return {
                 settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', favicon_url: '/branding/favicon' },
-                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(),
+                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
                 async fetchSettings() {
-                    const response = await fetch('/api/admin/branding');
-                    if (!response.ok) { notify('Could not load branding settings.', 'error'); return; }
-                    this.settings = await response.json();
-                    this.cacheKey = Date.now();
+                    try {
+                        const response = await fetch('/api/admin/branding', { cache: 'no-store' });
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        this.settings = await response.json();
+                        this.cacheKey = Date.now();
+                    } catch (error) {
+                        notify('Could not load branding settings: ' + error.message, 'error');
+                    }
                 },
-                logoPreview() { return this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey; },
-                faviconPreview() { return this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey; },
-                readFile(file, fallbackMime) {
+                logoPreview() {
+                    return this.resetLogo ? '/branding/builtin/logo.png' : this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey;
+                },
+                faviconPreview() {
+                    return this.resetFavicon ? '/branding/builtin/favicon' : this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey;
+                },
+                readFile(file, mime) {
                     return new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onerror = () => reject(new Error('Could not read selected file'));
                         reader.onload = () => {
-                            let value = String(reader.result || '');
-                            if (fallbackMime && value.startsWith('data:;base64,')) value = 'data:' + fallbackMime + value.slice(5);
-                            resolve(value);
+                            const value = String(reader.result || '');
+                            const separator = value.indexOf(',');
+                            if (!value.startsWith('data:') || separator < 0 || !value.slice(0, separator).endsWith(';base64')) {
+                                reject(new Error('Selected file cannot be encoded as an image'));
+                                return;
+                            }
+                            // A .ico file may be reported as application/octet-stream by the OS.
+                            // The server still validates the actual ICO structure before accepting it.
+                            resolve('data:' + mime + ';base64,' + value.slice(separator + 1));
                         };
                         reader.readAsDataURL(file);
                     });
@@ -697,40 +750,56 @@ function identityProviderManager() { return {
                 async chooseLogo(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
-                    if (file.size > 512 * 1024 || file.type !== 'image/png') { notify('Logo must be a PNG up to 512 KiB.', 'error'); event.target.value = ''; return; }
+                    this.logoDataUrl = null;
+                    if (!file.size || file.size > 512 * 1024 || file.type !== 'image/png') {
+                        notify('Logo must be a PNG up to 512 KiB.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
                     try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.resetLogo = false; }
-                    catch (error) { notify(error.message, 'error'); }
+                    catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 async chooseFavicon(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
+                    this.faviconDataUrl = null;
                     const ico = file.name.toLowerCase().endsWith('.ico');
-                    if (file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) { notify('Favicon must be PNG or ICO up to 256 KiB.', 'error'); event.target.value = ''; return; }
+                    if (!file.size || file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) {
+                        notify('Favicon must be PNG or ICO up to 256 KiB.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
                     try { this.faviconDataUrl = await this.readFile(file, ico ? 'image/x-icon' : 'image/png'); this.resetFavicon = false; }
-                    catch (error) { notify(error.message, 'error'); }
+                    catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
                 restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
                 async save() {
+                    if (this.saving) return;
                     if (!this.settings.app_name || !this.settings.app_name.trim()) { notify('Application name is required.', 'error'); return; }
                     if (!/^#[0-9a-fA-F]{6}$/.test(this.settings.app_color || '')) { notify('Accent color must be a six-digit hex value.', 'error'); return; }
-                    const response = await fetch('/api/admin/branding', {
-                        method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
-                            logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
-                            reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
-                        })
-                    });
-                    if (!response.ok) {
-                        const problem = await response.json().catch(() => ({}));
-                        notify('Could not save branding: ' + (problem.detail || response.statusText), 'error'); return;
+                    this.saving = true;
+                    try {
+                        const response = await fetch('/api/admin/branding', {
+                            method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
+                                logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
+                                reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
+                            })
+                        });
+                        if (!response.ok) {
+                            const problem = await response.json().catch(() => ({}));
+                            throw new Error(problem.detail || response.statusText);
+                        }
+                        window.location.reload();
+                    } catch (error) {
+                        notify('Could not save branding: ' + error.message, 'error');
+                        this.saving = false;
                     }
-                    window.location.reload();
                 }
             };
         }
-
 
         function domainSettingsModal() {
             return {
@@ -1063,6 +1132,51 @@ function adminImportManager() {
     };
 }
 
+
+function systemStatusManager() {
+    const labels = {
+        domains: "Domains", identity_providers: "Identity providers",
+        signatures: "Signatures", versions: "Versions", groups: "Groups",
+        rules: "Rules", schedules: "Schedules", overrides: "User overrides"
+    };
+    return {
+        loading: false, error: "", state: "Not checked", version: "—",
+        checkedAt: "—", database: "Unknown", storage: "Unknown",
+        assets: "Unknown", localAdmin: "Unknown", managementApi: "Unknown",
+        records: [],
+        async refresh() {
+            if (this.loading) return;
+            this.loading = true;
+            this.error = "";
+            try {
+                const response = await fetch("/api/admin/system-status", {
+                    headers: { Accept: "application/json" },
+                    credentials: "same-origin", cache: "no-store"
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Status request failed");
+                this.state = data.status === "healthy" ? "Healthy" : "Degraded";
+                this.version = data.version || "Unknown";
+                this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
+                this.database = data.database?.status || "Unknown";
+                this.storage = data.storage?.status || "Unknown";
+                this.assets = data.storage?.image_assets ? "Accessible" : "Unavailable";
+                this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
+                this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
+                this.records = Object.entries(data.counts || {}).map(([key, count]) => ({
+                    key, label: labels[key] || key, count
+                }));
+            } catch (error) {
+                this.error = "Could not load system status: " + (error instanceof Error ? error.message : "Unknown error");
+                this.state = "Unavailable";
+                this.records = [];
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+
 document.addEventListener("alpine:init", () => {
     Alpine.data("portalShell", portalShell);
     Alpine.data("htmlEditorToggle", htmlEditorToggle);
@@ -1076,6 +1190,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("brandingManager", brandingManager);
     Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("adminImportManager", adminImportManager);
+    Alpine.data("systemStatusManager", systemStatusManager);
     Alpine.data("toastManager", toastManager);
     Alpine.data("sanitizerModal", sanitizerModal);
     Alpine.data("previewModal", previewModal);

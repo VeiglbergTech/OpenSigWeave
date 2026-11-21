@@ -203,7 +203,7 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })", lua)
         self.assertNotIn("request_headers['X-OpenSigWeave-Mode']", lua)
         self.assertNotIn("requested_mode", lua)
-        self.assertIn("local signature_marker = find_signature_text_marker(task, is_reply)", lua)
+        self.assertIn("local signature_marker = find_signature_text_marker(task, has_quoted_history)", lua)
         self.assertIn("remove_text_marker_from_message()", lua)
 
     def test_rspamd_deprecated_html_markers_are_cleanup_only(self):

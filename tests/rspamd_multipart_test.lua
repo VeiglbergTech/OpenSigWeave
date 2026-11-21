@@ -38,6 +38,7 @@ local function part(major, minor, boundary, headers, content, flags)
   local o = {}
   function o:get_type() return major, minor end
   function o:get_boundary() return boundary end
+  function o:get_enclosing_boundary() return flags.enclosing_boundary or boundary end
   function o:get_raw_headers() return headers or '' end
   function o:get_headers() return flags.parsed_headers or parse_headers(headers) end
   function o:get_raw_content() return content or '' end
@@ -50,7 +51,7 @@ local function part(major, minor, boundary, headers, content, flags)
 end
 local h = 'From: sender@example.com\r\nMIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary="mix"\r\n'
 local root = part('multipart','mixed','mix')
-local alt = part('multipart','alternative','alt','Content-Type: multipart/alternative; boundary="alt"\r\n')
+local alt = part('multipart','alternative','alt','Content-Type: multipart/alternative; boundary="alt"\r\n',nil,{enclosing_boundary='mix'})
 local plain = part('text','plain','alt','Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n','Hi\r\nOn Monday wrote:\r\n> Old')
 local html = part('text','html','alt','Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\nContent-ID: <body-id>\r\nX_Custom.Header: preserved\r\n','<html><body>Hi<div class="gmail_quote">Old</div></body></html>')
 local attach = part('application','octet-stream','mix','Content-Type: application/octet-stream\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename="test.bin"\r\n','AAEC/w==\r\n',{attachment=true})

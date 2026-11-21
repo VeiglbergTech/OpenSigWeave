@@ -2,6 +2,7 @@
 local rspamd_util = require "rspamd_util"
 local M = {}
 local MAX_MESSAGE_BYTES = 20 * 1024 * 1024
+local MAX_MIME_PARTS = 256
 
 local function newline(task)
     local t = task:get_newlines_type()
@@ -68,6 +69,18 @@ local function is_protected(part)
     return false
 end
 
+-- Preflight before the engine HTTP request: signed/encrypted and encapsulated
+-- messages must not be touched, including their top-level headers.
+function M.preflight(task)
+    if task:get_size() > MAX_MESSAGE_BYTES then return false, "message exceeds MIME rewrite limit" end
+    local parts = task:get_parts() or {}
+    if #parts > MAX_MIME_PARTS then return false, "too many MIME parts" end
+    for _, part in ipairs(parts) do
+        if is_protected(part) then return false, "signed, encrypted or embedded message" end
+    end
+    return true
+end
+
 local function close_boundaries(emit, stack, target)
     local found = false
     for _, boundary in ipairs(stack) do
@@ -84,27 +97,75 @@ end
 -- Returns a complete message as chunks for task:set_message, or nil + reason.
 function M.rewrite(task, transform)
     local parts = task:get_parts() or {}
-    if #parts == 0 then return nil, "no MIME parts" end
+    if #parts == 0 or not parts[1]:is_multipart() then
+        return nil, "expected a multipart MIME root"
+    end
+    if #parts > MAX_MIME_PARTS then return nil, "too many MIME parts" end
     if task:get_size() > MAX_MESSAGE_BYTES then return nil, "message exceeds MIME rewrite limit" end
     for _, part in ipairs(parts) do
         if is_protected(part) then return nil, "signed, encrypted or embedded message" end
-        if part:is_multipart() and not part:get_boundary() then
-            return nil, "multipart container without parsed boundary"
+        if part:is_multipart() then
+            local boundary = part:get_boundary()
+            if type(boundary) ~= "string" or boundary == "" or #boundary > 70
+                or boundary:find("[\r\n]") then
+                return nil, "multipart container without safe parsed boundary"
+            end
         end
     end
     local nl = newline(task)
     local header = task:get_raw_headers()
     if not header then return nil, "missing message headers" end
+
+    -- Preserve top-level preamble/epilogue; Rspamd's get_parts() walk only
+    -- exposes MIME parts. Discarding those bytes would change valid mail.
+    local preamble, epilogue = "", nil
+    if type(task.get_rawbody) == "function" then
+        local body = task:get_rawbody()
+        if not body then return nil, "missing original multipart body" end
+        local raw = tostring(body)
+        local delimiter = "--" .. parts[1]:get_boundary()
+        local first = raw:find(delimiter, 1, true)
+        local closer = delimiter .. "--"
+        local last, after_close, start_at = nil, nil, 1
+        while true do
+            local a, b = raw:find(closer, start_at, true)
+            if not a then break end
+            last, after_close, start_at = a, b, b + 1
+        end
+        if not first or not last or last < first then
+            return nil, "top-level MIME delimiters not found"
+        end
+        preamble = raw:sub(1, first - 1)
+        epilogue = raw:sub(after_close + 1)
+    end
     local chunks = { tostring(header):gsub("[\r\n]+$", "") .. nl .. nl }
+    if preamble ~= "" then chunks[#chunks + 1] = preamble end
     local function emit(content, add_nl)
         chunks[#chunks + 1] = content
         if add_nl ~= false then chunks[#chunks + 1] = nl end
+    end
+    local function emit_boundary(line)
+        -- Boundary delimiters MUST start on a new line. Rspamd's raw
+        -- attachment payload need not end with CRLF; do not concatenate
+        -- a delimiter directly onto the final encoded byte.
+        local last = tostring(chunks[#chunks] or "")
+        if last:sub(-#nl) ~= nl then chunks[#chunks + 1] = nl end
+        emit(line)
     end
     local stack, active, changed = {}, nil, 0
     for index, part in ipairs(parts) do
         local boundary = part:get_boundary()
         if part:is_multipart() then
-            if active then emit("--" .. stack[#stack]) end
+            if index > 1 then
+                -- A nested multipart is a CHILD of its enclosing boundary,
+                -- not a child of whichever multipart happened to be visited
+                -- previously. Unwind siblings before opening this container.
+                local enclosing = part:get_enclosing_boundary()
+                if not enclosing or not close_boundaries(emit_boundary, stack, enclosing) then
+                    return nil, "inconsistent multipart parent boundary"
+                end
+                emit_boundary("--" .. enclosing)
+            end
             stack[#stack + 1] = boundary
             active = boundary
             if index > 1 then
@@ -114,12 +175,12 @@ function M.rewrite(task, transform)
         else
             if boundary then
                 if active and boundary ~= active then
-                    if not close_boundaries(emit, stack, boundary) then
+                    if not close_boundaries(emit_boundary, stack, boundary) then
                         return nil, "inconsistent MIME boundary tree"
                     end
                 end
                 active = boundary
-                emit("--" .. boundary)
+                emit_boundary("--" .. boundary)
             end
             local major, minor = part:get_type()
             major, minor = (major or ""):lower(), (minor or ""):lower()
@@ -151,7 +212,15 @@ function M.rewrite(task, transform)
             end
         end
     end
-    while #stack > 0 do emit("--" .. table.remove(stack) .. "--") end
+    while #stack > 0 do
+        local closing = table.remove(stack)
+        emit_boundary("--" .. closing .. "--")
+        if #stack == 0 and epilogue ~= nil then
+            -- The final MIME closing delimiter is followed by the original
+            -- epilogue, including its original newline sequence.
+            chunks[#chunks] = epilogue
+        end
+    end
     if changed == 0 then return nil, "no editable text was changed" end
     return chunks, changed
 end

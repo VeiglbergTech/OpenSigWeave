@@ -167,6 +167,31 @@ class SignatureCatalogTests(unittest.TestCase):
                 restored.id,
             )
 
+    def test_restore_rejects_corrupted_snapshot_without_creating_a_version(self):
+        signature, first = create_signature(
+            self.session, self.store, name="Tamper proof", domain_id=None,
+            html_content="<p>Original</p>",
+        )
+        second = add_signature_version(
+            self.session, self.store, signature.id, "<p>Current</p>",
+        )
+        historical_file = Path(self.tempdir.name) / "signatur" / signature.name / ".versions" / (first.id + ".html")
+        historical_file.write_text("<p>Tampered</p>", encoding="utf-8")
+
+        with self.assertRaises(SignatureStorageError):
+            restore_signature_version(self.session, self.store, signature.id, first.id)
+
+        persisted = self.session.execute(
+            select(SignatureVersionDB)
+            .where(SignatureVersionDB.signature_id == signature.id)
+            .order_by(SignatureVersionDB.version_number)
+        ).scalars().all()
+        self.assertEqual([version.id for version in persisted], [first.id, second.id])
+        self.assertEqual(
+            (Path(self.tempdir.name) / "signatur" / signature.name / "signature.html").read_text(),
+            "<p>Current</p>",
+        )
+
     def test_restore_signature_version_rejects_version_from_another_signature(self):
         first_signature, first_version = create_signature(
             self.session, self.store, name="First", domain_id=None,

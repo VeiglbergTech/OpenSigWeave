@@ -2,7 +2,15 @@ name: Postfix Milter Compatibility
 
 on:
   push:
-    branches: ["dev"]
+    branches: ["dev", "beta", "main"]
+    paths:
+      - "docs/POSTFIX_MILTER_DESIGN.md"
+      - "adapters/postfix_milter.py"
+      - "tests/test_postfix_milter_adapter.py"
+      - "tests/postfix_milter_e2e_server.py"
+      - ".github/workflows/postfix-milter-compat.yml"
+  pull_request:
+    branches: ["dev", "beta", "main"]
     paths:
       - "docs/POSTFIX_MILTER_DESIGN.md"
       - "adapters/postfix_milter.py"

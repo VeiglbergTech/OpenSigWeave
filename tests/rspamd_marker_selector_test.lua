@@ -26,7 +26,7 @@ package.preload['rspamd_util'] = function()
   }
 end
 package.preload['opensigweave_mime'] = function()
-  return { rewrite=function() return nil, 'not-called' end }
+  return { rewrite=function() return nil, 'not-called' end, preflight=function() return true end }
 end
 
 rspamd_config = {
@@ -61,6 +61,9 @@ local function run(parts)
     get_header_raw=function() return nil end,
     get_header_count=function() return 0 end,
     get_text_parts=function() return parts end,
+    get_size=function() return 1024 end,
+    get_parts=function() return {} end,
+    get_raw_headers=function() return 'From: sender@example.test\r\n' end,
   }
   assert(registered_callback(task) == true)
   assert(captured_request, 'HTTP request not scheduled')

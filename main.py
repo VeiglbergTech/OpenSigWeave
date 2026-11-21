@@ -13,9 +13,10 @@ from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import func
+from sqlalchemy import func, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
 
 from dotenv import load_dotenv
@@ -53,6 +54,8 @@ from core.branding import (
     DEFAULT_APP_NAME,
     branding_context,
     decode_branding_data_url,
+    BUILTIN_LOGO_PATH,
+    BUILTIN_FAVICON_PATH,
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
@@ -190,20 +193,33 @@ class AdminOverrideSave(BaseModel):
     html_content: str = Field(max_length=65536)
     is_disabled: bool = False
 
-class SignatureCreateRequest(BaseModel):
+class NoLegacySignatureSelectionRequest(BaseModel):
+    """Reject retired selectors without changing handling of unrelated extra fields."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_retired_selectors(cls, value):
+        if isinstance(value, dict) and any(
+            field in value for field in ("mode", "pool_name", "variants", "variant_id", "weight")
+        ):
+            raise ValueError("Legacy signature mode and variant fields are no longer supported")
+        return value
+
+
+class SignatureCreateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
     domain_ids: Optional[List[int]] = None
     html_content: str = Field(min_length=1, max_length=65536)
     is_active: bool = True
 
-class SignatureUpdateRequest(BaseModel):
+class SignatureUpdateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     domain_id: Optional[int] = None
     domain_ids: Optional[List[int]] = None
     is_active: bool = True
 
-class SignatureVersionCreateRequest(BaseModel):
+class SignatureVersionCreateRequest(NoLegacySignatureSelectionRequest):
     html_content: str = Field(min_length=1, max_length=65536)
 
 class SignatureRuleConditionRequest(BaseModel):
@@ -224,7 +240,7 @@ class SignatureGroupMemberRequest(BaseModel):
     is_enabled: bool = True
 
 
-class SignatureRuleCreateRequest(BaseModel):
+class SignatureRuleCreateRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     priority: int = Field(default=0, ge=-100000, le=100000)
     action_mode: Literal["SIGNATURE", "GROUP", "NONE"] = "SIGNATURE"
@@ -242,7 +258,7 @@ class BrandingUpdateRequest(BaseModel):
     reset_favicon: bool = False
 
 
-class SignatureScheduleRequest(BaseModel):
+class SignatureScheduleRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     target_type: Literal["SIGNATURE", "GROUP"]
     signature_id: Optional[str] = Field(default=None, max_length=32)
@@ -310,6 +326,33 @@ if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secu
 ENGINE_API_KEY = os.environ.get("ENGINE_API_KEY", "")
 if len(ENGINE_API_KEY) < 32 or ENGINE_API_KEY.lower().startswith(("replace_", "changeme", "your_")):
     raise RuntimeError("ENGINE_API_KEY must be configured with a generated value of at least 32 characters")
+
+# Optional, fully privileged management credential for unattended API clients.
+# This is deliberately distinct from the mail-adapter engine credential.
+MANAGEMENT_API_KEY = os.environ.get("MANAGEMENT_API_KEY", "")
+if MANAGEMENT_API_KEY and (
+    len(MANAGEMENT_API_KEY) < 32
+    or MANAGEMENT_API_KEY.lower().startswith(("replace_", "changeme", "your_"))
+    or MANAGEMENT_API_KEY in {ENGINE_API_KEY, session_secret}
+):
+    raise RuntimeError("MANAGEMENT_API_KEY must be an independent, generated value of at least 32 characters")
+
+
+def is_management_api_path(path: str) -> bool:
+    """Limit machine credentials to existing administrator REST endpoints."""
+    return path.startswith("/api/admin/") or path.startswith("/domains/")
+
+
+def has_valid_management_key(request: Request) -> bool:
+    """Authenticate only explicit administrator API requests, never browser/engine routes."""
+    return (
+        isinstance(request, Request)
+        and bool(MANAGEMENT_API_KEY)
+        and is_management_api_path(request.url.path)
+        and hmac.compare_digest(request.headers.get("X-Management-Key", ""), MANAGEMENT_API_KEY)
+    )
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -327,7 +370,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
-        if request.url.path == "/login" or (
+        if is_management_api_path(request.url.path) or request.url.path == "/login" or (
             "session" in request.scope
             and request.session.get("user")
             and not request.url.path.startswith(("/static/", "/branding/"))
@@ -338,7 +381,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 class CSRFProtectionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user"):
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and request.session.get("user") and not has_valid_management_key(request):
             expected = request.session.get("csrf_token")
             supplied = request.headers.get("X-CSRF-Token", "")
             if not expected or not supplied or not hmac.compare_digest(expected, supplied):
@@ -421,6 +464,29 @@ def signature_asset(asset_name: str):
     )
 
 
+def _bundled_branding_response(*, favicon: bool = False):
+    """Only serve explicitly named bundled files; never accept paths from requests."""
+    path = BUILTIN_FAVICON_PATH if favicon and BUILTIN_FAVICON_PATH.is_file() else BUILTIN_LOGO_PATH
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Bundled branding image is not configured")
+    media_type = "image/x-icon" if path == BUILTIN_FAVICON_PATH else "image/png"
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+@app.get("/branding/builtin/logo.png")
+def builtin_branding_logo():
+    return _bundled_branding_response()
+
+
+@app.get("/branding/builtin/favicon")
+def builtin_branding_favicon():
+    return _bundled_branding_response(favicon=True)
+
+
 @app.get("/branding/logo.png")
 def branding_logo(db: Session = Depends(get_db)):
     settings = db.get(BrandingSettingsDB, 1)
@@ -428,12 +494,9 @@ def branding_logo(db: Session = Depends(get_db)):
         return Response(
             content=settings.logo_png,
             media_type="image/png",
-            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
         )
-    path = "branding/logo.png"
-    if not os.path.isfile(path):
-        raise HTTPException(status_code=404, detail="Branding logo is not configured")
-    return FileResponse(path, media_type="image/png", headers={"Cache-Control": "no-cache"})
+    return _bundled_branding_response()
 
 
 @app.get("/branding/favicon")
@@ -444,15 +507,10 @@ def branding_favicon(db: Session = Depends(get_db)):
         return Response(
             content=settings.favicon_data,
             media_type=settings.favicon_mime or "image/x-icon",
-            headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+            headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
         )
-    favicon_path = "branding/favicon.ico"
-    if os.path.isfile(favicon_path):
-        return FileResponse(favicon_path, media_type="image/x-icon", headers={"Cache-Control": "no-cache"})
-    logo_path = "branding/logo.png"
-    if os.path.isfile(logo_path):
-        return FileResponse(logo_path, media_type="image/png", headers={"Cache-Control": "no-cache"})
-    raise HTTPException(status_code=404, detail="Branding favicon is not configured")
+    return _bundled_branding_response(favicon=True)
+
 
 def session_user(request: Request) -> dict:
     user = request.session.get("user")
@@ -470,7 +528,9 @@ def session_user(request: Request) -> dict:
 def is_admin_user(request: Request):
     user = request.session.get("user")
     groups = user.get("groups", []) if isinstance(user, dict) else []
-    return isinstance(groups, (list, tuple, set)) and "signature-admins" in groups
+    if isinstance(groups, (list, tuple, set)) and "signature-admins" in groups:
+        return True
+    return has_valid_management_key(request)
 
 
 def require_signature_user(request: Request) -> dict:
@@ -523,8 +583,8 @@ def login_page(request: Request, error: bool = False, status_code: int = 200, db
     brand = branding_context(db) if hasattr(db, "get") else {
         "app_name": DEFAULT_APP_NAME,
         "app_color": DEFAULT_APP_COLOR,
-        "has_logo": os.path.isfile("branding/logo.png"),
-        "has_favicon": os.path.isfile("branding/favicon.ico") or os.path.isfile("branding/logo.png"),
+        "has_logo": BUILTIN_LOGO_PATH.is_file(),
+        "has_favicon": BUILTIN_FAVICON_PATH.is_file() or os.path.isfile("branding/logo.png"),
         "has_custom_logo": False,
         "has_custom_favicon": False,
     }
@@ -1187,6 +1247,57 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
     return {"status": "deleted"}
 
 
+
+@app.get("/api/admin/system-status")
+def admin_system_status(request: Request, db: Session = Depends(get_db)):
+    """Safe, read-only diagnostics for an authorized application administrator."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    database_status, counts = "ok", {}
+    try:
+        db.execute(text("SELECT 1"))
+        counts = {
+            "domains": db.query(DomainDB).count(),
+            "identity_providers": db.query(IdentityProviderDB).count(),
+            "signatures": db.query(SignatureDB).count(),
+            "versions": db.query(SignatureVersionDB).count(),
+            "groups": db.query(SignatureGroupDB).count(),
+            "rules": db.query(SignatureRuleDB).count(),
+            "schedules": db.query(SignatureScheduleDB).count(),
+            "overrides": db.query(UserOverrideDB).count(),
+        }
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("System status database check failed (%s)", type(exc).__name__)
+        database_status = "unavailable"
+
+    def accessible(directory):
+        try:
+            return directory.is_dir() and not directory.is_symlink() and os.access(
+                directory, os.R_OK | os.W_OK | os.X_OK
+            )
+        except OSError:
+            return False
+
+    signatures = accessible(signature_file_store.signatures_root)
+    assets = accessible(signature_file_store.assets_root)
+    storage_status = "ok" if signatures and assets else "unavailable"
+    return {
+        "status": "healthy" if database_status == "ok" and storage_status == "ok" else "degraded",
+        "version": app.version,
+        "checked_at": datetime.now(timezone.utc).isoformat(),
+        "database": {"status": database_status},
+        "storage": {"status": storage_status, "signature_files": signatures, "image_assets": assets},
+        "counts": counts,
+        "configuration": {
+            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
+            "management_api_enabled": bool(MANAGEMENT_API_KEY),
+            "backup_management": "operator-cli",
+            "mail_adapters": "external",
+        },
+    }
+
+
 @app.get("/api/admin/branding")
 def get_admin_branding(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
@@ -1207,6 +1318,8 @@ def update_admin_branding(
 ):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
+    if not payload.app_name.strip() or any(ord(char) < 32 or ord(char) == 127 for char in payload.app_name):
+        raise HTTPException(status_code=422, detail="Application name must contain printable characters")
     if not re.fullmatch(r"#[0-9A-Fa-f]{6}", payload.app_color):
         raise HTTPException(status_code=422, detail="Brand color must be a six-digit hex color")
     if payload.reset_logo and payload.logo_data_url:
@@ -1770,6 +1883,8 @@ def create_signature_schedule(
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     starts_at, ends_at = _normalized_schedule_window(payload)
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Schedule name must not be blank")
     _schedule_target_scope(db, payload)
     item = SignatureScheduleDB(
         id=uuid.uuid4().hex,
@@ -1801,6 +1916,8 @@ def update_signature_schedule(
     if item is None:
         raise HTTPException(status_code=404, detail="Schedule not found")
     starts_at, ends_at = _normalized_schedule_window(payload)
+    if not payload.name.strip():
+        raise HTTPException(status_code=422, detail="Schedule name must not be blank")
     _schedule_target_scope(db, payload)
     item.name = payload.name.strip()
     item.target_type = payload.target_type

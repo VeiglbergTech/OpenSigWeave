@@ -28,7 +28,8 @@ class RspamdAdapterContractTests(unittest.TestCase):
     def test_only_authenticated_submission_with_envelope_sender_is_processed(self):
         self.assertRegex(SOURCE, r'local envfrom = task:get_from\(1\)')
         self.assertRegex(SOURCE, r'local uname = task:get_user\(\)')
-        self.assertRegex(SOURCE, r'if not envfrom or not uname then return false end')
+        self.assertIn('type(envfrom[1].addr) ~= "string"', SOURCE)
+        self.assertIn('mime_rewriter.preflight(task)', SOURCE)
         self.assertRegex(SOURCE, r'local sender_email = tostring\(envfrom\[1\]\.addr\):lower\(\)')
 
     def test_deprecated_mode_header_is_only_consumed(self):

@@ -7,6 +7,30 @@ import backup_cli
 
 
 class BackupCliTests(unittest.TestCase):
+    def test_v1_operator_cli_exposes_only_existing_backup_commands(self):
+        import argparse
+
+        parser = backup_cli.build_parser()
+        command_actions = [
+            action for action in parser._actions
+            if isinstance(action, argparse._SubParsersAction)
+        ]
+        self.assertEqual(len(command_actions), 1)
+        self.assertEqual(
+            set(command_actions[0].choices),
+            {"create", "restore", "package", "verify", "decrypt", "prune"},
+        )
+
+    def test_backup_prune_is_dry_run_by_default(self):
+        args = backup_cli.build_parser().parse_args([
+            "prune", "--directory", "/backup", "--identity", "/keys/backup.txt",
+        ])
+        self.assertFalse(args.apply)
+        args = backup_cli.build_parser().parse_args([
+            "prune", "--directory", "/backup", "--identity", "/keys/backup.txt", "--apply",
+        ])
+        self.assertTrue(args.apply)
+
     def test_package_requires_existing_staging_directory(self):
         with tempfile.TemporaryDirectory() as temporary:
             missing = Path(temporary) / "missing"

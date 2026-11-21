@@ -1,8 +1,39 @@
 # OpenSigWeave management and engine API
 
-This document describes the API implemented by the current beta/release-candidate application. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group. Personal signature endpoints require `signature-users` or `signature-admins`.
+This document describes the API currently implemented on the `dev` branch. Browser management endpoints use a signed, secure session established by either OIDC or the local administrator login. Administrator endpoints require membership in the `signature-admins` group or an explicitly configured machine management key. Personal signature endpoints require a browser session with `signature-users` or `signature-admins`.
 
-State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests.
+State-changing browser requests require the session CSRF token in the `X-CSRF-Token` header. The web UI attaches it to its requests. Unattended administrator API calls can instead use the optional management credential described below.
+
+## Unattended administrator automation
+
+Set `MANAGEMENT_API_KEY` to a newly generated secret of at least 32 characters. This setting is optional; empty or unset disables management-key authentication. It must differ from both `ENGINE_API_KEY` and `SECRET_KEY`; obvious placeholder values are rejected at startup. Restart the application after changes.
+
+Send `X-Management-Key: <secret>` on the existing administrator endpoints: `/api/admin/*` and `/domains/*`. This is a **full administrator credential**, granting read and write access including imports, provider configuration, rule changes and deletions. Use it only for trusted automations on HTTPS connections with restricted access. Store it in a secret manager, never in Git, URLs, browser JavaScript, command history or request logs. Rotate by replacing the environment variable and restarting. There are no granular scopes or key-management UI in v1.0.
+
+For example, with the token loaded into the calling process's `MANAGEMENT_API_KEY` environment variable:
+
+```bash
+curl --fail-with-body --silent --show-error \
+  -H "X-Management-Key: ${MANAGEMENT_API_KEY}" \
+  https://signature.example.org/api/admin/signatures
+```
+
+Valid management-key requests to these administrator paths do not need session cookies or CSRF tokens. Browser sessions **still** require `X-CSRF-Token` for changes unless a valid management key is explicitly supplied. An invalid token never authorizes an operation. Management keys do not authenticate `/api/my-signature`, browser pages, login, or `/api/v1/engine/*`. The mail-adapter `ENGINE_API_KEY` cannot access management routes. Key-authenticated responses are non-cacheable.
+
+For machine administration, prefer these existing REST resources over a duplicate CLI: domain management, signature catalog and versions, signature groups and memberships, rules, scheduling, branding, overrides, provider configuration, image assets, and selective import/export. The separate operator CLI supports encrypted full backups/restores; details are in [CLI/API v1.0 decisions](CLI_API_V1.md).
+
+## Read-only system diagnostics
+
+`GET /api/admin/system-status` is accessible only to administrator sessions or a
+valid machine management key. It returns application version, UTC timestamp,
+database and signature storage status, aggregate configuration record counts,
+and non-secret flags for operator-managed configuration. Responses are
+non-cacheable. It never returns credentials, provider configuration, user
+identities or filesystem paths, writes no probe files and contacts neither
+identity providers nor mail servers. Degraded status does not expose exception
+details. The browser **System** tab shows the snapshot and a refresh control.
+Full encrypted backup/restore, deployment secrets and MTA diagnostics remain
+operator-only.
 
 ## Authentication and authorization
 
@@ -92,7 +123,16 @@ This changes the name, global/domain scope and active state. Deactivation preser
 
 - `GET /api/admin/signatures/{signature_id}/versions`: list version metadata, hashes and timestamps.
 - `POST /api/admin/signatures/{signature_id}/versions`: create a new HTML version.
-Version files are immutable and integrity-checked when read. Prefer deactivation to deletion; catalog deletion is not implemented.
+- `GET /api/admin/signatures/{signature_id}/versions/{version_id}`: preview immutable HTML without making it active.
+- `POST /api/admin/signatures/{signature_id}/versions/{version_id}/restore`: create a new active version from historical content, preserving the old history.
+Version files are immutable and integrity-checked when read. Restoring an old version creates a **new** active version rather than replacing any historical revision. Prefer deactivation to deletion; catalog deletion is not implemented.
+
+### Signature image assets
+
+- `POST /api/admin/signature-assets`: administrator-only, CSRF-protected image upload (a valid machine management key may also authenticate). PNG, JPEG and WebP are supported; GIF is supported for compatibility. Maximum file size: 2 MiB. The response contains an immutable `/signature-assets/<sha256>.<ext>` URL.
+- `GET /signature-assets/{asset_name}`: publicly readable immutable image, required so external mail recipients can load images without a browser session. Configure the reverse proxy to permit anonymous GET for only this path while keeping upload and other administrator endpoints protected.
+
+The editor stores absolute HTTPS asset URLs in signature HTML; temporary `blob:` and embedded `data:` images are not a reliable delivery format. Assets reside in the persistent signature volume and are shared by older versions. Deleting an HTML image reference does not purge a shared image. See [README image deployment requirements](../README.md#signature-images-and-publicly-accessible-asset-urls).
 
 ## Signature rules
 
@@ -163,11 +203,11 @@ The engine accepts an optional concrete-signature selector through `X-OpenSigWea
 
 ## Current limitations and verification status
 
-- The current Rspamd adapter deliberately leaves every top-level `multipart/*` message unchanged. This includes common `multipart/alternative` messages and messages with attachments. The current rewrite path is limited to non-multipart messages.
+- The Rspamd adapter rewrites supported `text/plain` and `text/html` leaves in parsed `multipart/alternative`, `multipart/mixed` and `multipart/related` structures, including nested MIME. Binary attachments and inline CID parts are copied unchanged. Signed/encrypted, attached `message/rfc822`, malformed or unsupported MIME structures are skipped as a whole. Lua fixtures re-parsed with Python's MIME parser provide automated coverage; real Mailcow/Rspamd SMTP integration and final DKIM validation remain unverified. See [Mailcow/Rspamd staging guidance](MAILCOW_RSPAMD_INTEGRATION.md).
 - Actual Rspamd/Mailcow processing order and DKIM signing order have not been validated in an isolated end-to-end mail environment.
 - Outlook marker preservation and reply behavior need testing with real client versions.
 - SMTP envelope-sender authorization must be enforced by Mailcow/Postfix; `task:get_user()` is not sufficient authorization by itself.
-- Docker CI validates image build, Compose startup, PostgreSQL migrations, healthchecks and an authenticated engine API request. It does not perform an OIDC browser login or a full SMTP delivery test.
+- Application CI validates image build, Compose startup, migrations, Chromium administration workflows, a real Docker backup/fresh restore and API/regression tests. Separate Postfix-Milter compatibility CI performs an isolated SMTP delivery through Postfix with a mock engine; it does **not** exercise live Mailcow/Rspamd, real OIDC/LDAP or the production DKIM signing chain.
 - CSP remains report-only pending broader browser/deployment acceptance. The CI Chromium workflow records policy-violation events and currently observes none across the exercised administration/editor paths.
 
 
@@ -186,7 +226,7 @@ Administrator-only endpoints:
 
 Rules accept `action_mode: "GROUP"` together with `group_id`; `signature_id` must be null. A group tag in signature HTML uses `{{ group:slug }}`. Repeated tags for the same slug reuse one selection during that message. Selection state requires a provider-namespaced immutable identity: Authentik user `pk` or Active Directory `objectGUID`; email is never used as the group rotation key.
 
-Migration `0014_retire_signature_modes` converts installed legacy pool rules to ordinary signature groups while retaining historical storage columns/tables only for database upgrade and rollback compatibility.
+Migration `0014_retire_signature_modes` converts installed legacy pool rules to ordinary signature groups while retaining historical storage columns/tables only for database upgrade and rollback compatibility. Existing administrator-assigned domain scopes on compatibility groups are preserved. Current signature, rule and scheduling requests do not accept retired mode/variant selectors; legacy format-v1 imports are validated separately, and modern exports omit retired fields.
 
 
 ## Scheduling

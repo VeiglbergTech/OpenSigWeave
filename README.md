@@ -6,7 +6,7 @@
 
 OpenSigWeave is a self-hosted email-signature management service with a FastAPI administration portal, PostgreSQL-backed rule and rendering engine, versioned signature storage, managed identity providers, scheduling, branding, backups and mail-server adapters.
 
-> **Release status:** beta/release-candidate. The application and repository are heavily CI-tested, but the mail-server adapters are not all production-certified. In particular, live DKIM-chain and real-client acceptance remain separate deployment checks.
+> **Release status:** v2026.11 / v1.0 **release candidate only** — no v1.0 tag, GitHub release or production certification has been issued. The code has substantial automated coverage, but live DKIM-chain, identity-provider and real-client acceptance remain mandatory before a release. See the [prepared release notes](docs/RELEASE_NOTES_v2026.11.md) and [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md).
 
 <a href="https://www.buymeacoffee.com/veiglbergtech">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60">
@@ -75,9 +75,10 @@ sudo chown "$USER":"$USER" /opt/opensigweave
 git clone --branch beta --single-branch https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
 cd /opt/opensigweave
 cp .env.example .env
+chmod 600 .env
 ```
 
-Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY`. Do not reuse one secret for another:
+Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY` (and optionally `MANAGEMENT_API_KEY`). Do not reuse one secret for another:
 
 ```bash
 python -c "import secrets; print(secrets.token_urlsafe(48))"
@@ -95,6 +96,7 @@ Edit `.env` and set at least:
 - matching `DATABASE_URL` password
 - `SECRET_KEY` — at least 32 non-placeholder characters
 - `ENGINE_API_KEY` — separate value, at least 32 non-placeholder characters
+- `MANAGEMENT_API_KEY` — optional, separate random value (at least 32 characters) for fully privileged REST automation; empty disables it
 - `APP_ALLOWED_HOSTS` — explicit portal hostname(s), no wildcard
 - `LOCAL_ADMIN_EMAIL`
 - `LOCAL_ADMIN_PASSWORD_HASH`
@@ -118,6 +120,29 @@ OpenSigWeave expects HTTPS in normal operation. The default session cookie is Se
 If the immediate reverse proxy is trusted and client-IP-aware rate limiting should use forwarded addresses, set `TRUSTED_PROXY_CIDRS` only to the actual proxy networks. Forwarded headers from untrusted peers are ignored. `TRUSTED_PROXY_CIDRS` changes client-IP attribution for rate limiting; it **does not make the proxy network boundary for you**. The host firewall remains mandatory for a remote proxy.
 
 Do not disable certificate verification for OIDC, LDAP or adapter-to-engine HTTPS connections.
+
+### Signature images and publicly accessible asset URLs
+
+The administrator's **Signatures** CKEditor accepts PNG, JPEG and WebP files via
+file-manager drag & drop, image clipboard paste and the toolbar upload control
+(GIF remains supported for compatibility). Files up to **2 MiB** are stored
+under immutable SHA-256 names in the persistent `opensigweave-signatures`
+volume. Signature HTML references an absolute URL like
+`https://signature.example.org/signature-assets/<hash>.png`, not a temporary
+`blob:` URL or Base64 `data:` URL. Reopening signatures and selecting older
+versions does not change these asset URLs; deleting an image reference does
+not delete the file because other signatures/versions may use it.
+
+**Deployment requirement:** The public HTTPS hostname used to open the editor
+must also be reachable by mail recipients. Allow unauthenticated **GET** requests
+to `/signature-assets/<hash>.(png|jpg|webp|gif)` through the reverse proxy,
+even when the administration portal is behind SSO or proxy authentication.
+Keep all other administrator APIs protected; uploads to
+`POST /api/admin/signature-assets` require an administrator session and CSRF
+token. The application itself serves only validated, immutable image names.
+If the hostname is private-network-only or external-image loading is disabled
+by a recipient's mail client, images cannot appear there until the recipient
+permits remote images. Include the signature volume in backups.
 
 ## First sign-in and identity setup
 
@@ -192,7 +217,7 @@ Resolution order is:
 6. domain template fallback when no rule matches
 7. a matching `NONE` rule → no signature
 
-Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC. At equal priority, a domain-specific schedule wins over an all-domain schedule.
+Schedule windows are stored in UTC and evaluated as `starts_at <= now < ends_at`. The browser converts local date/time input to UTC (using the timezone of the administrator's browser). Nonexistent or ambiguous DST-transition clock times are rejected rather than silently shifted. API clients must send timezone-aware ISO 8601 timestamps, e.g. `2026-12-01T00:00:00+01:00`. At equal priority, a domain-specific schedule wins over an all-domain schedule; a later start wins further ties, followed by the smallest schedule ID. A schedule does not require a timer or worker: the engine checks the database for every request, including Rspamd's legacy `/api/signature/{email}` endpoint. PostgreSQL persistence survives service restarts when its data volume is retained.
 
 The current scheduler intentionally supports concrete ranges only. Recurring annual/weekly schedules are not part of the beta contract.
 
@@ -205,11 +230,15 @@ The bundled OpenSigWeave logo is the default. In **Administration → Branding**
 - PNG logo, maximum 512 KiB
 - PNG/ICO favicon, maximum 256 KiB
 
-Uploaded branding is stored in PostgreSQL. Server-side validation checks allowed media type, base64 encoding, size and file signature. Resetting an asset falls back to the bundled branding.
+Uploaded branding is stored **in PostgreSQL** (the `opensigweave-postgres-data` volume), not in the writable container filesystem. Changes survive a restart or replacement of the application container, provided the database volume is retained and correctly backed up. Uploaded PNG/ICO files are checked server-side for MIME type, decoded size, valid chunk or directory structure, and PNG checksums. Invalid, truncated, oversized and disguised files are rejected; SVG and JPEG uploads are intentionally unsupported. The image URLs are public so login pages can display them, but only authenticated administrators may update branding.
+
+Click **Use built-in logo** or **Use built-in fallback** to preview the packaged images, then **Save Branding** to make either reset persistent. The shipped `branding/logo.png` is the fallback for both logo and favicon when no `branding/favicon.ico` is packaged. The bundled files are part of the read-only Docker image; they do not require a data volume. If neither bundled file is present, the public asset endpoint returns HTTP 404 rather than exposing another filesystem path.
+
+The public current-asset endpoints `/branding/logo.png` and `/branding/favicon` (also `/branding/favicon.ico`) require cache revalidation so an upload or reset takes effect on the next reload. The separate `/branding/builtin/logo.png` and `/branding/builtin/favicon` endpoints render bundled reset previews. None of these endpoints accepts a user-supplied filename.
 
 ## Update an existing beta deployment
 
-Take and verify a backup before upgrading. Then fast-forward the deployment checkout:
+Follow the [complete upgrade and recovery procedure](docs/UPGRADE.md) for preflight checks, the legacy-mode migration, identity-provider changes and rollback limitations. Take and verify a full encrypted backup before any upgrade. Do **not** use the commands below to upgrade a production mail-flow integration before the adapter-specific acceptance tests pass. Then fast-forward the deployment checkout:
 
 ```bash
 cd /opt/opensigweave
@@ -223,6 +252,12 @@ docker compose logs --tail=100 opensigweave
 ```
 
 The container runs `alembic upgrade head` before starting Uvicorn. Never delete the PostgreSQL volume as an upgrade method.
+
+## Administration via browser, REST API and CLI
+
+For v1.0, the web portal remains the primary administrator interface. Existing management REST endpoints can also be called headlessly with an optional `MANAGEMENT_API_KEY` using the `X-Management-Key` HTTP header. This credential grants **full administrator access** to `/api/admin/*` and `/domains/*`, including destructive operations. It does not authenticate portal pages, personal overrides, login/logout, or mail-adapter engine calls, and it is **not** the `ENGINE_API_KEY`.
+
+Keep the management key unset unless an automation needs it. Generate a separate random secret, use HTTPS, restrict network access and protect the key like an administrator password; rotate it by changing the environment variable and restarting the service. Interactive sessions still require CSRF tokens, while correctly authenticated machine requests to administrator API paths do not. See [API authentication and usage](docs/API.md) and the [v1.0 CLI/API feature decision matrix](docs/CLI_API_V1.md). There is intentionally no second CRUD implementation in the CLI: scripts should use the documented REST API. `backup_cli.py` remains the operator CLI for full encrypted disaster recovery.
 
 ## Backups and restore
 
@@ -325,7 +360,16 @@ A green beta build is not equivalent to production mail-flow certification. Befo
 - real NFS/SMB disconnect/recovery
 - throughput/load and failure-policy behavior
 
+Track the results and required approval in the [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md). Passing GitHub Actions alone never authorizes promotion to `main`.
+
 ## Documentation
+
+- [v2026.11 / v1.0 prepared release notes](docs/RELEASE_NOTES_v2026.11.md)
+- [Upgrade and recovery guide](docs/UPGRADE.md)
+- [v1.0 manual release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md)
+- [Mailcow/Rspamd staging instructions](docs/MAILCOW_RSPAMD_INTEGRATION.md)
+- [CLI/API coverage matrix](docs/CLI_API_V1.md)
+- [Branch and promotion policy](docs/BRANCH_STRATEGY.md)
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [API](docs/API.md)
