@@ -68,7 +68,7 @@ local html_splitters = {
 local plain_splitters = {
     '\r?\n%-+ Original Message %-+',
     '\r?\nOn .- wrote:',
-    '\r?\nAm .- schrieb .-*:',
+    '\r?\nAm[^\r\n]-schrieb%s+[^\r\n]-:',
     '\r?\nLe .- a écrit%s*:',
     '\r?\nEl .- escribió:',
     '\r?\n_+?\r?\nFrom: .-\r?\nTo: ',
