@@ -36,7 +36,7 @@ def connect_database(path: str) -> sqlite3.Connection:
     db_path = Path(path).expanduser()
     db_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
     os.chmod(db_path.parent, 0o700)
-    conn = sqlite3.connect(str(db_path), timeout=15, isolation_level=None)
+    conn = sqlite3.connect(str(db_path), timeout=15, isolation_level="DEFERRED")
     os.chmod(db_path, 0o600)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
@@ -253,7 +253,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Independent OpenSigWeave support alert notifier")
     parser.add_argument("action", choices=("ingest", "flush", "health", "status"))
     parser.add_argument("--database", default=os.environ.get("OSW_ALERT_DATABASE", DEFAULT_DATABASE))
-    parser.add_argument("--container", default="rspamd-mailcow")
+    parser.add_argument("--container", default="rspamd-mailcow-1")
     args = parser.parse_args()
     conn = connect_database(args.database)
     try:
