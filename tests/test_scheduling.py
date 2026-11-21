@@ -296,7 +296,9 @@ class SchedulingTests(unittest.TestCase):
             expired = asyncio.run(service.resolve(
                 self.db, normalize_engine_request("ada@example.org")
             ))
-            self.assertEqual(expired.html, "<p>Normal signature</p>")
+            # With no ordinary matching rule, schedule expiry must not select
+            # the retired domain master template as an implicit fallback.
+            self.assertEqual(expired.html, "")
 
 if __name__ == "__main__":
     unittest.main()

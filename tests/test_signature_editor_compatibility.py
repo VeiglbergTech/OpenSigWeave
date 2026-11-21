@@ -88,7 +88,7 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         )
         result = sanitize_signature_html(source)
         self.assertIn('width="220"', result)
-        self.assertIn("width: 220px", result)
+        self.assertRegex(result, r"width:\\s*220px")
         self.assertNotIn("<figure", result)
         malicious = sanitize_signature_html(
             '<figure class="image_resized" style="width: 200px">'

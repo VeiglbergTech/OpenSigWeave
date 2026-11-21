@@ -773,8 +773,9 @@ class SignatureCatalogApiTests(unittest.TestCase):
                 db=self.db,
             ))
 
-        self.assertIn("Domain Alice", result["html"])
-        self.assertNotIn("Personal override", result["html"])
+        # Domain policy prevents personal overrides. Without a matching rule,
+        # the retired master template must not be used either.
+        self.assertEqual(result["html"], "")
 
     def test_personal_override_email_matching_is_case_insensitive(self):
         self.db.add(main.DomainDB(
