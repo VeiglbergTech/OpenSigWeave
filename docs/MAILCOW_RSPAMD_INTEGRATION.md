@@ -101,3 +101,19 @@ The repository validates the Rspamd adapter's **Lua logic and MIME output**, but
 13. Submit **oversized or unusually nested test mail** and monitor Rspamd CPU, memory, processing duration, logs and queue health.
 
 Do not promote this adapter from beta to production until this list passes. Use the exact, recorded `dev` commit in the disposable environment; never silently copy untested files from a different branch.
+
+
+## Experimental fail-closed opt-in (issue #14, not yet production-ready)
+
+The Rspamd adapter accepts `failure_policy = "fail_open"` (default) or `failure_policy = "tempfail"`. In the latter mode, engine HTTP failures, invalid API responses, request scheduling errors, failures to decode flat mail, unsafe multipart rewrite failures and failed `task:set_message()` requests set Rspamd's **soft reject** pre-result. A correlation ID appears in the SMTP text and Rspamd logs. Deliberate empty signatures, disabled reply-signing and protected S/MIME/PGP or embedded messages are excluded. Rollback is changing the option to `fail_open` and restarting Rspamd, after verifying its config.
+
+This **does not guarantee** that Postfix rejects mail when Rspamd itself is offline or when the adapter could not load. Inspect the effective submission/SMTPS service (not only `main.cf`):
+
+```bash
+docker compose exec postfix-mailcow postconf -n smtpd_milters milter_default_action
+docker compose exec postfix-mailcow postconf -P | grep -E '(^submission/|^smtps/).*(smtpd_milters|milter_default_action)'
+```
+
+If either authenticated submission service has an override such as empty `smtpd_milters`, global settings do not protect it. Test and configure the actual SMTP entrypoint to call Rspamd with temporary failure on Milter unavailability. Do not change the inbound port-25 policy blindly. In an **isolated test mailbox/domain**, induce HTTP 401/422/503, failed TLS, timeouts, invalid JSON, lost OpenSigWeave database, Rspamd shutdown, and Postfix-to-Milter disconnection. Capture the actual SMTP exchange: there must be **no `250 queued`** for signature-required mail after the failure, then a single successful injection after recovery. Test SOGo, Outlook, Thunderbird, DKIM and attachment hashes. Clients may show generic retry errors rather than Rspamd's text.
+
+The independent durable, rate-limited support-alert queue, recovery notices and optional out-of-band end-user notification are **not yet implemented**. Full Mailcow SMTP end-to-end acceptance has **not** occurred. Issue #14 remains open until these requirements are met; do not activate the experimental option globally in production.
