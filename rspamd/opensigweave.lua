@@ -43,6 +43,12 @@ local html_splitters = {
     '<br[^>]*>[%s\r\n]*<br[^>]*>[^<]*On .- wrote:',
     '<br[^>]*>[%s\r\n]*[^<]*On .- wrote:',
     '<p[^>]*>&nbsp;</p>[%s\r\n]*On .- wrote:',
+    -- SOGo places German reply attribution in its own element before the
+    -- quoted blockquote. Inserting at blockquote would put our signature
+    -- after "Am ... schrieb ..." and break reply chronology.
+    '<[dD][iI][vV][^>]*>%s*Am%s+[^<]-schrieb%s+',
+    '<[pP][^>]*>%s*Am%s+[^<]-schrieb%s+',
+    '<[sS][pP][aA][nN][^>]*>%s*Am%s+[^<]-schrieb%s+',
     '<hr[^>]*>[%s\r\n]*<b>From:</b>',
     '<div[^>]*>[%s\r\n]*<hr[^>]*>[%s\r\n]*<b>From:</b>',
     '<div class="gmail_quote"', '<div class=3D"gmail_quote"',
