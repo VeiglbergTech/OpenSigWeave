@@ -55,8 +55,14 @@ def api(method: str, endpoint: str, fields: dict[str, str] | None = None) -> Any
     for key, value in (fields or {}).items():
         command.extend(["-f", f"{key}={value}"])
     result = subprocess.run(
-        command, check=True, capture_output=True, text=True, timeout=45
+        command, check=False, capture_output=True, text=True, timeout=45
     )
+    if result.returncode != 0:
+        # Show GitHub's actual API error, not just the shell command used.
+        raise RuntimeError(
+            f"GitHub API {method} {endpoint} returned {result.returncode}: "
+            f"{result.stderr.strip() or result.stdout.strip()}"
+        )
     return json.loads(result.stdout) if result.stdout.strip() else {}
 
 
