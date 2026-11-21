@@ -274,7 +274,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', imageImportUrl: '', imageImportBusy: false, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
@@ -294,6 +294,43 @@ function identityProviderManager() { return {
                     const end = editor ? editor.selectionEnd : start;
                     this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
                     if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
+                },
+                async importImageFromUrl() {
+                    if (this.isViewingHistoricalVersion || this.imageImportBusy) return;
+                    const sourceUrl = (this.imageImportUrl || '').trim();
+                    if (!sourceUrl.startsWith('https://')) {
+                        notify('Enter an HTTPS image URL.', 'error');
+                        return;
+                    }
+                    if (!signatureRichEditor) {
+                        notify('Open the signature editor before importing an image.', 'error');
+                        return;
+                    }
+                    this.imageImportBusy = true;
+                    try {
+                        const response = await fetch('/api/admin/signature-assets/import-url', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({url: sourceUrl})
+                        });
+                        const data = await response.json();
+                        if (!response.ok || !data.url) {
+                            throw new Error(data.detail || 'The image could not be imported.');
+                        }
+                        const localImageUrl = new URL(data.url, window.location.origin);
+                        if (localImageUrl.origin !== window.location.origin ||
+                            !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(localImageUrl.pathname)) {
+                            throw new Error('The image server returned an invalid asset URL.');
+                        }
+                        signatureRichEditor.insertImage(localImageUrl.href);
+                        this.form.html_content = signatureRichEditor.getData();
+                        this.imageImportUrl = '';
+                        notify('Image imported into local storage and inserted into the editor.');
+                    } catch (error) {
+                        notify(error && error.message ? error.message : 'Could not import image.', 'error');
+                    } finally {
+                        this.imageImportBusy = false;
+                    }
                 },
                 toggleDomain(domainId, checked) {
                     const id = Number(domainId);

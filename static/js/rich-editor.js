@@ -169,6 +169,13 @@
             setOnChange: function (callback) { onChange = typeof callback === "function" ? callback : null; },
             setData: function (html) { editor.setData(typeof html === "string" ? html : ""); },
             focus: function () { editor.editing.view.focus(); },
+            insertImage: function (url) {
+                if (typeof url !== "string" || !url.startsWith("https://")) {
+                    throw new Error("Only HTTPS images may be inserted.");
+                }
+                editor.editing.view.focus();
+                editor.execute("insertImage", { source: url });
+            },
             insertText: function (value) {
                 editor.editing.view.focus();
                 editor.execute("insertText", { text: String(value || "") });
