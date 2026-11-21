@@ -426,9 +426,13 @@
                     <template x-for="(condition, index) in form.conditions" :key="index">
                         <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
                             <select x-model="condition.kind" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
-                                <option value="sender_equals">Sender equals</option><option value="domain_equals">Domain equals</option><option value="group_contains">Group contains</option><option value="attribute_equals">Attribute equals</option><option value="claim_equals">Claim equals</option>
+                                <option value="sender_equals">Sender equals</option><option value="sender_not_equals">Sender not equal to</option>
+                                <option value="domain_equals">Domain equals</option><option value="domain_not_equals">Domain not equal to</option>
+                                <option value="group_contains">Group contains</option>
+                                <option value="attribute_equals">Attribute equals</option><option value="attribute_not_equals">Attribute not equal to</option>
+                                <option value="claim_equals">Claim equals</option><option value="claim_not_equals">Claim not equal to</option>
                             </select>
-                            <input x-model="condition.key" :disabled="['sender_equals','domain_equals','group_contains'].includes(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm disabled:opacity-40">
+                            <input x-model="condition.key" :disabled="['sender_equals','sender_not_equals','domain_equals','domain_not_equals','group_contains'].includes(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm disabled:opacity-40">
                             <input x-model="condition.value" placeholder="Value" class="md:col-span-5 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
                             <button @click="form.conditions.splice(index,1)" class="text-red-400 text-sm md:col-span-1">Remove</button>
                         </div>

@@ -527,8 +527,16 @@ function identityProviderManager() { return {
                 rules: [], signatures: [], groups: [], editing: false,
                 form: { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [] },
                 formatConditions(rule) {
+                    const names = {
+                        sender_equals: 'Sender equals', sender_not_equals: 'Sender not equal to',
+                        domain_equals: 'Domain equals', domain_not_equals: 'Domain not equal to',
+                        group_contains: 'Group contains',
+                        attribute_equals: 'Attribute equals', attribute_not_equals: 'Attribute not equal to',
+                        claim_equals: 'Claim equals', claim_not_equals: 'Claim not equal to'
+                    };
                     return rule.conditions.length
-                        ? rule.conditions.map(condition => condition.kind + ': ' + (condition.key ? condition.key + '=' : '') + condition.value).join(' AND ')
+                        ? rule.conditions.map(condition => (names[condition.kind] || condition.kind)
+                            + ': ' + (condition.key ? condition.key + ' = ' : '') + condition.value).join(' AND ')
                         : 'Always matches';
                 },
                 get matchingSignatures() { return this.signatures.filter(item => item.is_active); },

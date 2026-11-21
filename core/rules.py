@@ -35,17 +35,30 @@ def _matches_value(actual: Any, expected: str) -> bool:
     return any(str(value).casefold() == expected.casefold() for value in values if value is not None)
 
 
+def _not_matches_value(actual: Any, expected: str) -> bool:
+    """Missing or entirely empty identity values never satisfy a negative test."""
+    values = actual if isinstance(actual, (list, tuple, set, frozenset)) else (actual,)
+    present = [value for value in values if value is not None]
+    return bool(present) and not _matches_value(present, expected)
+
+
 def condition_matches(condition: RuleCondition, context: RuleContext) -> bool:
-    if condition.kind == "sender_equals":
-        return context.sender.casefold() == condition.value.casefold()
-    if condition.kind == "domain_equals":
-        return context.domain.casefold() == condition.value.casefold()
+    if condition.kind in ("sender_equals", "sender_not_equals"):
+        equal = context.sender.casefold() == condition.value.casefold()
+        return equal if condition.kind == "sender_equals" else not equal
+    if condition.kind in ("domain_equals", "domain_not_equals"):
+        equal = context.domain.casefold() == condition.value.casefold()
+        return equal if condition.kind == "domain_equals" else not equal
     if condition.kind == "group_contains":
         return condition.value.casefold() in {group.casefold() for group in context.groups}
-    if condition.kind == "claim_equals":
-        return _matches_value(context.claims.get(condition.key, ""), condition.value)
-    if condition.kind == "attribute_equals":
-        return _matches_value(context.attributes.get(condition.key, ""), condition.value)
+    if condition.kind in ("claim_equals", "claim_not_equals"):
+        actual = context.claims.get(condition.key)
+        return (_matches_value(actual, condition.value) if condition.kind == "claim_equals"
+                else _not_matches_value(actual, condition.value))
+    if condition.kind in ("attribute_equals", "attribute_not_equals"):
+        actual = context.attributes.get(condition.key)
+        return (_matches_value(actual, condition.value) if condition.kind == "attribute_equals"
+                else _not_matches_value(actual, condition.value))
     raise ValueError(f"Unsupported rule condition: {condition.kind}")
 
 

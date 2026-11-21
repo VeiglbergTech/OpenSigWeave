@@ -1408,6 +1408,44 @@ class AuthorizationHttpRouteTests(unittest.TestCase):
         engine.assert_awaited_once()
         self.assertEqual(engine.await_args.args[1].sender_email, "sender@example.org")
 
+    def test_rule_negative_conditions_validate_and_round_trip_via_http(self):
+        self.authenticate({"email": "admin@example.org", "groups": ["signature-admins"]})
+        headers = {"X-CSRF-Token": "csrf-test-token"}
+        negative_conditions = [
+            {"kind": "sender_not_equals", "key": "", "value": "excluded@example.org"},
+            {"kind": "domain_not_equals", "key": "", "value": "excluded.org"},
+            {"kind": "claim_not_equals", "key": "department", "value": "Sales"},
+            {"kind": "attribute_not_equals", "key": "location", "value": "Berlin"},
+        ]
+        payload = {
+            "name": "Exclude conditions",
+            "action_mode": "NONE",
+            "conditions": negative_conditions,
+        }
+        created = self.client.post("/api/admin/rules", json=payload, headers=headers)
+        self.assertEqual(created.status_code, 201, created.text)
+        rule_id = created.json()["id"]
+        listed = self.client.get("/api/admin/rules")
+        self.assertEqual(listed.status_code, 200, listed.text)
+        saved = next(item for item in listed.json() if item["id"] == rule_id)
+        self.assertEqual(saved["conditions"], negative_conditions)
+
+        updated_conditions = [negative_conditions[2], {"kind": "domain_equals", "key": "", "value": "example.org"}]
+        updated = self.client.put(
+            f"/api/admin/rules/{rule_id}", json={**payload, "conditions": updated_conditions},
+            headers=headers,
+        )
+        self.assertEqual(updated.status_code, 200, updated.text)
+        listed = self.client.get("/api/admin/rules").json()
+        self.assertEqual(next(item for item in listed if item["id"] == rule_id)["conditions"], updated_conditions)
+
+        invalid = self.client.post(
+            "/api/admin/rules",
+            json={**payload, "conditions": [{"kind": "sender_is_not", "value": "x"}]},
+            headers=headers,
+        )
+        self.assertEqual(invalid.status_code, 422)
+
     def test_anonymous_http_requests_cannot_read_admin_or_personal_apis(self):
         for path in (
             "/api/admin/signatures",

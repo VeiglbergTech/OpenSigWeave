@@ -92,6 +92,24 @@ class RuleRepositoryTests(unittest.TestCase):
         selected = evaluate_rules(rules, context)
         self.assertEqual(selected.id, "z-default")
 
+    def test_persisted_negative_condition_is_evaluated(self):
+        self.session.add(SignatureRuleConditionDB(
+            rule_id="a-sales", kind="attribute_not_equals", key="office", value="Berlin",
+        ))
+        self.session.commit()
+        rules = load_signature_rules(self.session)
+        self.assertIn("attribute_not_equals", [c.kind for c in rules[0].conditions])
+        context = RuleContext(
+            sender="alice@example.org", domain="example.org", groups=frozenset({"Sales"}),
+            attributes={"department": "Sales", "office": "Munich"},
+        )
+        self.assertEqual(evaluate_rules(rules, context).id, "a-sales")
+        context_with_equal_office = RuleContext(
+            sender="alice@example.org", domain="example.org", groups=frozenset({"Sales"}),
+            attributes={"department": "Sales", "office": "BERLIN"},
+        )
+        self.assertEqual(evaluate_rules(rules, context_with_equal_office).id, "z-default")
+
     def test_empty_database_returns_empty_tuple(self):
         self.session.query(SignatureRuleConditionDB).delete()
         self.session.query(SignatureRuleDB).delete()
