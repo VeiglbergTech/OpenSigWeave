@@ -4,11 +4,12 @@
     <title>Access Denied</title>
     <link href="/static/css/tailwind.css" rel="stylesheet">
 </head>
-<body class="bg-gray-900 text-white flex items-center justify-center h-screen">
+<body class="bg-gray-900 text-white flex items-center justify-center h-screen" data-csrf-token="{{ csrf_token }}">
     <div class="text-center">
         <h1 class="text-3xl font-bold text-red-500 mb-4">Access Denied</h1>
         <p class="text-gray-400">{{ message }}</p>
-        <a href="/logout" class="mt-6 inline-block text-blue-400 hover:text-blue-300">Try a different account</a>
+        <button id="logout-button" type="button" class="mt-6 inline-block text-blue-400 hover:text-blue-300">Sign out and use a different account</button>
     </div>
+    <script src="/static/js/logout.js"></script>
 </body>
 </html>

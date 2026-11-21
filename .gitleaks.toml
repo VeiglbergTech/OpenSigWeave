@@ -1,0 +1,48 @@
+title = "OpenSigWeave secret scanning"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "opensigweave-hardcoded-engine-key"
+description = "Hardcoded OpenSigWeave Rspamd engine credential"
+regex = '''ENGINE_API_KEY\s*=\s*["']([^"']{20,})["']'''
+secretGroup = 1
+entropy = 3.0
+keywords = ["ENGINE_API_KEY"]
+
+[[rules.allowlists]]
+description = "Ignore documented example placeholders, not real credentials"
+regexTarget = "line"
+regexes = [
+  '''(?i)ENGINE_API_KEY\s*=\s*["'](?:REPLACE_WITH_|your_|changeme)''',
+]
+
+# These two historical commits introduced hardcoded engine credentials. They are
+# treated as compromised and must be rotated anywhere deployed. They remain in
+# immutable upstream Git history; only these exact introducing commits are
+# allowlisted. New occurrences in any other commit still fail the scan.
+[[allowlists]]
+description = "Known historical hardcoded engine credential introductions"
+commits = [
+  "7bea6583dab34412c49643f019ad59ead8d8e542",
+  "8861fb2a78557af35e5f96e1a6c04bd1e214c763",
+]
+
+# Quill is a pinned, licensed upstream minified distribution. Its bundled source
+# includes a generic-api-key-shaped string that is not a credential.
+[[allowlists]]
+description = "False positive in the upstream Quill minified distribution"
+paths = [
+  '''^static/vendor/quill/1\.3\.7/quill\.min\.js$''',
+]
+
+# These commits contain a deterministic, non-production CI test key in a curl
+# header. The smoke test now generates its key at runtime; only the two exact
+# historical commits are excluded from this header false-positive rule.
+[[allowlists]]
+description = "Historical CI-only dummy engine key used by Docker smoke test"
+commits = [
+  "659fad98a28c7f8d5a7db7595584dac21d274b69",
+  "731ad71103f3f624a40084e87bc33b34515d77f3",
+]
