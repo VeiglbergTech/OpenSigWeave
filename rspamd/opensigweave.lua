@@ -665,7 +665,7 @@ local function inject_signature(task)
             -- Rspamd parses MIME boundaries; only decoded text is passed to the
             -- existing reply-placement algorithm. Attachments are unchanged.
             local already_present = false
-            local message, changed_or_reason = mime_rewriter.rewrite(task, function(decoded, is_html)
+            local rewrite_ok, message, changed_or_reason = pcall(mime_rewriter.rewrite, task, function(decoded, is_html)
                 if is_html then decoded = remove_deprecated_selector_markers(decoded) end
                 local rewritten, inserted = splice_body_logic(decoded,
                     is_html and html_splitters or plain_splitters,
@@ -673,7 +673,9 @@ local function inject_signature(task)
                 if not inserted and rewritten == decoded then already_present = true end
                 return rewritten
             end)
-            if message then
+            if not rewrite_ok then
+                technical_failure(task, "MULTIPART_REWRITE_EXCEPTION")
+            elseif message then
                 if not set_checked_message(message) then return end
                 rspamd_logger.infox(task, "OpenSigWeave: rewritten %s multipart MIME text parts", changed_or_reason)
             elseif changed_or_reason ~= "no editable text was changed" or not already_present then
@@ -692,7 +694,7 @@ local function inject_signature(task)
         request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code or ""
     end
 
-    local scheduled = rspamd_http.request({
+    local request_ok, scheduled = pcall(rspamd_http.request, {
         url = API_URL_BASE .. url_encode(sender_email),
         task = task,
         method = 'GET',
@@ -703,7 +705,7 @@ local function inject_signature(task)
         callback = http_callback
     })
 
-    if not scheduled then
+    if not request_ok or not scheduled then
         if FAILURE_POLICY == "fail_open" then remove_text_marker_from_message() end
         technical_failure(task, "ENGINE_REQUEST_NOT_SCHEDULED")
     end
