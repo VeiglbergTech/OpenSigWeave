@@ -865,6 +865,7 @@ function identityProviderManager() { return {
                     }}));
                     this.show = false;
                 },
+                refreshDomainUsers() { this.fetchOverrides(); this.fetchUsers(); },
                 async fetchOverrides() {
                     const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
                     if(res.ok) this.userOverrides = await res.json();

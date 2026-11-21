@@ -133,7 +133,26 @@ async function main() {
     assert.equal(personal.status(), 200, "signed-in administrator can load personal signature");
 
     await page.getByRole("button", { name: "Admin", exact: true }).click();
-    await page.getByRole("heading", { name: "Managed Domains" }).waitFor();
+    await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
+    assert.match(page.url(), /[?&]section=identity-providers(?:&|$)/,
+      "first administrator opening must use Identity Providers and persist it in the URL");
+    await page.reload();
+    await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    await page.reload();
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    assert.match(page.url(), /[?&]section=domains(?:&|$)/, "admin tab must survive reload via URL");
+    await page.getByRole("button", { name: "My Signature", exact: true }).click();
+    await page.getByRole("button", { name: "Admin", exact: true }).click();
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    await page.goBack();
+    await page.getByRole("heading", { name: "Custom Override Signature" }).waitFor({ state: "visible" });
+    await page.goForward();
+    await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+    await page.goto(baseURL + "/?view=admin&section=system");
+    await page.getByRole("heading", { name: "System status" }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
 
     checkpoint("admin: open");
     const sections = [
@@ -1152,33 +1171,29 @@ async function main() {
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     const domainSettings = page.locator('[x-data="domainSettingsModal"]');
-    // Exercise the domain master-template CKEditor instance and its source synchronization.
-    const domainEditor = domainSettings.locator("#domain-rich-editor .ck-editor__editable");
-    await domainEditor.waitFor({ state: "visible" });
-    await domainEditor.fill("Domain master template");
-    await domainEditor.press("Control+A");
-    await domainEditor.press("Control+B");
-    await domainEditor.press("End");
-    await page.waitForFunction(() =>
-      document.querySelector("#domain-raw-html-editor").value.includes("<strong>Domain master template</strong>")
-    );
-    assert.match(await domainEditor.innerHTML(), /<strong>Domain master template<\/strong>/,
-      "domain master-template CKEditor must format content and synchronize its source textarea");
-    const saveMasterTemplate = page.waitForResponse(response =>
+    // The retired domain master editor is gone. Policy changes must preserve old data.
+    assert.equal(await domainSettings.locator("#domain-rich-editor").count(), 0);
+    const historicalDomainTemplate = createdDomain.template_html;
+    const saveDomainPolicy = page.waitForResponse(response =>
       response.request().method() === "PUT"
       && response.url().endsWith("/domains/" + createdDomain.id)
       && response.status() === 200
     );
     await domainSettings.getByRole("button", { name: "Save Settings", exact: true }).click();
-    await saveMasterTemplate;
+    await saveDomainPolicy;
     domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
     createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
-    assert.match(createdDomain.template_html, /<strong>Domain master template<\/strong>/,
-      "domain master-template HTML must persist through the domain API");
+    assert.equal(createdDomain.template_html, historicalDomainTemplate,
+      "saving domain policy must not erase existing retired master-template data");
 
     // Exercise the administrator's per-user override editor and save workflow.
     await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
-    await domainSettings.getByRole("button", { name: "User Overrides", exact: true }).click();
+    await domainSettings.getByRole("button", { name: "Users & Overrides", exact: true }).click();
+    await domainSettings.getByRole("heading", { name: "Domain users" }).waitFor({ state: "visible" });
+    const usersApi = await page.request.get(baseURL + "/api/admin/domains/" + createdDomain.id + "/users");
+    assert.equal(usersApi.status(), 200, "authorized administrator can inspect domain users");
+    assert.equal((await usersApi.json()).items.some(u => u.email === "nonexistent@browser-smoke-domain.test"), false,
+      "domain users must not be invented");
     await domainSettings.getByPlaceholder("user@domain.com").fill("editor-smoke@browser-smoke-domain.test");
     await domainSettings.getByRole("button", { name: "+ Add / Edit" }).click();
     const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
@@ -1198,6 +1213,10 @@ async function main() {
     );
     await domainSettings.getByRole("button", { name: "Save User", exact: true }).click();
     await saveAdminOverride;
+    await domainSettings.getByText("editor-smoke@browser-smoke-domain.test", { exact: true }).first().waitFor();
+    const refreshedUsers = await (await page.request.get(baseURL + "/api/admin/domains/" + createdDomain.id + "/users")).json();
+    assert.ok(refreshedUsers.items.some(u => u.email === "editor-smoke@browser-smoke-domain.test" && u.override_status === "Configured"),
+      "user directory must show a newly created override");
     const adminOverrides = await (await page.request.get(baseURL + "/api/admin/overrides/browser-smoke-domain.test")).json();
     const editorOverride = adminOverrides.find(item => item.user_email === "editor-smoke@browser-smoke-domain.test");
     assert.ok(editorOverride, "administrator override must be persisted and returned by the domain API");
@@ -1293,6 +1312,8 @@ async function main() {
     assert.equal((await normalSignature.json()).html_content, "");
     const deniedAdminApi = await normalPage.request.get(baseURL + "/api/admin/signatures");
     assert.equal(deniedAdminApi.status(), 403, "regular user must be denied administrator APIs");
+    const deniedDirectory = await normalPage.request.get(baseURL + "/api/admin/domains/1/users");
+    assert.equal(deniedDirectory.status(), 403, "regular user must not enumerate domain users");
     const savedPersonalSignature = await normalPage.request.post(baseURL + "/api/my-signature", {
       headers: { "X-CSRF-Token": "ci-normal-user-csrf-token" },
       data: { html_content: "<p>Normal user browser signature</p>" },

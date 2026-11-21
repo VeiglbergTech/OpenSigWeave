@@ -335,6 +335,9 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
+  assert.match(template, /Advanced: Insert signature group tag/, "Group tags must be behind advanced disclosure");
+  assert.match(template, /Choose ZIP file/, "Import requires a clearly labeled ZIP selector");
+  assert.match(template, /osw-info-banner/, "Scheduling hint must use a dark theme banner");
   for (const retiredMode of ["AU" + "TO", "PROF" + "ESSIONAL", "INTER" + "NAL"]) {
     assert.ok(!template.includes("<option>" + retiredMode + "</option>"),
       "User-facing retired signature mode options must be removed");
@@ -342,7 +345,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.match(template, /<option value="SIGNATURE">Signature<\/option>/,
     "Rule actions must target a concrete signature instead of a mode");
   assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
-  assert.match(template, /id="domain-outlook-markup-warning"[^>]*role="alert"/, "Domain editor must warn when Outlook-specific markup is detected");
+  assert.doesNotMatch(template, /id="domain-raw-html-editor"/, "Retired domain master editor must not be offered");
   assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/, "Admin editor must warn when Outlook-specific markup is detected");
   assert.ok(portalJs.includes(String.raw`const outlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i;`), "Editor must detect Outlook conditional comments and VML");
   assert.match(portalJs, /checkAllLocks\(\)[\s\S]*?checkOutlookMarkupWarnings\(\)/, "Editor state updates must refresh the Outlook markup warning");

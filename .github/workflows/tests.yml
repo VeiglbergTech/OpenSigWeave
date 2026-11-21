@@ -175,7 +175,7 @@ jobs:
           engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
           response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
           printf 'Signature engine smoke response: %s\n' "$response"
-          python -c 'import json,sys; result=json.loads(sys.argv[1]); assert "Best Regards" in result["html"]; assert "<strong>Smoke </strong>" in result["html"]' "$response"
+          python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == "", "An unconfigured domain must not inject its retired master template"' "$response"
           timeout --signal=TERM --kill-after=30s 12m docker run --rm --init --ipc=host --network host -v "$PWD:/work" -w /work -e BROWSER_TEST_EMAIL="admin@example.test" -e BROWSER_TEST_PASSWORD="ci-local-admin-password" -e BROWSER_TEST_NORMAL_USER_SESSION="$normal_user_session" -e BROWSER_TEST_RESTRICTED_USER_SESSION="$restricted_user_session" mcr.microsoft.com/playwright:v1.56.0-noble node tests/browser_smoke.cjs
           # Verify administrator-provided branding survives a real application-container restart.
           # PostgreSQL is kept running; only the stateless web container is restarted.

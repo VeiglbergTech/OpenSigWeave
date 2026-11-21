@@ -1189,6 +1189,7 @@ async def list_domain_users(
         warning = "No browsable LDAP directory is configured; locally known identities are shown."
     if truncated:
         warning = (warning + " " if warning else "") + "LDAP result limit reached; this directory list is incomplete."
+    partial = bool(truncated or warning)
 
     needle = q.strip().casefold()
     filtered = [
@@ -1201,7 +1202,7 @@ async def list_domain_users(
     return {
         "items": filtered[begin:begin + page_size],
         "total": len(filtered), "page": page, "page_size": page_size,
-        "warning": warning, "partial": bool(truncated or (provider and provider.provider_type != "ldap")),
+        "warning": warning, "partial": partial,
     }
 
 
