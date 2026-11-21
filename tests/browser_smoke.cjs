@@ -1151,7 +1151,7 @@ async function main() {
     await domainPanel.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     await domainPanel.getByRole("button", { name: "+ Add Domain" }).click();
     const addDomainDialog = page.locator('[x-data="addDomainModal"]');
-    await addDomainDialog.locator('input[placeholder="e.g., hatsthings.com"]').fill("browser-smoke-domain.test");
+    await addDomainDialog.getByRole("textbox", { name: "Mail domain" }).fill("browser-smoke-domain.test");
     const createDomainResponse = page.waitForResponse(response =>
       response.request().method() === "POST"
       && response.url().endsWith("/domains/")
