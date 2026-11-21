@@ -53,8 +53,8 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         for value in ("14px", "17px", "Arial", "Helvetica", "Georgia"):
             self.assertIn(value, sanitized)
         rendered = render_signature_template(sanitized, {})
-        self.assertRegex(rendered, r"font-size:\\s*14px(?:[;\\\"]|$)")
-        self.assertRegex(rendered, r"font-size:\\s*17px(?:[;\\\"]|$)")
+        self.assertRegex(rendered, r"font-size:\s*14px\b")
+        self.assertRegex(rendered, r"font-size:\s*17px\b")
         self.assertIn("font-family", sanitize_signature_html(rendered))
 
     def test_links_have_non_underlined_inline_style_for_email_clients(self):
