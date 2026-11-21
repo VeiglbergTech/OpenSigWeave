@@ -2242,10 +2242,10 @@ async def get_engine_signature(
     email: str,
     response: Response,
     x_engine_key: Optional[str] = Header(None),
-    x_inline_images: Optional[str] = Header(None, alias="X-OpenSigWeave-Inline-Images"),
     x_signature_name: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature"),
     x_signature_code: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature-Code"),
     db: Session = Depends(get_db),
+    x_inline_images: Optional[str] = Header(None, alias="X-OpenSigWeave-Inline-Images"),
 ):
     """HTTP transport wrapper; all selection and rendering lives in the service."""
     response.headers["Cache-Control"] = "no-store, private"
@@ -2260,8 +2260,11 @@ async def get_engine_signature(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        want_cid = x_inline_images == "cid"
-        if x_inline_images is not None and not want_cid:
+        # Keep positional in-process callers working: a direct Python call uses
+        # the FastAPI Header descriptor as its omitted default value.
+        inline_mode = x_inline_images if isinstance(x_inline_images, str) else None
+        want_cid = inline_mode == "cid"
+        if inline_mode is not None and not want_cid:
             raise HTTPException(status_code=400, detail="Unsupported inline image mode")
         result = await resolve_signature_engine(
             db, engine_request, commit_selection=not want_cid
