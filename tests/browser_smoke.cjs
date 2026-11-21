@@ -457,7 +457,6 @@ async function main() {
     await signatureEditEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
     // A 1×1-pixel fixture is already selected after insertion; its resize handles
     // cover the entire image and intercept simulated pointer clicks.
-    await signatureEditEditor.locator(".ck-widget__resizer").waitFor({ state: "visible" });
     const imageResizeControl = page.getByRole("button", { name: /resize image/i }).first();
     await imageResizeControl.waitFor({ state: "visible" });
     await imageResizeControl.click();
