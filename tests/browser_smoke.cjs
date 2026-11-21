@@ -77,7 +77,7 @@ async function main() {
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(baseURL + "/");
+    await page.waitForURL(url => url.origin === new URL(baseURL).origin && url.pathname === "/");
     await page.locator("#logout-button").waitFor();
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
@@ -180,7 +180,8 @@ async function main() {
       status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Synthetic dependency outage" }),
     }));
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
-    await systemPanel.getByRole("alert").getByText(/Synthetic dependency outage/).waitFor();
+    await systemPanel.getByRole("alert").waitFor({ state: "visible" });
+    assert.match(await systemPanel.getByRole("alert").textContent(), /Synthetic dependency outage/);
     await systemPanel.getByText("Unavailable", { exact: true }).first().waitFor();
     await page.unroute("**/api/admin/system-status");
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
@@ -190,9 +191,6 @@ async function main() {
     await page.getByRole("button", { name: "Choose ZIP file", exact: true }).waitFor({ state: "visible" });
     await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Scheduling", exact: true }).click();
-    const scheduleActions = page.locator('[x-data="scheduleManager"] .osw-actions');
-    assert.ok(await scheduleActions.count() >= 0, "Scheduling actions use consistent spacing");
-
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();
 
@@ -730,6 +728,9 @@ async function main() {
     await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
     let scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
     await scheduleRow.waitFor();
+    const scheduleActionsGap = await scheduleRow.locator(".osw-actions").evaluate(node =>
+      Number.parseFloat(getComputedStyle(node).columnGap));
+    assert.ok(scheduleActionsGap >= 8, "Schedule edit/delete buttons must have a visible gap");
     let schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
     let browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
     assert.ok(browserSchedule, "schedule created in the UI must be persisted");
