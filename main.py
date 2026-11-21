@@ -49,6 +49,7 @@ from core.engine_contract import (
     normalize_engine_request,
 )
 from core.engine_service import SignatureEngineService
+from core.cid_assets import build_cid_payload
 from core.branding import (
     DEFAULT_APP_COLOR,
     DEFAULT_APP_NAME,
@@ -2221,6 +2222,10 @@ _ENGINE_ERROR_HTTP_STATUS = {
     "GROUP_SIGNATURE_VERSION_METADATA_MISSING": 503,
     "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
     "INVALID_TEMPLATE": 422,
+    "INLINE_IMAGE_ASSET_UNAVAILABLE": 503,
+    "INLINE_IMAGE_LIMIT": 422,
+    "UNMANAGED_INLINE_IMAGE": 422,
+    "INVALID_INLINE_IMAGE": 422,
 }
 
 
@@ -2237,6 +2242,7 @@ async def get_engine_signature(
     email: str,
     response: Response,
     x_engine_key: Optional[str] = Header(None),
+    x_inline_images: Optional[str] = Header(None, alias="X-OpenSigWeave-Inline-Images"),
     x_signature_name: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature"),
     x_signature_code: Optional[str] = Header(None, alias="X-OpenSigWeave-Signature-Code"),
     db: Session = Depends(get_db),
@@ -2254,10 +2260,23 @@ async def get_engine_signature(
         raise HTTPException(status_code=400, detail=str(exc))
 
     try:
-        result = await resolve_signature_engine(db, engine_request)
+        want_cid = x_inline_images == "cid"
+        if x_inline_images is not None and not want_cid:
+            raise HTTPException(status_code=400, detail="Unsupported inline image mode")
+        result = await resolve_signature_engine(
+            db, engine_request, commit_selection=not want_cid
+        )
+        payload = result.to_payload()
+        if want_cid and payload["html"]:
+            payload["html"], payload["inline_assets"] = build_cid_payload(
+                payload["html"], signature_file_store
+            )
+        if want_cid:
+            db.commit()
     except SignatureEngineError as exc:
+        db.rollback()
         raise _engine_http_exception(exc)
-    return result.to_payload()
+    return payload
 
 
 # ==========================================
