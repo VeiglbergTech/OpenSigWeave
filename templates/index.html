@@ -704,7 +704,7 @@
 
                         <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
                             <label class="text-sm text-gray-300">Search users<input type="search" x-model="userQuery" @input.debounce.300ms="fetchUsersFirstPage()" placeholder="Name or email" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"></label>
-                            <label class="text-sm text-gray-300">Source<select x-model="userSource" @change="fetchUsersFirstPage()" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"><option value="all">All known users</option><option value="ldap">LDAP</option><option value="local">Local identity cache</option><option value="override">Override only</option></select></label>
+                            <label class="text-sm text-gray-300">Source<select x-model="userSource" @change="fetchUsersFirstPage()" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"><option value="all">All known users</option><option value="ldap">LDAP</option><option value="authentik">Authentik</option><option value="local">Local identity cache</option><option value="override">Override only</option></select></label>
                             <button type="button" @click="fetchUsers()" class="rounded bg-gray-700 px-4 py-2 text-sm">Refresh list</button>
                         </div>
                         <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>

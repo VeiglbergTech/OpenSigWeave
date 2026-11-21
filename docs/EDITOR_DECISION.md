@@ -7,9 +7,9 @@ The application pins CKEditor 5 to **49.1.0**. The Dockerfile builds the browser
 The shared `OpenSigWeaveEditor` adapter is used by:
 - The user's personal signature editor.
 - The administrator's signature template editor.
-- Domain master-template and user-override editors.
+- Administrator user-override editors. The retired domain master-template editor is no longer available in the portal.
 
-The toolbar includes headings, font family/size/color, bold/italic/underline, links, lists, alignment, tables, block quotes and horizontal rules. General HTML Support is configured for the email-oriented elements and attributes used by signatures. The source HTML textarea remains available as an advanced fallback; backend sanitization remains authoritative.
+The toolbar includes headings, font family/size/color, bold/italic/underline, links, lists, alignment, tables, block quotes and horizontal rules. The GPL-compatible CKEditor image-resize plugin provides drag handles and image toolbar width presets plus custom sizing. General HTML Support is configured for the email-oriented elements and attributes used by signatures. The source HTML textarea remains available as an advanced fallback; backend sanitization remains authoritative.
 
 Signature image handling:
 - The administrator signature-template editor supports PNG, JPEG and WebP through file drag & drop, clipboard image paste and the CKEditor upload-image control. Existing GIF upload compatibility remains supported.
@@ -27,4 +27,4 @@ Compatibility safeguards:
 
 The distribution is licensed under GPL 2+ and is compatible with OpenSigWeave's GPLv3 distribution. Keep the exact CKEditor license file in the image and repository notices.
 
-Future editor changes must preserve offline operation, email-compatible HTML, source round trips, sanitizer behavior, Outlook warnings and all three editor surfaces. Any CKEditor upgrade must be version-pinned and pass the full CI and real-browser acceptance suite before beta deployment.
+Future editor changes must preserve offline operation, email-compatible HTML, source round trips, sanitizer behavior, Outlook warnings and all supported editor surfaces. Any CKEditor upgrade must be version-pinned and pass the full CI and real-browser acceptance suite before beta deployment.

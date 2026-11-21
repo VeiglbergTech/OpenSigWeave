@@ -396,6 +396,18 @@ class SignatureCatalogApiTests(unittest.TestCase):
             ))
         self.assertTrue(degraded["partial"])
         self.assertIn("could not be loaded", degraded["warning"])
+        ldap_provider.provider_type = "authentik"
+        self.db.commit()
+        authentik_stub = SimpleNamespace(list_users=AsyncMock(return_value=([
+            {"email": "user@enterprise.test", "display_name": "Authentik User", "disabled": False},
+        ], False)))
+        with patch.object(main.identity_provider_registry, "get", return_value=authentik_stub):
+            authentik_users = asyncio.run(main.list_domain_users(
+                directory_domain.id, self.admin_request, source="authentik", db=self.db,
+            ))
+        self.assertEqual(authentik_users["total"], 1)
+        self.assertEqual(authentik_users["items"][0]["source"], "authentik")
+        authentik_stub.list_users.assert_awaited_once()
         ldap_provider.provider_type = "oidc"
         self.db.commit()
         oidc = asyncio.run(main.list_domain_users(

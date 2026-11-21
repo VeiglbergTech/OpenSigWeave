@@ -1131,7 +1131,7 @@ async def list_domain_users(
         raise HTTPException(status_code=404, detail="Domain not found")
     if page < 1 or page_size < 1 or page_size > 100 or len(q) > 200:
         raise HTTPException(status_code=422, detail="Invalid search or pagination")
-    if source not in {"all", "ldap", "local", "override"}:
+    if source not in {"all", "ldap", "authentik", "local", "override"}:
         raise HTTPException(status_code=422, detail="Invalid source filter")
     suffix = "@" + domain.domain_name.strip().casefold()
     users: dict[str, dict] = {}
@@ -1146,11 +1146,11 @@ async def list_domain_users(
             "email": normalized, "display_name": "", "source": origin,
             "override_status": "None", "directory_disabled": False,
         })
-        if display_name and (not item["display_name"] or origin == "ldap"):
+        if display_name and (not item["display_name"] or origin in {"ldap", "authentik"}):
             item["display_name"] = str(display_name)[:256]
-        if origin == "ldap":
-            item["source"] = "ldap"
-        elif origin == "override" and item["source"] != "ldap":
+        if origin in {"ldap", "authentik"}:
+            item["source"] = origin
+        elif origin == "override" and item["source"] not in {"ldap", "authentik"}:
             item["source"] = "override"
         if is_disabled is not None:
             item["directory_disabled"] = bool(is_disabled)
@@ -1173,22 +1173,23 @@ async def list_domain_users(
     warning = ""
     truncated = False
     provider = db.get(IdentityProviderDB, domain.identity_provider_id) if domain.identity_provider_id else None
-    if provider and provider.is_enabled and provider.provider_type == "ldap":
+    if provider and provider.is_enabled and provider.provider_type in {"ldap", "authentik"}:
         try:
             directory = identity_provider_registry.get(provider.id)
             if directory is None or not hasattr(directory, "list_users"):
-                raise IdentityProviderUnavailable("LDAP enumeration unavailable")
+                raise IdentityProviderUnavailable("Provider enumeration unavailable")
             directory_users, truncated = await directory.list_users(domain.domain_name)
             for account in directory_users:
-                merge(account.get("email"), account.get("display_name", ""), "ldap", account.get("disabled", False))
+                merge(account.get("email"), account.get("display_name", ""),
+                      provider.provider_type, account.get("disabled", False))
         except (IdentityProviderUnavailable, ProviderConfigError, OSError, ValueError):
-            warning = "LDAP users could not be loaded; cached identities and overrides are shown."
-    elif provider and provider.provider_type in {"oidc", "authentik"}:
+            warning = "Identity provider users could not be loaded; cached identities and overrides are shown."
+    elif provider and provider.provider_type == "oidc":
         warning = "OpenID Connect has no standard user-list API; locally known identities are shown."
     else:
-        warning = "No browsable LDAP directory is configured; locally known identities are shown."
+        warning = "No browsable identity provider is configured; locally known identities are shown."
     if truncated:
-        warning = (warning + " " if warning else "") + "LDAP result limit reached; this directory list is incomplete."
+        warning = (warning + " " if warning else "") + "Identity provider result limit reached; the user list is incomplete."
     partial = bool(truncated or warning)
 
     needle = q.strip().casefold()

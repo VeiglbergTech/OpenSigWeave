@@ -64,11 +64,12 @@ def _flatten_resized_figure(match: re.Match) -> str:
     if not (1 <= size <= (2000 if unit == "px" else 100)):
         return match.group(0)
     value = f"{size:g}{unit}"
+    attribute_width = f"{size:g}" if unit == "px" else value
     img = match.group("img")
     img = re.sub(r"""\s+(?:style|width)\s*=\s*(["']).*?\1""", "", img, flags=re.I | re.S)
     img = img.rstrip()
     img = img[:-1].rstrip().removesuffix("/").rstrip()
-    return img + f' width="{value}" style="width: {value}; height: auto;">'
+    return img + f' width="{attribute_width}" style="width: {value}; height: auto;">'
 
 
 def sanitize_signature_html(html_content: str) -> str:
