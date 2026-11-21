@@ -146,3 +146,18 @@ label > select, label > textarea { margin-top: .375rem; }
     [x-data="domainSettingsModal"] > div > div.relative { margin: .75rem; max-height: calc(100dvh - 1.5rem); }
     [x-data="domainSettingsModal"] .p-6 { padding: 1rem; }
 }
+
+
+/* Keep portal and signature links clean; the sanitizer also inlines this for email. */
+a, a:hover, a:focus-visible,
+.ck-content a, .ck-content a:hover, .ck-content a:focus-visible {
+    text-decoration: none !important;
+}
+
+/* Consistent air between separate administrator context cards and section blocks. */
+.osw-admin-section > :not(.form-dialog) ~ :not(.form-dialog) {
+    margin-top: 1.5rem;
+}
+.osw-admin-section > .grid {
+    gap: 1.5rem;
+}

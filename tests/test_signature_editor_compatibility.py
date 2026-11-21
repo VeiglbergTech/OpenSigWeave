@@ -43,6 +43,33 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
                 self.assertIn(prop, result)
         self.assertIn("Signature", result)
 
+    def test_px_font_size_and_email_safe_font_families_are_preserved(self):
+        source = (
+            '<p><span style="font-size: 14px; font-family: Arial, Helvetica, sans-serif;">'
+            'Normal size</span>'
+            '<span style="font-size: 17px; font-family: Georgia, serif;">Custom size</span></p>'
+        )
+        sanitized = sanitize_signature_html(source)
+        for value in ("14px", "17px", "Arial", "Helvetica", "Georgia"):
+            self.assertIn(value, sanitized)
+        rendered = render_signature_template(sanitized, {})
+        self.assertIn("font-size: 14px", rendered)
+        self.assertIn("font-size: 17px", rendered)
+        self.assertIn("font-family", sanitize_signature_html(rendered))
+
+    def test_links_have_non_underlined_inline_style_for_email_clients(self):
+        source = (
+            '<a href="https://example.org">Default link</a>'
+            '<a href="https://example.org/about" style="color: #dd5533; text-decoration: underline;">Styled link</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertEqual(sanitized.count("text-decoration: none;"), 2)
+        self.assertNotIn("text-decoration: underline", sanitized)
+        self.assertIn("color", sanitized)
+        self.assertEqual(sanitize_signature_html(sanitized), sanitized)
+        self.assertEqual(render_signature_template(sanitized, {}), sanitized)
+        self.assertNotIn("href=\"javascript:", sanitize_signature_html('<a href="javascript:alert(1)">Bad</a>'))
+
     def test_links_images_and_template_tokens_survive(self):
         source = (
             '<div><a href="https://example.org" title="Website">Website</a>'

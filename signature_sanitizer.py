@@ -108,6 +108,28 @@ def _mask_templated_link_urls(source: str) -> tuple[str, dict[str, str]]:
     return _HREF_ATTRIBUTE.sub(replace_attribute, source), replacements
 
 
+# Inline link styling is required: email clients do not load portal.css.
+# Run this only after nh3 has sanitized the markup and style properties.
+_ANCHOR_OPEN = re.compile(r"<a\\b[^>]*>", re.I)
+_ANCHOR_STYLE = re.compile(r'\\bstyle="([^"]*)"', re.I)
+_TEXT_DECORATION = re.compile(r"(?:^|;)\\s*text-decoration\\s*:[^;]*", re.I)
+
+
+def _without_underlined_links(html_content: str) -> str:
+    def strip_underline(match: re.Match[str]) -> str:
+        tag = match.group(0)
+        if not re.search(r"\\bhref=", tag, re.I):
+            return tag
+        style = _ANCHOR_STYLE.search(tag)
+        if style:
+            previous = _TEXT_DECORATION.sub("", style.group(1)).strip().strip(";").strip()
+            normalized = f"{previous}; text-decoration: none;" if previous else "text-decoration: none;"
+            return tag[:style.start(1)] + normalized + tag[style.end(1):]
+        return tag[:-1] + ' style="text-decoration: none;">'
+
+    return _ANCHOR_OPEN.sub(strip_underline, html_content)
+
+
 def sanitize_signature_html(html_content: str) -> str:
     """Strip unsafe markup while preserving common email-signature layout markup."""
     if not isinstance(html_content, str):
@@ -118,4 +140,4 @@ def sanitize_signature_html(html_content: str) -> str:
     sanitized = _CLEANER.clean(source)
     for placeholder, variable in placeholders.items():
         sanitized = sanitized.replace(placeholder, variable)
-    return sanitized
+    return _without_underlined_links(sanitized)

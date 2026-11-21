@@ -108,7 +108,8 @@
         {% if is_admin %}
         <div x-show="tab === 'admin'" x-cloak>
             <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
-                <button @click="setAdminTab('identity-providers')" :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
+                <button @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
+                <button @click="setAdminTab('identity-providers')"  :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
                 <button @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
                 <button @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
                 <button @click="setAdminTab('signature-groups')" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
@@ -117,9 +118,8 @@
                 <button @click="setAdminTab('branding')" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
                 <button @click="setAdminTab('exports')" :class="adminTab === 'exports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Exports</button>
                 <button @click="setAdminTab('imports')" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
-                <button @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
             </div>
-        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()">
+        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
             <div class="flex justify-between items-center gap-3 mb-6">
                 <div><h1 class="text-2xl font-semibold">Identity Providers</h1><p class="text-sm text-gray-400 mt-1">Profile attributes for signatures. Login authentication remains independent.</p></div>
                 <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
@@ -181,7 +181,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
+        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" class="osw-admin-section">
             <div class="flex justify-between items-center mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
@@ -207,7 +207,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="space-y-5">
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-2xl font-semibold">Signature Catalog</h2>
@@ -299,7 +299,7 @@
         </div>
 
 
-        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="space-y-5">
+        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
             <div class="flex items-center justify-between">
                 <div><h2 class="text-2xl font-semibold">Signature Groups</h2><p class="text-sm text-gray-400 mt-1">Reusable signature pools. Each membership has its own weight and enabled state.</p></div>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
@@ -357,7 +357,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="space-y-5">
+        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="osw-admin-section space-y-5">
             <div class="flex items-center justify-between">
                 <div>
                     <h2 class="text-2xl font-semibold">Signature Rules</h2>
@@ -432,7 +432,7 @@
                 </div>
             </div>
         </div>
-        <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="space-y-5">
+        <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="osw-admin-section space-y-5">
             <div class="flex items-center justify-between gap-4">
                 <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
@@ -466,7 +466,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="space-y-5">
+        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="osw-admin-section space-y-5">
             <div><h2 class="text-2xl font-semibold">Branding</h2><p class="text-sm text-gray-400 mt-1">Customize the portal identity. Settings and uploaded assets are stored in PostgreSQL and included in normal database backups.</p></div>
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
@@ -487,7 +487,7 @@
             <div class="flex justify-end"><button @click="save()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded text-sm font-medium">Save Branding</button></div>
         </div>
 
-        <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="space-y-5">
+        <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="osw-admin-section space-y-5">
             <div>
                 <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
                 <p class="text-sm text-gray-400 mt-1">Download selected configuration components as a versioned ZIP archive.</p>
@@ -509,7 +509,7 @@
                 </div>
             </div>
         </div>
-        <div x-show="adminTab === 'imports'" x-cloak x-data="adminImportManager" class="space-y-5">
+        <div x-show="adminTab === 'imports'" x-cloak x-data="adminImportManager" class="osw-admin-section space-y-5">
             <div>
                 <h2 class="text-xl font-semibold text-white">Configuration imports</h2>
                 <p class="text-sm text-gray-400 mt-1">Review a versioned OpenSigWeave ZIP export before adding its configuration.</p>
@@ -552,7 +552,7 @@
                 Configuration imported successfully. <span x-text="resultComponents"></span>
             </div>
         </div>
-        <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="space-y-5">
+        <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="osw-admin-section space-y-5">
             <div class="flex flex-wrap justify-between items-center gap-3">
                 <div><h2 class="text-xl font-semibold text-white">System status</h2>
                 <p class="text-sm text-gray-400 mt-1">Read-only diagnostics. No credentials or host paths are exposed.</p></div>
