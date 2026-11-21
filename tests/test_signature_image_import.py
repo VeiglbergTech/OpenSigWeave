@@ -34,7 +34,7 @@ class _FakeTLSContext:
 
 class _Store:
     def write_image(self, content, content_type):
-        assert content == b"\\x89PNG\\r\\n\\x1a\\n" + b"hello"
+        assert content == b"\x89PNG\r\n\x1a\n" + b"hello"
         assert content_type == "image/png"
         return "asset.png"
 
@@ -50,8 +50,8 @@ class ImageImportTests(unittest.TestCase):
             "https://user:pass@example.org/logo.png",
             "https://example.org:8443/logo.png",
             "https://example.org/logo.png#secret",
-            "https://example.org/\\foo",
-            "https://example.org/logo.png\\r\\nHost: internal",
+            "https://example.org/\foo",
+            "https://example.org/logo.png\r\nHost: internal",
         ):
             with self.subTest(url=url), self.assertRaises(SignatureImageImportError):
                 _validated_url(url)
@@ -66,24 +66,24 @@ class ImageImportTests(unittest.TestCase):
             connect.assert_not_called()
 
     def test_download_pins_dns_ip_uses_sni_and_stores_local_image(self):
-        png = b"\\x89PNG\\r\\n\\x1a\\nhello"
-        response = (b"HTTP/1.1 200 OK\\r\\nContent-Type: image/png\\r\\n"
-                    + f"Content-Length: {len(png)}\\r\\n".encode() + b"\\r\\n" + png)
+        png = b"\x89PNG\r\n\x1a\nhello"
+        response = (b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\n"
+                    + f"Content-Length: {len(png)}\r\n".encode() + b"\r\n" + png)
         fake = _FakeSocket(response)
         context = _FakeTLSContext(fake)
-        with patch("signature_image_import.socket.getaddrinfo", side_effect=_getaddrinfo), \\
-             patch("signature_image_import.socket.create_connection", return_value=fake) as connect, \\
+        with patch("signature_image_import.socket.getaddrinfo", side_effect=_getaddrinfo), \
+             patch("signature_image_import.socket.create_connection", return_value=fake) as connect, \
              patch("signature_image_import.ssl.create_default_context", return_value=context):
             result = import_image_from_url(_Store(), "https://example.org/logo.png")
         self.assertEqual(result, "asset.png")
         connect.assert_called_once_with(("93.184.215.14", 443), timeout=5.0)
         self.assertEqual(context.server_hostname, "example.org")
-        self.assertIn(b"Host: example.org\\r\\n", fake.sent)
+        self.assertIn(b"Host: example.org\r\n", fake.sent)
 
     def test_redirect_does_not_follow(self):
-        fake = _FakeSocket(b"HTTP/1.1 302 Found\\r\\nLocation: http://127.0.0.1/\\r\\nContent-Length: 0\\r\\n\\r\\n")
-        with patch("signature_image_import.socket.getaddrinfo", side_effect=_getaddrinfo), \\
-             patch("signature_image_import.socket.create_connection", return_value=fake), \\
+        fake = _FakeSocket(b"HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1/\r\nContent-Length: 0\r\n\r\n")
+        with patch("signature_image_import.socket.getaddrinfo", side_effect=_getaddrinfo), \
+             patch("signature_image_import.socket.create_connection", return_value=fake), \
              patch("signature_image_import.ssl.create_default_context", return_value=_FakeTLSContext(fake)):
             with self.assertRaises(SignatureImageImportError):
                 import_image_from_url(_Store(), "https://example.org/logo.png")
