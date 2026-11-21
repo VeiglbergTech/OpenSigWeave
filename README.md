@@ -56,7 +56,7 @@ docker compose ps
 docker compose logs --tail=100 opensigweave
 ```
 
-The app listens on container port 8085, bound to the host loopback by default; PostgreSQL is not exposed to the host. Restrict any remote reverse-proxy access to the application host's private interface and trusted proxy address. Consult the [upgrade instructions](docs/UPGRADE.md), [Mailcow staging integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) and [full backup notes](docs/BACKUP_RESTORE_DESIGN.md) before a deployment or upgrade.
+The app listens on container port 8085, bound to the host loopback by default; PostgreSQL is not exposed to the host. For a remote reverse proxy, set `APP_BIND_ADDRESS` to the application host's **private-interface IP** and restrict TCP/8085 **only from the reverse-proxy private IP** with the host firewall. `TRUSTED_PROXY_CIDRS` controls forwarded client-IP attribution but **does not make the proxy network boundary for you**. Consult the [upgrade instructions](docs/UPGRADE.md), [Mailcow staging integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) and [full backup notes](docs/BACKUP_RESTORE_DESIGN.md) before a deployment or upgrade.
 
 ## Branch and release policy
 
