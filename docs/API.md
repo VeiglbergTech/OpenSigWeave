@@ -125,7 +125,14 @@ This changes the name, global/domain scope and active state. Deactivation preser
 - `POST /api/admin/signatures/{signature_id}/versions`: create a new HTML version.
 - `GET /api/admin/signatures/{signature_id}/versions/{version_id}`: preview immutable HTML without making it active.
 - `POST /api/admin/signatures/{signature_id}/versions/{version_id}/restore`: create a new active version from historical content, preserving the old history.
-Version files are immutable and integrity-checked when read. Prefer deactivation to deletion; catalog deletion is not implemented.
+Version files are immutable and integrity-checked when read. Restoring an old version creates a **new** active version rather than replacing any historical revision. Prefer deactivation to deletion; catalog deletion is not implemented.
+
+### Signature image assets
+
+- `POST /api/admin/signature-assets`: administrator-only, CSRF-protected image upload (a valid machine management key may also authenticate). PNG, JPEG and WebP are supported; GIF is supported for compatibility. Maximum file size: 2 MiB. The response contains an immutable `/signature-assets/<sha256>.<ext>` URL.
+- `GET /signature-assets/{asset_name}`: publicly readable immutable image, required so external mail recipients can load images without a browser session. Configure the reverse proxy to permit anonymous GET for only this path while keeping upload and other administrator endpoints protected.
+
+The editor stores absolute HTTPS asset URLs in signature HTML; temporary `blob:` and embedded `data:` images are not a reliable delivery format. Assets reside in the persistent signature volume and are shared by older versions. Deleting an HTML image reference does not purge a shared image. See [README image deployment requirements](../README.md#signature-images-and-publicly-accessible-asset-urls).
 
 ## Signature rules
 
@@ -196,11 +203,11 @@ The engine accepts an optional concrete-signature selector through `X-OpenSigWea
 
 ## Current limitations and verification status
 
-- The current Rspamd adapter deliberately leaves every top-level `multipart/*` message unchanged. This includes common `multipart/alternative` messages and messages with attachments. The current rewrite path is limited to non-multipart messages.
+- The Rspamd adapter rewrites supported `text/plain` and `text/html` leaves in parsed `multipart/alternative`, `multipart/mixed` and `multipart/related` structures, including nested MIME. Binary attachments and inline CID parts are copied unchanged. Signed/encrypted, attached `message/rfc822`, malformed or unsupported MIME structures are skipped as a whole. Lua fixtures re-parsed with Python's MIME parser provide automated coverage; real Mailcow/Rspamd SMTP integration and final DKIM validation remain unverified. See [Mailcow/Rspamd staging guidance](MAILCOW_RSPAMD_INTEGRATION.md).
 - Actual Rspamd/Mailcow processing order and DKIM signing order have not been validated in an isolated end-to-end mail environment.
 - Outlook marker preservation and reply behavior need testing with real client versions.
 - SMTP envelope-sender authorization must be enforced by Mailcow/Postfix; `task:get_user()` is not sufficient authorization by itself.
-- Docker CI validates image build, Compose startup, PostgreSQL migrations, healthchecks and an authenticated engine API request. It does not perform an OIDC browser login or a full SMTP delivery test.
+- Application CI validates image build, Compose startup, migrations, Chromium administration workflows, a real Docker backup/fresh restore and API/regression tests. Separate Postfix-Milter compatibility CI performs an isolated SMTP delivery through Postfix with a mock engine; it does **not** exercise live Mailcow/Rspamd, real OIDC/LDAP or the production DKIM signing chain.
 - CSP remains report-only pending broader browser/deployment acceptance. The CI Chromium workflow records policy-violation events and currently observes none across the exercised administration/editor paths.
 
 

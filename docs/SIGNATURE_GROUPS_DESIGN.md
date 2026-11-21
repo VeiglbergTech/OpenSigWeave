@@ -1,4 +1,4 @@
-# Signature groups: target design
+# Signature groups: implemented design and operational behavior
 
 **Status:** Implemented. Signature groups are the reusable weighted selection pool; the hard-coded legacy mode model has been retired from runtime, API and UI. Historical database structures remain only for safe upgrades and rollback compatibility.
 

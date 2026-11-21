@@ -6,7 +6,7 @@
 
 OpenSigWeave is a self-hosted email-signature management service with a FastAPI administration portal, PostgreSQL-backed rule and rendering engine, versioned signature storage, managed identity providers, scheduling, branding, backups and mail-server adapters.
 
-> **Release status:** beta/release-candidate. The application and repository are heavily CI-tested, but the mail-server adapters are not all production-certified. In particular, live DKIM-chain and real-client acceptance remain separate deployment checks.
+> **Release status:** v2026.11 / v1.0 **release candidate only** — no v1.0 tag, GitHub release or production certification has been issued. The code has substantial automated coverage, but live DKIM-chain, identity-provider and real-client acceptance remain mandatory before a release. See the [prepared release notes](docs/RELEASE_NOTES_v2026.11.md) and [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md).
 
 <a href="https://www.buymeacoffee.com/veiglbergtech">
   <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me a Coffee" height="60">
@@ -75,6 +75,7 @@ sudo chown "$USER":"$USER" /opt/opensigweave
 git clone --branch beta --single-branch https://github.com/VeiglbergTech/OpenSigWeave.git /opt/opensigweave
 cd /opt/opensigweave
 cp .env.example .env
+chmod 600 .env
 ```
 
 Generate independent random values for `POSTGRES_PASSWORD`, `SECRET_KEY` and `ENGINE_API_KEY` (and optionally `MANAGEMENT_API_KEY`). Do not reuse one secret for another:
@@ -237,7 +238,7 @@ The public current-asset endpoints `/branding/logo.png` and `/branding/favicon` 
 
 ## Update an existing beta deployment
 
-Take and verify a backup before upgrading. Then fast-forward the deployment checkout:
+Follow the [complete upgrade and recovery procedure](docs/UPGRADE.md) for preflight checks, the legacy-mode migration, identity-provider changes and rollback limitations. Take and verify a full encrypted backup before any upgrade. Do **not** use the commands below to upgrade a production mail-flow integration before the adapter-specific acceptance tests pass. Then fast-forward the deployment checkout:
 
 ```bash
 cd /opt/opensigweave
@@ -359,7 +360,16 @@ A green beta build is not equivalent to production mail-flow certification. Befo
 - real NFS/SMB disconnect/recovery
 - throughput/load and failure-policy behavior
 
+Track the results and required approval in the [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md). Passing GitHub Actions alone never authorizes promotion to `main`.
+
 ## Documentation
+
+- [v2026.11 / v1.0 prepared release notes](docs/RELEASE_NOTES_v2026.11.md)
+- [Upgrade and recovery guide](docs/UPGRADE.md)
+- [v1.0 manual release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md)
+- [Mailcow/Rspamd staging instructions](docs/MAILCOW_RSPAMD_INTEGRATION.md)
+- [CLI/API coverage matrix](docs/CLI_API_V1.md)
+- [Branch and promotion policy](docs/BRANCH_STRATEGY.md)
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [API](docs/API.md)
