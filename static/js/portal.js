@@ -79,8 +79,7 @@ window.fetch = (resource, options = {}) => {
         function checkOutlookMarkupWarnings() {
             const editors = [
                 ['raw-html-editor', 'outlook-markup-warning'],
-                ['domain-raw-html-editor', 'domain-outlook-markup-warning'],
-                ['admin-raw-html-editor', 'admin-outlook-markup-warning']
+                                ['admin-raw-html-editor', 'admin-outlook-markup-warning']
             ];
             const outlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i;
             editors.forEach(([editorId, warningId]) => {
@@ -93,7 +92,6 @@ window.fetch = (resource, options = {}) => {
         }
         function checkAllLocks() {
             toggleLock('user-rich-editor-lock', 'raw-html-editor');
-            toggleLock('domain-rich-editor-lock', 'domain-raw-html-editor');
             toggleLock('admin-rich-editor-lock', 'admin-raw-html-editor');
             checkOutlookMarkupWarnings();
         }
@@ -125,9 +123,6 @@ window.fetch = (resource, options = {}) => {
             if (target === 'personal') {
                 document.getElementById('raw-html-editor').value = cleanHtml;
                 if (userRichEditor) userRichEditor.setData(cleanHtml);
-            } else if (target === 'domain') {
-                document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                if (domainRichEditor) domainRichEditor.setData(cleanHtml);
             } else if (target === 'admin') {
                 document.getElementById('admin-raw-html-editor').value = cleanHtml;
                 if (adminRichEditor) adminRichEditor.setData(cleanHtml);
@@ -149,46 +144,61 @@ window.fetch = (resource, options = {}) => {
         "identity-providers", "domains", "signatures", "signature-groups",
         "rules", "scheduling", "branding", "exports", "imports", "system"
     ]);
-    let savedState = {};
-    try {
-        savedState = JSON.parse(window.sessionStorage.getItem(stateKey) || "{}");
-    } catch (_error) {
-        savedState = {};
-    }
-    const persistState = state => {
-        try {
-            window.sessionStorage.setItem(stateKey, JSON.stringify({
-                tab: state.tab,
-                adminTab: state.adminTab
-            }));
-        } catch (_error) {
-            // Browsers may disable session storage; the portal remains usable without persistence.
-        }
-    };
-
+    let saved = {};
+    try { saved = JSON.parse(sessionStorage.getItem(stateKey) || "{}"); } catch (_error) {}
+    const initialUrl = new URL(window.location.href);
+    const directSection = initialUrl.searchParams.get("section");
+    const directView = initialUrl.searchParams.get("view");
+    const initialAdminTab = allowedAdminTabs.has(directSection) ? directSection
+        : (allowedAdminTabs.has(saved.adminTab) ? saved.adminTab : "identity-providers");
+    const initialView = isAdmin && (
+        directView === "admin" || (directView !== "personal" && !directView && (
+            allowedAdminTabs.has(directSection) || saved.tab === "admin" ||
+            document.body.dataset.idpSetupRequired === "true"
+        ))
+    ) ? "admin" : "personal";
     return {
-        tab: isAdmin && savedState.tab === "admin" ? "admin" : "personal",
-        adminTab: allowedAdminTabs.has(savedState.adminTab) ? savedState.adminTab : "domains",
-        init() {
-            if (document.body.dataset.idpSetupRequired === "true" && isAdmin && !savedState.tab) {
-                this.tab = "admin";
-                this.adminTab = "identity-providers";
+        tab: initialView,
+        adminTab: initialAdminTab,
+        saveNavigation(push = true) {
+            try { sessionStorage.setItem(stateKey, JSON.stringify({tab: this.tab, adminTab: this.adminTab})); }
+            catch (_error) { /* Session storage is optional. */ }
+            const url = new URL(window.location.href);
+            url.searchParams.set("view", this.tab);
+            if (this.tab === "admin") url.searchParams.set("section", this.adminTab);
+            else url.searchParams.delete("section");
+            const next = url.pathname + url.search + url.hash;
+            if (next !== window.location.pathname + window.location.search + window.location.hash) {
+                window.history[push ? "pushState" : "replaceState"]({}, "", next);
             }
-            this.$watch("tab", () => persistState(this));
-            this.$watch("adminTab", () => persistState(this));
-            persistState(this);
         },
-        emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
-        openAdmin() {
-            if (!isAdmin) return;
+        init() {
+            this.saveNavigation(false);
+            window.addEventListener("popstate", () => {
+                const url = new URL(window.location.href);
+                const view = url.searchParams.get("view");
+                const section = url.searchParams.get("section");
+                this.adminTab = allowedAdminTabs.has(section) ? section : this.adminTab;
+                this.tab = isAdmin && (view === "admin" || (!view && allowedAdminTabs.has(section)))
+                    ? "admin" : "personal";
+                try { sessionStorage.setItem(stateKey, JSON.stringify({tab: this.tab, adminTab: this.adminTab})); }
+                catch (_error) {}
+            });
+        },
+        setAdminTab(section) {
+            if (!isAdmin || !allowedAdminTabs.has(section)) return;
+            this.adminTab = section;
             this.tab = "admin";
+            this.saveNavigation();
         },
+        openPersonal() { this.tab = "personal"; this.saveNavigation(); },
+        openAdmin() { if (!isAdmin) return; this.tab = "admin"; this.saveNavigation(); },
+        emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
         confirmDomainDelete(domain) { this.emit("open-confirm", { domain, action: "delete" }); },
         confirmClearAdmin(targetId) { this.emit("open-confirm", { action: "clear-admin", targetId }); },
         previewUserSignature() { this.emit("open-preview", { html: document.getElementById("raw-html-editor")?.value || "" }); },
-        previewDomainSignature(domain) { this.emit("open-preview", { html: document.getElementById("domain-raw-html-editor")?.value || "", previewDomain: domain.domain_name }); },
         previewAdminSignature(email) { this.emit("open-preview", { html: document.getElementById("admin-raw-html-editor")?.value || "", previewEmail: email }); }
     };
 }
@@ -807,11 +817,6 @@ function identityProviderManager() { return {
                 async open(domainData) {
                     this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
                     await this.$nextTick();
-                    const rawEditor = document.getElementById('domain-raw-html-editor');
-                    if (rawEditor) rawEditor.value = domainData.template_html || "";
-                    domainRichEditor = await mountRichEditor('domain-rich-editor', 'domain-raw-html-editor');
-                    if (domainRichEditor) domainRichEditor.setData(domainData.template_html || "");
-                    checkAllLocks();
                 },
                 async openUsers() {
                     this.modalTab = 'users';
@@ -823,8 +828,7 @@ function identityProviderManager() { return {
                         allowOverrides: this.allowOverrides,
                         injectOnReplies: this.injectOnReplies,
                         trimWhitespace: this.trimWhitespace,
-                        stripDeviceSignatures: this.stripDeviceSignatures,
-                        html: document.getElementById('domain-raw-html-editor').value
+                        stripDeviceSignatures: this.stripDeviceSignatures
                     }}));
                     this.show = false;
                 },
@@ -865,14 +869,14 @@ function identityProviderManager() { return {
             if (res.ok) { notify("Domain registered!"); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Failed.", "error");
         });
         window.addEventListener('save-domain-settings', async (e) => {
-            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures, template_html: document.getElementById('domain-raw-html-editor').value }) });
+            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures }) });
             if (res.ok) { notify("Settings saved!"); window.dispatchEvent(new CustomEvent('domain-updated')); }
         });
         
         window.addEventListener('confirm-action', async (e) => {
             const { domain, action, targetId } = e.detail;
             if (action === 'toggle') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !domain.is_active, allow_overrides: domain.allow_overrides, inject_on_replies: domain.inject_on_replies, trim_whitespace: domain.trim_whitespace, strip_device_signatures: domain.strip_device_signatures, template_html: domain.template_html }) });
+                const res = await fetch(`/domains/${domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !domain.is_active, allow_overrides: domain.allow_overrides, inject_on_replies: domain.inject_on_replies, trim_whitespace: domain.trim_whitespace, strip_device_signatures: domain.strip_device_signatures }) });
                 if (res.ok) { notify("Status updated."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
             } else if (action === 'delete') {
                 const res = await fetch(`/domains/${domain.id}`, { method: 'DELETE' });
@@ -1199,6 +1203,16 @@ document.addEventListener("alpine:init", () => {
 });
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Lock background scrolling whenever a visible overlay is open.
+    const overlaySelectors = ".form-dialog, [x-data='domainSettingsModal'], [x-data='previewModal'], [x-data='sanitizerModal'], [x-data='addDomainModal'], [x-data='confirmModal']";
+    const active = node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== "hidden";
+    const updateOverlays = () => {
+        const nodes = [...document.querySelectorAll(overlaySelectors)];
+        document.body.classList.toggle("osw-overlay-open", nodes.some(active));
+        document.body.classList.toggle("osw-floating-dialog-open", nodes.some(node => node.matches(".form-dialog") && active(node)));
+    };
+    new MutationObserver(updateOverlays).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style", "class"] });
+    updateOverlays();
     const logoutButton = document.getElementById("logout-button");
     if (logoutButton) {
         logoutButton.addEventListener("click", () => {

@@ -319,7 +319,9 @@ class SignatureEngineService:
                     "A stored signature rule has an invalid action",
                 )
             else:
-                raw_template = domain_obj.template_html
+                # No matching rule means no signature. Retired domain master templates
+                # remain stored for backwards-compatible upgrades but are never selected.
+                return empty_result
 
         if not raw_template:
             return empty_result

@@ -181,7 +181,7 @@ class DomainUpdate(BaseModel):
     inject_on_replies: bool
     trim_whitespace: bool
     strip_device_signatures: bool
-    template_html: str = Field(max_length=65536)
+    template_html: Optional[str] = Field(default=None, max_length=65536)  # Retired, accepted for old clients only
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
     authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
@@ -961,33 +961,16 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
         if not domain_obj.is_active:
             lock_reason = "Signatures for your domain are currently disabled by the administrator."
         elif not domain_obj.allow_overrides:
-            lock_reason = "Custom overrides have been disabled for your domain. The master template will be used."
+            lock_reason = "Custom overrides are disabled. Rules and schedules determine the managed signature."
         else:
             can_edit = True
             lock_reason = ""
     
-    raw_template = sanitize_signature_html(
-        (domain_obj.template_html if domain_obj else None)
-        or "<p>No active domain template found for your email domain.</p>"
-    )
-    
-    try:
-        parsed_template = render_signature_template(raw_template, {
-            "first_name": first_name,
-            "last_name": last_name,
-            "title": title,
-            "phone": phone,
-            "email": email,
-            "domain_name": domain_part,
-        })
-    except TemplateError:
-        parsed_template = "<p>Signature template is invalid. Please contact an administrator.</p>"
-
     return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin,
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
-        "domain_template": parsed_template, "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
+        "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
         "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0
     })
 
@@ -1038,8 +1021,10 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
-    db_domain.template_html_source = domain_update.template_html
-    db_domain.template_html = sanitize_signature_html(domain_update.template_html)
+    # Legacy master-template data is retained for rollback, but no longer edited by the UI.
+    if domain_update.template_html is not None:
+        db_domain.template_html_source = domain_update.template_html
+        db_domain.template_html = sanitize_signature_html(domain_update.template_html)
     if "identity_provider_id" in domain_update.model_fields_set:
         if domain_update.identity_provider_id and db.get(IdentityProviderDB, domain_update.identity_provider_id) is None:
             raise HTTPException(status_code=422, detail="Identity provider not found")

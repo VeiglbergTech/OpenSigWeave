@@ -22,14 +22,23 @@
     overscroll-behavior: contain;
     box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
 }
-.form-dialog::before {
+body.osw-floating-dialog-open::before {
     content: "";
     position: fixed;
-    inset: -100vmax;
-    z-index: -1;
+    inset: 0;
+    z-index: 70;
     background: rgba(3, 7, 18, 0.78);
-    pointer-events: auto;
 }
+body.osw-overlay-open { overflow: hidden; }
+.form-dialog { overflow-x: hidden; max-width: calc(100vw - 2rem); }
+.form-dialog > * { min-width: 0; }
+.osw-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.osw-info-banner { background: #35241b !important; color: #fed7aa !important; border-color: #9a593c !important; }
+.osw-file-button:focus-within, .osw-file-button:hover { background: #45454f !important; }
+html, body { max-width: 100%; }
+main, section { min-width: 0; }
+.form-dialog input, .form-dialog textarea, .form-dialog select { max-width: 100%; }
+@media (max-width: 640px) { .form-dialog { width: calc(100vw - 2rem); max-height: calc(100dvh - 2rem); } }
 .form-dialog-wide { width: min(96vw, 72rem); }
 @media (max-width: 640px) {
     .form-dialog {
