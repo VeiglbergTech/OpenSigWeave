@@ -319,7 +319,7 @@ function identityProviderManager() { return {
                         }
                         const localImageUrl = new URL(data.url, window.location.origin);
                         if (localImageUrl.origin !== window.location.origin ||
-                            !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(localImageUrl.pathname)) {
+                            !/^\/signature-assets\/[a-f0-9]{64}\.(?:png|jpg|webp|gif)$/.test(localImageUrl.pathname)) {
                             throw new Error('The image server returned an invalid asset URL.');
                         }
                         signatureRichEditor.insertImage(localImageUrl.href);
