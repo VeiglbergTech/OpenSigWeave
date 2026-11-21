@@ -21,6 +21,11 @@ COMPATIBILITY_FILES = {
     # Adversarial Postfix tests intentionally inject retired values to ensure
     # client-controlled legacy selector headers are ignored and stripped.
     ".github/workflows/postfix-milter-compat.yml",
+    # Historical migration/release documentation must name retired modes so
+    # operators can identify and safely upgrade legacy installations.
+    "docs/UPGRADE.md",
+    "docs/RELEASE_NOTES_v2026.11.md",
+    "docs/ENGINE_SERVICE.md",
 }
 TEXT_SUFFIXES = {
     ".py", ".lua", ".js", ".cjs", ".html", ".md", ".yml", ".yaml",
