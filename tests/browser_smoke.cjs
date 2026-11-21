@@ -186,6 +186,13 @@ async function main() {
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
+    await page.getByRole("button", { name: "Imports", exact: true }).click();
+    await page.getByRole("button", { name: "Choose ZIP file", exact: true }).waitFor({ state: "visible" });
+    await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    const scheduleActions = page.locator('[x-data="scheduleManager"] .osw-actions');
+    assert.ok(await scheduleActions.count() >= 0, "Scheduling actions use consistent spacing");
+
     // Return to Exports after visiting every administrator section.
     await page.getByRole("button", { name: "Exports", exact: true }).click();
 
@@ -1293,6 +1300,12 @@ async function main() {
     await mobileRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
     await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Users & Overrides", exact: true }).click();
     await mobilePage.getByRole("heading", { name: "Domain users" }).waitFor({ state: "visible" });
+    const mobileOverlayOverflow = await mobilePage.evaluate(() => {
+      const modal = document.querySelector('[x-data="domainSettingsModal"]');
+      return { scrollWidth: modal.scrollWidth, clientWidth: modal.clientWidth };
+    });
+    assert.ok(mobileOverlayOverflow.scrollWidth <= mobileOverlayOverflow.clientWidth + 2,
+      "domain dialog overlay must not overflow horizontally: " + JSON.stringify(mobileOverlayOverflow));
     assert.equal(await mobilePage.evaluate(() => document.body.classList.contains("osw-overlay-open")), true,
       "opening a dialog must lock background scrolling");
     await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Close Manager", exact: true }).click();

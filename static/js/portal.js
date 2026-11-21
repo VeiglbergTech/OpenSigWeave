@@ -1101,6 +1101,9 @@ function adminImportManager() {
         preview: { can_apply: false, components: [], additions: {}, reusable: {}, conflicts: [], excluded: [] },
         importComplete: false,
         resultComponents: "",
+        openFilePicker() {
+            if (!this.busy) document.getElementById("admin-import-file")?.click();
+        },
         componentLabels: {
             signatures: "Signatures",
             domains: "Domains",
