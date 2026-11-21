@@ -127,7 +127,7 @@ def _without_underlined_links(html_content: str) -> str:
             return tag[:style.start(1)] + normalized + tag[style.end(1):]
         # nh3 appends rel at the end. Place style before it so the next
         # sanitization pass preserves the same attribute order.
-        rel = re.search(r'\\s+rel="[^"]*"', tag, re.I)
+        rel = re.search(r'\s+rel="[^"]*"', tag, re.I)
         if rel:
             return tag[:rel.start()] + ' style="text-decoration: none;"' + tag[rel.start():]
         return tag[:-1] + ' style="text-decoration: none;">'
