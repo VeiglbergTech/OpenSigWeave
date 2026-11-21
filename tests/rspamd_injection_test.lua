@@ -139,6 +139,96 @@ assert(occurrences == 2, 'quoted previous signature must not suppress new signat
 assert(reply.modified:find('OpenSigWeave=20Footer') < reply.modified:find('gmail_quote'),
   'signature must precede quoted history')
 
+-- SOGo HTML replies place the German attribution inside a div/p *before*
+-- the actual quoted block. Inserting directly before blockquote is too late.
+-- The quote contains an earlier signature to exercise repeated replies.
+local sogo_nested_content = '<html><body><div>test 4</div>'
+  .. '<div class="reply-attribution">Am Samstag, November 21, 2026 16:20 CET, schrieb '
+  .. '<a href="mailto:admin@dev.veiglbergtech.com">admin@dev.veiglbergtech.com</a>:</div>'
+  .. '<blockquote type="cite"><p>hi martin</p><p>test</p>'
+  .. '<div>Am Samstag, November 21, 2026 16:20 CET, schrieb Martin:</div>'
+  .. '<blockquote type="cite"><p>test</p><div>' .. response.html
+  .. '</div></blockquote></blockquote></body></html>'
+local sogo=run_and_save(dir..'/flat_sogo_nested_reply.eml',
+  'text/html; charset=utf-8', '7bit', sogo_nested_content, sogo_nested_content, true, '', true)
+local sogo_new_signature = sogo.modified:find('OpenSigWeave=20Footer', 1, true)
+local sogo_attribution = sogo.modified:find('Am=20Samstag', 1, true)
+assert(sogo_new_signature and sogo_attribution and sogo_new_signature < sogo_attribution,
+  'SOGo signature must precede the first German attribution, not just blockquote')
+local _, sogo_count = sogo.modified:gsub('OpenSigWeave=20Footer', '')
+assert(sogo_count == 2, 'nested quote must retain its original signature exactly once')
+
+local sogo_paragraph_content = '<html><body><p>New response</p>'
+  .. '<p>Am Samstag, November 21, 2026 16:20 CET, schrieb admin@dev.veiglbergtech.com:</p>'
+  .. '<blockquote type="cite"><p>Original response</p></blockquote></body></html>'
+local sogo_paragraph=run_and_save(dir..'/flat_sogo_paragraph_reply.eml',
+  'text/html; charset=utf-8', '7bit', sogo_paragraph_content, sogo_paragraph_content, true, '', true)
+assert(sogo_paragraph.modified:find('OpenSigWeave=20Footer', 1, true)
+  < sogo_paragraph.modified:find('Am=20Samstag', 1, true),
+  'paragraph-wrapped SOGo quote introduction is quoted history too')
+
+-- Exercise the actual multipart/alternative callback path used by SOGo in
+-- Mailcow, not just the flat HTML path. Both alternatives must place the
+-- newly selected signature before the first German quoted attribution.
+local multipart_plain = 'test 4\r\n\r\n'
+  .. 'Am Samstag, November 21, 2026 16:20 CET, schrieb admin@dev.veiglbergtech.com:\r\n'
+  .. '\r\n> hi martin\r\n> test\r\n> Am Samstag, November 21, 2026 16:20 CET, schrieb Martin:\r\n'
+  .. '> > test\r\n> > OpenSigWeave Footer Contact (https://example.test/contact)'
+local multipart_html = sogo_nested_content
+local boundary = 'sogo-alt'
+local multipart_task, multipart_result = task_case(
+  'multipart/alternative; boundary="' .. boundary .. '"', '7bit', '', '', false, '', true)
+
+local function mock_mime_part(major, minor, part_headers, content)
+  local p = {}
+  function p:get_type() return major, minor end
+  function p:is_multipart() return major == 'multipart' end
+  function p:is_message() return false end
+  function p:is_attachment() return false end
+  function p:is_text() return major == 'text' end
+  function p:get_boundary() return boundary end
+  function p:get_enclosing_boundary() return boundary end
+  function p:get_raw_headers() return part_headers or '' end
+  function p:get_raw_content() return content or '' end
+  function p:get_headers()
+    if major ~= 'text' then return {} end
+    local typ = 'text/' .. minor .. '; charset=utf-8'
+    return {
+      {name='Content-Type', value=typ, raw='Content-Type: ' .. typ},
+      {name='Content-Transfer-Encoding', value='7bit', raw='Content-Transfer-Encoding: 7bit'},
+    }
+  end
+  function p:get_text()
+    return {
+      is_html=function() return minor == 'html' end,
+      get_content=function(_, format)
+        assert(format == 'raw_utf')
+        return content
+      end,
+    }
+  end
+  return p
+end
+
+local plain_headers = 'Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n'
+local html_headers = 'Content-Type: text/html; charset=utf-8\r\nContent-Transfer-Encoding: 7bit\r\n'
+local root_part = mock_mime_part('multipart', 'alternative')
+local plain_part = mock_mime_part('text', 'plain', plain_headers, multipart_plain)
+local html_part = mock_mime_part('text', 'html', html_headers, multipart_html)
+multipart_task.get_parts=function() return {root_part, plain_part, html_part} end
+multipart_task.get_text_parts=function() return {plain_part:get_text(), html_part:get_text()} end
+multipart_task.get_rawbody=function()
+  return '--' .. boundary .. '\r\n' .. plain_headers .. '\r\n' .. multipart_plain
+    .. '\r\n--' .. boundary .. '\r\n' .. html_headers .. '\r\n' .. multipart_html
+    .. '\r\n--' .. boundary .. '--\r\n'
+end
+status=200
+assert(callback(multipart_task))
+assert(multipart_result.modified, 'multipart SOGo reply was not rewritten')
+local multipart_fixture=assert(io.open(dir..'/multipart_sogo_nested_reply.eml','wb'))
+multipart_fixture:write(multipart_result.modified)
+multipart_fixture:close()
+
 local forward_content = '<html><body>Here is the requested message'
   .. '<div class="gmail_quote">----- Original Message -----</div></body></html>'
 response.inject_on_replies = false
