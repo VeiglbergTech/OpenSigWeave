@@ -6,6 +6,7 @@ local rspamd_util = require "rspamd_util"
 -- Extend module search path without replacing Rspamd's own library paths.
 package.path = package.path .. ";/etc/rspamd/lua/?.lua"
 local mime_rewriter = require "opensigweave_mime"
+local cid_rewriter = require "opensigweave_cid"
 
 -- ==========================================
 -- OPENSIGWEAVE CONFIGURATION
@@ -16,7 +17,13 @@ local module_options = rspamd_config:get_all_opt("opensigweave") or {}
 local ENGINE_API_KEY = module_options.engine_api_key
 local API_URL_BASE = module_options.api_url
 local REQUEST_TIMEOUT = tonumber(module_options.timeout) or 5.0
-local MAX_RESPONSE_SIZE = tonumber(module_options.max_response_size) or 65536
+local INLINE_IMAGE_MODE = module_options.inline_images or "external"
+if INLINE_IMAGE_MODE ~= "external" and INLINE_IMAGE_MODE ~= "cid" then
+    rspamd_logger.errx(rspamd_config, "OpenSigWeave: invalid inline_images option; adapter disabled")
+    return
+end
+local MAX_RESPONSE_SIZE = tonumber(module_options.max_response_size)
+    or (INLINE_IMAGE_MODE == "cid" and 6291456 or 65536)
 -- Optional policy; Postfix must also use an appropriate Milter failure action.
 local FAILURE_POLICY = module_options.failure_policy or "fail_open"
 if FAILURE_POLICY ~= "fail_open" and FAILURE_POLICY ~= "tempfail" then
@@ -36,7 +43,8 @@ end
 
 -- Keep remote calls bounded even if an invalid value is supplied in configuration.
 REQUEST_TIMEOUT = math.min(math.max(REQUEST_TIMEOUT, 0.5), 15.0)
-MAX_RESPONSE_SIZE = math.min(math.max(math.floor(MAX_RESPONSE_SIZE), 1024), 1048576)
+MAX_RESPONSE_SIZE = math.min(math.max(math.floor(MAX_RESPONSE_SIZE), 1024),
+    INLINE_IMAGE_MODE == "cid" and 8388608 or 1048576)
 
 if type(ENGINE_API_KEY) ~= "string" or #ENGINE_API_KEY < 32 or ENGINE_API_KEY:match("^[Rr][Ee][Pp][Ll][Aa][Cc][Ee]_")
     or type(API_URL_BASE) ~= "string" or not API_URL_BASE:match("^https://") then
@@ -254,7 +262,19 @@ local function inject_signature(task)
         technical_failure(task, reason)
     end
 
+    local inline_assets = nil
+    local cid_related_type = nil
     local function set_checked_message(message)
+        if INLINE_IMAGE_MODE == "cid" and inline_assets and #inline_assets > 0 then
+            local ok_cid, wrapped, related_type = pcall(
+                cid_rewriter.wrap, task, message, inline_assets)
+            if not ok_cid or not wrapped then
+                technical_failure(task, "CID_MIME_REWRITE_FAILED")
+                return false
+            end
+            message = wrapped
+            cid_related_type = related_type
+        end
         local ok, applied = pcall(task.set_message, task, message)
         if not ok or applied ~= true then
             technical_failure(task, "MESSAGE_MUTATION_FAILED")
@@ -273,6 +293,11 @@ local function inject_signature(task)
         local ok_data, data = pcall(parser.get_object, parser)
         if not ok_data or type(data) ~= "table" then fail_api("ENGINE_INVALID_RESPONSE"); return end
         local html_sig = data.html
+        if INLINE_IMAGE_MODE == "cid" and data.inline_assets ~= nil
+            and type(data.inline_assets) ~= "table" then
+            fail_api("ENGINE_INVALID_INLINE_IMAGES")
+            return
+        end
         if type(html_sig) ~= "string" or type(data.inject_on_replies) ~= "boolean"
             or (data.trim_whitespace ~= nil and type(data.trim_whitespace) ~= "boolean")
             or (data.strip_device_signatures ~= nil and type(data.strip_device_signatures) ~= "boolean") then
@@ -280,6 +305,10 @@ local function inject_signature(task)
             return
         end
 
+        if INLINE_IMAGE_MODE == "cid" then
+            inline_assets = data.inline_assets or {}
+            if #inline_assets > 6 then fail_api("ENGINE_INVALID_INLINE_IMAGES"); return end
+        end
         local inject_on_replies = data.inject_on_replies
         local trim_whitespace = data.trim_whitespace
         local strip_device_signatures = data.strip_device_signatures
@@ -623,7 +652,7 @@ local function inject_signature(task)
                     ['Content-Transfer-Encoding'] = 0
                 },
                 add_headers = {
-                    ['Content-Type'] = { value = 'multipart/alternative; boundary="' .. boundary .. '"', order = 1 },
+                    ['Content-Type'] = { value = cid_related_type or ('multipart/alternative; boundary="' .. boundary .. '"'), order = 1 },
                     ['Content-Transfer-Encoding'] = { value = '7bit', order = 1 }
                 }
             })
@@ -656,8 +685,8 @@ local function inject_signature(task)
             local reply_ok = pcall(task.set_milter_reply, task, {
                 remove_headers = { ['Content-Type'] = 0, ['Content-Transfer-Encoding'] = 0 },
                 add_headers = {
-                    ['Content-Type'] = { value = 'text/html; charset=utf-8', order = 1 },
-                    ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 }
+                    ['Content-Type'] = { value = cid_related_type or 'text/html; charset=utf-8', order = 1 },
+                    ['Content-Transfer-Encoding'] = { value = cid_related_type and '7bit' or 'quoted-printable', order = 1 }
                 }
             })
             if not reply_ok then technical_failure(task, "MILTER_REPLY_FAILED") end
@@ -689,6 +718,9 @@ local function inject_signature(task)
     end
 
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
+    if INLINE_IMAGE_MODE == "cid" then
+        request_headers['X-OpenSigWeave-Inline-Images'] = "cid"
+    end
     if signature_marker then
         request_headers['X-OpenSigWeave-Signature'] = signature_marker.name or ""
         request_headers['X-OpenSigWeave-Signature-Code'] = signature_marker.code or ""
