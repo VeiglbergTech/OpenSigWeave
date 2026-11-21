@@ -280,6 +280,7 @@ local function inject_signature(task)
             technical_failure(task, "MESSAGE_MUTATION_FAILED")
             return false
         end
+        rspamd_logger.infox(task, "OpenSigWeave processing_success adapter=rspamd")
         return true
     end
 
