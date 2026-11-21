@@ -76,6 +76,51 @@ class SignatureRuleTests(unittest.TestCase):
         )
         self.assertEqual(evaluate_rules([rule], self.context), rule)
 
+    def test_sender_and_domain_not_equals_are_case_insensitive(self):
+        for kind, equal_value, different_value in (
+            ("sender_not_equals", "ALICE@example.org", "bob@example.org"),
+            ("domain_not_equals", "EXAMPLE.ORG", "example.net"),
+        ):
+            with self.subTest(kind=kind):
+                equal_rule = SignatureRule("equal", 10, (RuleCondition(kind, equal_value),), "NONE")
+                other_rule = SignatureRule("other", 10, (RuleCondition(kind, different_value),), "NONE")
+                self.assertIsNone(evaluate_rules([equal_rule], self.context))
+                self.assertEqual(evaluate_rules([other_rule], self.context), other_rule)
+
+    def test_claim_and_attribute_not_equals_handle_lists_and_missing_values(self):
+        cases = (
+            ("claim_not_equals", "department", "sales", "engineering"),
+            ("attribute_not_equals", "departments", "OPERATIONS", "engineering"),
+            ("attribute_not_equals", "title", "account manager", "Developer"),
+        )
+        for kind, key, equal_value, different_value in cases:
+            with self.subTest(kind=kind, key=key):
+                equal_rule = SignatureRule("equal", 10, (RuleCondition(kind, equal_value, key=key),), "NONE")
+                different_rule = SignatureRule("different", 10, (RuleCondition(kind, different_value, key=key),), "NONE")
+                missing_rule = SignatureRule("missing", 10, (RuleCondition(kind, different_value, key="absent"),), "NONE")
+                self.assertIsNone(evaluate_rules([equal_rule], self.context))
+                self.assertEqual(evaluate_rules([different_rule], self.context), different_rule)
+                self.assertIsNone(evaluate_rules([missing_rule], self.context))
+
+        for missing in (None, [], [None], "", ["", None], ["  "]):
+            with self.subTest(missing=missing):
+                context = RuleContext(sender="a@test.org", domain="test.org", attributes={"departments": missing})
+                rule = SignatureRule("empty", 10, (RuleCondition("attribute_not_equals", "sales", key="departments"),), "NONE")
+                self.assertIsNone(evaluate_rules([rule], context))
+
+    def test_negative_condition_preserves_and_and_priority(self):
+        fallback = SignatureRule("fallback", 1, (), "SIGNATURE")
+        conditional = SignatureRule("conditional", 20, (
+            RuleCondition("domain_equals", "example.org"),
+            RuleCondition("sender_not_equals", "bob@example.org"),
+        ), "GROUP")
+        self.assertEqual(evaluate_rules([fallback, conditional], self.context), conditional)
+        failed = SignatureRule("failed", 30, (
+            RuleCondition("domain_equals", "example.org"),
+            RuleCondition("sender_not_equals", "alice@example.org"),
+        ), "NONE")
+        self.assertEqual(evaluate_rules([fallback, failed], self.context), fallback)
+
     def test_unknown_condition_is_rejected(self):
         invalid = SignatureRule(
             "invalid",

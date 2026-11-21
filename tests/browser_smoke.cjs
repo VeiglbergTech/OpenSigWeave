@@ -987,14 +987,21 @@ async function main() {
     await rulesPanel.getByLabel("Priority").fill("25");
     await rulesPanel.getByRole("button", { name: "+ Add condition" }).click();
     const conditionRows = rulesPanel.locator("div.grid.grid-cols-1.md\\:grid-cols-12");
+    await conditionRows.last().locator('select[x-model="condition.kind"]').selectOption("sender_not_equals");
     await conditionRows.last().locator('input[placeholder="Value"]').fill("example.test");
     await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="ruleManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Rule"));
       return row && row.children[1].textContent.trim() === "25"
+        && row.children[3].textContent.includes("Sender not equal to")
         && row.children[3].textContent.includes("example.test");
     });
+
+    await createdRuleRow.getByRole("button", { name: "Edit", exact: true }).click();
+    assert.equal(await conditionRows.last().locator('select[x-model="condition.kind"]').inputValue(), "sender_not_equals",
+      "negative comparison must remain selected after saving and reopening a rule");
+    await ruleDialog.getByRole("button", { name: "Cancel", exact: true }).click();
 
     checkpoint("rule create/update: complete");
     // Return to the group tab before interacting with its hidden Alpine panel.

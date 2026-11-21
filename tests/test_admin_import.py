@@ -148,6 +148,47 @@ class AdminImportTests(unittest.TestCase):
             target_engine.dispose()
             target_dir.cleanup()
 
+    def test_negative_rule_conditions_can_be_exported_and_imported(self):
+        self.make_export()
+        signature = self.db.query(SignatureDB).one()
+        rule = SignatureRuleDB(
+            id=uuid.uuid4().hex, name="Negative rule", priority=15,
+            action_mode="SIGNATURE", signature_id=signature.id, is_enabled=True,
+        )
+        self.db.add(rule)
+        self.db.flush()
+        from models import SignatureRuleConditionDB
+        conditions = (
+            ("sender_not_equals", "", "blocked@example.org"),
+            ("domain_not_equals", "", "excluded.org"),
+            ("claim_not_equals", "department", "Sales"),
+            ("attribute_not_equals", "office", "Berlin"),
+        )
+        self.db.add_all([
+            SignatureRuleConditionDB(rule_id=rule.id, kind=kind, key=key, value=value)
+            for kind, key, value in conditions
+        ])
+        self.db.commit()
+        archive = build_admin_export(self.db, self.store, ["domains", "signatures", "rules"])[0]
+        target_dir = tempfile.TemporaryDirectory()
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        TargetSession = sessionmaker(bind=engine, expire_on_commit=False)
+        target = TargetSession()
+        try:
+            store = SignatureFileStore(target_dir.name)
+            plan = inspect_admin_import(target, store, archive)
+            self.assertTrue(plan["can_apply"], plan["conflicts"])
+            apply_admin_import(target, store, archive)
+            imported = target.query(SignatureRuleDB).one()
+            self.assertEqual(imported.name, "Negative rule")
+            actual = target.query(SignatureRuleConditionDB).filter_by(rule_id=imported.id).order_by(SignatureRuleConditionDB.id).all()
+            self.assertEqual([(item.kind, item.key, item.value) for item in actual], list(conditions))
+        finally:
+            target.close()
+            engine.dispose()
+            target_dir.cleanup()
+
     def test_v1_direct_rule_is_normalized_without_restoring_mode_runtime(self):
         self.make_export()
         signature = self.db.query(SignatureDB).filter_by(name="Source signature").one()

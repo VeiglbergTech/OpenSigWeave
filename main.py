@@ -223,7 +223,13 @@ class SignatureVersionCreateRequest(NoLegacySignatureSelectionRequest):
     html_content: str = Field(min_length=1, max_length=65536)
 
 class SignatureRuleConditionRequest(BaseModel):
-    kind: Literal["sender_equals", "domain_equals", "group_contains", "claim_equals", "attribute_equals"]
+    kind: Literal[
+        "sender_equals", "sender_not_equals",
+        "domain_equals", "domain_not_equals",
+        "group_contains",
+        "claim_equals", "claim_not_equals",
+        "attribute_equals", "attribute_not_equals",
+    ]
     key: str = Field(default="", max_length=255)
     value: str = Field(min_length=1, max_length=4096)
 

@@ -514,7 +514,13 @@ def inspect_admin_import(
                 for condition in row["conditions"]:
                     condition = _object(condition, "rule condition")
                     kind = _string(condition.get("kind"), "condition kind", 64)
-                    if kind not in {"sender_equals", "domain_equals", "group_contains", "claim_equals", "attribute_equals"}:
+                    if kind not in {
+                        "sender_equals", "sender_not_equals",
+                        "domain_equals", "domain_not_equals",
+                        "group_contains",
+                        "claim_equals", "claim_not_equals",
+                        "attribute_equals", "attribute_not_equals",
+                    }:
                         conflicts.append(f"Rule {name} contains an unsupported condition")
                     _string(condition.get("key"), "condition key", 255, empty=True)
                     _string(condition.get("value"), "condition value", 4096)

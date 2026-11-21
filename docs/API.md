@@ -147,11 +147,13 @@ Rules are evaluated in descending priority order, with a stable ID tie-breaker. 
 
 Supported condition kinds:
 
-- `sender_equals`
-- `domain_equals`
+- `sender_equals` / `sender_not_equals`
+- `domain_equals` / `domain_not_equals`
 - `group_contains`
-- `claim_equals`
-- `attribute_equals`
+- `claim_equals` / `claim_not_equals`
+- `attribute_equals` / `attribute_not_equals`
+
+Comparisons are case-insensitive. Negative attribute/claim comparisons match only when a value is present and **none** of its values equal the expected value (including multi-valued attributes). Missing or entirely empty attributes/claims do not match negative comparisons. Existing positive comparisons and rule priority/AND semantics are unchanged.
 
 `claim_equals` currently evaluates selected Authentik user fields (`username`, `email`, `name`, `is_active`, `uid`, `path`, `type`). `attribute_equals` evaluates custom Authentik attributes. Rule actions are `SIGNATURE`, `GROUP` or `NONE`. `SIGNATURE` requires a signature target, `GROUP` requires a group target, and `NONE` deliberately suppresses injection.
 
