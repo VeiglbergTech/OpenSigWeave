@@ -5,4 +5,6 @@ opensigweave {
     engine_api_key = "REPLACE_WITH_THE_SAME_RANDOM_ENGINE_API_KEY_AS_BACKEND";
     timeout = 5.0;
     max_response_size = 65536;
+    # Backwards compatible default; experimental strict rejection is opt-in.
+    failure_policy = "fail_open";
 }
