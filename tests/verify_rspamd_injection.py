@@ -31,6 +31,24 @@ assert already.get_content().count("OpenSigWeave Footer") == 1
 reply = read("flat_reply.eml")
 assert reply.get_content().count("OpenSigWeave Footer") == 2
 assert reply.get_content().index("OpenSigWeave Footer") < reply.get_content().index("gmail_quote")
+# SOGo's German attribution header is itself quoted history, even when a
+# previous message contains a rendered OpenSigWeave signature.
+sogo = read("flat_sogo_nested_reply.eml")
+sogo_html = sogo.get_content()
+attribution = "Am Samstag, November 21, 2026 16:20 CET, schrieb"
+assert sogo_html.count("OpenSigWeave Footer") == 2, "quoted signature lost or duplicated"
+assert sogo_html.index("test 4") < sogo_html.index("OpenSigWeave Footer") < sogo_html.index(attribution), (
+    "new signature inserted after SOGo quote attribution instead of before it"
+)
+assert sogo_html.index(attribution) < sogo_html.index("hi martin"), "quoted reply was damaged"
+
+sogo_paragraph = read("flat_sogo_paragraph_reply.eml")
+paragraph_html = sogo_paragraph.get_content()
+assert paragraph_html.count("OpenSigWeave Footer") == 1
+assert paragraph_html.index("OpenSigWeave Footer") < paragraph_html.index(attribution), (
+    "paragraph-wrapped SOGo attribution must remain behind the new signature"
+)
+
 forward = read("flat_forward.eml")
 assert forward.get_content().index("OpenSigWeave Footer") < forward.get_content().index("gmail_quote")
 assert forward.get_content().count("OpenSigWeave Footer") == 1
