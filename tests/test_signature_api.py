@@ -277,6 +277,62 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertEqual(engine_request.signature_name, "Sales")
         self.assertEqual(engine_request.signature_code, "a1b2")
 
+    def test_engine_route_cid_mode_embeds_only_verified_local_images(self):
+        png = bytes.fromhex("89504e470d0a1a0a") + b"Test CID image"
+        filename = main.signature_file_store.write_image(png, "image/png")
+        image_url = "https://signature.example.org/signature-assets/" + filename
+        result = SignatureEngineResult(
+            '<p>Signature <img src="' + image_url + '"></p>',
+            True, False, True
+        )
+        response = Response()
+        with (
+            patch.object(main, "ENGINE_API_KEY", "engine-secret"),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(return_value=result)
+            ) as engine,
+        ):
+            payload = asyncio.run(main.get_engine_signature(
+                "sender@example.org", response, "engine-secret",
+                None, None, self.db, "cid"
+            ))
+        self.assertEqual(len(payload["inline_assets"]), 1)
+        self.assertIn("cid:osw-", payload["html"])
+        self.assertNotIn(image_url, payload["html"])
+        self.assertEqual(base64.b64decode(payload["inline_assets"][0]["base64"]), png)
+        self.assertFalse(engine.await_args.kwargs["commit_selection"])
+
+    def test_engine_route_cid_mode_rejects_unmanaged_remote_images(self):
+        result = SignatureEngineResult(
+            '<p><img src="https://untrusted.example.org/hosted.png"></p>',
+            True, True, False
+        )
+        with (
+            patch.object(main, "ENGINE_API_KEY", "engine-secret"),
+            patch.object(
+                main, "resolve_signature_engine",
+                new=AsyncMock(return_value=result)
+            ),
+        ):
+            with self.assertRaises(HTTPException) as raised:
+                asyncio.run(main.get_engine_signature(
+                    "sender@example.org", Response(), "engine-secret",
+                    None, None, self.db, "cid"
+                ))
+        self.assertEqual(raised.exception.status_code, 422)
+        self.assertNotIn("untrusted.example.org", str(raised.exception.detail))
+
+    def test_remote_image_import_is_admin_only(self):
+        body = main.ImageUrlImportRequest(url="https://source.example.org/logo.png")
+        with patch.object(main, "import_image_from_url", return_value="a" * 64 + ".png") as importer:
+            with self.assertRaises(HTTPException) as raised:
+                main.import_signature_asset_url(self.user_request, body)
+            self.assertEqual(raised.exception.status_code, 403)
+            response = main.import_signature_asset_url(self.admin_request, body)
+        self.assertEqual(response, {"url": "/signature-assets/" + "a" * 64 + ".png"})
+        importer.assert_called_once_with(main.signature_file_store, body.url)
+
     def test_engine_route_maps_service_errors_to_stable_http_statuses(self):
         cases = (
             ("INVALID_TEMPLATE", "Invalid signature template", 422),
