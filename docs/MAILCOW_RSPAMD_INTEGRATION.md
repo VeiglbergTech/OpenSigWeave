@@ -13,6 +13,7 @@ cd /opt/mailcow-dockerized
 install -d -m 0755 data/conf/rspamd/plugins.d data/conf/rspamd/lua
 install -m 0644 /path/to/OpenSigWeave/rspamd/opensigweave.lua data/conf/rspamd/plugins.d/opensigweave.lua
 install -m 0644 /path/to/OpenSigWeave/rspamd/opensigweave_mime.lua data/conf/rspamd/lua/opensigweave_mime.lua
+install -m 0644 /path/to/OpenSigWeave/rspamd/opensigweave_cid.lua data/conf/rspamd/lua/opensigweave_cid.lua
 ```
 
 Add **one** `opensigweave` section to `data/conf/rspamd/rspamd.conf.local` (edit an existing section rather than duplicating it):
@@ -117,3 +118,26 @@ docker compose exec postfix-mailcow postconf -P | grep -E '(^submission/|^smtps/
 If either authenticated submission service has an override such as empty `smtpd_milters`, global settings do not protect it. Test and configure the actual SMTP entrypoint to call Rspamd with temporary failure on Milter unavailability. Do not change the inbound port-25 policy blindly. In an **isolated test mailbox/domain**, induce HTTP 401/422/503, failed TLS, timeouts, invalid JSON, lost OpenSigWeave database, Rspamd shutdown, and Postfix-to-Milter disconnection. Capture the actual SMTP exchange: there must be **no `250 queued`** for signature-required mail after the failure, then a single successful injection after recovery. Test SOGo, Outlook, Thunderbird, DKIM and attachment hashes. Clients may show generic retry errors rather than Rspamd's text.
 
 The independent durable, rate-limited support-alert queue, recovery notices and optional out-of-band end-user notification are **not yet implemented**. Full Mailcow SMTP end-to-end acceptance has **not** occurred. Issue #14 remains open until these requirements are met; do not activate the experimental option globally in production.
+
+## Opt-in CID signature images (issue #8, experimental)
+
+The Rspamd adapter supports two modes:
+- `inline_images = "external"` (default): existing externally linked images, no change to message serialization.
+- `inline_images = "cid"`: API uses the authenticated `X-OpenSigWeave-Inline-Images: cid` request header and sends locally stored, validated signature images as bounded base64 payloads. The adapter embeds these directly as `Content-Disposition: inline` MIME parts, assigns each a stable content-addressed `Content-ID`, rewrites the signature HTML to use `cid:` references, and wraps the existing message into `multipart/related` without changing original MIME leaves. It does not download unknown remote URLs at sending time.
+
+For a **disposable test domain**, configure:
+
+```ucl
+opensigweave {
+    api_url = "https://signature.example.org/api/v1/engine/signatures/";
+    engine_api_key = "REPLACE_WITH_DISTINCT_RANDOM_ENGINE_KEY_AT_LEAST_32_CHARS";
+    timeout = 5.0;
+    inline_images = "cid";
+    max_response_size = 6291456;
+    failure_policy = "tempfail";
+}
+```
+
+Install `opensigweave_cid.lua` alongside `opensigweave_mime.lua`. Only images already in the managed local asset store are allowed. Upload files from the editor or choose **Load from URL**, which performs one pinned-DNS, verified HTTPS import with SSRF protections and no redirects; subsequent sending is independent of the image source server. The backend limits each image to 2 MiB, at most six distinct images and 4 MiB combined. The adapter enforces its own size/MIME limits. Unknown external signature images are rejected by the inline-image API rather than quietly left as external links.
+
+**Compatibility gate:** Test flat HTML and text, nested `multipart/alternative` / `multipart/related` / `multipart/mixed`, replies, forwards, image collisions, current attachments and original inline images in actual Mailcow/Rspamd. Verify that `Content-Type` and `Content-Transfer-Encoding` reflect the wrapped message in the delivered raw EML, that DKIM still validates, that S/MIME/PGP exclusions remain unchanged, and that SOGo/Outlook/Thunderbird all render the CID attachments without needing the OpenSigWeave public URL. Offline Lua/Python MIME fixture tests alone are not proof of those live requirements. Other mailserver adapters still need CID support, so issue #8 remains open until platform and client acceptance tests pass.

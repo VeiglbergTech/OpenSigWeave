@@ -7,4 +7,6 @@ opensigweave {
     max_response_size = 65536;
     # Backwards compatible default; experimental strict rejection is opt-in.
     failure_policy = "fail_open";
+    # Default external links. Experimental CID images require matching MIME helper.
+    inline_images = "external";
 }
