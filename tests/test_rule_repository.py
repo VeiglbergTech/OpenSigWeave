@@ -98,7 +98,8 @@ class RuleRepositoryTests(unittest.TestCase):
         ))
         self.session.commit()
         rules = load_signature_rules(self.session)
-        self.assertIn("attribute_not_equals", [c.kind for c in rules[0].conditions])
+        sales_rule = next(rule for rule in rules if rule.id == "a-sales")
+        self.assertIn("attribute_not_equals", [c.kind for c in sales_rule.conditions])
         context = RuleContext(
             sender="alice@example.org", domain="example.org", groups=frozenset({"Sales"}),
             attributes={"department": "Sales", "office": "Munich"},
