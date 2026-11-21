@@ -59,6 +59,7 @@ from core.branding import (
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
+from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
@@ -1513,6 +1514,21 @@ async def upload_signature_asset(request: Request):
     try:
         filename = signature_file_store.write_image(await request.body(), content_type)
     except (SignatureStorageError, TypeError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return {"url": f"/signature-assets/{filename}"}
+
+
+class ImageUrlImportRequest(BaseModel):
+    url: str = Field(min_length=12, max_length=2048)
+
+
+@app.post("/api/admin/signature-assets/import-url", status_code=201)
+def import_signature_asset_url(request: Request, payload: ImageUrlImportRequest):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        filename = import_image_from_url(signature_file_store, payload.url)
+    except SignatureImageImportError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"url": f"/signature-assets/{filename}"}
 
