@@ -17,6 +17,22 @@ local ENGINE_API_KEY = module_options.engine_api_key
 local API_URL_BASE = module_options.api_url
 local REQUEST_TIMEOUT = tonumber(module_options.timeout) or 5.0
 local MAX_RESPONSE_SIZE = tonumber(module_options.max_response_size) or 65536
+-- Optional policy; Postfix must also use an appropriate Milter failure action.
+local FAILURE_POLICY = module_options.failure_policy or "fail_open"
+if FAILURE_POLICY ~= "fail_open" and FAILURE_POLICY ~= "tempfail" then
+    rspamd_logger.errx(rspamd_config, "OpenSigWeave: invalid failure_policy; adapter disabled")
+    return
+end
+local function technical_failure(task, reason)
+    local failure_id = rspamd_util.random_hex(8)
+    rspamd_logger.errx(task, "OpenSigWeave failure_id=%s reason=%s policy=%s",
+        failure_id, reason, FAILURE_POLICY)
+    if FAILURE_POLICY == "tempfail" then
+        task:set_pre_result("soft reject",
+            "OpenSigWeave: Signatur konnte nicht eingefuegt werden; bitte spaeter erneut versuchen. Fehler-ID: "
+                .. failure_id, "opensigweave", nil, 3)
+    end
+end
 
 -- Keep remote calls bounded even if an invalid value is supplied in configuration.
 REQUEST_TIMEOUT = math.min(math.max(REQUEST_TIMEOUT, 0.5), 15.0)
@@ -233,22 +249,37 @@ local function inject_signature(task)
     end
 
 
+    local function fail_api(reason)
+        if FAILURE_POLICY == "fail_open" then remove_text_marker_from_message() end
+        technical_failure(task, reason)
+    end
+
+    local function set_checked_message(message)
+        local ok, applied = pcall(task.set_message, task, message)
+        if not ok or applied ~= true then
+            technical_failure(task, "MESSAGE_MUTATION_FAILED")
+            return false
+        end
+        return true
+    end
+
     local function http_callback(err, code, body, headers)
-        if err or code ~= 200 then
-            remove_text_marker_from_message()
-            rspamd_logger.errx(task, "OpenSigWeave: API error (%s)", err or code)
+        if err or code ~= 200 then fail_api("ENGINE_HTTP_FAILURE"); return end
+        if type(body) ~= "string" then fail_api("ENGINE_INVALID_RESPONSE"); return end
+        local ok_parser, parser = pcall(ucl.parser)
+        if not ok_parser or not parser then fail_api("ENGINE_INVALID_RESPONSE"); return end
+        local ok_parse, parsed = pcall(parser.parse_string, parser, body)
+        if not ok_parse or not parsed then fail_api("ENGINE_INVALID_RESPONSE"); return end
+        local ok_data, data = pcall(parser.get_object, parser)
+        if not ok_data or type(data) ~= "table" then fail_api("ENGINE_INVALID_RESPONSE"); return end
+        local html_sig = data.html
+        if type(html_sig) ~= "string" or type(data.inject_on_replies) ~= "boolean"
+            or (data.trim_whitespace ~= nil and type(data.trim_whitespace) ~= "boolean")
+            or (data.strip_device_signatures ~= nil and type(data.strip_device_signatures) ~= "boolean") then
+            fail_api("ENGINE_INVALID_RESPONSE")
             return
         end
 
-        local parser = ucl.parser()
-        local res, ucl_err = parser:parse_string(body)
-        if not res then remove_text_marker_from_message(); return end
-        
-        local data = parser:get_object()
-        if type(data) ~= "table" then remove_text_marker_from_message(); return end
-        local html_sig = data.html
-        if type(html_sig) ~= "string" then remove_text_marker_from_message(); return end
-        
         local inject_on_replies = data.inject_on_replies
         local trim_whitespace = data.trim_whitespace
         local strip_device_signatures = data.strip_device_signatures
@@ -515,7 +546,7 @@ local function inject_signature(task)
             
             local decoded = decoded_flat_body(false)
             if not decoded then
-                rspamd_logger.warnx(task, "OpenSigWeave: flat text part cannot be decoded")
+                technical_failure(task, "FLAT_TEXT_DECODE_FAILED")
                 return
             end
 
@@ -584,9 +615,9 @@ local function inject_signature(task)
             new_headers_str = new_headers_str:gsub("[\r\n]+$", "")
             
             local full_msg = new_headers_str .. "\r\n\r\n" .. new_multipart_body
-            task:set_message(full_msg)
+            if not set_checked_message(full_msg) then return end
             
-            task:set_milter_reply({
+            local reply_ok = pcall(task.set_milter_reply, task, {
                 remove_headers = {
                     ['Content-Type'] = 0,
                     ['Content-Transfer-Encoding'] = 0
@@ -596,13 +627,14 @@ local function inject_signature(task)
                     ['Content-Transfer-Encoding'] = { value = '7bit', order = 1 }
                 }
             })
+            if not reply_ok then technical_failure(task, "MILTER_REPLY_FAILED") end
             
         elseif is_flat_html then
             local enc_raw = task:get_header_raw('Content-Transfer-Encoding')
             local encoding = (enc_raw and tostring(enc_raw) or "7bit"):lower()
             local decoded = decoded_flat_body(true)
             if not decoded then
-                rspamd_logger.warnx(task, "OpenSigWeave: flat HTML part cannot be decoded")
+                technical_failure(task, "FLAT_HTML_DECODE_FAILED")
                 return
             end
             decoded = remove_deprecated_selector_markers(decoded)
@@ -619,33 +651,38 @@ local function inject_signature(task)
                 if not dropping_cte then kept_headers[#kept_headers + 1] = line end
             end
             local new_headers = table.concat(kept_headers):gsub("[\r\n]+$", "")
-            task:set_message(new_headers .. "\r\nContent-Type: text/html; charset=utf-8\r\n"
-                .. "Content-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html)
-            task:set_milter_reply({
+            if not set_checked_message(new_headers .. "\r\nContent-Type: text/html; charset=utf-8\r\n"
+                .. "Content-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html) then return end
+            local reply_ok = pcall(task.set_milter_reply, task, {
                 remove_headers = { ['Content-Type'] = 0, ['Content-Transfer-Encoding'] = 0 },
                 add_headers = {
                     ['Content-Type'] = { value = 'text/html; charset=utf-8', order = 1 },
                     ['Content-Transfer-Encoding'] = { value = 'quoted-printable', order = 1 }
                 }
             })
+            if not reply_ok then technical_failure(task, "MILTER_REPLY_FAILED") end
         elseif is_multipart then
             -- Rspamd parses MIME boundaries; only decoded text is passed to the
             -- existing reply-placement algorithm. Attachments are unchanged.
+            local already_present = false
             local message, changed_or_reason = mime_rewriter.rewrite(task, function(decoded, is_html)
                 if is_html then decoded = remove_deprecated_selector_markers(decoded) end
-                local rewritten = splice_body_logic(decoded,
+                local rewritten, inserted = splice_body_logic(decoded,
                     is_html and html_splitters or plain_splitters,
                     is_html and html_sig or plain_sig, is_html)
+                if not inserted and rewritten == decoded then already_present = true end
                 return rewritten
             end)
             if message then
-                task:set_message(message)
+                if not set_checked_message(message) then return end
                 rspamd_logger.infox(task, "OpenSigWeave: rewritten %s multipart MIME text parts", changed_or_reason)
+            elseif changed_or_reason ~= "no editable text was changed" or not already_present then
+                technical_failure(task, "MULTIPART_REWRITE_FAILED")
             else
-                rspamd_logger.warnx(task, "OpenSigWeave: multipart rewrite skipped safely (%s)", changed_or_reason)
+                rspamd_logger.infox(task, "OpenSigWeave: existing signature retained")
             end
         else
-            rspamd_logger.infox(task, "OpenSigWeave: unsupported non-text content left unchanged")
+            technical_failure(task, "UNSUPPORTED_MESSAGE_TYPE")
         end
     end
 
@@ -667,8 +704,8 @@ local function inject_signature(task)
     })
 
     if not scheduled then
-        remove_text_marker_from_message()
-        rspamd_logger.errx(task, "OpenSigWeave: unable to schedule signature API request")
+        if FAILURE_POLICY == "fail_open" then remove_text_marker_from_message() end
+        technical_failure(task, "ENGINE_REQUEST_NOT_SCHEDULED")
     end
     return true
 end
