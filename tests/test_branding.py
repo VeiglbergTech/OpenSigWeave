@@ -80,6 +80,7 @@ class BrandingTests(unittest.TestCase):
         self.assertEqual(result["app_color"], DEFAULT_APP_COLOR)
         self.assertFalse(result["has_custom_logo"])
         self.assertFalse(result["has_custom_favicon"])
+        self.assertFalse(result["has_custom_dark_logo"])
 
     def test_valid_png_and_ico_files_are_accepted(self):
         png = valid_png()
@@ -144,6 +145,31 @@ class BrandingTests(unittest.TestCase):
         self.assertFalse(result["has_custom_favicon"])
         self.assertIsNone(self.db.get(BrandingSettingsDB, 1).favicon_mime)
 
+    def test_dark_logo_independent_fallback_and_persistence(self):
+        light = valid_png()
+        dark = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg=="
+        )
+        self.update(logo_data_url=data_url(light))
+        self.assertEqual(main.branding_logo_dark(self.db).body, light)
+        self.assertFalse(branding_context(self.db)["has_custom_dark_logo"])
+        self.update(dark_logo_data_url=data_url(dark))
+        self.assertTrue(branding_context(self.db)["has_custom_dark_logo"])
+        self.assertEqual(self.db.get(BrandingSettingsDB, 1).logo_png, light)
+        self.assertEqual(main.branding_logo_dark(self.db).body, dark)
+        self.db.close()
+        self.db = self.Session()
+        self.assertEqual(self.db.get(BrandingSettingsDB, 1).dark_logo_png, dark)
+        brand = main.get_admin_branding(self.admin, self.db)
+        self.assertTrue(brand["has_custom_dark_logo"])
+        self.assertEqual(brand["dark_logo_url"], "/branding/logo-dark.png")
+        self.update(reset_logo=True)
+        self.assertIsNone(self.db.get(BrandingSettingsDB, 1).logo_png)
+        self.assertEqual(main.branding_logo_dark(self.db).body, dark)
+        self.update(logo_data_url=data_url(light), reset_dark_logo=True)
+        self.assertIsNone(self.db.get(BrandingSettingsDB, 1).dark_logo_png)
+        self.assertEqual(main.branding_logo_dark(self.db).body, light)
+
     def test_invalid_updates_are_atomic(self):
         self.update(logo_data_url=data_url(valid_png()))
         original = self.db.get(BrandingSettingsDB, 1).logo_png
@@ -151,6 +177,11 @@ class BrandingTests(unittest.TestCase):
             {"logo_data_url": data_url(branding.PNG_SIGNATURE + b"wrong")},
             {"favicon_data_url": data_url(valid_png(), "image/svg+xml")},
             {"logo_data_url": data_url(valid_png()), "reset_logo": True},
+            {"dark_logo_data_url": data_url(valid_png()), "reset_dark_logo": True},
+            {"dark_logo_data_url": data_url(branding.PNG_SIGNATURE + b"corrupt")},
+            {"dark_logo_data_url": data_url(valid_png(), "image/svg+xml")},
+            {"dark_logo_data_url": data_url(valid_png()), "favicon_data_url": data_url(b"broken", "image/png")},
+            {"dark_logo_data_url": data_url(valid_png()), "logo_data_url": data_url(b"broken", "image/png")},
             {"favicon_data_url": data_url(valid_ico(), "image/x-icon"), "reset_favicon": True},
             {"app_color": "#xxxzzz"},
             {"app_name": "   "},
@@ -224,6 +255,9 @@ class BrandingTests(unittest.TestCase):
                 with self.assertRaises(HTTPException) as logo_error:
                     main.branding_logo(self.db)
                 self.assertEqual(logo_error.exception.status_code, 404)
+                with self.assertRaises(HTTPException) as dark_error:
+                    main.branding_logo_dark(self.db)
+                self.assertEqual(dark_error.exception.status_code, 404)
                 with self.assertRaises(HTTPException) as icon_error:
                     main.branding_favicon(self.db)
                 self.assertEqual(icon_error.exception.status_code, 404)
