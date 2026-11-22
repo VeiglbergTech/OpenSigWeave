@@ -109,6 +109,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=float, default=15)
     parser.add_argument("--marker", default="BENCHMARK_SIGNATURE")
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--fail-on-errors", action="store_true",
+                        help="Treat measured request failures as a nonzero process exit code")
     args = parser.parse_args(argv)
     try:
         origin = validate_target(args.base_url, args.allow_remote)
@@ -153,8 +155,11 @@ def main(argv=None):
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    if any(stage["failed"] for stage in stages):
-        raise SystemExit("Some requests failed; see JSON report")
+    failures = sum(stage["failed"] for stage in stages)
+    if failures:
+        print(f"WARNING: {failures} of {sum(stage['attempted'] for stage in stages)} requests failed; see JSON report", flush=True)
+        if args.fail_on_errors:
+            raise SystemExit("Request failures exceeded the strict zero-error threshold")
 
 
 if __name__ == "__main__":

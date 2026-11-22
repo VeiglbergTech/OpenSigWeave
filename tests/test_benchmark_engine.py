@@ -2,10 +2,14 @@
 import json
 import threading
 import unittest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import build_opener
 from scripts.benchmark_engine import (
-    NoRedirect, fetch_signature, percentile, run_stage, summarize, validate_target,
+    NoRedirect, fetch_signature, main, percentile, run_stage, summarize, validate_target,
 )
 
 
@@ -65,6 +69,31 @@ class BenchmarkEngineTests(unittest.TestCase):
                                                  "a" * 40, 3, "MISSING")
             self.assertFalse(success)
             self.assertEqual(reason, "missing_signature")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
+
+    def test_failed_stages_write_complete_report_and_strict_mode_is_opt_in(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            origin = "http://127.0.0.1:" + str(server.server_address[1])
+            with tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "failed.json"
+                options = ["--base-url", origin, "--domain", "bench-static.example.test",
+                           "--levels", "1,2", "--requests-per-level", "2",
+                           "--warmup", "0", "--marker", "NOT_PRESENT",
+                           "--output", str(output)]
+                with patch.dict("os.environ", {"ENGINE_API_KEY": "a" * 40}):
+                    main(options)
+                    data = json.loads(output.read_text())
+                    self.assertEqual(len(data["stages"]), 2)
+                    self.assertEqual([stage["failed"] for stage in data["stages"]], [2, 2])
+                    with self.assertRaises(SystemExit):
+                        main(options + ["--fail-on-errors"])
+                    self.assertTrue(output.is_file())
         finally:
             server.shutdown()
             server.server_close()

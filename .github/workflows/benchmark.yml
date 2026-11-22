@@ -96,6 +96,11 @@ jobs:
                    "|---|---:|---:|---:|---:|---:|---:|---:|"]
           for path in sorted(Path("benchmark-results").glob("*.json")):
               for stage in json.loads(path.read_text())["stages"]:
+                  if stage["failed"]:
+                      print("::warning title=Benchmark request failures::" + path.stem
+                            + " at concurrency " + str(stage["concurrency"]) + ": "
+                            + str(stage["failed"]) + " of " + str(stage["attempted"])
+                            + " requests failed; possible capacity/timeout bottleneck")
                   lines.append("| {} | {} | {} | {} | {} | {} | {} | {} |".format(
                       path.stem, stage["concurrency"], stage["successful"],
                       stage["failed"], stage["successful_requests_per_second"],

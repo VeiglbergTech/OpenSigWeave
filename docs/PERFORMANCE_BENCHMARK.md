@@ -25,7 +25,10 @@ Results are archived as JSON and shown in the GitHub Actions summary:
 successes, failures and error types, successful requests per second, P50/P95/P99,
 mean and maximum HTTP latency, concurrency and visible CPU count.
 A request only counts as successful if it returns non-empty HTML containing
-BENCHMARK_SIGNATURE. Erroring stages fail CI after writing their JSON report.
+BENCHMARK_SIGNATURE. Measured errors and timeouts are included as explicit warnings while all stages
+continue to run. A successful workflow does not mean every request succeeded;
+read the measurements. For an explicit strict zero-error run, pass
+--fail-on-errors to the client. Setup/configuration errors still fail CI.
 This independent benchmark is not a mandatory dev-to-beta release gate:
 shared GitHub runners have variable CPU and I/O characteristics.
 
