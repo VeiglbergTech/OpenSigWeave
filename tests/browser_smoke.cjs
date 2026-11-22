@@ -987,9 +987,10 @@ async function main() {
       "previewing an old version must lock the editor against accidental edits");
     assert.equal(await signatureDialog.locator("#signature-html-source").isDisabled(), true,
       "historical source HTML must also be locked");
-    await signatureDialog.getByText("You are viewing", { exact: false }).waitFor();
-    assert.match(await signatureDialog.getByText("You are viewing", { exact: false }).innerText(), /current version remains\s+v3/i,
-      "previewing an old version must state that the current version is unchanged");
+    const historicalStatus = signatureDialog.getByText("Previewing", { exact: false });
+    await historicalStatus.waitFor();
+    assert.match(await historicalStatus.innerText(), /v1\s*\(current:\s*v3\)/i,
+      "previewing an old version must identify the selected and current versions");
 
     let versionHistory = await (await page.request.get(
       baseURL + "/api/admin/signatures/" + encodeURIComponent((await (await page.request.get(baseURL + "/api/admin/signatures")).json())
