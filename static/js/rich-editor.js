@@ -71,14 +71,14 @@
     }
 
     const SIGNATURE_FONT_FAMILIES = [
-        ["Arial", "Arial, Helvetica, sans-serif"],
-        ["Verdana", "Verdana, Geneva, sans-serif"],
-        ["Tahoma", "Tahoma, Geneva, sans-serif"],
-        ["Georgia", "Georgia, serif"],
-        ["Times New Roman", "Times New Roman, Times, serif"],
-        ["Courier New", "Courier New, Courier, monospace"],
-        ["Calibri", "Calibri, Arial, sans-serif"],
-        ["Trebuchet MS", "Trebuchet MS, Helvetica, sans-serif"]
+        ["Arial", "Arial"],
+        ["Verdana", "Verdana"],
+        ["Tahoma", "Tahoma"],
+        ["Georgia", "Georgia"],
+        ["Times New Roman", "Times New Roman"],
+        ["Courier New", "Courier New"],
+        ["Calibri", "Calibri"],
+        ["Trebuchet MS", "Trebuchet MS"]
     ];
     const SIGNATURE_FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
 
@@ -155,8 +155,15 @@
         }
 
         function syncWithSelection() {
-            const family = typeof familyCommand.value === "string" && familyCommand.value.trim()
-                ? familyCommand.value.trim() : "default";
+            const rawFamily = typeof familyCommand.value === "string"
+                ? familyCommand.value.trim() : "";
+            // Recognized values are model names ("Georgia"), whereas imported
+            // legacy HTML may expose the full CSS fallback chain.
+            const configuredFamily = SIGNATURE_FONT_FAMILIES.find(
+                ([, model]) => model.toLowerCase() === rawFamily.toLowerCase()
+                    || rawFamily.toLowerCase().startsWith(model.toLowerCase() + ",")
+            );
+            const family = configuredFamily ? configuredFamily[1] : (rawFamily || "default");
             selectedOption(familySelect, family, family);
             const rawSize = String(sizeCommand.value == null ? "" : sizeCommand.value).trim();
             const match = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(rawSize);
@@ -170,15 +177,15 @@
 
         familySelect.addEventListener("change", () => {
             if (familySelect.disabled) return;
-            editor.execute("fontFamily", { value: familySelect.value });
+            if (familySelect.value === "default") editor.execute("fontFamily");
+            else editor.execute("fontFamily", { value: familySelect.value });
             editor.editing.view.focus();
             syncWithSelection();
         });
         sizeSelect.addEventListener("change", () => {
             if (sizeSelect.disabled) return;
-            editor.execute("fontSize", {
-                value: sizeSelect.value === "default" ? "default" : Number(sizeSelect.value)
-            });
+            if (sizeSelect.value === "default") editor.execute("fontSize");
+            else editor.execute("fontSize", { value: Number(sizeSelect.value) });
             editor.editing.view.focus();
             syncWithSelection();
         });
