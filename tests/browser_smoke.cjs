@@ -442,7 +442,7 @@ async function main() {
         try {
           const select = toolbar.querySelector("select");
           const style = getComputedStyle(select);
-          const channels = color => (color.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+          const channels = color => (color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
           const lum = color => channels(color).reduce((sum, channel, index) => {
             const value = channel / 255;
             const linear = value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
@@ -489,7 +489,7 @@ async function main() {
     await customFontSizeControl.press("Enter");
     await page.waitForFunction(() => {
       const html = document.querySelector("#signature-html-source").value;
-      return /font-family:\\s*Georgia/i.test(html) && /font-size:\\s*17px/i.test(html);
+      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17px/i.test(html);
     });
     assert.equal(await fontFamilyControl.inputValue(), "Georgia, serif",
       "font selector must reflect the current CKEditor selection");
@@ -505,9 +505,9 @@ async function main() {
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
     const reloadedHtml = await signaturePanel.locator("#signature-html-source").inputValue();
-    assert.match(reloadedHtml, /font-family:\\s*Georgia/i,
+    assert.match(reloadedHtml, /font-family:\s*Georgia/i,
       "the stored font family must survive closing and reopening the signature editor");
-    assert.match(reloadedHtml, /font-size:\\s*17px/i,
+    assert.match(reloadedHtml, /font-size:\s*17px/i,
       "the stored non-preset px size must survive closing and reopening");
     await signatureEditEditor.click();
     await signatureEditEditor.press("Control+A");
@@ -529,8 +529,8 @@ async function main() {
       return { status: response.status, version: await response.json() };
     });
     assert.equal(storedVersion.status, 200, "saved signature HTML must be retrievable from the backend");
-    assert.match(storedVersion.version.html_content, /font-family:\\s*Georgia/i);
-    assert.match(storedVersion.version.html_content, /font-size:\\s*17px/i);
+    assert.match(storedVersion.version.html_content, /font-family:\s*Georgia/i);
+    assert.match(storedVersion.version.html_content, /font-size:\s*17px/i);
 
     // Clicking the editor must focus the editable surface. A surrounding label used
     // to redirect clicks to the version selector, making typing possible only after tabbing.
