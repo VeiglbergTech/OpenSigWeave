@@ -341,6 +341,8 @@ async function main() {
     assert.equal(await schedulingHelp.count(), 1, "schedule precedence must remain available on demand");
     assert.equal(await schedulingHelp.getAttribute("open"), null, "scheduling help should start collapsed");
 
+    // The backup tab is checked separately; restore System before status assertions.
+    await page.getByRole("button", { name: "System", exact: true }).click();
     const systemPanel = page.locator('[x-data="systemStatusManager"]');
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     const cardGap = await systemPanel.evaluate(section => {
