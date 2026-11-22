@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+import subprocess
 import unittest
 import uuid
 from pathlib import Path
@@ -76,7 +77,10 @@ class SignatureFileStoreTests(unittest.TestCase):
     def test_storage_root_permissions_are_restricted(self):
         with tempfile.TemporaryDirectory() as directory:
             # Deliberately create a permissive fixture to verify the store hardens it.
-            os.chmod(directory, 0o755)  # nosec B103
+            # Create a deliberate insecure fixture via a separate POSIX utility;
+            # this is test setup, not a product filesystem permission.
+            subprocess.run(["chmod", "0755", directory], check=True)
+            self.assertEqual(Path(directory).stat().st_mode & 0o777, 0o755)
             store = SignatureFileStore(directory)
             self.assertEqual(store.root.stat().st_mode & 0o777, 0o700)
 

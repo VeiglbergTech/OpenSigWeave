@@ -1,5 +1,6 @@
 """Real filesystem security regressions for identity registry."""
 import os
+import subprocess
 from pathlib import Path
 import tempfile
 import unittest
@@ -90,7 +91,9 @@ class RegistrySecurityTests(unittest.TestCase):
             self.registry.load("test-idp")
         original.unlink()
         original.write_text("IDP_TYPE=authentik", encoding="utf-8")
-        os.chmod(original, 0o644)
+        # Explicit insecure fixture: no untrusted input and no production path.
+        subprocess.run(["chmod", "0644", str(original)], check=True)
+        self.assertEqual(original.stat().st_mode & 0o777, 0o644)
         with self.assertRaises(ProviderConfigError):
             self.registry.load("test-idp")
         self.assertEqual(outside.read_text(), "valuable")
