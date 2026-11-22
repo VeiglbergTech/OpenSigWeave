@@ -423,9 +423,39 @@ async function main() {
     }).count(), 0, "signature editor must not list retired mode values");
     assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
       "signature editor must not submit retired selector fields");
-    const fontToolbar = signatureDialog.locator("#signature-template-editor .ck-toolbar");
-    await fontToolbar.getByRole("button", { name: /Font Size/i }).waitFor();
-    await fontToolbar.getByRole("button", { name: /Font Family/i }).waitFor();
+    const fontToolbar = signatureDialog.locator("#signature-template-editor .osw-editor-font-toolbar");
+    const fontFamilyControl = fontToolbar.getByRole("combobox", { name: "Signature font family" });
+    const fontSizeControl = fontToolbar.getByRole("combobox", { name: "Signature font size" });
+    const customFontSizeControl = fontToolbar.getByRole("spinbutton", {
+      name: "Custom signature font size in pixels"
+    });
+    await fontFamilyControl.waitFor({ state: "visible" });
+    await fontSizeControl.waitFor({ state: "visible" });
+    await customFontSizeControl.waitFor({ state: "visible" });
+    assert.equal(await fontFamilyControl.isEnabled(), true);
+    assert.equal(await fontSizeControl.isEnabled(), true);
+    for (const theme of ["dark", "light"]) {
+      const contrast = await fontToolbar.evaluate((toolbar, themeName) => {
+        const root = document.documentElement;
+        const previous = root.dataset.theme;
+        root.dataset.theme = themeName;
+        try {
+          const select = toolbar.querySelector("select");
+          const style = getComputedStyle(select);
+          const channels = color => (color.match(/[\\d.]+/g) || []).slice(0, 3).map(Number);
+          const lum = color => channels(color).reduce((sum, channel, index) => {
+            const value = channel / 255;
+            const linear = value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+            return sum + linear * [.2126, .7152, .0722][index];
+          }, 0);
+          return (Math.max(lum(style.color), lum(style.backgroundColor)) + .05)
+            / (Math.min(lum(style.color), lum(style.backgroundColor)) + .05);
+        } finally {
+          root.dataset.theme = previous;
+        }
+      }, theme);
+      assert.ok(contrast >= 4.5, "signature font controls need sufficient contrast in " + theme);
+    }
     const formattingSample = await page.evaluate(async () => {
       const host = document.createElement("div");
       document.body.appendChild(host);
@@ -448,7 +478,23 @@ async function main() {
     assert.match(formattingSample, /font-family:\s*Arial/i,
       "email-safe font family must survive editor loading");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
-    await signaturePanel.locator("#signature-template-editor .ck-editor__editable").fill("Browser smoke version 1");
+    const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
+    await signatureCreateEditor.fill("Browser smoke version 1");
+    await signatureCreateEditor.press("Control+A");
+    await fontFamilyControl.selectOption("Georgia, serif");
+    await signatureCreateEditor.press("Control+A");
+    await fontSizeControl.selectOption("18");
+    await signatureCreateEditor.press("Control+A");
+    await customFontSizeControl.fill("17");
+    await customFontSizeControl.press("Enter");
+    await page.waitForFunction(() => {
+      const html = document.querySelector("#signature-html-source").value;
+      return /font-family:\\s*Georgia/i.test(html) && /font-size:\\s*17px/i.test(html);
+    });
+    assert.equal(await fontFamilyControl.inputValue(), "Georgia, serif",
+      "font selector must reflect the current CKEditor selection");
+    assert.equal(await fontSizeControl.inputValue(), "17",
+      "non-preset pixel size must appear when reopening existing formatting");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
 
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
@@ -458,6 +504,17 @@ async function main() {
     await signatureEditEditor.waitFor({ state: "visible" });
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
+    const reloadedHtml = await signaturePanel.locator("#signature-html-source").inputValue();
+    assert.match(reloadedHtml, /font-family:\\s*Georgia/i,
+      "the stored font family must survive closing and reopening the signature editor");
+    assert.match(reloadedHtml, /font-size:\\s*17px/i,
+      "the stored non-preset px size must survive closing and reopening");
+    await signatureEditEditor.click();
+    await signatureEditEditor.press("Control+A");
+    assert.equal(await fontFamilyControl.inputValue(), "Georgia, serif",
+      "the family dropdown must track a previously stored selection");
+    assert.equal(await fontSizeControl.inputValue(), "17",
+      "the size dropdown must track a previously stored custom pixel value");
     const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
     // Versions load from a separate asynchronous API request. The editor
     // could still display data from its previous instance; wait for the
@@ -465,6 +522,15 @@ async function main() {
     await versionSelector.locator("option").first().waitFor({ state: "attached" });
     assert.equal(await versionSelector.locator("option").count(), 1,
       "newly created signature must expose its first version in version history");
+    const storedVersion = await page.evaluate(async () => {
+      const state = Alpine.$data(document.querySelector('[x-data="signatureManager"]'));
+      const response = await fetch("/api/admin/signatures/" + encodeURIComponent(state.form.id)
+        + "/versions/" + encodeURIComponent(state.selectedVersionId));
+      return { status: response.status, version: await response.json() };
+    });
+    assert.equal(storedVersion.status, 200, "saved signature HTML must be retrievable from the backend");
+    assert.match(storedVersion.version.html_content, /font-family:\\s*Georgia/i);
+    assert.match(storedVersion.version.html_content, /font-size:\\s*17px/i);
 
     // Clicking the editor must focus the editable surface. A surrounding label used
     // to redirect clicks to the version selector, making typing possible only after tabbing.
