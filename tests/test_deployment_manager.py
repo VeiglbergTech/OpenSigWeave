@@ -52,6 +52,7 @@ class ConfigTests(unittest.TestCase):
                      {"APP_PORT": "8085"} if "APP_PORT" not in env else {}
                  )):
                 path.write_text('SECRET_KEY="preserve_me"\n')
+                os.chmod(path, 0o600)
                 before = path.read_bytes()
                 cfg.migrate_config(preview=True)
                 self.assertEqual(before, path.read_bytes())
@@ -63,10 +64,28 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(once, path.read_bytes())
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_scrypt_hash_written_with_literal_dollar_separators(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / ".env"
+            values = {key: "testing" for key in (
+                "POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD", "DATABASE_URL",
+                "SIGNATURE_STORAGE_PATH", "APP_BIND_ADDRESS", "APP_PORT",
+                "SECRET_KEY", "ENGINE_API_KEY", "APP_ALLOWED_HOSTS",
+                "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"
+            )}
+            values["LOCAL_ADMIN_PASSWORD_HASH"] = "scrypt$16384$8$1$abcdef$123456"
+            with patch.object(cfg, "ENV", path), patch.object(cfg, "create_values", return_value=values):
+                cfg.create_config()
+            self.assertIn(
+                "LOCAL_ADMIN_PASSWORD_HASH='scrypt$16384$8$1$abcdef$123456'",
+                path.read_text()
+            )
+
     def test_refuses_duplicate_and_symlink_env(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / "env"
             path.write_text("A=one\nA=two\n")
+            os.chmod(path, 0o600)
             with self.assertRaises(common.DeploymentError):
                 common.parse_env(path)
             link = Path(temp) / "link"

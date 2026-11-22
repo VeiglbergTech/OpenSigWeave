@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import fcntl
 import ipaddress
-import ipaddress
 import json
 import os
 from pathlib import Path
@@ -78,6 +77,8 @@ def compose(*args: str, timeout: int = 600) -> str:
 def parse_env(path: Path) -> dict[str, str]:
     if path.is_symlink() or not path.is_file():
         raise DeploymentError(f"Configuration is missing or a symlink: {path}")
+    if path.name == ".env" and stat.S_IMODE(path.stat().st_mode) & 0o077:
+        raise DeploymentError("Insecure .env permissions; run chmod 600 .env", 4)
     result: dict[str, str] = {}
     for index, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = line.strip()

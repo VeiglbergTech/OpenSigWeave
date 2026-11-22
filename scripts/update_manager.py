@@ -105,14 +105,7 @@ def validate_target(target: str) -> list[str]:
     if not re.fullmatch("[0-9a-f]{40,64}", target):
         raise DeploymentError("Invalid remote Git object ID", 4)
     git("cat-file", "-e", f"{target}^{{commit}}")
-    ancestor = git("merge-base", "--is-ancestor", "HEAD", target) if False else None
-    # merge-base --is-ancestor is a predicate, not a stdout-producing command.
-    result = __import__("subprocess").run(
-        ["git", "merge-base", "--is-ancestor", "HEAD", target],
-        cwd=ROOT, stdout=__import__("subprocess").DEVNULL,
-        stderr=__import__("subprocess").DEVNULL, check=False,
-    )
-    if result.returncode != 0:
+    if git("merge-base", "HEAD", target) != current_sha():
         raise DeploymentError("Remote is not a fast-forward; manual review required", 4)
     files = git("diff", "--name-only", "HEAD", target).splitlines()
     return [name for name in files if name.startswith(CRITICAL_PATHS)]
@@ -179,6 +172,9 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
             compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "upgrade", "head", timeout=1200)
             # One-off migration has terminated; no other web worker may migrate concurrently.
             revision = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "current", timeout=120)
+            heads = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "heads", timeout=120)
+            if not revision or revision.split()[0] != heads.split()[0]:
+                raise DeploymentError("Post-migration Alembic revision does not match head", 8)
             info(f"Alembic after migration: {revision}")
         except DeploymentError as exc:
             raise DeploymentError(
@@ -219,7 +215,7 @@ def main(argv: list[str] | None = None) -> int:
         channel = current_channel()
         installed = current_sha()
         if args.version:
-            print(f"OpenSigWeave checkout {channel}: {installed}")
+            print(f"OpenSigWeave version: {git('describe', '--tags', '--always', '--dirty')} | channel: {channel} | commit: {installed}")
             return 0
         pristine()
         remote = remote_sha(channel)
