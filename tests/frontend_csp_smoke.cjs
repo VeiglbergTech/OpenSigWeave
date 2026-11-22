@@ -346,7 +346,10 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
   assert.match(template, /Advanced: Insert signature group tag/, "Group tags must be behind advanced disclosure");
   assert.match(template, /Choose ZIP file/, "Import requires a clearly labeled ZIP selector");
-  assert.match(template, /osw-info-banner/, "Scheduling hint must use a dark theme banner");
+  assert.match(template, /<summary class="cursor-pointer">Scheduling priority<\/summary>/,
+    "Scheduling precedence must remain accessible in a collapsible help section");
+  assert.match(template, /Start is inclusive; end is exclusive\./,
+    "Scheduling help must retain the required time-window semantics");
   for (const retiredMode of ["AU" + "TO", "PROF" + "ESSIONAL", "INTER" + "NAL"]) {
     assert.ok(!template.includes("<option>" + retiredMode + "</option>"),
       "User-facing retired signature mode options must be removed");
