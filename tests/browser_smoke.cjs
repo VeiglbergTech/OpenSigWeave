@@ -368,6 +368,10 @@ async function main() {
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
     const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
+    // Versions load from a separate asynchronous API request. The editor
+    // could still display data from its previous instance; wait for the
+    // actual history response before asserting the exact version count.
+    await versionSelector.locator("option").first().waitFor({ state: "attached" });
     assert.equal(await versionSelector.locator("option").count(), 1,
       "newly created signature must expose its first version in version history");
 
