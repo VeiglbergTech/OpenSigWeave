@@ -596,7 +596,7 @@ def configured_login_providers(db) -> list[dict[str, str]]:
             if all(config.get(key) for key in required):
                 providers.append({"id": provider.id, "display_name": provider.display_name})
         except Exception as exc:
-            logger.warning("OIDC login button skipped for provider %s (%s)", provider.id, type(exc).__name__)
+            logger.warning("OIDC login button skipped (%s)", type(exc).__name__)
     return providers
 
 
@@ -771,7 +771,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
             try:
                 identity = await identity_provider_registry.authenticate(provider_id, submitted_email, submitted_password)
             except Exception as exc:
-                logger.warning("LDAP sign-in unavailable for provider %s (%s)", provider_id, type(exc).__name__)
+                logger.warning("LDAP sign-in unavailable (%s)", type(exc).__name__)
                 identity = None
             if identity is None:
                 request.session.clear()
@@ -805,7 +805,7 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
                 }
                 return await client.authorize_redirect(request, config["OIDC_REDIRECT_URI"])
             except Exception as exc:
-                logger.warning("Managed OIDC sign-in could not start for provider %s (%s)", provider_id, type(exc).__name__)
+                logger.warning("Managed OIDC sign-in could not start (%s)", type(exc).__name__)
                 request.session.clear()
                 return login_page(request, True, 401, db)
         request.session.clear()
@@ -929,7 +929,7 @@ async def logout(request: Request):
             logout_url = f"{endpoint}{separator}{urlencode({'post_logout_redirect_uri': post_logout_uri})}"
             return {"logout_url": logout_url}
         except Exception as exc:
-            logger.warning("Managed OIDC logout could not be prepared for provider %s (%s)", provider_id, type(exc).__name__)
+            logger.warning("Managed OIDC logout could not be prepared (%s)", type(exc).__name__)
             return {"logout_url": "/login"}
 
     return {"logout_url": "/login"}
