@@ -22,6 +22,67 @@ BACKUP_CONFIG = Path(os.environ.get("OSW_BACKUP_CONFIG", "/etc/opensigweave/back
 CRITICAL_PATHS = ("migrations/", "adapters/", "rspamd/", "core/engine_contract.py",
                   "compose.yaml", "Dockerfile", ".env.example", "backup_")
 REMOTE_FS = {"nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "fuse.rclone"}
+UPDATE_JOURNAL = ROOT / ".git" / "opensigweave-update-state.json"
+
+
+def ensure_no_incomplete_update() -> None:
+    """Never report 'already updated' after an interrupted source switch."""
+    if UPDATE_JOURNAL.is_symlink():
+        raise DeploymentError("Unsafe update journal symlink; review it manually", 8)
+    if UPDATE_JOURNAL.exists():
+        if not UPDATE_JOURNAL.is_file():
+            raise DeploymentError("Unexpected update journal file type", 8)
+        try:
+            record = json.loads(UPDATE_JOURNAL.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise DeploymentError("Unreadable update journal; manual inspection required", 8) from exc
+        raise DeploymentError(
+            "An earlier update did not finish: "
+            f"stage={record.get('stage', 'unknown')}, "
+            f"target={record.get('target', 'unknown')}, "
+            f"verified backup={record.get('backup', 'unknown')}. "
+            "Do not run another update or assume the database schema is compatible. "
+            "Review source, container health and the backup; follow the documented "
+            "fresh-target restore procedure when migration might have started.", 8
+        )
+
+
+def write_update_journal(*, channel: str, installed: str, target: str,
+                         backup: Path, stage: str = "source-switch") -> None:
+    """Atomic 0600 state file outside the tracked tree; never store credentials."""
+    record = {
+        "channel": channel, "installed": installed, "target": target,
+        "backup": str(backup), "stage": stage,
+    }
+    if UPDATE_JOURNAL.is_symlink():
+        raise DeploymentError("Unsafe update journal path", 8)
+    if stage == "source-switch":
+        descriptor = os.open(
+            UPDATE_JOURNAL, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+        )
+        destination = UPDATE_JOURNAL
+    else:
+        destination = UPDATE_JOURNAL.with_name(UPDATE_JOURNAL.name + ".pending")
+        descriptor = os.open(
+            destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600
+        )
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(record, handle, indent=2)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        if stage != "source-switch":
+            os.replace(destination, UPDATE_JOURNAL)
+    finally:
+        if stage != "source-switch":
+            destination.unlink(missing_ok=True)
+
+
+def clear_update_journal() -> None:
+    if UPDATE_JOURNAL.is_symlink():
+        raise DeploymentError("Unsafe update journal path", 8)
+    UPDATE_JOURNAL.unlink(missing_ok=True)
 
 
 def preflight() -> dict[str, str]:
@@ -90,13 +151,20 @@ def create_backup() -> Path:
     if backup.exists() or backup.is_symlink():
         raise DeploymentError("Backup path already exists; refusing overwrite", 7)
     info(f"Creating encrypted verified backup: {backup}")
-    run(sys.executable, str(ROOT / "backup_cli.py"), "create", "--project-dir",
-        str(ROOT), "--output", str(backup), "--recipient", recipient,
-        "--identity", str(identity), timeout=7200)
-    if not backup.is_file() or backup.stat().st_size == 0:
-        raise DeploymentError("Backup output missing or empty", 7)
-    run(sys.executable, str(ROOT / "backup_cli.py"), "verify", str(backup),
-        "--identity", str(identity), timeout=7200)
+    try:
+        run(sys.executable, str(ROOT / "backup_cli.py"), "create", "--project-dir",
+            str(ROOT), "--output", str(backup), "--recipient", recipient,
+            "--identity", str(identity), timeout=7200)
+        if not backup.is_file() or backup.stat().st_size == 0:
+            raise DeploymentError("Backup output missing or empty", 7)
+        run(sys.executable, str(ROOT / "backup_cli.py"), "verify", str(backup),
+            "--identity", str(identity), timeout=7200)
+    except DeploymentError as exc:
+        raise DeploymentError(
+            "Mandatory full age backup or verification failed. No code update was applied. "
+            "Check remote mount, private age identity, available space and Docker volumes "
+            "with backup_cli.py; do not bypass verification.", 7
+        ) from exc
     ok(f"Full age backup independently verified: {backup}")
     return backup
 
@@ -133,6 +201,7 @@ def show_plan(channel: str, installed: str, remote: str, critical: list[str] | N
 
 def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool, skip_start: bool) -> None:
     with exclusive_lock():
+        ensure_no_incomplete_update()
         env = preflight()
         installed = current_sha()
         if installed == remote:
@@ -155,6 +224,8 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
                 raise DeploymentError("Update cancelled", 4)
         backup_options()  # Fail before attempting code or service modification.
         backup = create_backup()
+        write_update_journal(channel=channel, installed=installed, target=fetched,
+                             backup=backup, stage="source-switch")
         info("Fast-forwarding only the current local branch")
         git("merge", "--ff-only", fetched)
         if current_channel() != channel:
@@ -166,6 +237,8 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
         compose("config", "--quiet")
         info("Building the new application image locally (no dev/beta registry images)")
         compose("build", "--pull", "opensigweave", timeout=3600)
+        write_update_journal(channel=channel, installed=installed, target=fetched,
+                             backup=backup, stage="migration")
         info("Stopping application to serialize Alembic migration")
         compose("stop", "--timeout", "30", "opensigweave", timeout=120)
         try:
@@ -182,7 +255,10 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
                 f"Keep service stopped; use verified backup {backup} and the fresh-target "
                 f"restore procedure. Reason: {exc}", 8
             ) from exc
+        write_update_journal(channel=channel, installed=installed, target=fetched,
+                             backup=backup, stage="migration-complete")
         if skip_start:
+            clear_update_journal()
             warn("Update prepared and migrated, but application intentionally remains stopped (--skip-start).")
             print(f"Commit: {current_sha()}\nVerified recovery backup: {backup}")
             return
@@ -196,6 +272,7 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
                 f"Post-migration startup/healthcheck failed. No automatic rollback is safe. "
                 f"Restore to a fresh target using {backup}, then review routing. Reason: {exc}", 8
             ) from exc
+        clear_update_journal()
         ok(f"Update successful: channel={channel} commit={current_sha()}")
         print(f"Verified recovery backup: {backup}")
 
@@ -217,6 +294,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.version:
             print(f"OpenSigWeave version: {git('describe', '--tags', '--always', '--dirty')} | channel: {channel} | commit: {installed}")
             return 0
+        ensure_no_incomplete_update()
         pristine()
         remote = remote_sha(channel)
         if args.check:

@@ -132,6 +132,42 @@ class UpdateTests(unittest.TestCase):
             backup.assert_not_called()
             compose.assert_not_called()
 
+    def test_interrupted_update_journal_blocks_false_success(self):
+        with tempfile.TemporaryDirectory() as temp:
+            journal = Path(temp) / "update-state.json"
+            with patch.object(update, "UPDATE_JOURNAL", journal):
+                update.write_update_journal(
+                    channel="dev", installed="a" * 40, target="b" * 40,
+                    backup=Path(temp) / "verified.age",
+                )
+                self.assertEqual(stat.S_IMODE(journal.stat().st_mode), 0o600)
+                with self.assertRaises(common.DeploymentError) as raised:
+                    update.ensure_no_incomplete_update()
+                self.assertEqual(raised.exception.code, 8)
+                with patch.object(update, "current_channel", return_value="dev"), \
+                     patch.object(update, "current_sha", return_value="b" * 40), \
+                     patch.object(update, "remote_sha") as remote:
+                    self.assertEqual(update.main(["--check"]), 8)
+                    remote.assert_not_called()
+                update.write_update_journal(
+                    channel="dev", installed="a" * 40, target="b" * 40,
+                    backup=Path(temp) / "verified.age", stage="migration",
+                )
+                self.assertIn("migration", journal.read_text())
+                self.assertEqual(stat.S_IMODE(journal.stat().st_mode), 0o600)
+                update.clear_update_journal()
+                self.assertFalse(journal.exists())
+
+    def test_failed_backup_has_dedicated_failure_code(self):
+        with tempfile.TemporaryDirectory() as temp:
+            with patch.object(update, "backup_options", return_value=(
+                Path(temp), "age1example", Path(temp) / "key"
+            )), patch.object(update, "current_sha", return_value="a" * 40), \
+                 patch.object(update, "run", side_effect=common.DeploymentError("age failed", 3)):
+                with self.assertRaises(common.DeploymentError) as raised:
+                    update.create_backup()
+                self.assertEqual(raised.exception.code, 7)
+
     def test_no_update_never_backs_up(self):
         with patch.object(update, "exclusive_lock", return_value=nullcontext()), \
              patch.object(update, "preflight", return_value={}), \
