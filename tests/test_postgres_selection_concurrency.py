@@ -5,7 +5,7 @@ import unittest
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-from sqlalchemy import create_engine, delete
+from sqlalchemy import create_engine, delete, select, text
 from sqlalchemy.orm import sessionmaker
 
 from core.group_selection_repository import select_and_record_group_signature
@@ -26,6 +26,60 @@ class PostgreSQLSelectionConcurrencyTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.engine.dispose()
+
+    def test_catalog_row_lock_does_not_block_an_unrelated_sender(self):
+        """A management transaction must not create a global lock convoy."""
+        principal = f"oidc:{uuid.uuid4().hex}"
+        group_id = uuid.uuid4().hex
+        signature_id = uuid.uuid4().hex
+        with self.Session.begin() as session:
+            domain = DomainDB(domain_name=f"{uuid.uuid4().hex}.example", is_active=True)
+            session.add(domain)
+            session.flush()
+            domain_id = domain.id
+            session.add(SignatureGroupDB(
+                id=group_id, name="Unrelated principal", slug=f"cc-{group_id[:12]}",
+                is_active=True,
+            ))
+            session.add(SignatureDB(
+                id=signature_id, name=f"Signature-{signature_id}", scope="GLOBAL",
+                mode="UNUSED", is_active=True,
+            ))
+            session.add(SignatureGroupMemberDB(
+                group_id=group_id, signature_id=signature_id, weight=1, is_enabled=True,
+            ))
+        try:
+            # Simulates a concurrent signature edit holding the catalog row.
+            with self.Session() as editor:
+                editor.execute(
+                    select(SignatureDB).where(SignatureDB.id == signature_id)
+                    .with_for_update()
+                ).scalar_one()
+                with ThreadPoolExecutor(max_workers=1) as executor:
+                    def select_other_sender():
+                        with self.Session.begin() as session:
+                            # Independent protection against an indefinitely blocked CI job.
+                            session.execute(
+                                text("SELECT set_config('lock_timeout', '1500ms', true)")
+                            )
+                            return select_and_record_group_signature(
+                                session, principal, group_id, domain_id
+                            ).id
+                    result = executor.submit(select_other_sender).result(timeout=8)
+                self.assertEqual(result, signature_id)
+                editor.rollback()
+        finally:
+            with self.Session.begin() as session:
+                session.execute(delete(GroupSelectionStateDB).where(
+                    GroupSelectionStateDB.principal_id == principal,
+                    GroupSelectionStateDB.group_id == group_id,
+                ))
+                session.execute(delete(SignatureGroupMemberDB).where(
+                    SignatureGroupMemberDB.group_id == group_id,
+                ))
+                session.execute(delete(SignatureGroupDB).where(SignatureGroupDB.id == group_id))
+                session.execute(delete(SignatureDB).where(SignatureDB.id == signature_id))
+                session.execute(delete(DomainDB).where(DomainDB.id == domain_id))
 
     def test_concurrent_group_messages_never_repeat_previous_signature(self):
         principal = f"authentik:{uuid.uuid4().hex}"

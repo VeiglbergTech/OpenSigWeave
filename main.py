@@ -1,5 +1,7 @@
 import os
+import asyncio
 import logging
+from anyio import to_thread
 import uuid
 import json
 import hmac
@@ -2209,10 +2211,27 @@ async def resolve_signature_engine(
     *,
     commit_selection: bool = True,
 ) -> SignatureEngineResult:
-    """Resolve a normalized request through the single shared engine service."""
-    return await _signature_engine_service().resolve(
-        db, engine_request, commit_selection=commit_selection
-    )
+    """Run synchronous SQLAlchemy and rendering work outside the ASGI event loop.
+
+    A private event loop in the worker supports the existing async identity
+    providers without sharing this SQLAlchemy Session across simultaneous tasks.
+    Both HTTP routes and mail adapters use this same execution path.
+    """
+    def process():
+        return asyncio.run(_signature_engine_service().resolve(
+            db, engine_request, commit_selection=commit_selection
+        ))
+
+    try:
+        return await to_thread.run_sync(process)
+    except SQLAlchemyError as exc:
+        # PostgreSQL 55P03: bounded lock timeout; keep the failure
+        # explicit, safe and retryable without leaking database details.
+        if getattr(getattr(exc, "orig", None), "sqlstate", None) == "55P03":
+            raise SignatureEngineError(
+                "ROTATION_CONTENTION", "Signature selection is temporarily busy"
+            ) from exc
+        raise
 
 
 _ENGINE_ERROR_HTTP_STATUS = {
@@ -2222,6 +2241,7 @@ _ENGINE_ERROR_HTTP_STATUS = {
     "GROUP_SIGNATURE_VERSION_METADATA_MISSING": 503,
     "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
     "INVALID_TEMPLATE": 422,
+    "ROTATION_CONTENTION": 503,
     "INLINE_IMAGE_ASSET_UNAVAILABLE": 503,
     "INLINE_IMAGE_LIMIT": 422,
     "UNMANAGED_INLINE_IMAGE": 422,

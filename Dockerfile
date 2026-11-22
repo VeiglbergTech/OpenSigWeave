@@ -40,4 +40,6 @@ USER 10001:10001
 EXPOSE 8085
 
 # Apply database migrations before starting the web process.
-CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8085"]
+# Keep the default to one process; operators may scale after verifying DB capacity
+# and provider configuration. PostgreSQL serializes rotation across workers.
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn main:app --host 0.0.0.0 --port 8085 --workers \"${UVICORN_WORKERS:-1}\""]

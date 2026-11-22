@@ -1,4 +1,5 @@
 """Tests for the benchmark's measurement, safety and non-empty result checks."""
+import asyncio
 import json
 import threading
 import unittest
@@ -8,8 +9,9 @@ from unittest.mock import patch
 
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.request import build_opener
+import httpx2 as httpx
 from scripts.benchmark_engine import (
-    NoRedirect, fetch_signature, main, percentile, run_stage, summarize, validate_target,
+    NoRedirect, fetch_signature, fetch_signature_async, main, percentile, run_stage, summarize, validate_target,
 )
 
 
@@ -38,6 +40,30 @@ class BenchmarkEngineTests(unittest.TestCase):
         self.assertEqual(report["failed"], 1)
         self.assertEqual(report["error_types"], {"http_503": 1})
         self.assertEqual(report["successful_requests_per_second"], 0.5)
+        self.assertEqual(report["requests_per_second"], 1)
+        self.assertEqual(report["timeouts"], 0)
+        self.assertEqual(report["http_status_codes"], {})
+
+    def test_async_client_reports_http_status_codes(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            origin = "http://127.0.0.1:" + str(server.server_address[1])
+            async def request_once():
+                async with httpx.AsyncClient(trust_env=False) as client:
+                    return await fetch_signature_async(
+                        client, origin, "user0000@bench-static.example.test",
+                        "wrong", "BENCHMARK_SIGNATURE",
+                    )
+            sample = asyncio.run(request_once())
+            self.assertEqual(sample[2:], ("http_401", 401))
+            report = summarize(1, [sample], 1.0)
+            self.assertEqual(report["http_status_codes"], {"401": 1})
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=3)
 
     def test_target_guard(self):
         self.assertEqual(validate_target("http://localhost:8085/"), "http://localhost:8085")

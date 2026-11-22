@@ -29,7 +29,7 @@ def seed(senders):
             provider_type="oidc", is_enabled=True)
         db.add(provider)
         db.flush()
-        for mode in ("static", "rotation"):
+        for mode in ("static", "rotation", "large"):
             domain_name = "bench-" + mode + ".example.test"
             domain = DomainDB(domain_name=domain_name, is_active=True,
                               identity_provider_id=provider.id)
@@ -48,6 +48,8 @@ def seed(senders):
                 name = "Benchmark-" + mode + "-" + str(number)
                 template = ("<p>BENCHMARK_SIGNATURE " + mode + " " + str(number)
                             + " {{ first_name }} {{ last_name }}</p>")
+                if mode == "large":
+                    template += "<p>" + "X" * 32000 + "</p>
                 db.add(SignatureDB(id=signature_id, name=name, domain_id=domain.id,
                                    scope="DOMAIN", mode="UNUSED", is_active=True))
                 db.flush()
@@ -76,7 +78,7 @@ def seed(senders):
                     first_name="Benchmark", last_name="User", title="Test",
                     phone="", groups=[], claims={}, attributes={}, updated_at=now))
         db.commit()
-    print("Seeded static and rotating signature fixtures; senders per domain:", senders)
+    print("Seeded fixed, rotating and large fixtures; senders per domain:", senders)
 
 
 if __name__ == "__main__":

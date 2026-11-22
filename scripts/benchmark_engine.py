@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Bounded concurrency benchmark for the real signature engine HTTP API."""
 import argparse
+import asyncio
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 import ipaddress
@@ -13,6 +14,8 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
+
+import httpx2 as httpx
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -72,13 +75,20 @@ def fetch_signature(opener, origin, sender, api_key, timeout, marker):
 
 
 def summarize(parallel, measurements, elapsed):
-    latencies = [ms for success, ms, _ in measurements if success]
-    errors = Counter(reason for success, _, reason in measurements if not success)
+    # Each measurement is (ok, ms, reason[, HTTP status]). Keep legacy
+    # three-element tuples compatible with the existing benchmark tests.
+    latencies = [sample[1] for sample in measurements if sample[0]]
+    errors = Counter(sample[2] for sample in measurements if not sample[0])
+    statuses = Counter(str(sample[3]) for sample in measurements
+                       if len(sample) > 3 and sample[3] is not None)
     return {
         "concurrency": parallel, "attempted": len(measurements),
         "successful": len(latencies), "failed": len(measurements) - len(latencies),
         "error_types": dict(sorted(errors.items())),
+        "http_status_codes": dict(sorted(statuses.items())),
+        "timeouts": sum(count for reason, count in errors.items() if "timeout" in reason),
         "elapsed_seconds": round(elapsed, 3),
+        "requests_per_second": round(len(measurements) / max(elapsed, 1e-9), 2),
         "successful_requests_per_second": round(len(latencies) / max(elapsed, 1e-9), 2),
         "p50_ms": percentile(latencies, 50), "p95_ms": percentile(latencies, 95),
         "p99_ms": percentile(latencies, 99),
@@ -87,15 +97,73 @@ def summarize(parallel, measurements, elapsed):
     }
 
 
-def run_stage(opener, origin, domain, senders, key, marker, parallel, attempts, timeout):
-    def do_one(index):
-        sender = "user" + str(index % senders).zfill(4) + "@" + domain
-        return fetch_signature(opener, origin, sender, key, timeout, marker)
-    start = time.perf_counter()
-    with ThreadPoolExecutor(max_workers=parallel) as pool:
-        measurements = list(pool.map(do_one, range(attempts)))
-    return summarize(parallel, measurements, time.perf_counter() - start)
+async def fetch_signature_async(client, origin, sender, api_key, marker):
+    """One HTTP request with separate timeout, transport and application errors."""
+    url = origin + "/api/v1/engine/signatures/" + quote(sender, safe="")
+    started = time.perf_counter()
+    reason, status = None, None
+    try:
+        response = await client.get(url, headers={
+            "X-Engine-Key": api_key, "Accept": "application/json",
+        })
+        status = response.status_code
+        raw = response.content
+        if status != 200:
+            reason = "http_" + str(status)
+        elif len(raw) > 1024 * 1024:
+            reason = "response_too_large"
+        else:
+            obj = response.json()
+            if not isinstance(obj, dict) or not isinstance(obj.get("html"), str) or marker not in obj["html"]:
+                reason = "missing_signature"
+    except httpx.PoolTimeout:
+        reason = "client_pool_timeout"
+    except httpx.ConnectTimeout:
+        reason = "connect_timeout"
+    except httpx.ReadTimeout:
+        reason = "read_timeout"
+    except httpx.WriteTimeout:
+        reason = "write_timeout"
+    except httpx.ConnectError:
+        reason = "connect_error"
+    except httpx.NetworkError:
+        reason = "network_error"
+    except httpx.HTTPError:
+        reason = "http_client_error"
+    except (ValueError, UnicodeError, TypeError):
+        reason = "invalid_json"
+    return reason is None, (time.perf_counter() - started) * 1000, reason, status
 
+
+async def run_stage_async(origin, domain, senders, key, marker, parallel, attempts, timeout):
+    # HTTPX has a connection pool, but also limit scheduled coroutines.
+    # Otherwise 1000 queued tasks at concurrency=1 could time out in the
+    # client pool and be misclassified as a server capacity failure.
+    semaphore = asyncio.Semaphore(parallel)
+    limits = httpx.Limits(
+        max_connections=parallel,
+        max_keepalive_connections=min(parallel, 100),
+    )
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(timeout),
+        limits=limits,
+        follow_redirects=False,
+        trust_env=False,
+    ) as client:
+        async def one(index):
+            async with semaphore:
+                sender = "user" + str(index % senders).zfill(4) + "@" + domain
+                return await fetch_signature_async(client, origin, sender, key, marker)
+        started = time.perf_counter()
+        measurements = await asyncio.gather(*(one(index) for index in range(attempts)))
+        return summarize(parallel, measurements, time.perf_counter() - started)
+
+def run_stage(opener, origin, domain, senders, key, marker, parallel, attempts, timeout):
+    # Retain the public call signature for existing unit tests. For measured
+    # stages a bounded async HTTP client replaces thread-per-socket urllib.
+    return asyncio.run(run_stage_async(
+        origin, domain, senders, key, marker, parallel, attempts, timeout,
+    ))
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
@@ -103,7 +171,7 @@ def main(argv=None):
     parser.add_argument("--allow-remote", action="store_true")
     parser.add_argument("--domain", required=True)
     parser.add_argument("--sender-count", type=int, default=128)
-    parser.add_argument("--levels", default="10,50,100,500")
+    parser.add_argument("--levels", default="1,5,10,25,50,100,250,500")
     parser.add_argument("--requests-per-level", type=int, default=1000)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--timeout", type=float, default=15)
@@ -151,6 +219,7 @@ def main(argv=None):
         "domain": args.domain, "distinct_senders": args.sender_count,
         "cpu_count_visible": os.cpu_count(), "platform": platform.platform(),
         "requests_per_level": args.requests_per_level, "timeout_seconds": args.timeout,
+        "client": "httpx2 AsyncClient, explicit per-stage keep-alive pool",
         "stages": stages,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

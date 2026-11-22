@@ -1,5 +1,6 @@
 """Transactional signature selection from named groups."""
-from sqlalchemy import or_, select
+import os
+from sqlalchemy import or_, select, text
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.orm import Session
@@ -22,6 +23,22 @@ def select_and_record_group_signature(
     principal = (principal_id or "").strip()
     if not principal or len(principal) > 320 or "@" in principal:
         raise ValueError("A provider-namespaced immutable principal_id is required")
+
+    dialect = session.get_bind().dialect.name
+    if dialect == "postgresql":
+        # Keep a single stalled principal from holding DB sessions forever.
+        # SET LOCAL resets automatically when the caller commits/rolls back.
+        raw = os.environ.get("DB_SELECTION_LOCK_TIMEOUT_MS", "8000")
+        try:
+            lock_timeout_ms = int(raw)
+        except ValueError as exc:
+            raise RuntimeError("DB_SELECTION_LOCK_TIMEOUT_MS must be an integer") from exc
+        if not 100 <= lock_timeout_ms <= 60000:
+            raise RuntimeError("DB_SELECTION_LOCK_TIMEOUT_MS must be 100..60000")
+        session.execute(
+            text("SELECT set_config('lock_timeout', :limit, true)"),
+            {"limit": f"{lock_timeout_ms}ms"},
+        )
 
     group = session.get(SignatureGroupDB, group_id)
     domain = session.get(DomainDB, domain_id)
@@ -68,7 +85,6 @@ def select_and_record_group_signature(
         "group_id": group_id,
         "last_signature_id": None,
     }
-    dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
         statement = postgresql_insert(GroupSelectionStateDB).values(**values)
     elif dialect == "sqlite":
@@ -85,7 +101,12 @@ def select_and_record_group_signature(
         ).with_for_update()
     ).scalar_one()
 
-    eligible_rows = session.execute(candidates_query.with_for_update()).all()
+    # Only the (principal_id, group_id) rotation state needs an exclusive lock.
+    # Locking catalog/member rows here serializes every sender in the same
+    # group, including unrelated principals, and causes head-of-line blocking.
+    # Read eligible members AFTER locking this principal's state so the
+    # candidate set is current within PostgreSQL READ COMMITTED isolation.
+    eligible_rows = session.execute(candidates_query).all()
     candidates = [
         WeightedCandidate(id=signature.id, payload=signature, enabled=True, weight=weight)
         for signature, weight in eligible_rows
