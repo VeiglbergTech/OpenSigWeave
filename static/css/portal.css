@@ -137,6 +137,7 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
     pointer-events: none;
 }
 .osw-modal-root--preview, .osw-modal-root--confirm { z-index: 111; }
+.osw-modal-root--image-import { z-index: 105; }
 .osw-modal-placement {
     display: flex; align-items: center; justify-content: center;
     width: 100%; height: 100%; min-width: 0; min-height: 0; pointer-events: none;
@@ -371,4 +372,26 @@ html[data-theme="light"] .osw-modal-shell { box-shadow: 0 20px 60px rgba(19, 31,
 @media (max-width: 460px) {
     .osw-editor-font-field, .osw-editor-font-field:first-child { flex: 1 1 100%; }
     .osw-editor-font-field.osw-editor-font-custom { flex: 1 1 100%; }
+}
+
+/* Keep the URL import alongside CKEditor's image upload, even on narrow screens. */
+#signature-template-editor .ck-toolbar__items {
+    flex-wrap: wrap !important;
+    max-width: 100%;
+    min-width: 0;
+}
+#signature-template-editor .osw-editor-import-url-button {
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+#signature-template-editor .osw-editor-import-url-button .ck-button__label {
+    display: none;
+}
+#signature-template-editor .osw-editor-import-url-button:focus-visible {
+    outline: 2px solid var(--osw-action-accent);
+    outline-offset: 1px;
+}
+#signature-template-editor .osw-editor-import-url-button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
 }

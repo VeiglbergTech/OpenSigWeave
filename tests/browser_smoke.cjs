@@ -759,6 +759,80 @@ async function main() {
     assert.doesNotMatch(uploadedSourceHtml, /src=["'](?:data:|blob:)/i,
       "signature HTML must not persist data: or blob: image URLs");
 
+    // Import a managed image through the new CKEditor toolbar action, without
+    // relying on public internet access in CI. Backend SSRF checks have unit tests.
+    checkpoint("image URL toolbar import: validation, insertion, preview and persistence");
+    const urlImportToolbarButton = signatureToolbar.getByRole("button", {
+      name: "Import Picture from URL", exact: true
+    });
+    await urlImportToolbarButton.waitFor({ state: "visible" });
+    assert.equal(await urlImportToolbarButton.isEnabled(), true);
+    const previousViewport = page.viewportSize();
+    await page.setViewportSize({ width: 390, height: 780 });
+    await urlImportToolbarButton.scrollIntoViewIfNeeded();
+    const buttonFits = await urlImportToolbarButton.evaluate(button => {
+      const rect = button.getBoundingClientRect();
+      return rect.left >= 0 && rect.right <= window.innerWidth;
+    });
+    assert.equal(buttonFits, true, "image URL toolbar control must be visible on narrow screens");
+    await page.setViewportSize(previousViewport);
+
+    let remoteImportRequests = 0;
+    await page.route("**/api/admin/signature-assets/import-url", async route => {
+      remoteImportRequests += 1;
+      const { url } = route.request().postDataJSON();
+      if (url === "https://example.org/logo.png") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ url: dragAssetPath }) });
+      } else {
+        await route.fulfill({ status: 422, contentType: "application/json", body: JSON.stringify({ detail: "Unsupported remote image type" }) });
+      }
+    });
+    await signatureEditEditor.click();
+    await page.keyboard.press("Control+End");
+    await page.keyboard.type("BEFOREAFTER");
+    for (let index = 0; index < 5; index++) await page.keyboard.press("ArrowLeft");
+    await urlImportToolbarButton.click();
+    const imageImportDialog = signaturePanel.getByRole("dialog", { name: "Import Picture from URL" });
+    await assertFloatingDialog(imageImportDialog, "image URL importer");
+    await assertModalLayout(page, imageImportDialog, "image-url-import");
+    assert.equal(await signatureDialog.locator('input[x-model.trim="imageImportUrl"]').count(), 0,
+      "obsolete URL input must not remain below the editor");
+    const imageImportInput = imageImportDialog.getByRole("textbox", { name: "Image URL" });
+    await imageImportInput.fill("http://127.0.0.1/internal.png");
+    await imageImportDialog.getByRole("button", { name: "Import image" }).click();
+    assert.equal(remoteImportRequests, 0, "non-HTTPS images must be rejected before the fetch");
+    await imageImportInput.fill("https://example.org/not-an-image.png");
+    await imageImportDialog.getByRole("button", { name: "Import image" }).click();
+    await page.waitForFunction(() => document.querySelector("#signature-image-import-url")?.disabled === false);
+    assert.equal(remoteImportRequests, 1, "invalid image response must reach the importer");
+    assert.equal(await signatureEditEditor.locator('img[src*="/signature-assets/"]').count(), 3,
+      "failed imports must not add an image");
+    await imageImportInput.fill("https://example.org/logo.png");
+    await imageImportDialog.getByRole("button", { name: "Import image" }).click();
+    await imageImportDialog.waitFor({ state: "hidden" });
+    await page.unroute("**/api/admin/signature-assets/import-url");
+    assert.equal(remoteImportRequests, 2, "successful URL import must reuse the server endpoint");
+    await signatureEditEditor.locator('img[src*="/signature-assets/"]').nth(3).waitFor();
+    const urlImportedHtml = await signatureEditEditor.innerHTML();
+    assert.ok(urlImportedHtml.lastIndexOf("BEFORE") < urlImportedHtml.lastIndexOf(dragAssetPath)
+      && urlImportedHtml.lastIndexOf(dragAssetPath) < urlImportedHtml.lastIndexOf("AFTER"),
+      "URL image must be inserted at the previously saved cursor position");
+    assert.equal(await signatureEditEditor.locator('img[src*="/signature-assets/"]').count(), 4);
+    const urlImportedSource = await signaturePanel.locator("#signature-html-source").inputValue();
+    assert.ok(urlImportedSource.includes(baseURL + dragAssetPath),
+      "URL-imported image must be persisted as a managed absolute URL");
+    await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("open-preview", {
+        detail: { html: document.querySelector("#signature-html-source").value }
+      }));
+    });
+    const importedPreview = page.locator('[x-data="previewModal"]');
+    await importedPreview.waitFor({ state: "visible" });
+    assert.ok((await page.locator("#signature-preview-frame").getAttribute("srcdoc")).includes(dragAssetPath),
+      "URL-imported image must appear in signature preview HTML");
+    await page.keyboard.press("Escape");
+    await importedPreview.waitFor({ state: "hidden" });
+
     // Save the image-bearing HTML as version 2 and then reopen it from storage.
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
     await page.waitForFunction(() => {
@@ -772,7 +846,7 @@ async function main() {
     const persistedImageSrcs = await persistedImageEditor.locator('img[src*="/signature-assets/"]').evaluateAll(
       images => images.map(image => image.getAttribute("src"))
     );
-    assert.equal(persistedImageSrcs.length, 3, "all uploaded images must survive save and reopen");
+    assert.equal(persistedImageSrcs.length, 4, "uploaded and URL-imported images must survive save and reopen");
     for (const src of persistedImageSrcs) {
       assert.ok(src.startsWith(baseURL + "/signature-assets/"), "persisted image URL must remain absolute");
       assert.doesNotMatch(src, /^(?:data:|blob:)/i);

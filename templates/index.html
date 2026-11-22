@@ -9,10 +9,10 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js"></script>
-    <script src="/static/js/rich-editor.js?v=font-controls-20261122"></script>
+    <script src="/static/js/rich-editor.js?v=image-url-toolbar-20261122"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=font-controls-20261122" rel="stylesheet">
+    <link href="/static/css/portal.css?v=image-url-toolbar-20261122" rel="stylesheet">
     <script src="/static/js/theme.js"></script>
     <script defer src="/static/js/branding.js"></script>
 </head>
@@ -301,13 +301,6 @@
                             </details>
                             <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
                             <p class="mt-2 text-xs text-gray-500">Drag & drop or paste PNG, JPEG, WebP or GIF images (maximum 2 MiB each). Images are stored in OpenSigWeave's immutable local asset store.</p>
-                            <div class="mt-3 flex flex-wrap items-end gap-2">
-                                <label class="flex-1 min-w-[240px] text-xs text-gray-400">Import image from HTTPS URL
-                                    <input type="url" x-model.trim="imageImportUrl" :disabled="isViewingHistoricalVersion || imageImportBusy" maxlength="2048" placeholder="https://example.com/logo.png" class="mt-1 block w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
-                                </label>
-                                <button type="button" @click="importImageFromUrl()" :disabled="!imageImportUrl.trim() || isViewingHistoricalVersion || imageImportBusy" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 text-white" x-text="imageImportBusy ? 'Importing…' : 'Load from URL'"></button>
-                            </div>
-                            <p class="mt-1 text-xs text-gray-500">HTTPS images are downloaded once, validated, and stored locally. Redirects and internal hosts are blocked. Original URLs are never fetched during sending.</p>
                             <div x-data="htmlEditorToggle" class="mt-3">
                                 <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit raw HTML</button>
                                 <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" :disabled="isViewingHistoricalVersion" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
@@ -315,6 +308,30 @@
                         </div>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
+                    </div>
+                </div>
+            </div>
+            <div x-show="imageImportOpen" x-cloak class="osw-modal-root osw-modal-root--image-import">
+                <div class="osw-modal-placement">
+                    <div x-show="imageImportOpen" role="dialog" aria-modal="true" aria-label="Import Picture from URL" class="osw-modal-shell osw-modal-width-small osw-image-import-dialog">
+                        <div class="osw-modal-header">
+                            <h3 class="text-lg font-bold">Import Picture from URL</h3>
+                            <button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button>
+                        </div>
+                        <div class="osw-modal-body">
+                            <label for="signature-image-import-url" class="text-sm">Image URL</label>
+                            <input id="signature-image-import-url" type="url" x-model.trim="imageImportUrl" :disabled="imageImportBusy"
+                                @keydown.enter.prevent="importImageFromUrl()" maxlength="2048" autocomplete="url"
+                                placeholder="https://example.com/logo.png" class="w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                            <p class="text-xs text-gray-400">Only HTTPS images are imported. The server blocks redirects and private network addresses, validates the file, and stores it locally.</p>
+                        </div>
+                        <div class="osw-modal-footer">
+                            <button type="button" data-osw-dialog-close class="bg-gray-700 px-4 py-2 text-gray-200">Cancel</button>
+                            <button type="button" @click="importImageFromUrl()"
+                                :disabled="!imageImportUrl.trim() || imageImportBusy || isViewingHistoricalVersion"
+                                class="bg-blue-600 hover:bg-blue-500 px-4 py-2 text-white disabled:opacity-40"
+                                x-text="imageImportBusy ? 'Importing…' : 'Import image'"></button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -866,6 +883,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=font-controls-20261122"></script>
+    <script src="/static/js/portal.js?v=image-url-toolbar-20261122"></script>
 </body>
 </html>

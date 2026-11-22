@@ -34,6 +34,7 @@ window.fetch = (resource, options = {}) => {
                 readOnly: !!options.readOnly,
                 imageUpload: !!options.imageUpload,
                 signatureFontControls: !!options.signatureFontControls,
+                onImportImageFromUrl: options.onImportImageFromUrl,
                 uploadUrl: options.uploadUrl,
                 csrfToken: options.csrfToken,
                 onChange: html => {
@@ -59,6 +60,7 @@ window.fetch = (resource, options = {}) => {
             signatureRichEditor = await mountRichEditor("signature-template-editor", "signature-html-source", {
                 imageUpload: true,
                 signatureFontControls: true,
+                onImportImageFromUrl: () => manager.openImageImportDialog(),
                 uploadUrl: "/api/admin/signature-assets",
                 csrfToken: opensigweaveCsrfToken,
                 readOnly: manager.isViewingHistoricalVersion,
@@ -279,7 +281,7 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', imageImportUrl: '', imageImportBusy: false, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
+                signatures: [], domains: [], groups: [], selectedGroupSlug: '', imageImportUrl: '', imageImportOpen: false, imageImportBusy: false, imageImportController: null, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
@@ -300,41 +302,67 @@ function identityProviderManager() { return {
                     this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
                     if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
                 },
+                openImageImportDialog() {
+                    if (!this.editing || this.isViewingHistoricalVersion || !signatureRichEditor) return;
+                    this.imageImportUrl = '';
+                    this.imageImportOpen = true;
+                },
+                closeImageImportDialog() {
+                    if (this.imageImportController) this.imageImportController.abort();
+                    this.imageImportController = null;
+                    this.imageImportOpen = false;
+                    this.imageImportBusy = false;
+                    this.imageImportUrl = '';
+                    if (signatureRichEditor) signatureRichEditor.clearImageImportSelection();
+                },
                 async importImageFromUrl() {
-                    if (this.isViewingHistoricalVersion || this.imageImportBusy) return;
+                    if (!this.imageImportOpen || !this.editing || this.isViewingHistoricalVersion || this.imageImportBusy) return;
                     const sourceUrl = (this.imageImportUrl || '').trim();
-                    if (!sourceUrl.startsWith('https://')) {
-                        notify('Enter an HTTPS image URL.', 'error');
+                    let source;
+                    try { source = new URL(sourceUrl); }
+                    catch (_) { notify('Enter a valid HTTPS image URL.', 'error'); return; }
+                    if (source.protocol !== 'https:' || !source.hostname || source.username || source.password) {
+                        notify('Enter a valid HTTPS image URL without credentials.', 'error');
                         return;
                     }
                     if (!signatureRichEditor) {
                         notify('Open the signature editor before importing an image.', 'error');
                         return;
                     }
+                    const controller = new AbortController();
+                    this.imageImportController = controller;
                     this.imageImportBusy = true;
                     try {
                         const response = await fetch('/api/admin/signature-assets/import-url', {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
-                            body: JSON.stringify({url: sourceUrl})
+                            body: JSON.stringify({url: sourceUrl}),
+                            signal: controller.signal
                         });
                         const data = await response.json();
+                        if (controller.signal.aborted || !this.imageImportOpen || !this.editing || this.isViewingHistoricalVersion) return;
                         if (!response.ok || !data.url) {
                             throw new Error(data.detail || 'The image could not be imported.');
                         }
                         const localImageUrl = new URL(data.url, window.location.origin);
                         if (localImageUrl.origin !== window.location.origin ||
-                            !/^\/signature-assets\/[a-f0-9]{64}\.(?:png|jpg|webp|gif)$/.test(localImageUrl.pathname)) {
+                            !/^\/signature-assets\/[a-f0-9]{64}\.(?:png|jpg|webp|gif)$/.test(localImageUrl.pathname) ||
+                            localImageUrl.search || localImageUrl.hash) {
                             throw new Error('The image server returned an invalid asset URL.');
                         }
                         signatureRichEditor.insertImage(localImageUrl.href);
                         this.form.html_content = signatureRichEditor.getData();
-                        this.imageImportUrl = '';
+                        this.closeImageImportDialog();
                         notify('Image imported into local storage and inserted into the editor.');
                     } catch (error) {
-                        notify(error && error.message ? error.message : 'Could not import image.', 'error');
+                        if (!controller.signal.aborted) {
+                            notify(error && error.message ? error.message : 'Could not import image.', 'error');
+                        }
                     } finally {
-                        this.imageImportBusy = false;
+                        if (this.imageImportController === controller) {
+                            this.imageImportController = null;
+                            this.imageImportBusy = false;
+                        }
                     }
                 },
                 toggleDomain(domainId, checked) {
@@ -364,6 +392,7 @@ function identityProviderManager() { return {
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
+                    this.closeImageImportDialog();
                     this.form = { id: null, name: '', domain_ids: [], is_active: true, html_content: '' };
                     this.versions = [];
                     this.selectedVersionId = '';
@@ -374,6 +403,7 @@ function identityProviderManager() { return {
                     this.$nextTick(() => initSignatureRichEditor(this));
                 },
                 async editSignature(signature) {
+                    this.closeImageImportDialog();
                     this.form = { id: signature.id, name: signature.name,
                         domain_ids: Array.isArray(signature.domain_ids) ? signature.domain_ids.map(Number) : (signature.domain_id == null ? [] : [Number(signature.domain_id)]),
                         is_active: signature.is_active, html_content: '' };
@@ -1359,6 +1389,7 @@ function initOswDialogs() {
         const data = window.Alpine && Alpine.$data(dialog);
         if (!data) return;
         if (dialog.closest('[x-data="confirmModal"]')) data.close();
+        else if (dialog.getAttribute('x-show') === 'imageImportOpen') data.closeImageImportDialog();
         else if (dialog.getAttribute('x-show') === 'memberEditor') data.memberEditor = false;
         else if (dialog.classList.contains('form-dialog')) data.editing = false;
         else data.show = false;

@@ -219,6 +219,56 @@
         syncWithSelection();
     }
 
+
+    // An additional native control lives in CKEditor's existing toolbar. Using a
+    // local button instead of duplicating the editor avoids altering upload plugins.
+    function installSignatureImageUrlButton(editor, onImport) {
+        const toolbar = editor.ui.view.toolbar.element;
+        const items = toolbar && (toolbar.querySelector(".ck-toolbar__items") || toolbar);
+        if (!items || typeof onImport !== "function") {
+            throw new Error("Signature image URL toolbar is unavailable.");
+        }
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ck ck-button ck-off osw-editor-import-url-button";
+        button.setAttribute("aria-label", "Import Picture from URL");
+        button.title = "Import Picture from URL";
+
+        const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        for (const [name, value] of Object.entries({
+            viewBox: "0 0 24 24", width: "20", height: "20",
+            fill: "none", stroke: "currentColor", "stroke-width": "1.7",
+            "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true"
+        })) icon.setAttribute(name, value);
+        const addShape = (tag, attributes) => {
+            const shape = document.createElementNS("http://www.w3.org/2000/svg", tag);
+            for (const [name, value] of Object.entries(attributes)) shape.setAttribute(name, value);
+            icon.appendChild(shape);
+        };
+        addShape("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" });
+        addShape("circle", { cx: "8", cy: "9", r: "1.5" });
+        addShape("path", { d: "m4 17 5-5 4 4 2-2 5 4" });
+        const label = document.createElement("span");
+        label.className = "ck ck-button__label";
+        label.textContent = "Import Picture from URL";
+        button.append(icon, label);
+        const update = () => { button.disabled = editor.isReadOnly; };
+        editor.on("change:isReadOnly", update);
+        button.addEventListener("click", () => {
+            if (!editor.isReadOnly) onImport();
+        });
+
+        const uploadButton = [...items.querySelectorAll("button")].find(candidate =>
+            /upload (?:image|from computer)/i.test(
+                (candidate.getAttribute("aria-label") || "") + " " +
+                (candidate.getAttribute("data-cke-tooltip-text") || "")
+            )
+        );
+        if (uploadButton) uploadButton.after(button);
+        else items.appendChild(button);
+        update();
+    }
+
     async function create(element, options) {
         const config = options || {};
         const library = window.CKEDITOR;
@@ -307,6 +357,15 @@
         }
         const editor = await library.ClassicEditor.create(element, editorConfig);
         if (config.signatureFontControls) installSignatureFontControls(editor);
+        let imageImportSelection = null;
+        if (config.imageUpload && typeof config.onImportImageFromUrl === "function") {
+            installSignatureImageUrlButton(editor, () => {
+                // Retain the model range while the URL dialog is focused and the
+                // download is in progress; inserting must not jump to the end.
+                imageImportSelection = editor.model.document.selection.getFirstRange();
+                config.onImportImageFromUrl();
+            });
+        }
 
         let onChange = typeof config.onChange === "function" ? config.onChange : null;
         editor.model.document.on("change:data", function () {
@@ -325,12 +384,24 @@
             setData: function (html) { editor.setData(typeof html === "string" ? html : ""); },
             focus: function () { editor.editing.view.focus(); },
             insertImage: function (url) {
-                if (typeof url !== "string" || !url.startsWith("https://")) {
-                    throw new Error("Only HTTPS images may be inserted.");
+                // Only immutable images returned from the local asset store may be
+                // inserted here. Remote HTTPS URLs must use the validated import API.
+                let asset;
+                try { asset = new URL(url, window.location.origin); }
+                catch (_) { throw new Error("Invalid managed image URL."); }
+                if (asset.origin !== window.location.origin ||
+                    !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
+                    asset.search || asset.hash || editor.isReadOnly) {
+                    throw new Error("Only local managed signature images may be inserted.");
                 }
+                if (imageImportSelection) {
+                    editor.model.change(writer => writer.setSelection(imageImportSelection));
+                }
+                editor.execute("insertImage", { source: asset.href });
+                imageImportSelection = null;
                 editor.editing.view.focus();
-                editor.execute("insertImage", { source: url });
             },
+            clearImageImportSelection: function () { imageImportSelection = null; },
             insertText: function (value) {
                 editor.editing.view.focus();
                 editor.execute("insertText", { text: String(value || "") });
