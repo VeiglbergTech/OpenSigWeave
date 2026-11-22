@@ -99,7 +99,9 @@ def create_config() -> None:
                 "DATABASE_URL", "SIGNATURE_STORAGE_PATH", "APP_BIND_ADDRESS",
                 "APP_PORT", "SECRET_KEY", "ENGINE_API_KEY", "APP_ALLOWED_HOSTS",
                 "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
-        content += f"{key}={dotenv_quote(values[key])}\n"
+        # Compose interpolates $ inside double quotes; scrypt contains $ separators.
+        value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
+        content += f"{key}={value}\n"
     _atomic_create(content)
     ok("Created .env with permissions 0600; secrets were not displayed")
 
