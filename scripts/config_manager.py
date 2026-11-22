@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 from getpass import getpass
 import os
 from pathlib import Path
@@ -57,8 +58,15 @@ def create_values() -> dict[str, str]:
     local_hash = hash_local_admin_password(password)
     del password, confirm
     print("Reverse proxy: terminate TLS at your trusted proxy and forward to the configured bind IP/port.")
-    print("Optional proxy networks can be configured later using TRUSTED_PROXY_CIDRS.")
+    proxy_cidrs = prompt("Trusted immediate reverse proxy IPs/CIDRs (optional, comma-separated)", "")
+    if proxy_cidrs:
+        try:
+            for network in proxy_cidrs.split(","):
+                ipaddress.ip_network(network.strip(), strict=False)
+        except ValueError as exc:
+            raise DeploymentError("Invalid reverse proxy CIDR list", 4) from exc
     values = dict(DEFAULTS)
+    values["TRUSTED_PROXY_CIDRS"] = proxy_cidrs
     values.update({
         "POSTGRES_PASSWORD": secrets.token_urlsafe(48),
         "SECRET_KEY": secrets.token_urlsafe(48),
@@ -102,6 +110,8 @@ def create_config() -> None:
         # Compose interpolates $ inside double quotes; scrypt contains $ separators.
         value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
         content += f"{key}={value}\n"
+    if values.get("TRUSTED_PROXY_CIDRS"):
+        content += "TRUSTED_PROXY_CIDRS=" + dotenv_quote(values["TRUSTED_PROXY_CIDRS"]) + "\n"
     _atomic_create(content)
     ok("Created .env with permissions 0600; secrets were not displayed")
 

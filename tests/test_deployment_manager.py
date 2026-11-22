@@ -24,7 +24,7 @@ class ConfigTests(unittest.TestCase):
     def test_crypto_and_scrypt(self):
         from auth_config import verify_local_admin_password
         with patch.object(cfg, "prompt", side_effect=[
-            "signature.example.test", "127.0.0.1", "8085", "admin@example.test"
+            "signature.example.test", "127.0.0.1", "8085", "admin@example.test", ""
         ]), patch.object(cfg, "getpass", side_effect=["correct horse battery staple"] * 2):
             values = cfg.create_values()
         secrets = [values[x] for x in ("POSTGRES_PASSWORD", "SECRET_KEY", "ENGINE_API_KEY")]
