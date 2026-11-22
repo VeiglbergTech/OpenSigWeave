@@ -185,7 +185,7 @@
         sizeSelect.addEventListener("change", () => {
             if (sizeSelect.disabled) return;
             if (sizeSelect.value === "default") editor.execute("fontSize");
-            else editor.execute("fontSize", { value: Number(sizeSelect.value) });
+            else editor.execute("fontSize", { value: Number(sizeSelect.value) + "px" });
             editor.editing.view.focus();
             syncWithSelection();
         });
@@ -198,7 +198,7 @@
                 return;
             }
             customSize.setCustomValidity("");
-            editor.execute("fontSize", { value });
+            editor.execute("fontSize", { value: value + "px" });
             editor.editing.view.focus();
             syncWithSelection();
         }
