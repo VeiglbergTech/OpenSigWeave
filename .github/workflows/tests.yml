@@ -99,7 +99,9 @@ jobs:
           shellcheck install.sh generate_config.sh update.sh
           python3 -m unittest discover -s tests -p test_deployment_manager.py -v
       - name: Check backup automation shell syntax
-        run: bash -n scripts/backup_to_mounted_storage.sh
+        run: |
+          bash -n scripts/backup_to_mounted_storage.sh
+          bash -n tests/docker_backup_restore_e2e.sh
       - name: Test scheduled backup remote-filesystem guards
         run: bash tests/scheduled_backup_smoke.sh
       - name: Check Rspamd Lua syntax

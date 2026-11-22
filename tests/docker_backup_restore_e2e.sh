@@ -66,7 +66,10 @@ python "$SOURCE/backup_cli.py" restore "$BACKUP" \
   --app-port 18095 \
   --health-timeout 240
 
-grep -q '^APP_PORT=18095
+grep -Fqx "APP_PORT=18095" "$RESTORE/.env"
+grep -Fqx "APP_BIND_ADDRESS=127.0.0.1" "$RESTORE/.env"
+curl -fsS -H "Host: signature.example.test" http://127.0.0.1:8085/login >/dev/null
+curl -fsS -H "Host: signature.example.test" http://127.0.0.1:18095/login >/dev/null
 
 RESTORE_COMPOSE=(docker compose --project-name "$RESTORE_PROJECT" --file "$RESTORE/compose.yaml" --file "$RESTORE/compose.restore.yaml")
 db_value="$("${RESTORE_COMPOSE[@]}" exec -T postgres sh -c \
