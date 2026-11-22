@@ -19,8 +19,11 @@ from deploy_common import (
 from config_manager import ENV, migrate_config
 
 BACKUP_CONFIG = Path(os.environ.get("OSW_BACKUP_CONFIG", "/etc/opensigweave/backup.env"))
-CRITICAL_PATHS = ("migrations/", "adapters/", "rspamd/", "core/engine_contract.py",
-                  "compose.yaml", "Dockerfile", ".env.example", "backup_")
+CRITICAL_PATHS = (
+    "migrations/", "adapters/", "rspamd/", "core/engine_contract.py",
+    "core/engine_service.py", "main.py", "models.py", "database.py", "alembic.ini",
+    "compose.yaml", "Dockerfile", ".env.example", "backup_",
+)
 REMOTE_FS = {"nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "fuse.rclone"}
 UPDATE_JOURNAL = ROOT / ".git" / "opensigweave-update-state.json"
 
