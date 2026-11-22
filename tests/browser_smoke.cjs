@@ -479,18 +479,35 @@ async function main() {
       "email-safe font family must survive editor loading");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
+    const fontDebug = async (stage) => {
+      const snapshot = await page.evaluate(() => ({
+        html: document.querySelector("#signature-html-source")?.value,
+        visibleHtml: document.querySelector("#signature-template-editor .ck-editor__editable")?.innerHTML,
+        family: document.querySelector("#signature-template-editor .osw-font-family-select")?.value,
+        size: document.querySelector("#signature-template-editor .osw-font-size-select")?.value,
+        customSize: document.querySelector("#signature-template-editor .osw-font-px-input")?.value,
+        selection: String(window.getSelection() || ""),
+        activeElement: document.activeElement?.outerHTML.slice(0, 180)
+      }));
+      console.log("[browser-smoke] font-format " + stage + ": " + JSON.stringify(snapshot));
+      return snapshot;
+    };
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
+    await fontDebug("selected");
     await fontFamilyControl.selectOption("Georgia");
+    await fontDebug("family");
     await signatureCreateEditor.press("Control+A");
     await fontSizeControl.selectOption("18");
+    await fontDebug("size");
     await signatureCreateEditor.press("Control+A");
     await customFontSizeControl.fill("17");
     await customFontSizeControl.press("Enter");
-    await page.waitForFunction(() => {
-      const html = document.querySelector("#signature-html-source").value;
-      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17px/i.test(html);
-    });
+    const completedFontFormatting = await fontDebug("custom");
+    assert.match(completedFontFormatting.html || "", /font-family:\s*Georgia/i,
+      "font family must appear in synchronized HTML");
+    assert.match(completedFontFormatting.html || "", /font-size:\s*17px/i,
+      "custom pixel size must appear in synchronized HTML");
     assert.equal(await fontFamilyControl.inputValue(), "Georgia",
       "font selector must reflect the current CKEditor selection");
     assert.equal(await fontSizeControl.inputValue(), "17",
