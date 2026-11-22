@@ -547,7 +547,7 @@ async function main() {
     const signaturePreviewModal = page.locator('[x-data="previewModal"]');
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent("open-preview", {
-        detail: { html: "<p>Browser smoke preview overlay</p>" }
+        detail: { html: "<p>Browser smoke preview overlay</p>" + document.querySelector("#signature-html-source").value }
       }));
     });
     await signaturePreviewModal.waitFor({ state: "visible" });
@@ -571,6 +571,10 @@ async function main() {
       "preview must be the topmost rendered dialog at the viewport center");
     assert.match(previewLayering.srcdoc, /Browser smoke preview overlay/,
       "signature preview iframe must receive the requested HTML");
+    assert.match(previewLayering.srcdoc, /font-family:\s*Georgia/i,
+      "signature preview must retain the configured font family");
+    assert.match(previewLayering.srcdoc, /font-size:\s*17px/i,
+      "signature preview must retain the custom pixel size");
     await page.keyboard.press("Escape");
     await signaturePreviewModal.waitFor({ state: "hidden" });
     await signatureEditEditor.click();
