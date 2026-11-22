@@ -29,7 +29,7 @@
 
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
-            {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
+            {% if has_logo %}<img src="/branding/logo.png" data-osw-brand-logo alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
             {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
@@ -533,9 +533,12 @@
                     <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
                     </div>
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
-                    <div><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
+                    <div><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Light mode logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
                         <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="logoPreview()" alt="Brand logo preview" class="max-h-28 max-w-full object-contain"></div>
-                        <input type="file" accept="image/png,.png" @change="chooseLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
+                        <input type="file" aria-label="Light mode logo" accept="image/png,.png" @change="chooseLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Dark mode logo</h3><button type="button" @click="restoreDarkLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use standard logo</button></div>
+                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="darkLogoPreview()" alt="Dark mode logo preview" class="max-h-28 max-w-full object-contain"></div>
+                        <input type="file" aria-label="Dark mode logo" accept="image/png,.png" @change="chooseDarkLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. Without an upload, the standard logo is used.</p></div>
                     <div class="border-t border-gray-700 pt-4"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in fallback</button></div>
                         <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 h-20 flex items-center justify-center"><img :src="faviconPreview()" alt="Favicon preview" class="max-h-12 max-w-12 object-contain"></div>
                         <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 256 KiB. Without a custom favicon, the built-in logo is used.</p></div>

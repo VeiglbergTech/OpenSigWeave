@@ -167,6 +167,7 @@ class BrandingSettingsDB(Base):
     app_name = Column(String(120), nullable=False, default="OpenSigWeave")
     app_color = Column(String(7), nullable=False, default="#ff7043")
     logo_png = Column(LargeBinary, nullable=True)
+    dark_logo_png = Column(LargeBinary, nullable=True)
     favicon_data = Column(LargeBinary, nullable=True)
     favicon_mime = Column(String(64), nullable=True)
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

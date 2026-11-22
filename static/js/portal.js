@@ -802,8 +802,8 @@ function identityProviderManager() { return {
 
         function brandingManager() {
             return {
-                settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', favicon_url: '/branding/favicon' },
-                logoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
+                settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', dark_logo_url: '/branding/logo-dark.png', has_custom_dark_logo: false, favicon_url: '/branding/favicon' },
+                logoDataUrl: null, darkLogoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetDarkLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
                 async fetchSettings() {
                     try {
                         const response = await fetch('/api/admin/branding', { cache: 'no-store' });
@@ -816,6 +816,11 @@ function identityProviderManager() { return {
                 },
                 logoPreview() {
                     return this.resetLogo ? '/branding/builtin/logo.png' : this.logoDataUrl || this.settings.logo_url + '?v=' + this.cacheKey;
+                },
+                darkLogoPreview() {
+                    if (this.darkLogoDataUrl) return this.darkLogoDataUrl;
+                    if (this.resetDarkLogo || !this.settings.has_custom_dark_logo) return this.logoPreview();
+                    return this.settings.dark_logo_url + '?v=' + this.cacheKey;
                 },
                 faviconPreview() {
                     return this.resetFavicon ? '/branding/builtin/favicon' : this.faviconDataUrl || this.settings.favicon_url + '?v=' + this.cacheKey;
@@ -850,6 +855,18 @@ function identityProviderManager() { return {
                     try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.resetLogo = false; }
                     catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
+                async chooseDarkLogo(event) {
+                    const file = event.target.files && event.target.files[0];
+                    if (!file) return;
+                    this.darkLogoDataUrl = null;
+                    if (!file.size || file.size > 512 * 1024 || file.type !== 'image/png') {
+                        notify('Dark mode logo must be a PNG up to 512 KiB.', 'error');
+                        event.target.value = '';
+                        return;
+                    }
+                    try { this.darkLogoDataUrl = await this.readFile(file, 'image/png'); this.resetDarkLogo = false; }
+                    catch (error) { notify(error.message, 'error'); event.target.value = ''; }
+                },
                 async chooseFavicon(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
@@ -864,6 +881,7 @@ function identityProviderManager() { return {
                     catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
+                restoreDarkLogo() { this.darkLogoDataUrl = null; this.resetDarkLogo = true; },
                 restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
                 async save() {
                     if (this.saving) return;
@@ -875,8 +893,8 @@ function identityProviderManager() { return {
                             method: 'PUT', headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
-                                logo_data_url: this.logoDataUrl, favicon_data_url: this.faviconDataUrl,
-                                reset_logo: this.resetLogo, reset_favicon: this.resetFavicon
+                                logo_data_url: this.logoDataUrl, dark_logo_data_url: this.darkLogoDataUrl, favicon_data_url: this.faviconDataUrl,
+                                reset_logo: this.resetLogo, reset_dark_logo: this.resetDarkLogo, reset_favicon: this.resetFavicon
                             })
                         });
                         if (!response.ok) {

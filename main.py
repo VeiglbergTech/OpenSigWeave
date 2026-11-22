@@ -275,8 +275,10 @@ class BrandingUpdateRequest(BaseModel):
     app_name: str = Field(min_length=1, max_length=120)
     app_color: str = Field(min_length=7, max_length=7)
     logo_data_url: Optional[str] = Field(default=None, max_length=900000)
+    dark_logo_data_url: Optional[str] = Field(default=None, max_length=900000)
     favicon_data_url: Optional[str] = Field(default=None, max_length=500000)
     reset_logo: bool = False
+    reset_dark_logo: bool = False
     reset_favicon: bool = False
 
 
@@ -519,6 +521,19 @@ def branding_logo(db: Session = Depends(get_db)):
             headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
         )
     return _bundled_branding_response()
+
+
+@app.get("/branding/logo-dark.png")
+def branding_logo_dark(db: Session = Depends(get_db)):
+    """Serve an independent dark-mode logo, or the existing standard logo."""
+    settings = db.get(BrandingSettingsDB, 1)
+    if settings is not None and settings.dark_logo_png:
+        return Response(
+            content=settings.dark_logo_png,
+            media_type="image/png",
+            headers={"Cache-Control": "no-cache, must-revalidate", "X-Content-Type-Options": "nosniff"},
+        )
+    return branding_logo(db)
 
 
 @app.get("/branding/favicon")
@@ -1473,6 +1488,7 @@ def get_admin_branding(request: Request, db: Session = Depends(get_db)):
     return {
         **brand,
         "logo_url": "/branding/logo.png",
+        "dark_logo_url": "/branding/logo-dark.png",
         "favicon_url": "/branding/favicon",
     }
 
@@ -1491,6 +1507,8 @@ def update_admin_branding(
         raise HTTPException(status_code=422, detail="Brand color must be a six-digit hex color")
     if payload.reset_logo and payload.logo_data_url:
         raise HTTPException(status_code=422, detail="Choose either a logo upload or reset")
+    if payload.reset_dark_logo and payload.dark_logo_data_url:
+        raise HTTPException(status_code=422, detail="Choose either a dark-mode logo upload or reset")
     if payload.reset_favicon and payload.favicon_data_url:
         raise HTTPException(status_code=422, detail="Choose either a favicon upload or reset")
 
@@ -1511,6 +1529,16 @@ def update_admin_branding(
                 max_bytes=512 * 1024,
             )
             settings.logo_png = logo
+
+        if payload.reset_dark_logo:
+            settings.dark_logo_png = None
+        elif payload.dark_logo_data_url:
+            dark_logo, _mime = decode_branding_data_url(
+                payload.dark_logo_data_url,
+                allowed_mimes={"image/png"},
+                max_bytes=512 * 1024,
+            )
+            settings.dark_logo_png = dark_logo
 
         if payload.reset_favicon:
             settings.favicon_data = None
@@ -1534,6 +1562,7 @@ def update_admin_branding(
     return {
         **branding_context(db),
         "logo_url": "/branding/logo.png",
+        "dark_logo_url": "/branding/logo-dark.png",
         "favicon_url": "/branding/favicon",
     }
 

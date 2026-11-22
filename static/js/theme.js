@@ -21,6 +21,10 @@
             button.setAttribute("aria-label", "Switch to " + target + " mode");
             button.setAttribute("aria-pressed", String(theme === "light"));
         }
+        const selectedLogo = theme === "dark" ? "/branding/logo-dark.png" : "/branding/logo.png";
+        document.querySelectorAll("[data-osw-brand-logo]").forEach(logo => {
+            if (logo.getAttribute("src") !== selectedLogo) logo.setAttribute("src", selectedLogo);
+        });
         window.dispatchEvent(new CustomEvent("opensigweave-theme-change", { detail: { theme } }));
     }
     applyTheme(theme, false);

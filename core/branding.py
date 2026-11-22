@@ -28,14 +28,16 @@ ICO_MIMES = frozenset({"image/x-icon", "image/vnd.microsoft.icon"})
 def branding_context(db: Session) -> dict:
     settings = db.get(BrandingSettingsDB, 1)
     custom_logo = bool(settings is not None and settings.logo_png)
+    custom_dark_logo = bool(settings is not None and settings.dark_logo_png)
     custom_favicon = bool(settings is not None and settings.favicon_data)
     has_builtin_logo = BUILTIN_LOGO_PATH.is_file()
     return {
         "app_name": (settings.app_name if settings is not None else DEFAULT_APP_NAME) or DEFAULT_APP_NAME,
         "app_color": (settings.app_color if settings is not None else DEFAULT_APP_COLOR) or DEFAULT_APP_COLOR,
-        "has_logo": custom_logo or has_builtin_logo,
+        "has_logo": custom_logo or custom_dark_logo or has_builtin_logo,
         "has_favicon": custom_favicon or BUILTIN_FAVICON_PATH.is_file() or has_builtin_logo,
         "has_custom_logo": custom_logo,
+        "has_custom_dark_logo": custom_dark_logo,
         "has_custom_favicon": custom_favicon,
     }
 
