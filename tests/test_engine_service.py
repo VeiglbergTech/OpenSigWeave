@@ -131,6 +131,35 @@ class SignatureEngineServiceTests(unittest.TestCase):
         store.read.assert_called_once()
         resolver.assert_awaited_once()
 
+    def test_generated_signature_preserves_ckeditor_font_styles(self):
+        """Engine output used by mail adapters retains safe inline px styling."""
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        template = (
+            '<p><span style="font-family: Georgia, serif; font-size: 17px;">'
+            '{{ first_name }}</span> '
+            '<span style="font-family: Arial, Helvetica, sans-serif; '
+            'font-size: 18px;">Support</span></p>'
+        )
+        signature = self._add_versioned_signature("Email font test", template)
+        self.db.commit()
+        store = Mock()
+        store.read.return_value = template
+        service, _, _ = self._service(file_store=store)
+        marker_code = hashlib.sha256(b"email font test").hexdigest()[:4]
+        result = asyncio.run(
+            service.resolve(
+                self.db,
+                normalize_engine_request("ada@example.org", signature.name, marker_code),
+            )
+        )
+        self.assertIn("Ada", result.html)
+        self.assertRegex(result.html, r"font-family:\\s*Georgia,\\s*serif")
+        self.assertRegex(result.html, r"font-family:\\s*Arial,\\s*Helvetica,\\s*sans-serif")
+        self.assertRegex(result.html, r"font-size:\\s*17px")
+        self.assertRegex(result.html, r"font-size:\\s*18px")
+        self.assertNotIn("<script", result.html.lower())
+        store.read.assert_called_once()
+
     def test_invalid_body_marker_returns_empty_without_identity_lookup(self):
         self.db.add(DomainDB(domain_name="example.org", is_active=True))
         self.db.commit()
