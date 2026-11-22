@@ -179,10 +179,17 @@ def validate_config(env: dict[str, str]) -> None:
         raise DeploymentError("Database and application secrets must be independent", 4)
     if any(len(env[key]) < 32 for key in ("POSTGRES_PASSWORD", "SECRET_KEY", "ENGINE_API_KEY")):
         raise DeploymentError("Application secrets must contain at least 32 characters", 4)
-    if not is_valid_email(env.get("LOCAL_ADMIN_EMAIL", "")):
+    # The existing application permits OIDC/LDAP-only deployments without a
+    # local administrator. Never create or rotate a local password during updates.
+    # Fresh installations still provision an emergency local administrator.
+    email = env.get("LOCAL_ADMIN_EMAIL", "")
+    admin_hash = env.get("LOCAL_ADMIN_PASSWORD_HASH", "")
+    if admin_hash and (not is_valid_email(email) or not is_valid_password_hash(admin_hash)):
+        raise DeploymentError("Invalid local administrator email or scrypt hash", 4)
+    if email and not is_valid_email(email):
         raise DeploymentError("Invalid local administrator email", 4)
-    if not is_valid_password_hash(env.get("LOCAL_ADMIN_PASSWORD_HASH", "")):
-        raise DeploymentError("Local admin scrypt hash is missing or invalid", 4)
+    if not admin_hash:
+        warn("Local administrator login is disabled; ensure an external identity provider remains available")
     hosts = env["APP_ALLOWED_HOSTS"].split(",")
     if not hosts or any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", x) for x in hosts):
         raise DeploymentError("APP_ALLOWED_HOSTS must contain explicit hostnames", 4)

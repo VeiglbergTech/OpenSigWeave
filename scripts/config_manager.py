@@ -32,7 +32,7 @@ DEFAULTS = {
 }
 # Keys without an explicit value require administrator intervention, not placeholders.
 REQUIRED = ("POSTGRES_PASSWORD", "SECRET_KEY", "ENGINE_API_KEY",
-            "APP_ALLOWED_HOSTS", "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH")
+            "APP_ALLOWED_HOSTS")
 
 
 def prompt(label: str, default: str = "") -> str:

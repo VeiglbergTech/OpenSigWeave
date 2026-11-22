@@ -93,6 +93,23 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(common.DeploymentError):
                 common.parse_env(link)
 
+    def test_existing_oidc_only_deployment_remains_valid(self):
+        values = {
+            "POSTGRES_PASSWORD": "p" * 40,
+            "SECRET_KEY": "s" * 40,
+            "ENGINE_API_KEY": "e" * 40,
+            "APP_ALLOWED_HOSTS": "signatures.example.test",
+            "APP_BIND_ADDRESS": "127.0.0.1",
+            "LOCAL_ADMIN_EMAIL": "admin@example.test",
+            "LOCAL_ADMIN_PASSWORD_HASH": "",
+        }
+        common.validate_config(values)
+        self.assertEqual(values["LOCAL_ADMIN_PASSWORD_HASH"], "")
+        self.assertNotIn("LOCAL_ADMIN_PASSWORD_HASH", cfg.missing_options(values))
+        values["LOCAL_ADMIN_PASSWORD_HASH"] = "invalid-hash"
+        with self.assertRaises(common.DeploymentError):
+            common.validate_config(values)
+
     def test_invalid_config_rejected(self):
         with self.assertRaises(common.DeploymentError):
             common.validate_config({"SECRET_KEY": "REPLACE_WITH_ANYTHING"})
