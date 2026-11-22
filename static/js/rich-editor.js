@@ -70,6 +70,148 @@
         };
     }
 
+    const SIGNATURE_FONT_FAMILIES = [
+        ["Arial", "Arial, Helvetica, sans-serif"],
+        ["Verdana", "Verdana, Geneva, sans-serif"],
+        ["Tahoma", "Tahoma, Geneva, sans-serif"],
+        ["Georgia", "Georgia, serif"],
+        ["Times New Roman", "Times New Roman, Times, serif"],
+        ["Courier New", "Courier New, Courier, monospace"],
+        ["Calibri", "Calibri, Arial, sans-serif"],
+        ["Trebuchet MS", "Trebuchet MS, Helvetica, sans-serif"]
+    ];
+    const SIGNATURE_FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
+
+    // A permanent, browser-native toolbar avoids CKEditor's collapsing overflow
+    // and clipped popovers inside the scrollable signature modal.
+    // Commands are still CKEditor commands: no HTML mutation or parallel editor state.
+    function installSignatureFontControls(editor) {
+        const toolbar = editor.ui.view.toolbar.element;
+        const familyCommand = editor.commands.get("fontFamily");
+        const sizeCommand = editor.commands.get("fontSize");
+        if (!toolbar || !toolbar.parentElement || !familyCommand || !sizeCommand) {
+            throw new Error("Signature font commands or editor toolbar unavailable.");
+        }
+
+        const bar = document.createElement("div");
+        bar.className = "osw-editor-font-toolbar";
+        bar.setAttribute("role", "toolbar");
+        bar.setAttribute("aria-label", "Signature font formatting");
+
+        function addSelect(labelText, ariaLabel, options, className) {
+            const label = document.createElement("label");
+            label.className = "osw-editor-font-field";
+            const caption = document.createElement("span");
+            caption.textContent = labelText;
+            const select = document.createElement("select");
+            select.className = className;
+            select.setAttribute("aria-label", ariaLabel);
+            for (const [text, value] of options) {
+                const option = document.createElement("option");
+                option.value = value;
+                option.textContent = text;
+                select.appendChild(option);
+            }
+            label.append(caption, select);
+            bar.appendChild(label);
+            return select;
+        }
+
+        const familySelect = addSelect("Font", "Signature font family",
+            [["Default font", "default"], ...SIGNATURE_FONT_FAMILIES],
+            "osw-font-family-select");
+        const sizeSelect = addSelect("Size", "Signature font size",
+            [["Default size", "default"], ...SIGNATURE_FONT_SIZES.map(px => [px + " px", String(px)])],
+            "osw-font-size-select");
+
+        const customLabel = document.createElement("label");
+        customLabel.className = "osw-editor-font-field osw-editor-font-custom";
+        const customCaption = document.createElement("span");
+        customCaption.textContent = "Custom size (px)";
+        const customSize = document.createElement("input");
+        customSize.type = "number";
+        customSize.min = "6";
+        customSize.max = "96";
+        customSize.step = "1";
+        customSize.placeholder = "6–96";
+        customSize.className = "osw-font-px-input";
+        customSize.setAttribute("aria-label", "Custom signature font size in pixels");
+        customLabel.append(customCaption, customSize);
+        bar.appendChild(customLabel);
+        toolbar.parentElement.insertBefore(bar, toolbar);
+
+        function selectedOption(select, value, description) {
+            const previous = select.querySelector("option[data-osw-custom]");
+            if (previous) previous.remove();
+            const known = Array.from(select.options).some(option => option.value === value);
+            if (!known && value !== "default") {
+                const option = document.createElement("option");
+                option.dataset.oswCustom = "true";
+                option.value = value;
+                option.textContent = description;
+                select.appendChild(option);
+            }
+            select.value = value;
+        }
+
+        function syncWithSelection() {
+            const family = typeof familyCommand.value === "string" && familyCommand.value.trim()
+                ? familyCommand.value.trim() : "default";
+            selectedOption(familySelect, family, family);
+            const rawSize = String(sizeCommand.value == null ? "" : sizeCommand.value).trim();
+            const match = /^(\d+(?:\.\d+)?)(?:px)?$/i.exec(rawSize);
+            const px = match ? String(Number(match[1])) : "default";
+            selectedOption(sizeSelect, px, px + " px");
+            customSize.value = px === "default" ? "" : px;
+            familySelect.disabled = editor.isReadOnly || !familyCommand.isEnabled;
+            sizeSelect.disabled = editor.isReadOnly || !sizeCommand.isEnabled;
+            customSize.disabled = editor.isReadOnly || !sizeCommand.isEnabled;
+        }
+
+        familySelect.addEventListener("change", () => {
+            if (familySelect.disabled) return;
+            editor.execute("fontFamily", { value: familySelect.value });
+            editor.editing.view.focus();
+            syncWithSelection();
+        });
+        sizeSelect.addEventListener("change", () => {
+            if (sizeSelect.disabled) return;
+            editor.execute("fontSize", {
+                value: sizeSelect.value === "default" ? "default" : Number(sizeSelect.value)
+            });
+            editor.editing.view.focus();
+            syncWithSelection();
+        });
+        function applyCustomSize() {
+            if (customSize.disabled || customSize.value === "") return;
+            const value = Number(customSize.value);
+            if (!Number.isInteger(value) || value < 6 || value > 96) {
+                customSize.setCustomValidity("Enter an integer pixel size from 6 to 96.");
+                customSize.reportValidity();
+                return;
+            }
+            customSize.setCustomValidity("");
+            editor.execute("fontSize", { value });
+            editor.editing.view.focus();
+            syncWithSelection();
+        }
+        customSize.addEventListener("change", applyCustomSize);
+        customSize.addEventListener("keydown", event => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                applyCustomSize();
+            }
+        });
+        customSize.addEventListener("input", () => customSize.setCustomValidity(""));
+
+        familyCommand.on("change:value", syncWithSelection);
+        familyCommand.on("change:isEnabled", syncWithSelection);
+        sizeCommand.on("change:value", syncWithSelection);
+        sizeCommand.on("change:isEnabled", syncWithSelection);
+        editor.on("change:isReadOnly", syncWithSelection);
+        syncWithSelection();
+    }
+
     async function create(element, options) {
         const config = options || {};
         const library = window.CKEDITOR;
@@ -85,7 +227,8 @@
         const plugins = pluginNames.map(name => library[name]);
         const toolbar = [
             "undo", "redo", "|", "heading", "|",
-            "fontFamily", "fontSize", "fontColor", "fontBackgroundColor", "|",
+            ...(config.signatureFontControls ? [] : ["fontFamily", "fontSize"]),
+            "fontColor", "fontBackgroundColor", "|",
             "bold", "italic", "underline", "link", "|",
             "bulletedList", "numberedList", "|", "alignment", "insertTable"
         ];
@@ -94,7 +237,7 @@
         const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar: config.imageUpload ? { items: toolbar, shouldNotGroupWhenFull: true } : toolbar,
+            toolbar: (config.imageUpload || config.signatureFontControls) ? { items: toolbar, shouldNotGroupWhenFull: true } : toolbar,
             // Numeric values produce inline font-size: Npx (not CKEditor text-size classes).
             // Keep other safe sizes and fonts when loading existing HTML signatures.
             fontSize: {
@@ -152,6 +295,7 @@
             editorConfig.extraPlugins = [signatureImageUploadPlugin(config)];
         }
         const editor = await library.ClassicEditor.create(element, editorConfig);
+        if (config.signatureFontControls) installSignatureFontControls(editor);
 
         let onChange = typeof config.onChange === "function" ? config.onChange : null;
         editor.model.document.on("change:data", function () {
