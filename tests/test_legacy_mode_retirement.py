@@ -1,6 +1,7 @@
 """Regression guards for retirement of the hard-coded signature mode model."""
 from pathlib import Path
 import inspect
+import re
 import unittest
 
 import main
@@ -133,7 +134,10 @@ class LegacyModeRetirementTests(unittest.TestCase):
                 text = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            found = [token for token in RETIRED if token in text]
+            # Match standalone mode tokens, not ordinary SQL terms like AUTOINCREMENT.
+            found = [token for token in RETIRED if re.search(
+                r"(?<![A-Z])" + re.escape(token) + r"(?![A-Z])", text
+            )]
             if found:
                 offenders.append((relative, found))
         self.assertEqual(offenders, [])

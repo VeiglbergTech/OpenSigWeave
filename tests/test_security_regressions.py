@@ -251,7 +251,7 @@ class SecurityRegressionTests(unittest.TestCase):
     def test_rspamd_multipart_parser_rewrites_only_safe_text_parts(self):
         lua = (ROOT / "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
         mime = (ROOT / "rspamd" / "opensigweave_mime.lua").read_text(encoding="utf-8")
-        self.assertIn('mime_rewriter.rewrite(task, function(decoded, is_html)', lua)
+        self.assertIn('pcall(mime_rewriter.rewrite, task, function(decoded, is_html)', lua)
         self.assertIn('task:get_parts()', mime)
         self.assertIn('part:is_attachment()', mime)
         self.assertIn('signed, encrypted or embedded message', mime)

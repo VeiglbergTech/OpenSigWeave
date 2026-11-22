@@ -46,8 +46,8 @@ class RspamdAdapterContractTests(unittest.TestCase):
 
     def test_multipart_uses_rspamd_parsed_mime_tree(self):
         self.assertIn('require "opensigweave_mime"', SOURCE)
-        self.assertIn('mime_rewriter.rewrite(task, function(decoded, is_html)', SOURCE)
-        self.assertIn('task:set_message(message)', SOURCE)
+        self.assertIn('pcall(mime_rewriter.rewrite, task, function(decoded, is_html)', SOURCE)
+        self.assertIn('pcall(task.set_message, task, message)', SOURCE)
         self.assertNotIn('multipart message left unchanged; safe MIME rewrite is not yet available', SOURCE)
         self.assertNotIn('local function process_mime_block(', SOURCE)
 

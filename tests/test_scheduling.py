@@ -261,7 +261,7 @@ class SchedulingTests(unittest.TestCase):
         rspamd_lua = (Path(__file__).resolve().parents[1] /
                       "rspamd" / "opensigweave.lua").read_text(encoding="utf-8")
         self.assertIn("API_URL_BASE .. url_encode(sender_email)", rspamd_lua)
-        self.assertIn("rspamd_http.request({", rspamd_lua)
+        self.assertIn("pcall(rspamd_http.request, {", rspamd_lua)
 
     def test_scheduled_group_uses_rotation_and_end_restores_normal(self):
         sig = self.add_signature("Group Christmas")
