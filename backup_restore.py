@@ -349,11 +349,14 @@ def restore_fresh_deployment(
                 restored_env.write_text("\n".join(filtered) + "\n", encoding="utf-8")
                 os.chmod(restored_env, 0o600)
 
+            # Every recovery project receives its own immutable image tag,
+            # so another restore cannot silently retarget existing deployments.
+            restore_image_ref = f"opensigweave:restore-{project_name}"
             # The restored deployment uses the exact image saved in the backup.
             override = (
                 "services:\n"
                 "  opensigweave:\n"
-                "    image: opensigweave:restore\n"
+                f"    image: {restore_image_ref}\n"
                 "    build: null\n"
             )
             (target / "compose.restore.yaml").write_text(override, encoding="utf-8")
@@ -361,7 +364,7 @@ def restore_fresh_deployment(
 
             _run([docker_binary, "image", "load", "--input", str(extracted / "images" / "images.tar")],
                  cwd=target, timeout=1800)
-            _run([docker_binary, "image", "tag", app_image_id, "opensigweave:restore"],
+            _run([docker_binary, "image", "tag", app_image_id, restore_image_ref],
                  cwd=target, timeout=120)
 
             _compose(docker_binary, project_name, target, "config", "--quiet")
@@ -392,13 +395,13 @@ def restore_fresh_deployment(
                 _run([docker_binary, "volume", "create", volume], cwd=target)
 
             _restore_volume(
-                docker_binary, project_name, target, "opensigweave:restore",
+                docker_binary, project_name, target, restore_image_ref,
                 f"{project_name}_opensigweave-signatures",
                 extracted / "data" / "signatures",
                 f"{project_name}-restore-signatures",
             )
             _restore_volume(
-                docker_binary, project_name, target, "opensigweave:restore",
+                docker_binary, project_name, target, restore_image_ref,
                 f"{project_name}_opensigweave-idp-data",
                 extracted / "data" / "idp-config",
                 f"{project_name}-restore-idp",
@@ -441,12 +444,12 @@ def restore_fresh_deployment(
                 )
 
             _verify_restored_volume(
-                docker_binary, project_name, target, "opensigweave:restore",
+                docker_binary, project_name, target, restore_image_ref,
                 f"{project_name}_opensigweave-signatures",
                 manifest["files"], "data/signatures/",
             )
             _verify_restored_volume(
-                docker_binary, project_name, target, "opensigweave:restore",
+                docker_binary, project_name, target, restore_image_ref,
                 f"{project_name}_opensigweave-idp-data",
                 manifest["files"], "data/idp-config/",
             )

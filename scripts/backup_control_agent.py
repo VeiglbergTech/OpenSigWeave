@@ -344,10 +344,11 @@ def _dispatch(request):
 class Handler(socketserver.StreamRequestHandler):
     def handle(self):
         try:
-            if hasattr(socket, "SO_PEERCRED"):
-                _, uid, _ = struct.unpack("3i", self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
-                if uid not in {0, APP_UID}:
-                    raise OperatorError("Backup access denied")
+            if not hasattr(socket, "SO_PEERCRED"):
+                raise OperatorError("Backup operator requires Linux peer credentials")
+            _, uid, _ = struct.unpack("3i", self.request.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            if uid not in {0, APP_UID}:
+                raise OperatorError("Backup access denied")
             message = self.rfile.readline(4097)
             if not message or len(message) > 4096:
                 raise OperatorError("Invalid backup request")

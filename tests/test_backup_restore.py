@@ -82,6 +82,7 @@ class BackupRestoreTests(unittest.TestCase):
             self.assertEqual(result, target)
             self.assertEqual((target / ".env").read_text(), "SECRET=value")
             self.assertTrue((target / "compose.yaml").is_file())
+            self.assertIn("image: opensigweave:restore-opensigweave-dr", (target / "compose.restore.yaml").read_text())
             self.assertIn(("up", "-d", "postgres"), compose_calls)
             self.assertIn(("up", "-d", "opensigweave"), compose_calls)
             self.assertEqual(restore_volume.call_count, 2)
