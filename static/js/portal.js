@@ -33,6 +33,7 @@ window.fetch = (resource, options = {}) => {
                 initialData: raw.value,
                 readOnly: !!options.readOnly,
                 imageUpload: !!options.imageUpload,
+                signatureFontControls: !!options.signatureFontControls,
                 uploadUrl: options.uploadUrl,
                 csrfToken: options.csrfToken,
                 onChange: html => {
@@ -57,6 +58,7 @@ window.fetch = (resource, options = {}) => {
             if (source) source.value = manager.form.html_content || "";
             signatureRichEditor = await mountRichEditor("signature-template-editor", "signature-html-source", {
                 imageUpload: true,
+                signatureFontControls: true,
                 uploadUrl: "/api/admin/signature-assets",
                 csrfToken: opensigweaveCsrfToken,
                 readOnly: manager.isViewingHistoricalVersion,
