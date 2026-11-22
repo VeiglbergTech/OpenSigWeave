@@ -15,8 +15,9 @@ keywords = ["ENGINE_API_KEY"]
 description = "Ignore documented example placeholders, not real credentials"
 regexTarget = "line"
 regexes = [
-  # Exact harmless documentation placeholder in a historical dev commit.
-  '''^export ENGINE_API_KEY='<disposable-engine-key>'  '''(?i)ENGINE_API_KEY\s*=\s*["'](?:REPLACE_WITH_|your_|changeme)''',
+  '''(?i)ENGINE_API_KEY\s*=\s*["'](?:REPLACE_WITH_|your_|changeme)''',
+  # Only the exact nonsecret placeholder that appeared in historical dev docs.
+  '''^export ENGINE_API_KEY='<disposable-engine-key>'$''',
 ]
 
 # These two historical commits introduced hardcoded engine credentials. They are
