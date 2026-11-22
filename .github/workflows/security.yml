@@ -110,6 +110,72 @@ jobs:
         with:
           category: /language:${{ matrix.language }}
 
+  codeql-alert-gate:
+    name: CodeQL open security findings gate
+    needs: codeql
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      security-events: read
+    steps:
+      - name: Verify CodeQL analysis provenance and check outstanding alerts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Analysis ingestion can lag successful SARIF upload. Fail closed.
+          found=0
+          for _ in $(seq 1 12); do
+            gh api "repos/$GH_REPO/code-scanning/analyses?ref=refs/heads/dev&per_page=100" > /tmp/codeql-analyses.json
+            if python3 - "$COMMIT_SHA" <<'PY'
+          import json,sys
+          analyses=json.load(open('/tmp/codeql-analyses.json',encoding='utf-8'))
+          matching=[a for a in analyses if a.get('commit_sha') == sys.argv[1] and a.get('tool',{}).get('name') == 'CodeQL']
+          languages={a.get('language') for a in matching}
+          print('CodeQL analyses for exact dev commit:', len(matching), 'languages:', sorted(str(x) for x in languages))
+          sys.exit(0 if len(languages)>=2 else 1)
+          PY
+            then
+              found=1
+              break
+            fi
+            sleep 10
+          done
+          if [[ "$found" != 1 ]]; then
+            echo "::error::No complete CodeQL analysis set found for exact dev commit $COMMIT_SHA"
+            exit 1
+          fi
+          gh api --paginate --slurp "repos/$GH_REPO/code-scanning/alerts?state=open&ref=refs/heads/dev&per_page=100" > /tmp/codeql-alerts.json
+          python3 - <<'PY'
+          import json,os,sys
+          pages=json.load(open('/tmp/codeql-alerts.json',encoding='utf-8'))
+          if not isinstance(pages,list) or any(not isinstance(page,list) for page in pages):
+              raise SystemExit('Unexpected code scanning alerts API response')
+          alerts=[a for page in pages for a in page]
+          relevant=[]
+          for alert in alerts:
+              rule=alert.get('rule') or {}
+              severity=(rule.get('security_severity_level') or '').lower()
+              if severity not in ('critical','high','medium'):
+                  continue
+              loc=(alert.get('most_recent_instance') or {}).get('location') or {}
+              info=(severity,alert.get('number'),rule.get('id'),loc.get('path'),loc.get('start_line'))
+              relevant.append(info)
+              print('CodeQL security finding: severity=%s alert=%s rule=%s location=%s:%s' % info)
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as summary:
+              summary.write('### CodeQL open security findings (dev)\n')
+              summary.write('Exact-sha CodeQL analysis confirmed. Open HIGH/MEDIUM/CRITICAL: %d\n' % len(relevant))
+              summary.write('Findings require individual triage; a green CodeQL analysis job does not mean no vulnerabilities.\n')
+          if relevant:
+              print('::error::%d open CodeQL HIGH/MEDIUM/CRITICAL alerts on dev; block automatic promotion.' % len(relevant))
+              sys.exit(1)
+          PY
+
   docker-image-audit:
     name: Scan built application Docker image
     runs-on: ubuntu-latest

@@ -7,7 +7,7 @@ The only branches are dev, beta and main. Changes are committed to dev. Tests an
 | Workflow | Purpose |
 | --- | --- |
 | tests.yml | Python, JavaScript, shell, actionlint, migrations, Docker, browser and backup/restore regression |
-| security.yml | Dependency audit, Bandit, Gitleaks history scan, Trivy filesystem/image and CodeQL |
+| security.yml | Dependency audit, Bandit, Gitleaks history scan, Trivy filesystem/image, CodeQL and exact-SHA open CodeQL finding gate |
 | postfix-milter-compat.yml | Conditional real Postfix and PyMilter integration |
 | promotion-policy.yml | Exact branch and dev CI proof, second-parent ancestry, matching source and PR merge trees |
 | auto-promote-beta.yml | CI-gated dev to beta promotion only |
@@ -28,3 +28,7 @@ GitHub-created beta merges do not necessarily trigger a new push workflow when c
 Inspect workflow event, branch, exact SHA, failed step, and merge preview tree. A 403 means missing permissions or a ruleset denial, not a reason to bypass security. Use the code scanning alerts page to individually review findings by rule, severity, file, line and exploitability; compare huge PRs against the base branch to separate old and new findings. Full benchmark artifacts are generated only for relevant changes or explicit manual runs.
 
 **Not yet provided by repository code:** branch protection, required checks and any GitHub App secret installation are GitHub-side settings. On 2026-11-22, the API showed protected=false for dev, beta and main, with no active repository rulesets.
+
+## CodeQL warning gate
+
+Security scan has a dev-push-only CodeQL findings gate. It requires fresh CodeQL analyses for the exact commit and checks open medium/high/critical security alerts on dev using GitHub's code-scanning API. Any unresolved alert or API/ingestion failure blocks automatic beta promotion. An administrator must investigate and fix or individually justify the findings; do not disable analysis to make the gate pass. The gate needs GITHUB_TOKEN security-events:read. When CodeQL Default Setup duplicates Advanced Setup, keep only one verified active scanning configuration.
