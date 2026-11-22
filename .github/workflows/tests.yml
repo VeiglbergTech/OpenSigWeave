@@ -177,6 +177,7 @@ jobs:
           settings.app_name = "Branding restart test"
           settings.app_color = "#123456"
           settings.logo_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
+          settings.dark_logo_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==")
           settings.favicon_data = settings.logo_png
           settings.favicon_mime = "image/png"
           # Scheduling data lives in PostgreSQL, not in the application container.
@@ -201,6 +202,7 @@ jobs:
           docker compose up -d --wait --wait-timeout 120
           curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/login | grep -q 'Branding restart test'
           curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/logo.png -o /tmp/osw-restart-logo.png
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/logo-dark.png -o /tmp/osw-restart-dark-logo.png
           curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/favicon -o /tmp/osw-restart-favicon.png
           docker compose exec -T opensigweave python - <<'PY'
           from datetime import datetime, timezone
@@ -221,6 +223,8 @@ jobs:
           from pathlib import Path
           expected = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
           assert Path("/tmp/osw-restart-logo.png").read_bytes() == expected
+          expected_dark = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==")
+          assert Path("/tmp/osw-restart-dark-logo.png").read_bytes() == expected_dark
           assert Path("/tmp/osw-restart-favicon.png").read_bytes() == expected
           PY
           docker compose exec -T opensigweave python - <<'PY'
@@ -231,6 +235,7 @@ jobs:
           settings.app_name = "OpenSigWeave"
           settings.app_color = "#ff7043"
           settings.logo_png = None
+          settings.dark_logo_png = None
           settings.favicon_data = None
           settings.favicon_mime = None
           db.commit()
