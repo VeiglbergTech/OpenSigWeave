@@ -1,6 +1,7 @@
 """Tests for one-shot remote image import without real network access."""
 import io
 import socket
+import ssl
 import unittest
 from unittest.mock import patch
 
@@ -78,6 +79,7 @@ class ImageImportTests(unittest.TestCase):
         self.assertEqual(result, "asset.png")
         connect.assert_called_once_with(("93.184.215.14", 443), timeout=5.0)
         self.assertEqual(context.server_hostname, "example.org")
+        self.assertEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
         self.assertIn(b"Host: example.org\r\n", fake.sent)
 
     def test_redirect_does_not_follow(self):

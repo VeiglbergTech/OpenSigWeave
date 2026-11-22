@@ -709,7 +709,7 @@ async def managed_oidc_login(provider_id: str, request: Request, db: Session = D
         request.session["pending_managed_login"] = {"provider_id": provider_id}
         return await client.authorize_redirect(request, config["OIDC_REDIRECT_URI"])
     except Exception as exc:
-        logger.warning("Managed OIDC sign-in could not start for provider %s (%s)", provider_id, type(exc).__name__)
+        logger.warning("Managed OIDC sign-in could not start (%s)", type(exc).__name__)
         request.session.clear()
         return RedirectResponse(url="/login?error=authentication_failed", status_code=303)
 
@@ -1326,7 +1326,7 @@ async def test_identity_provider(provider_id: str, request: Request, db: Session
     if db.get(IdentityProviderDB, provider_id) is None: raise HTTPException(status_code=404, detail="Identity provider not found")
     try: await identity_provider_registry.test(provider_id)
     except Exception as exc:
-        logger.warning("Identity provider test failed for %s (%s)", provider_id, type(exc).__name__)
+        logger.warning("Identity provider test failed (%s)", type(exc).__name__)
         raise HTTPException(status_code=422, detail="Connection test failed. Check settings and application logs.")
     return {"status": "connected"}
 
@@ -1441,7 +1441,19 @@ def restore_admin_backup(filename: str, payload: BackupActionRequest, request: R
 def download_admin_backup(filename: str, request: Request):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    if not re.fullmatch(r"opensigweave-[A-Za-z0-9_-]+\.age", filename):
+    # A bounded, linear-time ASCII filename check avoids regular-expression backtracking.
+    prefix, suffix = "opensigweave-", ".age"
+    valid_name = (
+        isinstance(filename, str) and len(filename) <= 255
+        and filename.startswith(prefix) and filename.endswith(suffix)
+        and len(filename) > len(prefix) + len(suffix)
+        and all(
+            ("A" <= char <= "Z") or ("a" <= char <= "z")
+            or ("0" <= char <= "9") or char in "_-"
+            for char in filename[len(prefix):-len(suffix)]
+        )
+    )
+    if not valid_name:
         raise HTTPException(status_code=404, detail="Backup not found")
     try:
         size, chunks = backup_download(filename)

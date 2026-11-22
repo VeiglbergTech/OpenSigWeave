@@ -78,7 +78,9 @@ def import_image_from_url(file_store, url: str) -> str:
     deadline = time.monotonic() + _TOTAL_TIMEOUT
     try:
         with socket.create_connection((address, 443), timeout=5.0) as raw:
-            with ssl.create_default_context().wrap_socket(raw, server_hostname=hostname) as tls:
+            tls_context = ssl.create_default_context()
+            tls_context.minimum_version = ssl.TLSVersion.TLSv1_2
+            with tls_context.wrap_socket(raw, server_hostname=hostname) as tls:
                 request = (
                     f"GET {target} HTTP/1.1\r\n"
                     f"Host: {hostname}\r\nAccept: image/png,image/jpeg,image/webp,image/gif\r\n"

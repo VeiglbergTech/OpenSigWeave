@@ -121,8 +121,9 @@ window.fetch = (resource, options = {}) => {
 
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
-            let cleanHtml = doc.body.innerHTML.trim();
-            cleanHtml = cleanHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+            // Work on parsed nodes, never attempt to recognize HTML tags with a regex.
+            doc.querySelectorAll('script').forEach((node) => node.remove());
+            const cleanHtml = doc.body.innerHTML.trim();
 
             if (target === 'personal') {
                 document.getElementById('raw-html-editor').value = cleanHtml;

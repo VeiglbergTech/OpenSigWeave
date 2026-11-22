@@ -84,6 +84,15 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertNotIn('@app.get("/logout")', self.source)
         self.assertIn('fetch("/logout"', (ROOT / "static" / "js" / "logout.js").read_text(encoding="utf-8"))
 
+    def test_html_import_uses_dom_nodes_instead_of_regex_tag_filter(self):
+        portal = (ROOT / "static" / "js" / "portal.js").read_text(encoding="utf-8")
+        self.assertIn("doc.querySelectorAll('script')", portal)
+        self.assertNotIn("cleanHtml.replace(", portal)
+
+    def test_admin_logs_do_not_interpolate_untrusted_provider_ids(self):
+        self.assertNotIn("provider %s (%s)", self.source)
+        self.assertNotIn("Identity provider test failed for %s", self.source)
+
     def test_signature_previews_are_sandboxed_and_js_data_is_serialized(self):
         template = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
         self.assertIn("|tojson", template)

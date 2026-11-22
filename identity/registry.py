@@ -52,7 +52,12 @@ class IdentityProviderRegistry:
 
     def _directory(self, slug: str) -> Path:
         slug = self.validate_slug(slug)
-        path = self.root / slug
+        # Explicitly discard path components even after the strict ASCII slug gate.
+        # Both checks must pass before accessing the private provider root.
+        safe_slug = os.path.basename(slug)
+        if safe_slug != slug:
+            raise ProviderConfigError("Invalid provider path.")
+        path = self.root / safe_slug
         if path.parent != self.root:
             raise ProviderConfigError("Invalid provider path.")
         if path.is_symlink():
