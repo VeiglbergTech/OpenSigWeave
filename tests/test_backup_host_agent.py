@@ -111,6 +111,41 @@ class HostBackupOperatorTests(unittest.TestCase):
                 operator._queue("restore", "opensigweave-test.age", "yes")
         self.assertEqual(operator.current_job["state"], "idle")
 
+
+    def test_unix_peer_credentials_against_actual_kernel_socket(self):
+        import socket
+        import threading
+        if not hasattr(socket, "SO_PEERCRED") or os.getuid() == 0:
+            self.skipTest("SO_PEERCRED test requires non-root Linux caller")
+        path = self.root / "control.sock"
+        with operator.Server(str(path), operator.Handler) as server:
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                def query():
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                        client.settimeout(3)
+                        client.connect(str(path))
+                        client.sendall(b'{"action":"invalid-operation"}\n')
+                        return json.loads(client.makefile("rb").readline())
+
+                with patch.object(operator, "APP_UID", os.getuid() + 1):
+                    self.assertEqual(query(), {"ok": False, "error": "Backup access denied"})
+                with patch.object(operator, "APP_UID", os.getuid()):
+                    self.assertEqual(query(), {"ok": False, "error": "Unknown backup action"})
+            finally:
+                server.shutdown()
+                thread.join(timeout=3)
+
+    def test_socket_and_host_directory_modes_are_private(self):
+        source = (Path(__file__).resolve().parents[1] / "scripts" /
+                  "backup_control_agent.py").read_text(encoding="utf-8")
+        self.assertIn("os.chown(SOCKET_PATH, APP_UID, 0)", source)
+        self.assertIn("os.chmod(SOCKET_PATH, 0o600)", source)
+        self.assertIn("os.chmod(SOCKET_PATH.parent, 0o700)", source)
+        self.assertIn("os.chmod(lock_directory, 0o700)", source)
+        self.assertNotIn("os.chmod(SOCKET_PATH, 0o660)", source)
+
     def test_restore_stays_non_destructive_by_default(self):
         from backup_cli import build_parser
         parser = build_parser()

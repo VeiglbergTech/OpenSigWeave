@@ -11,9 +11,9 @@ configuration are all included in full backups.
 The application container receives **neither** the Docker socket nor the age
 private identity. A separate root-owned host operator receives narrowly scoped
 requests through a local Unix socket at
-/run/opensigweave-backup/control.sock (mode 0660, root:10001).
+/run/opensigweave-backup/control.sock (mode 0600, 10001:root).
 
-- Socket peer credentials allow only root and the application UID (10001).
+- The socket is owned by application UID 10001 and mode 0600; the host-side parent directory remains root:root mode 0700. Docker bind-mounts the socket file into the container, so host group access is not required. SO_PEERCRED independently allows only root and the configured application UID. Check that BACKUP_APP_UID matches the running container user.
 - FastAPI requires administrator authorization; browser mutations use CSRF.
 - No shell commands, arbitrary restore paths or Compose project names come from
   the browser; backup filenames are strictly validated.

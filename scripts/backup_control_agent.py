@@ -388,17 +388,21 @@ def serve():
     lock_directory = Path(os.environ.get("LOCK_FILE", "/run/opensigweave/backup.lock")).parent
     if lock_directory.is_symlink():
         raise SystemExit("Unsafe backup lock directory")
-    lock_directory.mkdir(parents=True, exist_ok=True, mode=0o750)
-    os.chmod(lock_directory, 0o750)  # nosec B103 - private root directory, traversal restricted to owner's group
-    os.chown(SOCKET_PATH.parent, 0, APP_GID)
-    os.chmod(SOCKET_PATH.parent, 0o750)  # nosec B103 - group traversal required for application UID
+    lock_directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(lock_directory, 0o700)
+    # Docker bind-mounts the socket *file* into the application container.
+    # Its host-side parent must remain inaccessible to non-root users.
+    if APP_UID <= 0:
+        raise SystemExit("BACKUP_APP_UID must be a non-root application UID")
+    os.chown(SOCKET_PATH.parent, 0, 0)
+    os.chmod(SOCKET_PATH.parent, 0o700)
     if SOCKET_PATH.exists() or SOCKET_PATH.is_symlink():
         if not stat.S_ISSOCK(SOCKET_PATH.lstat().st_mode):
             raise SystemExit("Refusing to replace non-socket path")
         SOCKET_PATH.unlink()
     with Server(str(SOCKET_PATH), Handler) as server:
-        os.chown(SOCKET_PATH, 0, APP_GID)
-        os.chmod(SOCKET_PATH, 0o660)  # nosec B103 - authenticated application UID requires group socket access
+        os.chown(SOCKET_PATH, APP_UID, 0)
+        os.chmod(SOCKET_PATH, 0o600)
         server.serve_forever(poll_interval=0.5)
 
 
