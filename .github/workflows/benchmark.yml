@@ -56,7 +56,7 @@ jobs:
           EOF
           docker compose up -d --build --wait --wait-timeout 150
           docker compose exec -T -e BENCHMARK_DISPOSABLE_DB=1 opensigweave \
-            python scripts/seed_signature_benchmark.py --confirm-disposable --senders 512
+            python -m scripts.seed_signature_benchmark --confirm-disposable --senders 512
       - name: Measure static and rotating signatures
         shell: bash
         env:
