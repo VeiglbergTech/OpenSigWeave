@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import fcntl
 import ipaddress
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -13,7 +14,7 @@ import socket
 import stat
 import subprocess
 from contextlib import contextmanager
-from urllib.request import Request, urlopen
+from http.client import HTTPConnection
 
 ROOT = Path(__file__).resolve().parents[1]
 CHANNELS = ("dev", "beta", "main")
@@ -237,19 +238,21 @@ def healthcheck(env: dict[str, str]) -> None:
     service_state("opensigweave")
     check_migration()
     bind = env.get("APP_BIND_ADDRESS", "127.0.0.1")
-    address = "127.0.0.1" if bind == "0.0.0.0" else bind
+    parsed = ipaddress.ip_address(bind)
+    address = ("::1" if parsed.version == 6 else "127.0.0.1") if parsed.is_unspecified else bind
     port = int(env.get("APP_PORT", "8085"))
-    # Supply an explicit allowed Host header; never send credentials.
-    request = Request(
-        f"http://{address}:{port}/login",
-        headers={"Host": env["APP_ALLOWED_HOSTS"].split(",")[0]},
-    )
+    # HTTPConnection only supports HTTP; no URL scheme or redirect may be injected.
+    connection = HTTPConnection(address, port, timeout=10)
     try:
-        with urlopen(request, timeout=10) as response:
-            if response.status != 200:
-                raise DeploymentError("Application login endpoint is not healthy", 6)
+        connection.request("GET", "/login", headers={"Host": env["APP_ALLOWED_HOSTS"].split(",")[0]})
+        response = connection.getresponse()
+        if response.status != 200:
+            raise DeploymentError("Application login endpoint is not healthy", 6)
+        response.read(512)
     except (OSError, ValueError) as exc:
         raise DeploymentError("Cannot reach the application login endpoint", 6) from exc
+    finally:
+        connection.close()
     compose("exec", "-T", "opensigweave", "test", "-d", "/data/signatures")
     compose("exec", "-T", "opensigweave", "test", "-d", "/app/.idp")
     ok("PostgreSQL, application, Alembic, signature and IDP storage checks passed")
