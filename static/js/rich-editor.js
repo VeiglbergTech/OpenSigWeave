@@ -248,7 +248,11 @@
             // Numeric values produce inline font-size: Npx (not CKEditor text-size classes).
             // Keep other safe sizes and fonts when loading existing HTML signatures.
             fontSize: {
-                options: ["default", 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 60, 72],
+                // Register the full editable range for command conversion even
+                // though the visible selector offers a shorter curated list.
+                options: config.signatureFontControls
+                    ? ["default", ...Array.from({ length: 91 }, (_, index) => index + 6)]
+                    : ["default", 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 60, 72],
                 supportAllValues: true
             },
             fontFamily: {
