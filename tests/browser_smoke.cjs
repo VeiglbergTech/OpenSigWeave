@@ -1336,8 +1336,16 @@ async function main() {
     assert.equal(restoredBranding.has_custom_logo, false);
     assert.equal(restoredBranding.has_custom_dark_logo, false);
     assert.equal(restoredBranding.has_custom_favicon, false);
-    const loginAfterReset = await page.request.get(baseURL + "/login");
-    assert.match(await loginAfterReset.text(), /Sign in · OpenSigWeave/);
+    // The authenticated admin is redirected from /login to the portal.
+    // Verify the default login branding without sharing the administrator session.
+    const anonymousLoginContext = await browser.newContext();
+    try {
+      const loginAfterReset = await anonymousLoginContext.request.get(baseURL + "/login");
+      assert.equal(loginAfterReset.status(), 200, "anonymous users must reach the login form");
+      assert.match(await loginAfterReset.text(), /Sign in · OpenSigWeave/);
+    } finally {
+      await anonymousLoginContext.close();
+    }
     const bundledLogo = await page.request.get(baseURL + "/branding/logo.png");
     assert.equal(bundledLogo.status(), 200, "built-in logo must remain available after restoring defaults");
     assert.deepEqual(await (await page.request.get(baseURL + "/branding/logo-dark.png")).body(), await bundledLogo.body(), "dark mode must fall back to standard logo");

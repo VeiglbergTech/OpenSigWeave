@@ -191,7 +191,11 @@ class BrandingTests(unittest.TestCase):
         self.assertFalse(result["has_custom_logo"])
         self.assertFalse(result["has_custom_dark_logo"])
         self.assertFalse(result["has_custom_favicon"])
-        self.assertEqual(main.branding_logo(self.db).body if hasattr(main.branding_logo(self.db), "body") else result["logo_url"], result["logo_url"])
+        self.assertEqual(Path(main.branding_logo(self.db).path), branding.BUILTIN_LOGO_PATH)
+        self.assertEqual(Path(main.branding_logo_dark(self.db).path), branding.BUILTIN_LOGO_PATH)
+        favicon_response = main.branding_favicon(self.db)
+        self.assertEqual(Path(favicon_response.path), branding.BUILTIN_FAVICON_PATH
+                         if branding.BUILTIN_FAVICON_PATH.is_file() else branding.BUILTIN_LOGO_PATH)
         saved = self.db.get(BrandingSettingsDB, 1)
         self.assertEqual(saved.app_name, DEFAULT_APP_NAME)
         self.assertEqual(saved.app_color, DEFAULT_APP_COLOR)
