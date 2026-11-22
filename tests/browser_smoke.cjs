@@ -1649,8 +1649,8 @@ async function main() {
         }
         assert.ok(await fontControls[0].locator('option[value="Georgia"]').count() === 1,
           "signature font dropdown must offer Georgia on every viewport and theme");
-        assert.ok(await fontControls[1].locator('option[value="17"]').count() <= 1,
-          "custom font sizes may be selected dynamically, not duplicated");
+        assert.equal(await fontControls[1].locator('option[value="18"]').count(), 1,
+          "signature font size dropdown must offer exact pixel presets");
         await close(signatureSelector);
         await nav("Signature Groups");
         await visualPage.getByRole("button", { name: "+ Add Group" }).click();
