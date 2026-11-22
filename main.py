@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field, model_validator
 from typing import List, Optional, Literal
@@ -2224,6 +2224,11 @@ async def resolve_signature_engine(
 
     try:
         return await to_thread.run_sync(process)
+    except DatabasePoolTimeout as exc:
+        logger.warning("Engine database connection pool exhausted")
+        raise SignatureEngineError(
+            "DATABASE_POOL_EXHAUSTED", "Database connection pool is temporarily busy"
+        ) from exc
     except SQLAlchemyError as exc:
         # PostgreSQL 55P03: bounded lock timeout; keep the failure
         # explicit, safe and retryable without leaking database details.
@@ -2242,6 +2247,7 @@ _ENGINE_ERROR_HTTP_STATUS = {
     "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
     "INVALID_TEMPLATE": 422,
     "ROTATION_CONTENTION": 503,
+    "DATABASE_POOL_EXHAUSTED": 503,
     "INLINE_IMAGE_ASSET_UNAVAILABLE": 503,
     "INLINE_IMAGE_LIMIT": 422,
     "UNMANAGED_INLINE_IMAGE": 422,

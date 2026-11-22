@@ -101,8 +101,10 @@ volume:
 docker compose up -d --build --wait
 docker compose exec -T -e BENCHMARK_DISPOSABLE_DB=1 opensigweave \
   python -m scripts.seed_signature_benchmark --confirm-disposable --senders 512
-# Export the disposable engine key from the test environment only.
-export ENGINE_API_KEY='<disposable-engine-key>'
+# Load credentials solely from this disposable stack's local .env.
+set -a
+source .env
+set +a
 python scripts/benchmark_engine.py --domain bench-static.example.test \
   --levels 1,5,10,25,50,100,250,500 \
   --requests-per-level 500 --sender-count 128 --warmup 10 \

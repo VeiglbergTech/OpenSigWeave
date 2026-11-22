@@ -49,7 +49,7 @@ def seed(senders):
                 template = ("<p>BENCHMARK_SIGNATURE " + mode + " " + str(number)
                             + " {{ first_name }} {{ last_name }}</p>")
                 if mode == "large":
-                    template += "<p>" + "X" * 32000 + "</p>
+                    template += "<p>" + "X" * 32000 + "</p>"
                 db.add(SignatureDB(id=signature_id, name=name, domain_id=domain.id,
                                    scope="DOMAIN", mode="UNUSED", is_active=True))
                 db.flush()

@@ -5,6 +5,7 @@ import ipaddress
 import os
 import time
 
+from anyio import to_thread
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import case, delete
@@ -154,7 +155,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         name, limit, window = policy
         try:
-            count = consume_rate_limit(f"{name}:{identity}", limit, window)
+            # The atomic SQL transaction is synchronous. Don't block ASGI
+            # while another request holds this shared rate-limit bucket.
+            count = await to_thread.run_sync(
+                consume_rate_limit, f"{name}:{identity}", limit, window
+            )
         except Exception:
             # Fail closed: a database outage must not silently disable protection.
             return JSONResponse(
