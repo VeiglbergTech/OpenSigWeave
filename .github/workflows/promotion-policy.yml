@@ -9,66 +9,27 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: promotion-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   promotion-policy:
     name: Promotion source and CI gate
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Verify source branch and successful source CI
-        shell: bash
+      - name: Checkout code without persisted credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Verify source commit, exact CI and candidate merge tree
         env:
           TARGET_BRANCH: ${{ github.base_ref }}
           SOURCE_BRANCH: ${{ github.head_ref }}
           SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           GH_REPO: ${{ github.repository }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-
-          if [[ "$SOURCE_REPOSITORY" != "$GH_REPO" ]]; then
-            echo "::error::Promotions must originate in this repository, not a fork."
-            exit 1
-          fi
-
-          case "$TARGET_BRANCH:$SOURCE_BRANCH" in
-            beta:dev|main:beta) ;;
-            *)
-              echo "::error::Only dev -> beta or beta -> main is allowed."
-              exit 1
-              ;;
-          esac
-
-          current_sha="$(gh api "repos/$GH_REPO/branches/$SOURCE_BRANCH" --jq '.commit.sha')"
-          if [[ "$current_sha" != "$SOURCE_SHA" ]]; then
-            echo "::error::The promotion must include the current tip of $SOURCE_BRANCH."
-            exit 1
-          fi
-
-          # Check the actual source-branch push runs, not unrelated or
-          # manually dispatched runs of the same workflow.
-          runs="$(gh api "repos/$GH_REPO/actions/runs?branch=$SOURCE_BRANCH&head_sha=$SOURCE_SHA&event=push&per_page=100")"
-
-          for workflow in tests.yml security.yml; do
-            if ! jq -e --arg path ".github/workflows/$workflow" '
-              [.workflow_runs[] | select(.path == $path)] |
-              (length > 0 and all(.[]; .status == "completed" and .conclusion == "success"))
-            ' <<<"$runs" >/dev/null; then
-              echo "::error::Successful source-branch push CI is missing for $workflow at $SOURCE_SHA."
-              exit 1
-            fi
-          done
-
-          # This workflow is path-filtered; if GitHub ran it for this
-          # commit, it must also have succeeded.
-          if ! jq -e --arg path ".github/workflows/postfix-milter-compat.yml" '
-            [.workflow_runs[] | select(.path == $path)] |
-            (length == 0 or all(.[]; .status == "completed" and .conclusion == "success"))
-          ' <<<"$runs" >/dev/null; then
-            echo "::error::Postfix Milter compatibility CI failed for the source commit."
-            exit 1
-          fi
-
-          echo "Source $SOURCE_BRANCH@$SOURCE_SHA passed required CI. Target: $TARGET_BRANCH."
-          echo "Branch rulesets must still require PR checks and manual review for releases.";
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.verify_promotion
