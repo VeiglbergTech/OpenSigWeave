@@ -1197,6 +1197,10 @@ async function main() {
       "base64"
     );
     const brandingLogoFile = { name: "logo.png", mimeType: "image/png", buffer: brandingLogoBytes };
+    const brandingDarkLogoBytes = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==",
+      "base64"
+    );
     const icoDirectory = Buffer.alloc(16);
     icoDirectory[0] = 1;
     icoDirectory[1] = 1;
@@ -1206,12 +1210,15 @@ async function main() {
     icoDirectory.writeUInt32LE(22, 12);
     const faviconBytes = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0]), icoDirectory, brandingLogoBytes]);
     await brandingFiles.nth(0).setInputFiles(brandingLogoFile);
-    await brandingFiles.nth(1).setInputFiles({ name: "favicon.ico", mimeType: "application/octet-stream", buffer: faviconBytes });
+    await brandingFiles.nth(1).setInputFiles({ name: "dark-logo.png", mimeType: "image/png", buffer: brandingDarkLogoBytes });
+    await brandingFiles.nth(2).setInputFiles({ name: "favicon.ico", mimeType: "application/octet-stream", buffer: faviconBytes });
     await page.waitForFunction(() => {
       const logo = document.querySelector('img[alt="Brand logo preview"]');
+      const darkLogo = document.querySelector('img[alt="Dark mode logo preview"]');
       const favicon = document.querySelector('img[alt="Favicon preview"]');
-      return logo && favicon
+      return logo && darkLogo && favicon
         && logo.getAttribute("src").startsWith("data:image/png;base64,")
+        && darkLogo.getAttribute("src").startsWith("data:image/png;base64,")
         && favicon.getAttribute("src").startsWith("data:image/x-icon;base64,");
     });
     const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
@@ -1224,26 +1231,41 @@ async function main() {
     assert.equal(customBranding.app_name, "OpenSigWeave Browser Smoke");
     assert.equal(customBranding.app_color, "#f97316");
     assert.equal(customBranding.has_custom_logo, true);
+    assert.equal(customBranding.has_custom_dark_logo, true);
     assert.equal(customBranding.has_custom_favicon, true);
 
     const customLogoResponse = await page.request.get(baseURL + "/branding/logo.png");
+    const customDarkLogoResponse = await page.request.get(baseURL + "/branding/logo-dark.png");
     const customFaviconResponse = await page.request.get(baseURL + "/branding/favicon.ico");
     assert.equal(customLogoResponse.status(), 200);
+    assert.equal(customDarkLogoResponse.status(), 200);
     assert.equal(customFaviconResponse.status(), 200);
     assert.deepEqual(await customLogoResponse.body(), brandingLogoBytes, "uploaded logo must be served verbatim");
+    assert.deepEqual(await customDarkLogoResponse.body(), brandingDarkLogoBytes, "dark mode logo must be served separately");
     assert.deepEqual(await customFaviconResponse.body(), faviconBytes, "uploaded ICO favicon must be served verbatim");
     assert.match(customLogoResponse.headers()["cache-control"], /no-cache/, "branding logo must revalidate after updates");
     assert.match(customFaviconResponse.headers()["cache-control"], /no-cache/, "branding favicon must revalidate after updates");
     assert.match(customFaviconResponse.headers()["content-type"], /^image\/x-icon/);
-    assert.equal(await page.locator('img[alt="Company Logo"]').evaluate(img => img.complete && img.naturalWidth > 0), true);
+    const navigationLogo = page.locator('nav img[data-osw-brand-logo]');
+    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo-dark.png');
+    assert.equal(await navigationLogo.evaluate(img => img.complete && img.naturalWidth > 0), true);
+    await page.locator('#theme-toggle').click();
+    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo.png');
+    assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
+    await page.locator('#theme-toggle').click();
+    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo-dark.png');
+    assert.equal(await navigationLogo.evaluate(img => img.complete && img.naturalWidth > 0), true);
     const appliedColor = await page.locator(".app-brand").first().evaluate(el => getComputedStyle(el).color);
     assert.equal(appliedColor, "rgb(249, 115, 22)", "saved accent color must affect the actual UI");
     const loginBranding = await page.request.get(baseURL + "/login");
     assert.match(await loginBranding.text(), /OpenSigWeave Browser Smoke/);
+    assert.match(await loginBranding.text(), /data-osw-brand-logo/, "login page must support mode-aware logos");
 
     for (const invalid of [
       { name: "truncated PNG", logo_data_url: "data:image/png;base64," + Buffer.from([137,80,78,71,13,10,26,10,1]).toString("base64") },
       { name: "SVG", logo_data_url: "data:image/svg+xml;base64," + Buffer.from("<svg></svg>").toString("base64") },
+      { name: "dark SVG", dark_logo_data_url: "data:image/svg+xml;base64," + Buffer.from("<svg></svg>").toString("base64") },
+      { name: "dark truncated PNG", dark_logo_data_url: "data:image/png;base64," + Buffer.from([137,80,78,71,13,10,26,10,1]).toString("base64") },
       { name: "oversized PNG", logo_data_url: "data:image/png;base64," + Buffer.alloc(512 * 1024 + 1).toString("base64") },
       { name: "corrupt ICO", favicon_data_url: "data:image/x-icon;base64," + Buffer.from([0,0,1,0,1,0]).toString("base64") },
     ]) {
@@ -1258,6 +1280,7 @@ async function main() {
     }
     const unchangedBrand = await (await page.request.get(baseURL + "/api/admin/branding")).json();
     assert.equal(unchangedBrand.has_custom_logo, true, "failed uploads must not replace the existing logo");
+    assert.equal(unchangedBrand.has_custom_dark_logo, true, "failed uploads must not replace the dark mode logo");
     assert.equal(unchangedBrand.has_custom_favicon, true, "failed uploads must not replace the existing favicon");
 
     await page.getByRole("button", { name: "Admin", exact: true }).click();
@@ -1266,8 +1289,10 @@ async function main() {
     await brandingPanel.getByLabel("Application name").fill("OpenSigWeave");
     await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#ff7043");
     await brandingPanel.getByRole("button", { name: "Use built-in logo", exact: true }).click();
+    await brandingPanel.getByRole("button", { name: "Use standard logo", exact: true }).click();
     await brandingPanel.getByRole("button", { name: "Use built-in fallback", exact: true }).click();
     assert.match(await brandingPanel.locator('img[alt="Brand logo preview"]').getAttribute("src"), /^\/branding\/builtin\/logo\.png/, "reset action must preview the bundled logo");
+    assert.match(await brandingPanel.locator('img[alt="Dark mode logo preview"]').getAttribute("src"), /^\/branding\/builtin\/logo\.png/, "resetting dark logo must preview the standard fallback");
     assert.match(await brandingPanel.locator('img[alt="Favicon preview"]').getAttribute("src"), /^\/branding\/builtin\/favicon/, "reset action must preview the bundled favicon");
 
     await Promise.all([
@@ -1279,9 +1304,11 @@ async function main() {
     assert.equal(restoredBranding.app_name, "OpenSigWeave");
     assert.equal(restoredBranding.app_color, "#ff7043");
     assert.equal(restoredBranding.has_custom_logo, false);
+    assert.equal(restoredBranding.has_custom_dark_logo, false);
     assert.equal(restoredBranding.has_custom_favicon, false);
     const bundledLogo = await page.request.get(baseURL + "/branding/logo.png");
     assert.equal(bundledLogo.status(), 200, "built-in logo must remain available after restoring defaults");
+    assert.deepEqual(await (await page.request.get(baseURL + "/branding/logo-dark.png")).body(), await bundledLogo.body(), "dark mode must fall back to standard logo");
     assert.notDeepEqual(await bundledLogo.body(), brandingLogoBytes, "built-in image must replace the custom logo");
     const restoredFavicon = await page.request.get(baseURL + "/branding/favicon");
     assert.deepEqual(await restoredFavicon.body(), await bundledLogo.body(), "bundled logo must also be the favicon fallback");
