@@ -488,14 +488,21 @@ async function main() {
     const previewLayering = await page.evaluate(() => {
       const preview = document.querySelector('[x-data="previewModal"]');
       const editor = document.querySelector('[x-data="signatureManager"] [x-show="editing"][role="dialog"]');
+      // All dialogs now use a shared fixed overlay root, so stacking belongs
+      // to that root rather than the inner editor shell.
+      const editorRoot = editor.closest(".osw-modal-root");
+      const topmost = document.elementFromPoint(innerWidth / 2, innerHeight / 2);
       return {
-        preview: Number.parseInt(getComputedStyle(preview).zIndex || "0", 10),
-        editor: Number.parseInt(getComputedStyle(editor).zIndex || "0", 10),
+        preview: Number.parseInt(getComputedStyle(preview).zIndex, 10),
+        editor: Number.parseInt(getComputedStyle(editorRoot).zIndex, 10),
+        previewOnTop: !!topmost && preview.contains(topmost),
         srcdoc: document.querySelector("#signature-preview-frame")?.getAttribute("srcdoc") || ""
       };
     });
     assert.ok(previewLayering.preview > previewLayering.editor,
       "signature preview must be layered above the floating signature editor: " + JSON.stringify(previewLayering));
+    assert.equal(previewLayering.previewOnTop, true,
+      "preview must be the topmost rendered dialog at the viewport center");
     assert.match(previewLayering.srcdoc, /Browser smoke preview overlay/,
       "signature preview iframe must receive the requested HTML");
     await page.keyboard.press("Escape");
