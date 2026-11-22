@@ -76,9 +76,9 @@ jobs:
           PY
           while read -r number; do
             case "$number" in
-              32) comment="Individually audited false positive: validate_slug restricts this to a single ASCII directory name (length <=63, no slashes or traversal), and os.mkdir is confined to a pinned private root dir_fd. Real traversal, symlink and ownership regression tests passed. docs/CODEQL_TRIAGE.md.";;
-              33) comment="Individually audited false positive: strictly validated single-component ASCII slug, os.open with O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC relative to pinned private root dir_fd, followed by fstat owner verification. Real symlink-swap/descriptor regression passed. docs/CODEQL_TRIAGE.md.";;
-              34) comment="Individually audited false positive: os.rmdir acts on strictly validated ASCII single-component slug relative to pinned private root dir_fd; rmdir does not follow symlinks and cannot delete outside root. Real deletion/symlink tests passed. docs/CODEQL_TRIAGE.md.";;
+              32) comment="False positive: validated ASCII slug cannot traverse paths. mkdir uses private pinned root dir_fd. Real traversal and symlink tests passed. See docs/CODEQL_TRIAGE.md.";;
+              33) comment="False positive: strict ASCII slug; open uses private pinned root dir_fd, O_DIRECTORY and O_NOFOLLOW; fstat checks ownership. Symlink-swap test passed. See docs/CODEQL_TRIAGE.md.";;
+              34) comment="False positive: strict single-component ASCII slug, rmdir uses private pinned root dir_fd and cannot follow symlinks. Real deletion and symlink tests passed. See docs/CODEQL_TRIAGE.md.";;
               *) exit 1;;
             esac
             gh api --method PATCH "repos/$GH_REPO/code-scanning/alerts/$number" \
