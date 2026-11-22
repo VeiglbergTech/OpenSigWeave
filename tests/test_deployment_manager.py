@@ -47,7 +47,10 @@ class ConfigTests(unittest.TestCase):
     def test_preview_does_not_write_and_migration_is_idempotent(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"
-            with patch.object(cfg, "ENV", path), patch.object(cfg, "validate_config"):
+            with patch.object(cfg, "ENV", path), patch.object(cfg, "validate_config"), \
+                 patch.object(cfg, "missing_options", side_effect=lambda env: (
+                     {"APP_PORT": "8085"} if "APP_PORT" not in env else {}
+                 )):
                 path.write_text('SECRET_KEY="preserve_me"\n')
                 before = path.read_bytes()
                 cfg.migrate_config(preview=True)
