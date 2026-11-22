@@ -62,3 +62,7 @@ The baseline gate reported 22 open HIGH alerts. A successful CodeQL analysis alo
 One-time individual triage requires exact reviewed registry source SHA `1beaaf081a15719e9ce9fd3549973b3c21e0787a`, live alerts matching these IDs, rule and locations (and no other new HIGH/MEDIUM/CRITICAL alerts), plus successful registry and identity-provider regression tests. A separately documented security justification is submitted per alert. The regular Security Scan gate is not changed, and the special triage workflow must be removed afterwards.
 
 Remaining acceptance evidence: full CI tests, host backup/restore, Security Scan gate and automatic fast-forward promotion. Do not claim complete success unless explicitly observed.
+
+## Individual alert-resolution evidence
+
+On 2026-11-22, one-time workflow https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/45073287396 completed successfully: 8 real filesystem registry tests and 22 identity-provider tests passed, exact registry source Git blob identity was validated, and GitHub's live scan API confirmed precisely the three known remaining HIGH findings (32, 33, 34). Each received its own technical dismissal reason and was individually verified by GET as dismissed. This workflow has subsequently been removed from the source tree; the permanent code scanning gate remains unchanged. No original 22 HIGH findings remained open before the individual dismissals. Full final security gate and CI results must be verified on the final post-cleanup commit; no success claim before that evidence.
