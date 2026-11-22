@@ -11,7 +11,6 @@
 
 body.osw-overlay-open { overflow: hidden; }
 .osw-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
-.osw-info-banner { background: #35241b !important; color: #fed7aa !important; border-color: #9a593c !important; }
 .osw-file-button:focus-within, .osw-file-button:hover { background: #45454f !important; }
 html, body { max-width: 100%; }
 main, section { min-width: 0; }
@@ -260,9 +259,6 @@ html[data-theme="light"] .hover\:text-white:hover { color: var(--osw-heading) !i
 html[data-theme="light"] .text-red-400,
 html[data-theme="light"] .text-red-500 { color: #a51f2f !important; }
 html[data-theme="light"] .text-green-400 { color: #166534 !important; }
-html[data-theme="light"] .osw-info-banner {
-  background: #fff4df !important; color: #713d10 !important; border-color: #c58c48 !important;
-}
 html[data-theme="light"] .osw-modal-dismiss:hover,
 html[data-theme="light"] .osw-modal-dismiss:focus-visible { color: var(--osw-heading); }
 html[data-theme="light"] :is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,

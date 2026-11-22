@@ -308,6 +308,28 @@ async function main() {
       await page.getByRole("heading", { name: section.heading }).waitFor();
     }
 
+    // Confirm outdated implementation notes stay absent across all administration tabs and dialogs.
+    const uiCopy = await page.locator("body").textContent();
+    for (const obsolete of [
+      /Your managed signature is selected by rules/i,
+      /Domain master templates are no longer used/i,
+      /Manage signature assets, immutable versions and domain assignments/i,
+      /Settings and uploaded assets are stored in PostgreSQL/i,
+      /Encrypted backups, disaster-recovery restore, secret rotation/i,
+      /The accent color is applied to the product name/i,
+    ]) {
+      assert.doesNotMatch(uiCopy, obsolete, "obsolete UI explanation: " + obsolete);
+    }
+    // Retain required warnings, import limits, version status and priority guidance.
+    assert.match(uiCopy, /Historical versions are read-only/);
+    assert.match(uiCopy, /HTTPS images only/);
+    assert.match(uiCopy, /Imports never overwrite existing records/);
+    assert.match(uiCopy, /Outlook-spezifische Conditional Comments/);
+    assert.match(uiCopy, /External identity providers and mail servers are not checked/);
+    const schedulingHelp = page.locator('[x-data="scheduleManager"] details').filter({ hasText: "Scheduling priority" });
+    assert.equal(await schedulingHelp.count(), 1, "schedule precedence must remain available on demand");
+    assert.equal(await schedulingHelp.getAttribute("open"), null, "scheduling help should start collapsed");
+
     const systemPanel = page.locator('[x-data="systemStatusManager"]');
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     const cardGap = await systemPanel.evaluate(section => {

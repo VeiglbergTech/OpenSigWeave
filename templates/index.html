@@ -102,10 +102,7 @@
                     </div>
                 </div>
                 
-                <div class="bg-gray-800 rounded-lg p-4 border border-gray-700 text-sm text-gray-300">
-                    Your managed signature is selected by rules, schedules or an authorized override. Domain master templates are no longer used.
                 </div>
-            </div>
         </div>
 
         {% if is_admin %}
@@ -124,7 +121,7 @@
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
             <div class="flex justify-between items-center gap-3 mb-6">
-                <div><h1 class="text-2xl font-semibold">Identity Providers</h1><p class="text-sm text-gray-400 mt-1">Profile attributes for signatures. Login authentication remains independent.</p></div>
+                <h1 class="text-2xl font-semibold">Identity Providers</h1>
                 <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
             </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mb-6">
@@ -165,7 +162,7 @@
                             <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                         </div>
                         <div x-show="form.provider_type === 'oidc'" class="grid md:grid-cols-2 gap-4">
-                            <div class="md:col-span-2"><p class="text-sm font-semibold text-gray-200">Generic OpenID Connect</p><p class="text-xs text-gray-400 mt-1">Profile attributes are taken from verified UserInfo claims at sign-in and cached for signature rendering. Assign this provider as both the domain's login and profile provider.</p></div>
+                            <p class="md:col-span-2 text-xs text-gray-400">For profile attributes, select this provider as both the domain login and profile provider.</p>
                             <label class="text-sm">OIDC discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">OIDC client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">OIDC client secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
@@ -182,7 +179,6 @@
                             <label class="text-sm">CA certificate file<input x-model="form.settings.LDAP_CA_CERT_FILE" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.LDAP_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                         </div>
-                        <p class="text-xs text-gray-500">Credentials are stored only in .idp/&lt;name&gt;/.env with restricted permissions. Secret fields are never returned to the browser.</p>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button><button @click="saveProvider()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">Save</button></div>
                     </div>
@@ -218,10 +214,7 @@
 
         <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
             <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-semibold">Signature Catalog</h2>
-                    <p class="text-sm text-gray-400 mt-1">Manage signature assets, immutable versions and domain assignments.</p>
-                </div>
+                <h2 class="text-2xl font-semibold">Signature Catalog</h2>
                 <button @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Signature</button>
             </div>
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
@@ -281,8 +274,8 @@
                                     <button type="button" @click="restoreSelectedVersion()" :disabled="!selectedVersionId || !isViewingHistoricalVersion" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Restore selected version</button>
                                 </div>
                                 <p x-show="currentVersion" class="mt-2 text-xs text-emerald-300">Current version: <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong></p>
-                                <p x-show="isViewingHistoricalVersion" class="mt-1 text-xs text-amber-300">You are viewing <strong x-text="selectedVersion ? 'v' + selectedVersion.version_number : ''"></strong>. The current version remains <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong> until you save or restore.</p>
-                                <p class="mt-2 text-xs text-gray-500">Historical versions are read-only previews. Only "Restore selected version" activates a historical snapshot, creating a new version without overwriting history.</p>
+                                <p x-show="isViewingHistoricalVersion" class="mt-1 text-xs text-amber-300">Previewing <strong x-text="selectedVersion ? 'v' + selectedVersion.version_number : ''"></strong> (current: <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong>).</p>
+                                <p class="mt-2 text-xs text-gray-500">Historical versions are read-only. Restore a version to make it current.</p>
                             </div>
                             <details class="mt-3 rounded border border-gray-700 bg-gray-900/60 p-3">
                                 <summary class="cursor-pointer text-sm text-gray-200">Advanced: Insert signature group tag</summary>
@@ -300,7 +293,7 @@
                                 </div>
                             </details>
                             <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
-                            <p class="mt-2 text-xs text-gray-500">Drag & drop or paste PNG, JPEG, WebP or GIF images (maximum 2 MiB each). Images are stored in OpenSigWeave's immutable local asset store.</p>
+                            <p class="mt-2 text-xs text-gray-500">Paste or drop PNG, JPEG, WebP or GIF images (up to 2 MiB each).</p>
                             <div x-data="htmlEditorToggle" class="mt-3">
                                 <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit raw HTML</button>
                                 <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" :disabled="isViewingHistoricalVersion" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
@@ -323,7 +316,7 @@
                             <input id="signature-image-import-url" type="url" x-model.trim="imageImportUrl" :disabled="imageImportBusy"
                                 @keydown.enter.prevent="importImageFromUrl()" maxlength="2048" autocomplete="url"
                                 placeholder="https://example.com/logo.png" class="w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
-                            <p class="text-xs text-gray-400">Only HTTPS images are imported. The server blocks redirects and private network addresses, validates the file, and stores it locally.</p>
+                            <p class="text-xs text-gray-400">HTTPS images only. Redirects and private network addresses are blocked.</p>
                         </div>
                         <div class="osw-modal-footer">
                             <button type="button" data-osw-dialog-close class="bg-gray-700 px-4 py-2 text-gray-200">Cancel</button>
@@ -340,7 +333,7 @@
 
         <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="osw-admin-section">
             <div class="flex items-center justify-between">
-                <div><h2 class="text-2xl font-semibold">Signature Groups</h2><p class="text-sm text-gray-400 mt-1">Reusable signature pools. Each membership has its own weight and enabled state.</p></div>
+                <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
             </div>
             <div class="flex items-center gap-2 text-sm text-gray-300"><label for="group-preview-domain">Preview domain</label><select id="group-preview-domain" x-model="previewDomainId" class="bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select domain</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select><span class="text-xs text-gray-500">Preview does not advance rotation history.</span></div>
@@ -410,10 +403,7 @@
 
         <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="osw-admin-section">
             <div class="flex items-center justify-between">
-                <div>
-                    <h2 class="text-2xl font-semibold">Signature Rules</h2>
-                    <p class="text-sm text-gray-400 mt-1">Rules are evaluated by priority. Conditions within one rule are combined with AND.</p>
-                </div>
+                <h2 class="text-2xl font-semibold">Signature Rules</h2>
                 <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
             </div>
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
@@ -495,10 +485,10 @@
         </div>
         <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="osw-admin-section">
             <div class="flex items-center justify-between gap-4">
-                <div><h2 class="text-2xl font-semibold">Signature Scheduling</h2><p class="text-sm text-gray-400 mt-1">Activate one signature or signature group for a defined time window. Higher priority wins; domain-specific schedules win equal-priority ties.</p></div>
+                <h2 class="text-2xl font-semibold">Signature Scheduling</h2>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
             </div>
-            <div class="osw-info-banner rounded border p-3 text-sm" role="note">Active schedules take priority over personal overrides and rules. <details class="mt-2"><summary class="cursor-pointer">Priority details</summary><p class="mt-2">Explicit per-message selection takes precedence. Start is inclusive; end is exclusive.</p></details></div>
+            <details class="rounded border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300"><summary class="cursor-pointer">Scheduling priority</summary><p class="mt-2 text-xs text-gray-400">Explicit per-message selection wins. Otherwise, schedules take priority over personal overrides and rules. Higher priority wins; domain-specific schedules win ties. Start is inclusive; end is exclusive.</p></details>
             <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
                 <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>
@@ -525,7 +515,7 @@
                             <label class="text-sm text-gray-300">Priority<input type="number" min="-100000" max="100000" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                             <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_enabled"> Schedule enabled</label>
                         </div>
-                        <p class="text-xs text-gray-500">Times are entered in your browser's local timezone and stored/evaluated as UTC, so DST conversion happens at the selected date.</p>
+                        <p class="text-xs text-gray-500">Times use your browser's local time zone.</p>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveSchedule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Schedule</button></div>
                     </div>
@@ -534,14 +524,13 @@
         </div>
 
         <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="osw-admin-section space-y-5">
-            <div><h2 class="text-2xl font-semibold">Branding</h2><p class="text-sm text-gray-400 mt-1">Customize the portal identity. Settings and uploaded assets are stored in PostgreSQL and included in normal database backups.</p></div>
+            <h2 class="text-2xl font-semibold">Branding</h2>
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                     <h3 class="font-semibold">Application identity</h3>
                     <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
-                    <p class="text-xs text-gray-500">The accent color is applied to the product name and primary portal controls.</p>
-                </div>
+                    </div>
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
                     <div><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
                         <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="logoPreview()" alt="Brand logo preview" class="max-h-28 max-w-full object-contain"></div>
@@ -555,10 +544,7 @@
         </div>
 
         <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="osw-admin-section space-y-5">
-            <div>
-                <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
-                <p class="text-sm text-gray-400 mt-1">Download selected configuration components as a versioned ZIP archive.</p>
-            </div>
+            <h2 class="text-xl font-semibold text-white">Configuration exports</h2>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="rounded"> Signatures and all HTML versions</label>
@@ -577,10 +563,7 @@
             </div>
         </div>
         <div x-show="adminTab === 'imports'" x-cloak x-data="adminImportManager" class="osw-admin-section space-y-5">
-            <div>
-                <h2 class="text-xl font-semibold text-white">Configuration imports</h2>
-                <p class="text-sm text-gray-400 mt-1">Review a versioned OpenSigWeave ZIP export before adding its configuration.</p>
-            </div>
+            <h2 class="text-xl font-semibold text-white">Configuration imports</h2>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <label class="block text-sm font-medium text-gray-200" for="admin-import-file">OpenSigWeave export archive</label>
                 <button type="button" @click="openFilePicker()" :disabled="busy" class="osw-file-button inline-flex cursor-pointer rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Choose ZIP file</button>
@@ -621,8 +604,7 @@
         </div>
         <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="osw-admin-section space-y-5">
             <div class="flex flex-wrap justify-between items-center gap-3">
-                <div><h2 class="text-xl font-semibold text-white">System status</h2>
-                <p class="text-sm text-gray-400 mt-1">Read-only diagnostics. No credentials or host paths are exposed.</p></div>
+                <h2 class="text-xl font-semibold text-white">System status</h2>
                 <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh status'">Refresh status</button>
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
@@ -655,8 +637,7 @@
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2 text-sm text-gray-300">
                 <h3 class="font-semibold">Operations</h3>
                 <p>Local emergency administrator: <span x-text="localAdmin">Not checked</span>. Management API key: <span x-text="managementApi">Not checked</span>.</p>
-                <p>Encrypted backups, disaster-recovery restore, secret rotation and mail-adapter configuration remain operator-only, not remote browser controls.</p>
-                <p>External identity providers and mail servers are not contacted. Use provider connection tests and mail adapter logs for external diagnostics.</p>
+                <p>External identity providers and mail servers are not checked.</p>
             </div>
         </div>
         </div>
@@ -819,8 +800,7 @@
         <div class="osw-modal-placement">
             
             <div role="dialog" aria-modal="true" aria-label="Import HTML signature" class="osw-modal-shell osw-modal-width-medium">
-                <div class="osw-modal-header"><div><h3 class="text-xl font-bold">Import HTML Signature</h3>
-                    <p class="text-sm text-gray-400 mt-2">Paste generator HTML here. The browser extracts the body content; review the imported markup before saving.</p></div>
+                <div class="osw-modal-header"><h3 class="text-xl font-bold">Import HTML Signature</h3>
                     <button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button>
                 </div>
                 <div class="osw-modal-body">
