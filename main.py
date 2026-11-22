@@ -1566,6 +1566,30 @@ def update_admin_branding(
         "favicon_url": "/branding/favicon",
     }
 
+@app.post("/api/admin/branding/reset")
+def reset_admin_branding(request: Request, db: Session = Depends(get_db)):
+    """Restore bundled branding without changing other application settings."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+    settings = db.get(BrandingSettingsDB, 1)
+    if settings is None:
+        settings = BrandingSettingsDB(id=1)
+        db.add(settings)
+    settings.app_name = DEFAULT_APP_NAME
+    settings.app_color = DEFAULT_APP_COLOR
+    settings.logo_png = None
+    settings.dark_logo_png = None
+    settings.favicon_data = None
+    settings.favicon_mime = None
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    return get_admin_branding(request, db)
+
 
 @app.get("/api/admin/exports")
 def export_admin_components(

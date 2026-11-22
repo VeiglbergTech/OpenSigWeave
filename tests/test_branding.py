@@ -170,6 +170,40 @@ class BrandingTests(unittest.TestCase):
         self.assertIsNone(self.db.get(BrandingSettingsDB, 1).dark_logo_png)
         self.assertEqual(main.branding_logo_dark(self.db).body, light)
 
+    def test_full_reset_restores_every_setting_and_survives_new_session(self):
+        light = valid_png()
+        dark = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg=="
+        )
+        icon = valid_ico()
+        self.update(
+            logo_data_url=data_url(light),
+            dark_logo_data_url=data_url(dark),
+            favicon_data_url=data_url(icon, "image/x-icon"),
+        )
+        self.assertTrue(branding_context(self.db)["has_custom_dark_logo"])
+        self.db.close()
+        self.db = self.Session()
+
+        result = main.reset_admin_branding(self.admin, self.db)
+        self.assertEqual(result["app_name"], DEFAULT_APP_NAME)
+        self.assertEqual(result["app_color"], DEFAULT_APP_COLOR)
+        self.assertFalse(result["has_custom_logo"])
+        self.assertFalse(result["has_custom_dark_logo"])
+        self.assertFalse(result["has_custom_favicon"])
+        self.assertEqual(main.branding_logo(self.db).body if hasattr(main.branding_logo(self.db), "body") else result["logo_url"], result["logo_url"])
+        saved = self.db.get(BrandingSettingsDB, 1)
+        self.assertEqual(saved.app_name, DEFAULT_APP_NAME)
+        self.assertEqual(saved.app_color, DEFAULT_APP_COLOR)
+        for field in ("logo_png", "dark_logo_png", "favicon_data", "favicon_mime"):
+            self.assertIsNone(getattr(saved, field), field)
+
+        self.db.close()
+        self.db = self.Session()
+        self.assertEqual(branding_context(self.db)["app_name"], DEFAULT_APP_NAME)
+        self.assertFalse(branding_context(self.db)["has_custom_dark_logo"])
+        self.assertEqual(main.reset_admin_branding(self.admin, self.db)["app_color"], DEFAULT_APP_COLOR)
+
     def test_invalid_updates_are_atomic(self):
         self.update(logo_data_url=data_url(valid_png()))
         original = self.db.get(BrandingSettingsDB, 1).logo_png
@@ -201,6 +235,9 @@ class BrandingTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as put_denied:
             main.update_admin_branding(main.BrandingUpdateRequest(app_name="X", app_color="#112233"), self.normal, self.db)
         self.assertEqual(put_denied.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as reset_denied:
+            main.reset_admin_branding(self.normal, self.db)
+        self.assertEqual(reset_denied.exception.status_code, 403)
 
     def test_public_asset_routes_content_types_cache_and_default_fallback(self):
         def db_override():

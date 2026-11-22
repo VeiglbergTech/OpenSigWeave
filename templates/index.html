@@ -13,8 +13,8 @@
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
     <link href="/static/css/portal.css?v=image-url-toolbar-20261122" rel="stylesheet">
-    <script src="/static/js/theme.js"></script>
-    <script defer src="/static/js/branding.js"></script>
+    <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
+    <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
     <div id="osw-modal-backdrop" class="osw-dialog-backdrop" aria-hidden="true"></div>
@@ -544,7 +544,10 @@
                         <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 256 KiB. Without a custom favicon, the built-in logo is used.</p></div>
                 </div>
             </div>
-            <div class="flex justify-end"><button @click="save()" class="bg-blue-600 hover:bg-blue-500 text-white px-5 py-2 rounded text-sm font-medium">Save Branding</button></div>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-700 pt-4">
+                <button type="button" @click="resetAll()" :disabled="saving" class="bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white px-5 py-2 rounded text-sm font-medium">Branding auf Standard zurücksetzen</button>
+                <button type="button" @click="save()" :disabled="saving" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-5 py-2 rounded text-sm font-medium">Save Branding</button>
+            </div>
         </div>
 
         <div x-show="adminTab === 'exports'" x-cloak x-data="adminExportManager" class="osw-admin-section space-y-5">
@@ -938,6 +941,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=image-url-toolbar-20261122"></script>
+    <script src="/static/js/portal.js?v=branding-reset-20261122"></script>
 </body>
 </html>

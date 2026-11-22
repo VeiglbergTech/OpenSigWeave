@@ -1,6 +1,6 @@
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
-    const color = document.body.dataset.appColor || "";
+    const applyBrandingColor = color => {
     if (!window.CSS || !CSS.supports("color", color)) return;
     root.style.setProperty("--osw-accent", color);
 
@@ -40,5 +40,13 @@ document.addEventListener("DOMContentLoaded", () => {
         root.style.setProperty("--osw-link", shadeFor(background, light ? 0 : 255));
     };
     refresh();
-    window.addEventListener("opensigweave-theme-change", refresh);
+    };
+    applyBrandingColor(document.body.dataset.appColor || "");
+    window.addEventListener("opensigweave-theme-change", () => {
+        applyBrandingColor(document.body.dataset.appColor || "");
+    });
+    window.addEventListener("opensigweave-branding-change", event => {
+        document.body.dataset.appColor = String(event.detail?.app_color || "");
+        applyBrandingColor(document.body.dataset.appColor);
+    });
 });

@@ -883,6 +883,45 @@ function identityProviderManager() { return {
                 restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
                 restoreDarkLogo() { this.darkLogoDataUrl = null; this.resetDarkLogo = true; },
                 restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
+                async resetAll() {
+                    if (this.saving) return;
+                    const confirmed = await oswAskConfirmation({
+                        title: 'Branding auf Standard zurücksetzen?',
+                        message: 'Alle individuellen Branding-Anpassungen (Name, Farben, Light- und Dark-Mode-Logos sowie Favicon) werden dauerhaft auf das ursprüngliche OpenSigWeave-Design zurückgesetzt. Domains, Signaturen, Regeln, Benutzer und deine Theme-Auswahl bleiben unverändert.'
+                    });
+                    if (!confirmed || this.saving) return;
+                    this.saving = true;
+                    try {
+                        const response = await fetch('/api/admin/branding/reset', { method: 'POST' });
+                        if (!response.ok) {
+                            const problem = await response.json().catch(() => ({}));
+                            throw new Error(problem.detail || response.statusText);
+                        }
+                        const defaults = await response.json();
+                        this.settings = defaults;
+                        this.logoDataUrl = null;
+                        this.darkLogoDataUrl = null;
+                        this.faviconDataUrl = null;
+                        this.resetLogo = false;
+                        this.resetDarkLogo = false;
+                        this.resetFavicon = false;
+                        this.cacheKey = Date.now();
+                        document.querySelectorAll('[x-data="brandingManager"] input[type="file"]').forEach(input => { input.value = ''; });
+                        document.querySelectorAll('.app-brand').forEach(element => { element.textContent = defaults.app_name; });
+                        document.title = defaults.app_name + ' Admin';
+                        document.querySelectorAll('link[rel="icon"]').forEach(icon => {
+                            icon.setAttribute('href', defaults.favicon_url + '?v=' + this.cacheKey);
+                        });
+                        window.dispatchEvent(new CustomEvent('opensigweave-branding-change', {
+                            detail: { app_color: defaults.app_color, version: this.cacheKey }
+                        }));
+                        notify('OpenSigWeave-Branding wurde auf Standard zurückgesetzt.');
+                    } catch (error) {
+                        notify('Branding-Reset fehlgeschlagen: ' + error.message, 'error');
+                    } finally {
+                        this.saving = false;
+                    }
+                },
                 async save() {
                     if (this.saving) return;
                     if (!this.settings.app_name || !this.settings.app_name.trim()) { notify('Application name is required.', 'error'); return; }

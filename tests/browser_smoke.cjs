@@ -1286,26 +1286,58 @@ async function main() {
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Branding", exact: true }).click();
     brandingPanel = page.locator('[x-data="brandingManager"]');
-    await brandingPanel.getByLabel("Application name").fill("OpenSigWeave");
-    await brandingPanel.locator('input[placeholder="#ff7043"]').fill("#ff7043");
-    await brandingPanel.getByRole("button", { name: "Use built-in logo", exact: true }).click();
-    await brandingPanel.getByRole("button", { name: "Use standard logo", exact: true }).click();
-    await brandingPanel.getByRole("button", { name: "Use built-in fallback", exact: true }).click();
-    assert.match(await brandingPanel.locator('img[alt="Brand logo preview"]').getAttribute("src"), /^\/branding\/builtin\/logo\.png/, "reset action must preview the bundled logo");
-    assert.match(await brandingPanel.locator('img[alt="Dark mode logo preview"]').getAttribute("src"), /^\/branding\/builtin\/logo\.png/, "resetting dark logo must preview the standard fallback");
-    assert.match(await brandingPanel.locator('img[alt="Favicon preview"]').getAttribute("src"), /^\/branding\/builtin\/favicon/, "reset action must preview the bundled favicon");
+    const resetButton = brandingPanel.getByRole("button", { name: "Branding auf Standard zurücksetzen", exact: true });
+    const resetDialog = page.locator('[x-data="confirmModal"] [role="alertdialog"]');
+    await resetButton.click();
+    await resetDialog.waitFor({ state: "visible" });
+    await assertModalLayout(page, resetDialog, "branding reset confirmation");
+    await resetDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await resetDialog.waitFor({ state: "hidden" });
+    assert.equal((await (await page.request.get(baseURL + "/api/admin/branding")).json()).has_custom_dark_logo, true,
+      "cancel must not modify persisted branding");
 
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: "domcontentloaded" }),
-      brandingPanel.getByRole("button", { name: "Save Branding", exact: true }).click(),
-    ]);
+    await page.evaluate(() => { window.__brandingResetDocumentMarker = true; });
+    const themeBeforeReset = await page.evaluate(() => ({
+      selected: document.documentElement.dataset.theme,
+      stored: localStorage.getItem("opensigweave.theme.v1")
+    }));
+    await resetButton.click();
+    await resetDialog.waitFor({ state: "visible" });
+    assert.match(await resetDialog.locator("#osw-confirm-description").textContent(), /Light- und Dark-Mode-Logos/);
+    await resetDialog.getByRole("button", { name: "Confirm", exact: true }).click();
+    await page.waitForFunction(() => document.body.dataset.appColor === "#ff7043"
+      && document.querySelector(".app-brand")?.textContent === "OpenSigWeave"
+      && document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute("src")?.includes("?v="));
+    assert.equal(await page.evaluate(() => window.__brandingResetDocumentMarker), true,
+      "reset must update the existing page without navigation");
+    assert.deepEqual(await page.evaluate(() => ({
+      selected: document.documentElement.dataset.theme,
+      stored: localStorage.getItem("opensigweave.theme.v1")
+    })), themeBeforeReset, "reset must preserve the selected theme and its storage");
+    assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue("--osw-accent").trim()), "#ff7043");
+    assert.match(await page.locator('link[rel="icon"]').getAttribute("href"), /\/branding\/favicon\?v=/);
+    await page.waitForFunction(() => {
+      const logo = document.querySelector('nav img[data-osw-brand-logo]');
+      return logo?.complete && logo.naturalWidth > 0;
+    });
+    await page.locator("#theme-toggle").click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light"
+      && document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute("src")?.startsWith("/branding/logo.png?v="));
+    await page.locator("#theme-toggle").click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark"
+      && document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute("src")?.startsWith("/branding/logo-dark.png?v="));
+    await page.reload({ waitUntil: "domcontentloaded" });
     await page.locator(".app-brand").filter({ hasText: "OpenSigWeave" }).waitFor();
+    const repeatResetStatus = await page.evaluate(async () => (await fetch("/api/admin/branding/reset", { method: "POST" })).status);
+    assert.equal(repeatResetStatus, 200, "full reset must be idempotent");
     const restoredBranding = await (await page.request.get(baseURL + "/api/admin/branding")).json();
     assert.equal(restoredBranding.app_name, "OpenSigWeave");
     assert.equal(restoredBranding.app_color, "#ff7043");
     assert.equal(restoredBranding.has_custom_logo, false);
     assert.equal(restoredBranding.has_custom_dark_logo, false);
     assert.equal(restoredBranding.has_custom_favicon, false);
+    const loginAfterReset = await page.request.get(baseURL + "/login");
+    assert.match(await loginAfterReset.text(), /Sign in · OpenSigWeave/);
     const bundledLogo = await page.request.get(baseURL + "/branding/logo.png");
     assert.equal(bundledLogo.status(), 200, "built-in logo must remain available after restoring defaults");
     assert.deepEqual(await (await page.request.get(baseURL + "/branding/logo-dark.png")).body(), await bundledLogo.body(), "dark mode must fall back to standard logo");
