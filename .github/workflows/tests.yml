@@ -177,7 +177,9 @@ jobs:
             docker compose logs --no-color opensigweave
             exit 1
           fi
-          grep -q "Use email and password for LDAP" <<<"$login_page"
+          # Verify functioning login controls instead of optional explanatory copy.
+          grep -q 'id="email"' <<<"$login_page"
+          grep -q 'id="password"' <<<"$login_page"
           grep -q '/branding/logo.png' <<<"$login_page"
           normal_user_session="$(python -c 'import base64,json,sys; from itsdangerous import TimestampSigner; payload={"user":{"email":"normal@example.test","name":"Normal User","groups":["signature-users"],"attributes":{}},"csrf_token":"ci-normal-user-csrf-token"}; encoded=base64.b64encode(json.dumps(payload,separators=(",",":")).encode()); print(TimestampSigner(sys.argv[1]).sign(encoded).decode())' "$session_key")"
           restricted_user_session="$(python -c 'import base64,json,sys; from itsdangerous import TimestampSigner; payload={"user":{"email":"restricted@restricted.test","name":"Restricted User","groups":["signature-users"],"attributes":{}},"csrf_token":"ci-restricted-user-csrf-token"}; encoded=base64.b64encode(json.dumps(payload,separators=(",",":")).encode()); print(TimestampSigner(sys.argv[1]).sign(encoded).decode())' "$session_key")"
