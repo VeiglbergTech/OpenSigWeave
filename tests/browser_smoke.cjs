@@ -481,7 +481,7 @@ async function main() {
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
-    await fontFamilyControl.selectOption("Georgia, serif");
+    await fontFamilyControl.selectOption("Georgia");
     await signatureCreateEditor.press("Control+A");
     await fontSizeControl.selectOption("18");
     await signatureCreateEditor.press("Control+A");
@@ -491,7 +491,7 @@ async function main() {
       const html = document.querySelector("#signature-html-source").value;
       return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17px/i.test(html);
     });
-    assert.equal(await fontFamilyControl.inputValue(), "Georgia, serif",
+    assert.equal(await fontFamilyControl.inputValue(), "Georgia",
       "font selector must reflect the current CKEditor selection");
     assert.equal(await fontSizeControl.inputValue(), "17",
       "non-preset pixel size must appear when reopening existing formatting");
@@ -511,7 +511,7 @@ async function main() {
       "the stored non-preset px size must survive closing and reopening");
     await signatureEditEditor.click();
     await signatureEditEditor.press("Control+A");
-    assert.equal(await fontFamilyControl.inputValue(), "Georgia, serif",
+    assert.equal(await fontFamilyControl.inputValue(), "Georgia",
       "the family dropdown must track a previously stored selection");
     assert.equal(await fontSizeControl.inputValue(), "17",
       "the size dropdown must track a previously stored custom pixel value");
