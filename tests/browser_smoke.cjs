@@ -1268,12 +1268,19 @@ async function main() {
     // client-secret input blank. The existing credential must be retained before
     // validation while changed non-secret settings persist across another reload.
     await reloadedOidcFields.getByLabel("OIDC scopes").fill("openid email profile groups offline_access");
+    const scopeUpdateRequest = page.waitForRequest(request =>
+      request.method() === "PUT"
+      && request.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
+    );
     const updateSsoProvider = page.waitForResponse(response =>
       response.request().method() === "PUT"
       && response.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
       && response.status() === 200
     );
     await reloadedSsoDialog.getByRole("button", { name: "Save", exact: true }).click();
+    const scopePut = await scopeUpdateRequest;
+    assert.equal(JSON.parse(scopePut.postData()).settings.OIDC_SCOPES, "openid email profile groups offline_access",
+      "OIDC form must send the current scope value instead of an earlier x-model snapshot");
     await updateSsoProvider;
     await page.reload();
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });

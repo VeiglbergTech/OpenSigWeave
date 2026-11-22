@@ -252,8 +252,11 @@ function identityProviderManager() { return {
         this.editing=true;
     },
     async saveProvider() {
+        // Flush the most recent x-model input event before constructing the PUT/POST
+        // body. Otherwise a fast Save click can send the previous field value.
+        await this.$nextTick();
         if(!this.form.id.trim() || !this.form.display_name.trim()) { notify('Provider ID and display name are required.','error'); return; }
-        const payload={id:this.form.id,display_name:this.form.display_name,provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,settings:this.form.settings};
+        const payload={id:this.form.id,display_name:this.form.display_name,provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,settings:{...this.form.settings}};
         const url=this.form.original_id ? '/api/admin/identity-providers/'+encodeURIComponent(this.form.original_id) : '/api/admin/identity-providers';
         const response=await fetch(url,{method:this.form.original_id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
         if(!response.ok) { notify('Could not save provider: '+(await response.text()),'error'); return; }
