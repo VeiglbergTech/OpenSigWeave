@@ -1628,20 +1628,29 @@ async function main() {
         await visualPage.getByRole("button", { name: "+ Add Signature" }).click();
         const signatureSelector = '[x-data="signatureManager"] [role="dialog"]';
         await inspect(signatureSelector, "signature-editor");
-        const richToolbar = shell(signatureSelector).locator(".ck-toolbar");
-        await richToolbar.waitFor({ state: "visible" });
-        const fontButton = richToolbar.getByRole("button", { name: /Font Family/i });
-        await fontButton.click();
-        const dropdown = shell(signatureSelector).locator(".ck-dropdown__panel-visible").first();
-        await dropdown.waitFor({ state: "visible" });
-        const menuBounds = await dropdown.evaluate(element => {
-          const r = element.getBoundingClientRect();
-          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, vw: innerWidth, vh: innerHeight };
-        });
-        assert.ok(menuBounds.left >= -2 && menuBounds.right <= menuBounds.vw + 2
-          && menuBounds.top >= -2 && menuBounds.bottom <= menuBounds.vh + 2,
-          "CKEditor font menu should fit viewport: " + JSON.stringify(menuBounds));
-        await fontButton.click();
+        const fontToolbar = shell(signatureSelector).locator(".osw-editor-font-toolbar");
+        await fontToolbar.waitFor({ state: "visible" });
+        const fontControls = [
+          fontToolbar.getByRole("combobox", { name: "Signature font family" }),
+          fontToolbar.getByRole("combobox", { name: "Signature font size" }),
+          fontToolbar.getByRole("spinbutton", { name: "Custom signature font size in pixels" })
+        ];
+        for (const [index, control] of fontControls.entries()) {
+          await control.waitFor({ state: "visible" });
+          await control.scrollIntoViewIfNeeded();
+          const bounds = await control.evaluate(element => {
+            const r = element.getBoundingClientRect();
+            return { left: r.left, right: r.right, top: r.top, bottom: r.bottom,
+              vw: innerWidth, vh: innerHeight };
+          });
+          assert.ok(bounds.left >= -2 && bounds.right <= bounds.vw + 2
+            && bounds.top >= -2 && bounds.bottom <= bounds.vh + 2,
+            "signature font control " + index + " must fit viewport: " + JSON.stringify(bounds));
+        }
+        assert.ok(await fontControls[0].locator('option[value="Georgia"]').count() === 1,
+          "signature font dropdown must offer Georgia on every viewport and theme");
+        assert.ok(await fontControls[1].locator('option[value="17"]').count() <= 1,
+          "custom font sizes may be selected dynamically, not duplicated");
         await close(signatureSelector);
         await nav("Signature Groups");
         await visualPage.getByRole("button", { name: "+ Add Group" }).click();
