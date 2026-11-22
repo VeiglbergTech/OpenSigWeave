@@ -25,6 +25,71 @@ attributable to the ASGI loop, DB locks and the old urllib/thread-per-connection
 benchmark client were **not independently quantified** by profiling. The old
 client conflated network errors and timeouts.
 
+## Validated post-change HTTP benchmark (22 November 2026)
+
+This is the first **measured** post-change run, not a comparable rerun of the old
+revision. The full source and telemetry are retained in
+[GitHub Actions run 44975188988](https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/44975188988),
+for dev commit `694b9a1207b25b38e38a365dcc52bd4b334011fa`.
+
+- GitHub-hosted Linux runner: **4 visible CPUs**, 15 GiB host RAM;
+  PostgreSQL 17 Alpine; one Uvicorn worker;
+  `DB_POOL_SIZE=5` and `DB_MAX_OVERFLOW=10`.
+- Four scenarios, eight stages each (`1,5,10,25,50,100,250,500`),
+  500 requests per stage (16,000 total); 128 independent senders for
+  ordinary scenarios, one sender in the contention scenario; 15-second
+  client timeout; cached identity attributes, not live provider calls.
+- **16,000/16,000 returned valid signatures**, all HTTP 200,
+  **0** observed timeouts, **0** other request failures.
+- Highest observed and error-free stage: **500 concurrent requests**
+  in each of the four scenarios. This is one successful isolated
+  CI run, **not** an SLA or evidence of indefinite stability.
+
+| Scenario | Concurrency | Valid results | Valid/s | P50 ms | P95 ms | P99 ms |
+|---|---:|---:|---:|---:|---:|---:|
+| Fixed, 128 senders | 100 | 500/500 | 90.02 | 1062.44 | 1423.66 | 1641.24 |
+| Fixed, 128 senders | 500 | 500/500 | 83.24 | 3659.22 | 5625.39 | 5785.94 |
+| Rotation, 128 senders | 100 | 500/500 | 60.04 | 1480.16 | 2287.38 | 2963.91 |
+| Rotation, 128 senders | 500 | 500/500 | 57.47 | 5137.45 | 8223.36 | 8476.42 |
+| Rotation, one sender | 100 | 500/500 | 62.39 | 1462.80 | 2026.37 | 2541.75 |
+| Rotation, one sender | 500 | 500/500 | 57.96 | 4906.55 | 8117.55 | 8383.04 |
+| 32-KB template, 128 senders | 100 | 500/500 | 67.70 | 1403.87 | 1860.06 | 2299.30 |
+| 32-KB template, 128 senders | 500 | 500/500 | 63.62 | 4644.87 | 7390.60 | 7646.06 |
+
+**Resource measurements (periodic snapshots, not continuous maxima):**
+
+- Highest sampled application CPU: **129.3%** (Docker CPU accounting,
+  approximately 1.29 CPU cores); application RAM: **141.7 MiB**.
+- Highest sampled PostgreSQL CPU: **63.5%**; PostgreSQL RAM:
+  **67.7 MiB**. These are maximum recorded values across *different*
+  stages, not measurements taken simultaneously.
+- Highest observed PostgreSQL connection count: **16**, including
+  the measurement connection (15 application connections maximum with
+  the configured pool).
+- Concurrent selection for one principal showed **up to 12 sampled
+  PostgreSQL lock waiters**. Other workloads showed zero lock waiters
+  *at the sample instants*, which does not prove that no brief waits
+  occurred. This is consistent with intentional per-principal rotation
+  serialization.
+- CPU/RAM samples were typically 2–3 per stage. They can miss transient
+  usage spikes. Compare only tests with identical observation methods.
+
+**Before/after caveat:** The original incident data above used 200 requests
+per stage and a `ThreadPoolExecutor`/urllib client; this run used 500 and a
+bounded async HTTP client. Although the previous 50-concurrency runs failed
+almost completely while the current ones passed 500/500, their rates are
+**not methodologically comparable**. Do not claim an exact speedup.
+A controlled rerun of the historical application revision with the *same*
+HTTP generator, fixture, runner and PostgreSQL configuration is still needed
+for a quantitative throughput improvement factor.
+
+At concurrency 500, P99 latency reaches **8.48 seconds** for rotation,
+even when all requests succeed. High parallelism does not mean low latency,
+and the throughput across workloads plateaus at approximately 57–83
+valid calculations/s on this runner. Repeated sustained-load runs,
+live IdP cache-misses, alternate worker configurations and full SMTP
+end-to-end throughput remain unverified.
+
 ## Changes and correctness properties
 
 - Shared engine resolution is offloaded to a bounded AnyIO worker thread; the
