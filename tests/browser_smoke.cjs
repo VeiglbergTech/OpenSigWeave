@@ -519,6 +519,12 @@ async function main() {
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
     const signatureEditEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureEditEditor.waitFor({ state: "visible" });
+    // The editor instance stays mounted between dialogs. Do not mistake the
+    // previous instance's HTML for the asynchronously retrieved saved version.
+    await page.waitForFunction(() => {
+      const html = document.querySelector("#signature-html-source")?.value || "";
+      return /font-family:\\s*Georgia/i.test(html) && /font-size:\\s*17px/i.test(html);
+    });
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
     const reloadedHtml = await signaturePanel.locator("#signature-html-source").inputValue();
