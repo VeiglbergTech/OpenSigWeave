@@ -6,9 +6,11 @@ PostgreSQL or API responses. OIDC authentication remains separate.
 from __future__ import annotations
 
 import asyncio
+from contextlib import contextmanager
 import os
 import re
-import tempfile
+import secrets
+import stat
 from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Any
@@ -40,7 +42,11 @@ def _dotenv_quote(value: str) -> str:
 
 class IdentityProviderRegistry:
     def __init__(self, root: str | Path = ".idp"):
-        self.root = Path(root).resolve()
+        # Do not resolve an untrusted symlink: every path component is opened
+        # with O_NOFOLLOW below, anchored at an already-open directory.
+        self.root = Path(os.path.abspath(root))
+        if self.root == Path("/"):
+            raise ProviderConfigError("Identity registry root must not be /.")
         self._providers: dict[str, Any] = {}
         self._configs: dict[str, dict[str, str]] = {}
 
@@ -50,53 +56,118 @@ class IdentityProviderRegistry:
             raise ProviderConfigError("Provider name must be a lowercase slug (a-z, 0-9, hyphens).")
         return slug
 
-    def _directory(self, slug: str) -> Path:
+    @contextmanager
+    def _root_fd(self):
+        """Pin each directory component; never follow links, even in ancestors."""
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        fd = os.open("/", flags)
+        try:
+            components = self.root.parts[1:]
+            for index, component in enumerate(components):
+                if index == len(components) - 1:
+                    try:
+                        os.mkdir(component, mode=0o700, dir_fd=fd)
+                    except FileExistsError:
+                        pass
+                child_fd = os.open(component, flags, dir_fd=fd)
+                os.close(fd)
+                fd = child_fd
+            current = os.fstat(fd)
+            if current.st_uid != os.geteuid() or not stat.S_ISDIR(current.st_mode):
+                raise ProviderConfigError("Unsafe identity registry root ownership.")
+            os.fchmod(fd, 0o700)
+            yield fd
+        finally:
+            os.close(fd)
+
+    @contextmanager
+    def _provider_fd(self, root_fd: int, slug: str, *, create: bool = False):
         slug = self.validate_slug(slug)
-        # Explicitly discard path components even after the strict ASCII slug gate.
-        # Both checks must pass before accessing the private provider root.
-        safe_slug = os.path.basename(slug)
-        if safe_slug != slug:
-            raise ProviderConfigError("Invalid provider path.")
-        path = self.root / safe_slug
-        if path.parent != self.root:
-            raise ProviderConfigError("Invalid provider path.")
-        if path.is_symlink():
-            raise ProviderConfigError("Provider directory must not be a symbolic link.")
-        return path
+        if create:
+            try:
+                os.mkdir(slug, mode=0o700, dir_fd=root_fd)
+            except FileExistsError:
+                pass
+        fd = os.open(slug, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                     dir_fd=root_fd)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid():
+                raise ProviderConfigError("Unsafe provider directory ownership.")
+            os.fchmod(fd, 0o700)
+            yield fd
+        finally:
+            os.close(fd)
+
+    def _read_values(self, slug: str, *, missing_ok: bool = False) -> dict[str, str]:
+        self.validate_slug(slug)
+        try:
+            with self._root_fd() as root_fd:
+                with self._provider_fd(root_fd, slug) as provider_fd:
+                    fd = os.open(".env", os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                 dir_fd=provider_fd)
+                    with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                        info = os.fstat(stream.fileno())
+                        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid()
+                                or info.st_mode & 0o077 or info.st_nlink != 1
+                                or info.st_size > 128 * 1024):
+                            raise ProviderConfigError("Unsafe provider configuration file.")
+                        return {k: str(v) for k, v in dotenv_values(stream=stream).items()
+                                if v is not None}
+        except FileNotFoundError as exc:
+            if missing_ok:
+                return {}
+            raise ProviderConfigError("Identity provider configuration does not exist.") from exc
+        except (OSError, UnicodeError) as exc:
+            raise ProviderConfigError("Cannot safely read identity provider configuration.") from exc
+
+    def _write_values(self, slug: str, values: dict[str, str]) -> None:
+        self.validate_slug(slug)
+        content = "".join(f"{key}={_dotenv_quote(value)}\n"
+                          for key, value in sorted(values.items()))
+        with self._root_fd() as root_fd:
+            with self._provider_fd(root_fd, slug, create=True) as provider_fd:
+                # Reject an unsafe pre-existing .env before any replacement.
+                self._read_values(slug, missing_ok=True)
+                temporary = ".env." + secrets.token_hex(16)
+                fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL |
+                             os.O_NOFOLLOW | os.O_CLOEXEC, 0o600, dir_fd=provider_fd)
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                        os.fchmod(stream.fileno(), 0o600)
+                        stream.write(content)
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, ".env", src_dir_fd=provider_fd,
+                               dst_dir_fd=provider_fd)
+                    os.fsync(provider_fd)
+                finally:
+                    try:
+                        os.unlink(temporary, dir_fd=provider_fd)
+                    except FileNotFoundError:
+                        pass
 
     def list_configs(self) -> list[dict[str, str]]:
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
         result = []
-        for directory in sorted(self.root.iterdir()):
-            if not directory.is_dir() or directory.is_symlink():
-                continue
-            slug = directory.name
-            try:
-                self.validate_slug(slug)
-                file_path = directory / ".env"
-                if file_path.is_symlink() or not file_path.is_file():
+        with self._root_fd() as root_fd:
+            for slug in sorted(os.listdir(root_fd)):
+                try:
+                    values = self._read_values(slug)
+                    kind = values.get("IDP_TYPE", "").casefold()
+                    if kind not in _FIELDS:
+                        continue
+                    result.append({
+                        "id": slug,
+                        "display_name": values.get("IDP_DISPLAY_NAME", slug),
+                        "provider_type": kind,
+                        "is_enabled": values.get("IDP_ENABLED", "true").casefold() == "true",
+                    })
+                except (OSError, ProviderConfigError):
                     continue
-                values = {k: str(v) for k, v in dotenv_values(file_path).items() if v is not None}
-                kind = values.get("IDP_TYPE", "").casefold()
-                if kind not in _FIELDS:
-                    continue
-                result.append({
-                    "id": slug,
-                    "display_name": values.get("IDP_DISPLAY_NAME", slug),
-                    "provider_type": kind,
-                    "is_enabled": values.get("IDP_ENABLED", "true").casefold() == "true",
-                })
-            except (OSError, ProviderConfigError):
-                continue
         return result
 
     def describe(self, slug: str) -> dict[str, Any]:
-        directory = self._directory(slug)
-        file_path = directory / ".env"
-        if file_path.is_symlink() or not file_path.is_file():
-            raise ProviderConfigError("Identity provider configuration does not exist.")
-        values = {k: str(v) for k, v in dotenv_values(file_path).items() if v is not None}
+        values = self._read_values(slug)
         kind = values.get("IDP_TYPE", "").casefold()
         if kind not in _FIELDS:
             raise ProviderConfigError("Unsupported identity provider type.")
@@ -109,11 +180,7 @@ class IdentityProviderRegistry:
         }
 
     def load(self, slug: str):
-        directory = self._directory(slug)
-        file_path = directory / ".env"
-        if file_path.is_symlink() or not file_path.is_file():
-            raise ProviderConfigError("Identity provider configuration does not exist.")
-        values = {k: str(v) for k, v in dotenv_values(file_path).items() if v is not None}
+        values = self._read_values(slug)
         kind = values.get("IDP_TYPE", "").casefold()
         if kind not in _FIELDS:
             raise ProviderConfigError("Unsupported identity provider type.")
@@ -157,15 +224,11 @@ class IdentityProviderRegistry:
         values = {key: str(value) for key, value in settings.items() if value is not None}
         # An empty secret in the admin form means keep the existing credential.
         # Restore it BEFORE OIDC's required-fields validation, not afterwards.
-        existing_file = self._directory(slug) / ".env"
-        if existing_file.is_symlink():
-            raise ProviderConfigError("Provider configuration must not be a symbolic link.")
-        if existing_file.is_file():
-            previous = {k: str(v) for k, v in dotenv_values(existing_file).items() if v is not None}
-            secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
-            for key in secret_keys & allowed:
-                if not values.get(key) and previous.get("IDP_TYPE") == kind and previous.get(key):
-                    values[key] = previous[key]
+        previous = self._read_values(slug, missing_ok=True)
+        secret_keys = {"AUTHENTIK_API_TOKEN", "OIDC_CLIENT_SECRET", "LDAP_BIND_PASSWORD"}
+        for key in secret_keys & allowed:
+            if not values.get(key) and previous.get("IDP_TYPE") == kind and previous.get(key):
+                values[key] = previous[key]
         if kind in {"authentik", "oidc"}:
             oidc_keys = ("OIDC_DISCOVERY_URL", "OIDC_CLIENT_ID", "OIDC_CLIENT_SECRET", "OIDC_REDIRECT_URI")
             if kind == "oidc" or any(values.get(key) for key in oidc_keys):
@@ -198,29 +261,7 @@ class IdentityProviderRegistry:
         values.update({"IDP_TYPE": kind, "IDP_DISPLAY_NAME": display_name.strip(), "IDP_ENABLED": "true" if enabled else "false"})
         # Validate all values before touching disk.
         self._build(kind, values)
-        directory = self._directory(slug)
-        self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self.root, 0o700)
-        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-        if directory.is_symlink():
-            raise ProviderConfigError("Provider directory must not be a symbolic link.")
-        os.chmod(directory, 0o700)
-        target = directory / ".env"
-        if target.is_symlink():
-            raise ProviderConfigError("Provider configuration must not be a symbolic link.")
-        content = "".join(f"{key}={_dotenv_quote(value)}\n" for key, value in sorted(values.items()))
-        fd, temp_name = tempfile.mkstemp(prefix=".env.", dir=directory)
-        try:
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(content)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temp_name, target)
-            os.chmod(target, 0o600)
-        finally:
-            if os.path.exists(temp_name):
-                os.unlink(temp_name)
+        self._write_values(slug, values)
         self._providers.pop(slug, None)
         self._configs.pop(slug, None)
         self.load(slug)
@@ -228,11 +269,13 @@ class IdentityProviderRegistry:
 
     def get_config(self, slug: str) -> dict[str, str]:
         """Return raw provider settings for trusted internal authentication code only."""
+        self.validate_slug(slug)
         if slug not in self._configs:
             self.load(slug)
         return dict(self._configs[slug])
 
     def get(self, slug: str):
+        self.validate_slug(slug)
         if slug not in self._providers:
             self.load(slug)
         values = self._configs[slug]
@@ -289,11 +332,18 @@ class IdentityProviderRegistry:
         return True
 
     def delete(self, slug: str):
-        directory = self._directory(slug)
-        if directory.is_symlink():
-            raise ProviderConfigError("Provider directory must not be a symbolic link.")
-        import shutil
-        if directory.exists():
-            shutil.rmtree(directory)
+        slug = self.validate_slug(slug)
+        with self._root_fd() as root_fd:
+            try:
+                with self._provider_fd(root_fd, slug) as provider_fd:
+                    # Never recursively remove attacker-provided names or follow links.
+                    if set(os.listdir(provider_fd)) - {".env"}:
+                        raise ProviderConfigError("Unexpected files in provider directory.")
+                    if ".env" in os.listdir(provider_fd):
+                        self._read_values(slug)
+                        os.unlink(".env", dir_fd=provider_fd)
+                    os.rmdir(slug, dir_fd=root_fd)
+            except FileNotFoundError:
+                pass
         self._providers.pop(slug, None)
         self._configs.pop(slug, None)
