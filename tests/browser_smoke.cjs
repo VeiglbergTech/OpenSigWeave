@@ -921,9 +921,11 @@ async function main() {
     });
     assert.ok(versionTwoId, "image-bearing version 2 must remain available");
     await historicalVersionSelector.selectOption(versionTwoId);
-    await historicalEditor.locator('img[src*="/signature-assets/"]').nth(2).waitFor();
-    assert.equal(await historicalEditor.locator('img[src*="/signature-assets/"]').count(), 3,
-      "historical image-bearing version must still display all uploaded images");
+    await historicalEditor.locator('img[src*="/signature-assets/"]').nth(3).waitFor();
+    assert.equal(await historicalEditor.locator('img[src*="/signature-assets/"]').count(), 4,
+      "historical version must retain both uploaded and URL-imported images");
+    assert.equal(await urlImportToolbarButton.isDisabled(), true,
+      "image URL import must be disabled when browsing a read-only historical version");
 
     checkpoint("signature image upload/persistence: complete");
     checkpoint("signature create/update: complete");
