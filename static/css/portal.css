@@ -102,7 +102,6 @@ label > select, label > textarea { margin-top: .375rem; }
     nav > div { min-width: 0; flex-wrap: wrap; gap: .5rem; }
     nav .app-brand, nav .text-sm { overflow-wrap: anywhere; }
     body > div.max-w-7xl { padding: .75rem !important; }
-    .osw-domain-modal-header { padding: .75rem 1rem; }
     .osw-domain-modal-header > div { gap: .75rem; }
     .osw-domain-modal-header .h-8.w-px { display: none; }
     .osw-domain-modal-header .ml-4 { margin-left: 0; }
@@ -118,7 +117,7 @@ a, a:hover, a:focus-visible,
 }
 
 /* Consistent air between separate administrator context cards and section blocks. */
-.osw-admin-section > :not(.form-dialog) ~ :not(.form-dialog) {
+.osw-admin-section > :not(.osw-modal-root):not(.form-dialog) ~ :not(.osw-modal-root):not(.form-dialog) {
     margin-top: 1.5rem;
 }
 .osw-admin-section > .grid {
@@ -156,11 +155,6 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
 .osw-modal-width-small { --osw-dialog-width: 30rem; }
 .osw-modal-width-medium { --osw-dialog-width: 54rem; }
 .osw-modal-width-large { --osw-dialog-width: 64rem; }
-.form-dialog.osw-modal-shell {
-    position: fixed; z-index: 91; top: 50%; left: 50%;
-    transform: translate(-50%, -50%); margin: 0; padding: 0;
-}
-.form-dialog.form-dialog-wide { --osw-dialog-width: 72rem; }
 .osw-modal-header {
     display: flex; align-items: center; justify-content: space-between;
     flex: 0 0 auto; gap: 1rem; min-width: 0; padding: 1rem 1.5rem;
@@ -193,7 +187,14 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
     margin: 0; padding: 1rem 1.5rem; background: var(--osw-charcoal);
     border-top: 1px solid var(--osw-border); border-radius: 0 0 .875rem .875rem;
 }
-.osw-modal-footer button { margin: 0; }
+.osw-modal-footer button {
+    margin: 0; min-height: 2.5rem; padding: .5rem 1rem;
+    font-size: .875rem; font-weight: 500; border-radius: .375rem;
+    overflow-wrap: anywhere;
+}
+.osw-modal-footer :is(.bg-blue-600, .bg-blue-700, .bg-red-600, .bg-red-700, .bg-yellow-600, .bg-yellow-700) {
+    color: #fff !important;
+}
 .osw-modal-shell .ck.ck-dropdown__panel { max-width: calc(100vw - 3rem); }
 .ck-body-wrapper .ck.ck-balloon-panel { z-index: 120 !important; }
 @media (max-width: 640px) {

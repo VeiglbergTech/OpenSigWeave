@@ -34,7 +34,7 @@ async function main() {
     const layout = await dialog.evaluate(element => {
       const rect = element.getBoundingClientRect();
       return {
-        position: window.getComputedStyle(element).position,
+        position: window.getComputedStyle(element.closest(".osw-modal-root")).position,
         width: rect.width,
         height: rect.height,
         left: rect.left,
@@ -45,7 +45,7 @@ async function main() {
         viewportHeight: window.innerHeight,
       };
     });
-    assert.equal(layout.position, "fixed", label + " must be a floating dialog, not an inline form");
+    assert.equal(layout.position, "fixed", label + " must be hosted in the same fixed overlay as Domain Management");
     assert.ok(layout.width > 0 && layout.height > 0, label + " must have visible dimensions");
     assert.ok(layout.left >= -1 && layout.right <= layout.viewportWidth + 1,
       label + " must fit horizontally inside the viewport: " + JSON.stringify(layout));
@@ -66,10 +66,25 @@ async function main() {
       const body = shell.querySelector(":scope > .osw-modal-body");
       const footers = [...shell.querySelectorAll(":scope > .osw-modal-footer")];
       const footer = footers.find(el => el.getClientRects().length > 0);
+      const root = shell.closest(".osw-modal-root");
+      const reference = document.querySelector('[x-data="addDomainModal"] .osw-modal-shell');
+      const design = dialog => {
+        const style = node => {
+          const css = getComputedStyle(node);
+          return { padding: css.padding, background: css.backgroundColor,
+            borderTop: css.borderTopColor, borderBottom: css.borderBottomColor,
+            radius: css.borderRadius, overflowY: css.overflowY };
+        };
+        return { shell: style(dialog), header: style(dialog.querySelector(":scope > .osw-modal-header")),
+          body: style(dialog.querySelector(":scope > .osw-modal-body")),
+          footer: style(dialog.querySelector(":scope > .osw-modal-footer")) };
+      };
       const inputs = [...shell.querySelectorAll("input, select, textarea")]
         .filter(el => el.getClientRects().length > 0);
       return {
         viewport: [window.innerWidth, window.innerHeight],
+        rootPosition: root && getComputedStyle(root).position,
+        design: design(shell), referenceDesign: design(reference),
         shell: rect(shell),
         header: header && rect(header),
         body: body && rect(body),
@@ -78,12 +93,22 @@ async function main() {
           const r = el.getBoundingClientRect(), parent = body.getBoundingClientRect();
           return r.left < parent.left - 2 || r.right > parent.right + 2;
         }).map(el => el.outerHTML.slice(0, 160)),
+        badButtons: [...shell.querySelectorAll(":scope > .osw-modal-footer button")]
+          .filter(el => el.getClientRects().length > 0)
+          .filter(el => {
+            const r = el.getBoundingClientRect();
+            return r.left < -2 || r.right > innerWidth + 2 || r.top < -2 || r.bottom > innerHeight + 2;
+          }).map(el => el.textContent.trim()),
         backdropCount: document.querySelectorAll("#osw-modal-backdrop").length,
         backdropVisible: document.querySelector("#osw-modal-backdrop").getClientRects().length > 0,
         bodyScrollHeight: body && body.scrollHeight,
         bodyClientHeight: body && body.clientHeight,
       };
     });
+    assert.equal(metrics.rootPosition, "fixed", label + " must use the domain modal fixed root");
+    assert.deepEqual(metrics.design, metrics.referenceDesign,
+      label + " must use the same shell/header/body/footer styling as the Add Domain reference");
+    assert.deepEqual(metrics.badButtons, [], label + " actions must remain visible in the viewport");
     assert.equal(metrics.backdropCount, 1, label + " must use one backdrop");
     assert.equal(metrics.backdropVisible, true, label + " backdrop must be visible");
     assert.ok(metrics.header && metrics.body && metrics.footer, label + " requires header/body/footer: " + JSON.stringify(metrics));
@@ -91,6 +116,8 @@ async function main() {
       metrics.shell.top >= -1 && metrics.shell.bottom <= metrics.viewport[1] + 1,
       label + " must fit the viewport: " + JSON.stringify(metrics));
     assert.deepEqual(metrics.badInputs, [], label + " fields must fit within the modal body");
+    assert.ok(Math.abs((metrics.shell.left + metrics.shell.right) / 2 - metrics.viewport[0] / 2) <= 2,
+      label + " must be centered horizontally like the reference");
     assert.ok(metrics.footer.bottom <= metrics.shell.bottom + 1, label + " footer must fit");
     if (metrics.bodyScrollHeight > metrics.bodyClientHeight + 5) {
       const before = metrics.footer.top;
@@ -323,10 +350,12 @@ async function main() {
       body: !!dialog.querySelector(":scope > .osw-modal-body"),
       footer: !!dialog.querySelector(":scope > .osw-modal-footer"),
       shell: dialog.classList.contains("osw-modal-shell"),
+      root: !!dialog.closest(".osw-modal-root"),
+      placement: !!dialog.closest(".osw-modal-placement"),
     })));
     assert.equal(unifiedDialogs.length, 6, "six administrator create/edit dialogs should share one layout");
     for (const item of unifiedDialogs) assert.deepEqual(item, {
-      header: true, body: true, footer: true, shell: true,
+      header: true, body: true, footer: true, shell: true, root: true, placement: true,
     }, "each administrator dialog must have the shared Domains-style shell");
     assert.equal(await page.locator('[x-data="addDomainModal"] input[x-model="domainName"]').getAttribute("placeholder"), "example.com",
       "domain placeholder must use the neutral example.com address");
