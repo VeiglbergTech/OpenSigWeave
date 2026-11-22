@@ -57,15 +57,113 @@ python "$SOURCE/backup_cli.py" create \
   --recipient "$RECIPIENT" \
   --identity "$IDENTITY"
 
-# The source deployment is disposable. Stop and remove it to free its port and
-# prove that the restore does not depend on any source containers or volumes.
-docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" down --volumes --remove-orphans
-
+# Keep production running while verifying isolated recovery on another host port.
+# The restore must not overwrite, stop or re-use source containers and volumes.
 python "$SOURCE/backup_cli.py" restore "$BACKUP" \
   --identity "$IDENTITY" \
   --target-dir "$RESTORE" \
   --project-name "$RESTORE_PROJECT" \
+  --app-port 18095 \
   --health-timeout 240
+
+grep -q '^APP_PORT=18095
+
+RESTORE_COMPOSE=(docker compose --project-name "$RESTORE_PROJECT" --file "$RESTORE/compose.yaml" --file "$RESTORE/compose.restore.yaml")
+db_value="$("${RESTORE_COMPOSE[@]}" exec -T postgres sh -c \
+  'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT payload FROM backup_restore_probe WHERE id = 1"')"
+[[ "$db_value" == "roundtrip-ok" ]] || { echo "Restored PostgreSQL probe does not match" >&2; exit 1; }
+
+signature_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /data/signatures/restore-probe.html)"
+[[ "$signature_value" == "<p>restore-e2e</p>" ]] || { echo "Restored signature volume does not match" >&2; exit 1; }
+
+idp_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/restore-probe.txt)"
+[[ "$idp_value" == "idp-volume-roundtrip" ]] || { echo "Restored IDP volume does not match" >&2; exit 1; }
+
+provider_config="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/ci-ldap/.env)"
+expected_provider_config="$(printf '%s\n' "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test")"
+[[ "$provider_config" == "$expected_provider_config" ]] || { echo "Restored LDAP provider configuration or credential does not match" >&2; exit 1; }
+
+provider_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap/.env)"
+provider_dir_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap)"
+[[ "$provider_mode" == "600" && "$provider_dir_mode" == "700" ]] || { echo "Restored IDP configuration permissions are not restrictive" >&2; exit 1; }
+
+# Load the restored provider through the application's real registry.
+"${RESTORE_COMPOSE[@]}" exec -T opensigweave python -c 'from pathlib import Path; from identity.registry import IdentityProviderRegistry; r = IdentityProviderRegistry(Path("/app/.idp")); p = r.get("ci-ldap"); cfg = r.get_config("ci-ldap"); assert p is not None and type(p).__name__ == "LDAPAttributeProvider"; assert p.url == "ldaps://directory.example.test"; assert p.bind_dn == "cn=opensigweave,ou=svc,dc=example,dc=test"; assert p.bind_password == "restore-secret-probe"; assert p.base_dn == "dc=example,dc=test"; assert cfg["LDAP_BIND_PASSWORD"] == "restore-secret-probe"; print("Restored LDAP provider registry load passed")'
+
+# Exercise retention with real age-encrypted archives. The preview must not
+# delete anything; applying retention must verify all archives and keep newest.
+RETENTION_DIR="$WORK/retention"
+mkdir -p "$RETENTION_DIR"
+cp "$BACKUP" "$RETENTION_DIR/backup-old.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-middle.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-newest.age"
+touch -d "3 days ago" "$RETENTION_DIR/backup-old.age"
+touch -d "2 days ago" "$RETENTION_DIR/backup-middle.age"
+touch -d "1 day ago" "$RETENTION_DIR/backup-newest.age"
+
+retention_preview="$(python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1)"
+grep -q "Dry run; no files were deleted." <<<"$retention_preview"
+[[ "$(grep -c '^Would delete:' <<<"$retention_preview")" == "2" ]]
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "3" ]]
+
+python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1 --apply
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "1" ]]
+[[ -f "$RETENTION_DIR/backup-newest.age" ]]
+
+echo "Full encrypted backup/restore and verified retention integration passed: PostgreSQL, Alembic revision, signature volume, IDP volume, application health and age-verified retention."
+ "$RESTORE/.env"
+grep -q '^APP_BIND_ADDRESS=127.0.0.1
+
+RESTORE_COMPOSE=(docker compose --project-name "$RESTORE_PROJECT" --file "$RESTORE/compose.yaml" --file "$RESTORE/compose.restore.yaml")
+db_value="$("${RESTORE_COMPOSE[@]}" exec -T postgres sh -c \
+  'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT payload FROM backup_restore_probe WHERE id = 1"')"
+[[ "$db_value" == "roundtrip-ok" ]] || { echo "Restored PostgreSQL probe does not match" >&2; exit 1; }
+
+signature_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /data/signatures/restore-probe.html)"
+[[ "$signature_value" == "<p>restore-e2e</p>" ]] || { echo "Restored signature volume does not match" >&2; exit 1; }
+
+idp_value="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/restore-probe.txt)"
+[[ "$idp_value" == "idp-volume-roundtrip" ]] || { echo "Restored IDP volume does not match" >&2; exit 1; }
+
+provider_config="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave cat /app/.idp/ci-ldap/.env)"
+expected_provider_config="$(printf '%s\n' "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test")"
+[[ "$provider_config" == "$expected_provider_config" ]] || { echo "Restored LDAP provider configuration or credential does not match" >&2; exit 1; }
+
+provider_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap/.env)"
+provider_dir_mode="$("${RESTORE_COMPOSE[@]}" exec -T opensigweave stat -c '%a' /app/.idp/ci-ldap)"
+[[ "$provider_mode" == "600" && "$provider_dir_mode" == "700" ]] || { echo "Restored IDP configuration permissions are not restrictive" >&2; exit 1; }
+
+# Load the restored provider through the application's real registry.
+"${RESTORE_COMPOSE[@]}" exec -T opensigweave python -c 'from pathlib import Path; from identity.registry import IdentityProviderRegistry; r = IdentityProviderRegistry(Path("/app/.idp")); p = r.get("ci-ldap"); cfg = r.get_config("ci-ldap"); assert p is not None and type(p).__name__ == "LDAPAttributeProvider"; assert p.url == "ldaps://directory.example.test"; assert p.bind_dn == "cn=opensigweave,ou=svc,dc=example,dc=test"; assert p.bind_password == "restore-secret-probe"; assert p.base_dn == "dc=example,dc=test"; assert cfg["LDAP_BIND_PASSWORD"] == "restore-secret-probe"; print("Restored LDAP provider registry load passed")'
+
+# Exercise retention with real age-encrypted archives. The preview must not
+# delete anything; applying retention must verify all archives and keep newest.
+RETENTION_DIR="$WORK/retention"
+mkdir -p "$RETENTION_DIR"
+cp "$BACKUP" "$RETENTION_DIR/backup-old.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-middle.age"
+cp "$BACKUP" "$RETENTION_DIR/backup-newest.age"
+touch -d "3 days ago" "$RETENTION_DIR/backup-old.age"
+touch -d "2 days ago" "$RETENTION_DIR/backup-middle.age"
+touch -d "1 day ago" "$RETENTION_DIR/backup-newest.age"
+
+retention_preview="$(python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1)"
+grep -q "Dry run; no files were deleted." <<<"$retention_preview"
+[[ "$(grep -c '^Would delete:' <<<"$retention_preview")" == "2" ]]
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "3" ]]
+
+python "$ROOT/backup_cli.py" prune \
+  --directory "$RETENTION_DIR" --identity "$IDENTITY" --keep 1 --apply
+[[ "$(find "$RETENTION_DIR" -maxdepth 1 -name '*.age' -type f | wc -l)" == "1" ]]
+[[ -f "$RETENTION_DIR/backup-newest.age" ]]
+
+echo "Full encrypted backup/restore and verified retention integration passed: PostgreSQL, Alembic revision, signature volume, IDP volume, application health and age-verified retention."
+ "$RESTORE/.env"
+curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/login >/dev/null
+curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:18095/login >/dev/null
 
 RESTORE_COMPOSE=(docker compose --project-name "$RESTORE_PROJECT" --file "$RESTORE/compose.yaml" --file "$RESTORE/compose.restore.yaml")
 db_value="$("${RESTORE_COMPOSE[@]}" exec -T postgres sh -c \

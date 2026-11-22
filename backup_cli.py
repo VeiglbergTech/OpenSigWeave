@@ -42,6 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("--docker-binary", default="docker")
     restore.add_argument("--age-binary", default="age")
     restore.add_argument("--health-timeout", type=int, default=180)
+    restore.add_argument("--app-port", type=int, default=None, help="Optional isolated host port for a parallel recovery deployment")
 
     package = commands.add_parser("package", help="Create and encrypt an archive from a prepared staging directory")
     package.add_argument("--staging", required=True, type=Path)
@@ -93,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
                 docker_binary=args.docker_binary,
                 age_binary=args.age_binary,
                 health_timeout=args.health_timeout,
+                app_port=args.app_port,
             )
             print(f"Restore completed and services are healthy: {result}")
             print("Review the restored deployment before changing DNS or reverse-proxy routing.")

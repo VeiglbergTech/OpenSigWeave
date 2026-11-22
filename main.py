@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
@@ -65,6 +65,7 @@ from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIG
 from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
+from backup_control_client import BackupControlError, backup_request, backup_download
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
 from adapters.stalwart import build_stalwart_hook_response
@@ -258,6 +259,17 @@ class SignatureRuleCreateRequest(NoLegacySignatureSelectionRequest):
     group_id: Optional[str] = None
     is_enabled: bool = True
     conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list, max_length=64)
+
+class BackupSettingsUpdate(BaseModel):
+    directory: str = Field(min_length=1, max_length=255)
+    automatic: bool = False
+    interval_hours: int = Field(ge=1, le=720)
+    keep: int = Field(ge=1, le=365)
+
+
+class BackupActionRequest(BaseModel):
+    confirm: str = Field(min_length=1, max_length=64)
+
 
 class BrandingUpdateRequest(BaseModel):
     app_name: str = Field(min_length=1, max_length=120)
@@ -1376,10 +1388,69 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
         "configuration": {
             "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
             "management_api_enabled": bool(MANAGEMENT_API_KEY),
-            "backup_management": "operator-cli",
+            "backup_management": "host-operator" if os.environ.get("BACKUP_CONTROL_SOCKET") else "operator-cli",
             "mail_adapters": "external",
         },
     }
+
+
+def _admin_backup_control(request: Request, action: str, **payload):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return backup_request(action, **payload)
+    except BackupControlError as exc:
+        logger.warning("Backup operator request failed: action=%s", action)
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+@app.get("/api/admin/backups")
+def get_admin_backups(request: Request):
+    """List encrypted host backups and the currently configured schedule."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return backup_request("status")
+    except BackupControlError:
+        return {"available": False, "settings": None, "backups": [], "job": {"state": "unavailable"},
+                "error": "Host backup service is not configured or unavailable"}
+
+
+@app.put("/api/admin/backups/settings")
+def save_admin_backup_settings(payload: BackupSettingsUpdate, request: Request):
+    return _admin_backup_control(request, "settings", settings=payload.model_dump())
+
+
+@app.post("/api/admin/backups/create", status_code=202)
+def create_admin_backup(request: Request):
+    return _admin_backup_control(request, "create")
+
+
+@app.delete("/api/admin/backups/{filename}")
+def delete_admin_backup(filename: str, payload: BackupActionRequest, request: Request):
+    return _admin_backup_control(request, "delete", name=filename, confirm=payload.confirm)
+
+
+@app.post("/api/admin/backups/{filename}/restore", status_code=202)
+def restore_admin_backup(filename: str, payload: BackupActionRequest, request: Request):
+    """Never overwrite the live instance: restore only to a separate Compose project."""
+    return _admin_backup_control(request, "restore", name=filename, confirm=payload.confirm)
+
+
+@app.get("/api/admin/backups/{filename}/download")
+def download_admin_backup(filename: str, request: Request):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    if not re.fullmatch(r"opensigweave-[A-Za-z0-9_-]+\.age", filename):
+        raise HTTPException(status_code=404, detail="Backup not found")
+    try:
+        size, chunks = backup_download(filename)
+    except BackupControlError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+    return StreamingResponse(chunks, media_type="application/octet-stream",
+        headers={"Content-Length": str(size),
+                 "Content-Disposition": f'attachment; filename="{filename}"',
+                 "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff"})
 
 
 @app.get("/api/admin/branding")

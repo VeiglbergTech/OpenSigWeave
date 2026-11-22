@@ -222,6 +222,7 @@ def restore_fresh_deployment(
     docker_binary: str = "docker",
     age_binary: str = "age",
     health_timeout: int = 180,
+    app_port: int | None = None,
 ) -> Path:
     """Restore a full backup to a brand-new directory and new named volumes."""
     source = Path(encrypted_backup).expanduser()
@@ -232,6 +233,8 @@ def restore_fresh_deployment(
         raise BackupRestoreError("Compose project name must be a safe lowercase slug")
     if health_timeout < 1:
         raise BackupRestoreError("Health timeout must be at least one second")
+    if app_port is not None and (type(app_port) is not int or not 1024 <= app_port <= 65535):
+        raise BackupRestoreError("Recovery port must be between 1024 and 65535")
     if source.is_symlink() or not source.is_file():
         raise BackupRestoreError("Encrypted backup is missing or unsafe")
     if identity.is_symlink() or not identity.is_file():
@@ -323,6 +326,28 @@ def restore_fresh_deployment(
                 target / ".env",
                 executable=age_binary,
             )
+
+            # Host-specific Compose overlays are deliberately not part of the
+            # portable restore. Drop COMPOSE_FILE when it references a local
+            # backup-operator mount unavailable on the destination host.
+            restored_env = target / ".env"
+            source_lines = restored_env.read_text(encoding="utf-8").splitlines()
+            has_compose_override = any(
+                re.match(r"^\s*(?:export\s+)?COMPOSE_FILE\s*=", line)
+                for line in source_lines
+            )
+            if app_port is not None or has_compose_override:
+                filtered = [
+                    line for line in source_lines
+                    if not re.match(r"^\s*(?:export\s+)?COMPOSE_FILE\s*=", line)
+                    and (app_port is None or not re.match(
+                        r"^\s*(?:export\s+)?(?:APP_PORT|APP_BIND_ADDRESS)\s*=", line
+                    ))
+                ]
+                if app_port is not None:
+                    filtered.extend([f"APP_PORT={app_port}", "APP_BIND_ADDRESS=127.0.0.1"])
+                restored_env.write_text("\n".join(filtered) + "\n", encoding="utf-8")
+                os.chmod(restored_env, 0o600)
 
             # The restored deployment uses the exact image saved in the backup.
             override = (

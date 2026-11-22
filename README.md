@@ -18,7 +18,7 @@ Until that documentation is approved and publicly published, the original docume
 
 - [API reference](docs/API.md), [adapter architecture](docs/ADAPTERS.md) and [application architecture](docs/ARCHITECTURE.md)
 - [Mailcow/Rspamd staging integration](docs/MAILCOW_RSPAMD_INTEGRATION.md) and [mail-client compatibility](docs/CLIENT_COMPATIBILITY.md)
-- [Upgrade and recovery](docs/UPGRADE.md), [backup/restore](docs/BACKUP_RESTORE_DESIGN.md) and [prepared candidate release notes](docs/RELEASE_NOTES_v2026.11.md)
+- [Upgrade and recovery](docs/UPGRADE.md), [backup/restore](docs/BACKUP_RESTORE_DESIGN.md), [administrator backup UI](docs/BACKUP_UI.md) and [prepared candidate release notes](docs/RELEASE_NOTES_v2026.11.md)
 
 This transition intentionally leaves existing source documents in place until cross-repository migration, link checks and release promotion are complete. Internal audit reports are not automatically part of the public website.
 

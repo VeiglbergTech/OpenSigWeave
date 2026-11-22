@@ -146,7 +146,7 @@ window.fetch = (resource, options = {}) => {
     const isAdmin = document.body.dataset.isAdmin === "true";
     const allowedAdminTabs = new Set([
         "identity-providers", "domains", "signatures", "signature-groups",
-        "rules", "scheduling", "branding", "exports", "imports", "system"
+        "rules", "scheduling", "branding", "exports", "imports", "backups", "system"
     ]);
     let saved = {};
     try { saved = JSON.parse(sessionStorage.getItem(stateKey) || "{}"); } catch (_error) {}
@@ -1269,6 +1269,108 @@ function adminImportManager() {
 }
 
 
+function backupManager() {
+    const endpoint = "/api/admin/backups";
+    return {
+        busy: false, loading: false, available: false, mountReady: false, error: "", message: "",
+        settings: { directory: "", automatic: false, interval_hours: 24, keep: 14 },
+        backups: [], job: { state: "idle" },
+        async fetchAll() {
+            if (this.loading) return;
+            this.loading = true;
+            this.error = "";
+            try {
+                const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
+                const result = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(result.detail || "Backup status unavailable");
+                this.available = result.available === true;
+                this.mountReady = result.mount_ready === true;
+                if (result.settings) this.settings = { ...result.settings };
+                this.backups = Array.isArray(result.backups) ? result.backups : [];
+                this.job = result.job || { state: "idle" };
+                if (!this.available || !this.mountReady) this.error = result.error || "Host backup service or storage is unavailable";
+            } catch (error) {
+                this.available = false;
+                this.mountReady = false;
+                this.error = error instanceof Error ? error.message : "Backup status unavailable";
+            } finally {
+                this.loading = false;
+            }
+        },
+        async action(path, method = "POST", body = null) {
+            if (this.busy) return null;
+            this.busy = true;
+            this.error = "";
+            this.message = "";
+            try {
+                const response = await fetch(endpoint + path, {
+                    method, credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: body === null ? undefined : JSON.stringify(body)
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Backup operation failed");
+                await this.fetchAll();
+                return data;
+            } catch (error) {
+                this.error = error instanceof Error ? error.message : "Backup operation failed";
+                return null;
+            } finally {
+                this.busy = false;
+            }
+        },
+        async saveSettings() {
+            const data = await this.action("/settings", "PUT", {
+                ...this.settings,
+                interval_hours: Number(this.settings.interval_hours),
+                keep: Number(this.settings.keep)
+            });
+            if (data) {
+                this.message = "Backup settings saved.";
+                notify(this.message);
+            }
+        },
+        async createBackup() {
+            const data = await this.action("/create");
+            if (data) {
+                this.message = "Backup started. The application may briefly disconnect while data is captured.";
+                notify(this.message);
+            }
+        },
+        async deleteBackup(item) {
+            if (!await oswAskConfirmation({
+                title: "Delete backup?",
+                message: "Permanently delete the encrypted archive " + item.name + "? This cannot be undone."
+            })) return;
+            const result = await this.action("/" + encodeURIComponent(item.name), "DELETE", { confirm: "DELETE" });
+            if (result) { this.message = "Backup deleted."; notify(this.message); }
+        },
+        async restoreBackup(item) {
+            if (!await oswAskConfirmation({
+                title: "Restore backup into a NEW deployment?",
+                message: "This will decrypt and restore " + item.name + " into a separate Docker Compose project. " +
+                    "It will not replace the running installation. The recovered copy contains credentials " +
+                    "and is bound to a separate localhost port. Verify it before changing production routing."
+            })) return;
+            const result = await this.action("/" + encodeURIComponent(item.name) + "/restore", "POST", {
+                confirm: "RESTORE TO NEW DEPLOYMENT"
+            });
+            if (result) {
+                this.message = "Isolated recovery started. Check job status before using the recovered instance.";
+                notify(this.message);
+            }
+        },
+        formatSize(bytes) {
+            return typeof bytes === "number" ? (bytes / 1024 / 1024).toFixed(2) + " MiB" : "—";
+        },
+        formatDate(value) {
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString();
+        }
+    };
+}
+
+
 function systemStatusManager() {
     const labels = {
         domains: "Domains", identity_providers: "Identity providers",
@@ -1332,6 +1434,7 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("brandingManager", brandingManager);
     Alpine.data("adminExportManager", adminExportManager);
     Alpine.data("adminImportManager", adminImportManager);
+    Alpine.data("backupManager", backupManager);
     Alpine.data("systemStatusManager", systemStatusManager);
     Alpine.data("toastManager", toastManager);
     Alpine.data("sanitizerModal", sanitizerModal);

@@ -109,6 +109,7 @@
         <div x-show="tab === 'admin'" x-cloak>
             <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
                 <button @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
+                <button @click="setAdminTab('backups')" :class="adminTab === 'backups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Backups</button>
                 <button @click="setAdminTab('identity-providers')"  :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
                 <button @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
                 <button @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
@@ -600,6 +601,77 @@
             </div>
             <div x-show="importComplete" x-cloak class="rounded border border-green-700 bg-green-950/30 p-4 text-sm text-green-200">
                 Configuration imported successfully. <span x-text="resultComponents"></span>
+            </div>
+        </div>
+        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="text-xl font-semibold">Backup management</h2>
+                <button type="button" @click="fetchAll()" :disabled="loading || busy" class="rounded bg-gray-700 px-4 py-2 text-sm disabled:opacity-50" x-text="loading ? 'Loading…' : 'Refresh'"></button>
+            </div>
+            <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+            <p x-show="message" x-text="message" role="status" class="text-sm text-green-300"></p>
+            <div x-show="!available" class="rounded border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
+                Full backup management requires the protected host backup operator and a mounted remote backup destination.
+                Configuration exports remain available separately.
+            </div>
+            <div x-show="available && !mountReady" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">The configured remote backup storage is not mounted or is not permitted. Save a valid remote mount to re-enable backup operations.</div>
+            <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <h3 class="font-semibold">Backup settings</h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="block text-sm">Backup directory
+                        <input type="text" x-model="settings.directory" :disabled="!available || busy" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white" placeholder="/mnt/opensigweave-backups">
+                    </label>
+                    <label class="block text-sm">Interval (hours)
+                        <input type="number" min="1" max="720" x-model.number="settings.interval_hours" :disabled="!available || busy" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                    </label>
+                    <label class="block text-sm">Maximum retained backups
+                        <input type="number" min="1" max="365" x-model.number="settings.keep" :disabled="!available || busy" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                    </label>
+                    <label class="flex items-center gap-3 text-sm">
+                        <input type="checkbox" x-model="settings.automatic" :disabled="!available || busy" class="h-4 w-4 rounded">
+                        Enable automatic backups
+                    </label>
+                </div>
+                <div class="flex justify-end">
+                    <button type="button" @click="saveSettings()" :disabled="!available || busy" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="busy ? 'Saving…' : 'Save backup settings'"></button>
+                </div>
+            </div>
+            <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="flex flex-wrap justify-between items-center gap-3">
+                    <h3 class="font-semibold">Encrypted backups</h3>
+                    <button type="button" @click="createBackup()" :disabled="!available || !mountReady || busy || job.state === 'pending' || job.state === 'running'" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">Create backup</button>
+                </div>
+                <div x-show="job.state !== 'idle'" class="rounded border border-gray-700 bg-gray-900 p-3 text-sm" role="status">
+                    <span>Last operation: </span><strong x-text="job.action || '—'"></strong>
+                    <span> · </span><span x-text="job.state || 'unknown'"></span>
+                    <p x-show="job.error" x-text="job.error" class="mt-2 text-red-300"></p>
+                    <p x-show="job.target" class="mt-2">Restored deployment: <code class="break-all" x-text="job.target"></code></p>
+                </div>
+                <div class="overflow-x-auto rounded border border-gray-700">
+                    <table class="w-full min-w-[40rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300">
+                            <tr><th scope="col" class="px-4 py-3">Archive</th><th scope="col" class="px-4 py-3">Created</th><th scope="col" class="px-4 py-3">Size</th><th scope="col" class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in backups" :key="item.name">
+                                <tr>
+                                    <td class="px-4 py-3 break-all" x-text="item.name"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatDate(item.created_at)"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatSize(item.size_bytes)"></td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex flex-wrap justify-end gap-3">
+                                            <a :href="'/api/admin/backups/' + encodeURIComponent(item.name) + '/download'" download class="text-blue-400 hover:text-blue-300">Download</a>
+                                            <button type="button" @click="restoreBackup(item)" :disabled="!mountReady || busy || job.state === 'running' || job.state === 'pending'" class="text-amber-300 hover:text-amber-200 disabled:opacity-40">Restore</button>
+                                            <button type="button" @click="deleteBackup(item)" :disabled="!mountReady || busy || job.state === 'running' || job.state === 'pending'" class="text-red-300 hover:text-red-200 disabled:opacity-40">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                            <tr x-show="backups.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-400">No backups found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-gray-400">Backups use age encryption and include the PostgreSQL database, signatures, rules, schedules, branding, configuration and deployment data. Restoration creates a separate deployment; the running installation is never overwritten. Keep the decryption identity offline as well as on the secured backup host.</p>
             </div>
         </div>
         <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="osw-admin-section space-y-5">
