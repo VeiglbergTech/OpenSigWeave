@@ -266,7 +266,7 @@ function identityProviderManager() { return {
         else notify('Connection test failed. Check the configuration and application logs.','error');
     },
     async deleteProvider(provider) {
-        if(!confirm('Delete identity provider '+provider.display_name+'? Unassign it from all domains first.')) return;
+        if (!await oswAskConfirmation({ title: 'Delete identity provider?', message: 'Delete identity provider ' + provider.display_name + '? Unassign it from all domains first.' })) return;
         const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id),{method:'DELETE'});
         if(!response.ok) { notify('Could not delete provider: '+(await response.text()),'error'); return; }
         notify('Identity provider deleted.'); await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
@@ -534,7 +534,7 @@ function identityProviderManager() { return {
                     else notify('Group member updated.');
                 },
                 async removeMember(group, member) {
-                    if (!window.confirm('Remove this signature from the group?')) return;
+                    if (!await oswAskConfirmation({ title: 'Remove signature?', message: 'Remove this signature from the group?' })) return;
                     const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id) + '/members/' + encodeURIComponent(member.signature_id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not remove group member.', 'error'); return; }
                     await this.fetchAll();
@@ -550,7 +550,7 @@ function identityProviderManager() { return {
                     notify('Preview uses a deterministic member and does not change rotation history.');
                 },
                 async deleteGroup(group) {
-                    if (!window.confirm('Delete signature group "' + group.name + '"?')) return;
+                    if (!await oswAskConfirmation({ title: 'Delete signature group?', message: 'Delete signature group "' + group.name + '"?' })) return;
                     const response = await fetch('/api/admin/signature-groups/' + encodeURIComponent(group.id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete group: ' + (await response.text()), 'error'); return; }
                     notify('Group deleted.'); await this.fetchAll();
@@ -637,7 +637,7 @@ function identityProviderManager() { return {
                     notify('Signature rule saved.'); this.editing = false; await this.fetchAll();
                 },
                 async deleteRule(rule) {
-                    if (!window.confirm('Delete rule "' + rule.name + '"?')) return;
+                    if (!await oswAskConfirmation({ title: 'Delete signature rule?', message: 'Delete rule "' + rule.name + '"?' })) return;
                     const response = await fetch('/api/admin/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete rule.', 'error'); return; }
                     notify('Signature rule deleted.'); await this.fetchAll();
@@ -755,7 +755,7 @@ function identityProviderManager() { return {
                     await this.fetchAll();
                 },
                 async deleteSchedule(schedule) {
-                    if (!window.confirm('Delete schedule "' + schedule.name + '"?')) return;
+                    if (!await oswAskConfirmation({ title: 'Delete schedule?', message: 'Delete schedule "' + schedule.name + '"?' })) return;
                     const response = await fetch('/api/admin/schedules/' + encodeURIComponent(schedule.id), { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete schedule.', 'error'); return; }
                     notify('Schedule deleted.');
@@ -939,7 +939,7 @@ function identityProviderManager() { return {
                 async saveAdminOverride() {
                     const finalHtml = document.getElementById('admin-raw-html-editor').value;
                     const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); this.fetchUsers(); }
+                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); document.getElementById('admin-raw-html-editor').dispatchEvent(new CustomEvent('osw-dialog-saved', { bubbles: true })); this.editingUserEmail = ''; this.fetchOverrides(); this.fetchUsers(); }
                 }
             }
         }
@@ -1010,11 +1010,6 @@ function sanitizerModal() {
 function previewModal() {
     return {
         show: false,
-        closeOnEscape(event) {
-            if (!this.show) return;
-            event.stopImmediatePropagation();
-            this.show = false;
-        },
         open(event) {
             this.show = true;
             const detail = event.detail || {};
@@ -1062,7 +1057,13 @@ function addDomainModal() {
 
 function confirmModal() {
     return {
-        show: false,
+        show: false, pendingResolver: null,
+        close() {
+            this.show = false;
+            const resolve = this.pendingResolver;
+            this.pendingResolver = null;
+            if (resolve) resolve(false);
+        },
         domain: null,
         action: '',
         title: '',
@@ -1074,6 +1075,12 @@ function confirmModal() {
             this.action = detail.action;
             this.domain = detail.domain || null;
             this.targetId = detail.targetId || null;
+            if (this.action === 'resolve') {
+                this.title = String(detail.title || 'Please confirm');
+                this.message = String(detail.message || '');
+                this.pendingResolver = typeof detail.resolve === 'function' ? detail.resolve : null;
+                return;
+            }
             if (this.action === 'toggle') {
                 this.title = (this.domain.is_active ? 'Disable' : 'Enable') + ' Domain?';
                 this.message = 'Are you sure you want to ' + (this.domain.is_active ? 'disable' : 'enable') + ' ' + this.domain.domain_name + '?';
@@ -1089,6 +1096,13 @@ function confirmModal() {
             }
         },
         confirm() {
+            if (this.action === 'resolve') {
+                const resolve = this.pendingResolver;
+                this.pendingResolver = null;
+                this.show = false;
+                if (resolve) resolve(true);
+                return;
+            }
             window.dispatchEvent(new CustomEvent('confirm-action', {
                 detail: { domain: this.domain, action: this.action, targetId: this.targetId }
             }));
@@ -1196,7 +1210,7 @@ function adminImportManager() {
         },
         async applyImport() {
             if (this.busy || !this.file || !this.hasPreview || !this.preview.can_apply) return;
-            if (!window.confirm("Import the reviewed configuration now? Existing records will never be overwritten.")) return;
+            if (!await oswAskConfirmation({ title: 'Import configuration?', message: 'Import the reviewed configuration now? Existing records will never be overwritten.' })) return;
             this.busy = true;
             this.error = "";
             try {
@@ -1291,17 +1305,117 @@ document.addEventListener("alpine:init", () => {
     Alpine.data("confirmModal", confirmModal);
 });
 
-document.addEventListener("DOMContentLoaded", () => {
-    // Lock background scrolling whenever a visible overlay is open.
-    const overlaySelectors = ".form-dialog, [x-data='domainSettingsModal'], [x-data='previewModal'], [x-data='sanitizerModal'], [x-data='addDomainModal'], [x-data='confirmModal']";
-    const active = node => node.getClientRects().length > 0 && getComputedStyle(node).visibility !== "hidden";
-    const updateOverlays = () => {
-        const nodes = [...document.querySelectorAll(overlaySelectors)];
-        document.body.classList.toggle("osw-overlay-open", nodes.some(active));
-        document.body.classList.toggle("osw-floating-dialog-open", nodes.some(node => node.matches(".form-dialog") && active(node)));
+
+function oswAskConfirmation({ title, message }) {
+    return new Promise(resolve => window.dispatchEvent(new CustomEvent('open-confirm', {
+        detail: { action: 'resolve', title, message, resolve }
+    })));
+}
+
+// The sole modal coordinator tracks Alpine dialog visibility, focus and unsaved input.
+function initOswDialogs() {
+    const selector = '.osw-modal-shell[role="dialog"], .osw-modal-shell[role="alertdialog"]';
+    const states = new Map();
+    let stack = [];
+    const visible = el => !!el && el.getClientRects().length > 0
+        && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+    const top = () => stack[stack.length - 1] || null;
+    const focusables = dialog => [...dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])'
+    )].filter(el => visible(el) && !el.closest('[inert]'));
+    const focus = dialog => {
+        if (!visible(dialog) || top() !== dialog) return;
+        const el = focusables(dialog).find(item => item.matches('input:not([type="hidden"]):not([type="checkbox"]), textarea, select')) || focusables(dialog)[0];
+        if (el) el.focus({ preventScroll: true });
+        else { dialog.tabIndex = -1; dialog.focus({ preventScroll: true }); }
     };
-    new MutationObserver(updateOverlays).observe(document.body, { subtree: true, attributes: true, attributeFilter: ["style", "class"] });
-    updateOverlays();
+    const refresh = () => {
+        const shown = [...document.querySelectorAll(selector)].filter(visible);
+        for (const dialog of shown) {
+            if (states.has(dialog)) continue;
+            states.set(dialog, { trigger: document.activeElement, dirty: false });
+            stack.push(dialog);
+            requestAnimationFrame(() => focus(dialog));
+        }
+        for (const dialog of [...stack]) {
+            if (shown.includes(dialog)) continue;
+            const record = states.get(dialog);
+            states.delete(dialog);
+            stack = stack.filter(item => item !== dialog);
+            requestAnimationFrame(() => {
+                if (top()) focus(top());
+                else if (record?.trigger?.isConnected && visible(record.trigger))
+                    record.trigger.focus({ preventScroll: true });
+            });
+        }
+        document.body.classList.toggle('osw-overlay-open', stack.length > 0);
+    };
+    const close = dialog => {
+        const data = window.Alpine && Alpine.$data(dialog);
+        if (!data) return;
+        if (dialog.closest('[x-data="confirmModal"]')) data.close();
+        else if (dialog.getAttribute('x-show') === 'memberEditor') data.memberEditor = false;
+        else if (dialog.classList.contains('form-dialog')) data.editing = false;
+        else data.show = false;
+    };
+    const requestClose = dialog => {
+        const record = states.get(dialog);
+        if (record?.dirty && !dialog.closest('[x-data="confirmModal"]')) {
+            oswAskConfirmation({
+                title: 'Discard unsaved changes?',
+                message: 'This dialog contains unsaved changes. Discard them and close?'
+            }).then(ok => { if (ok && visible(dialog)) close(dialog); });
+        } else close(dialog);
+    };
+    document.addEventListener('osw-dialog-saved', event => {
+        const dialog = event.target.closest && event.target.closest(selector);
+        if (states.has(dialog)) states.get(dialog).dirty = false;
+    }, true);
+    for (const type of ['input', 'change']) {
+        document.addEventListener(type, event => {
+            if (!event.isTrusted) return;
+            if (type === 'change' && event.target.matches &&
+                event.target.matches('[x-model="selectedVersionId"], [x-model="selectedGroupSlug"]')) return;
+            const dialog = event.target.closest && event.target.closest(selector);
+            if (states.has(dialog)) states.get(dialog).dirty = true;
+        }, true);
+    }
+    document.addEventListener('click', event => {
+        const control = event.target.closest && event.target.closest('[data-osw-dialog-close]');
+        if (!control) return;
+        const dialog = control.closest(selector);
+        if (!dialog) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        requestClose(dialog);
+    }, true);
+    document.addEventListener('keydown', event => {
+        const dialog = top();
+        if (!dialog) return;
+        if (event.key === 'Escape') {
+            if ([...document.querySelectorAll('.ck-dropdown__panel-visible')].some(visible)) return;
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            requestClose(dialog);
+        } else if (event.key === 'Tab') {
+            const items = focusables(dialog);
+            if (!items.length) { event.preventDefault(); focus(dialog); return; }
+            const first = items[0], last = items[items.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+                event.preventDefault(); last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+                event.preventDefault(); first.focus();
+            }
+        }
+    }, true);
+    new MutationObserver(refresh).observe(document.body, {
+        subtree: true, attributes: true, attributeFilter: ['style', 'class', 'hidden']
+    });
+    refresh();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+    initOswDialogs();
     const logoutButton = document.getElementById("logout-button");
     if (logoutButton) {
         logoutButton.addEventListener("click", () => {

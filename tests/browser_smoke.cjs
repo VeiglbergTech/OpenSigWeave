@@ -52,6 +52,68 @@ async function main() {
     assert.ok(layout.top >= -1 && layout.bottom <= layout.viewportHeight + 1,
       label + " must fit vertically inside the viewport: " + JSON.stringify(layout));
   }
+
+  const artifactsDir = "test-artifacts/dialogs";
+  async function assertModalLayout(testPage, dialog, label, capture = false) {
+    await dialog.waitFor({ state: "visible" });
+    await testPage.waitForFunction(() => document.body.classList.contains("osw-overlay-open"));
+    const metrics = await dialog.evaluate(shell => {
+      const rect = node => {
+        const r = node.getBoundingClientRect();
+        return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+      };
+      const header = shell.querySelector(":scope > .osw-modal-header");
+      const body = shell.querySelector(":scope > .osw-modal-body");
+      const footers = [...shell.querySelectorAll(":scope > .osw-modal-footer")];
+      const footer = footers.find(el => el.getClientRects().length > 0);
+      const inputs = [...shell.querySelectorAll("input, select, textarea")]
+        .filter(el => el.getClientRects().length > 0);
+      return {
+        viewport: [window.innerWidth, window.innerHeight],
+        shell: rect(shell),
+        header: header && rect(header),
+        body: body && rect(body),
+        footer: footer && rect(footer),
+        badInputs: inputs.filter(el => {
+          const r = el.getBoundingClientRect(), parent = body.getBoundingClientRect();
+          return r.left < parent.left - 2 || r.right > parent.right + 2;
+        }).map(el => el.outerHTML.slice(0, 160)),
+        backdropCount: document.querySelectorAll("#osw-modal-backdrop").length,
+        backdropVisible: document.querySelector("#osw-modal-backdrop").getClientRects().length > 0,
+        bodyScrollHeight: body && body.scrollHeight,
+        bodyClientHeight: body && body.clientHeight,
+      };
+    });
+    assert.equal(metrics.backdropCount, 1, label + " must use one backdrop");
+    assert.equal(metrics.backdropVisible, true, label + " backdrop must be visible");
+    assert.ok(metrics.header && metrics.body && metrics.footer, label + " requires header/body/footer: " + JSON.stringify(metrics));
+    assert.ok(metrics.shell.left >= -1 && metrics.shell.right <= metrics.viewport[0] + 1 &&
+      metrics.shell.top >= -1 && metrics.shell.bottom <= metrics.viewport[1] + 1,
+      label + " must fit the viewport: " + JSON.stringify(metrics));
+    assert.deepEqual(metrics.badInputs, [], label + " fields must fit within the modal body");
+    assert.ok(metrics.footer.bottom <= metrics.shell.bottom + 1, label + " footer must fit");
+    if (metrics.bodyScrollHeight > metrics.bodyClientHeight + 5) {
+      const before = metrics.footer.top;
+      await dialog.locator(":scope > .osw-modal-body").evaluate(el => { el.scrollTop = el.scrollHeight; });
+      const after = await dialog.locator(":scope > .osw-modal-footer:visible").first()
+        .evaluate(el => el.getBoundingClientRect().top);
+      assert.ok(Math.abs(before - after) <= 2, label + " footer must stay fixed during body scroll");
+    }
+    if (capture) {
+      fs.mkdirSync(artifactsDir, { recursive: true });
+      await testPage.screenshot({ path: artifactsDir + "/" + label + ".png", fullPage: false });
+    }
+  }
+
+  async function dismissAndDiscard(dialog) {
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    const confirmation = page.locator('[x-data="confirmModal"]');
+    if (await confirmation.isVisible()) {
+      await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
+    }
+    await dialog.waitFor({ state: "hidden" });
+  }
+
   await page.addInitScript(() => {
     window.__cspViolations = [];
     window.addEventListener("securitypolicyviolation", event => {
@@ -671,7 +733,7 @@ async function main() {
 
     // The image test leaves version 2 in history and creates version 3 without image
     // references. Close its editor before starting the independent history/restore flow.
-    await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await dismissAndDiscard(signatureDialog);
     await signatureDialog.waitFor({ state: "hidden" });
 
     // Re-open the signature and exercise immutable history, historical preview and restore.
@@ -751,7 +813,7 @@ async function main() {
     assert.deepEqual(versionHistory.map(item => item.version_number), [4, 3, 2, 1]);
     assert.deepEqual(versionHistory.map(item => item.is_current), [true, false, false, false]);
 
-    await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await dismissAndDiscard(signatureDialog);
     await page.reload();
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
@@ -767,7 +829,7 @@ async function main() {
       "the current version marker must survive a full page reload");
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "re-opening after reload must load the restored current snapshot");
-    await signatureDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await dismissAndDiscard(signatureDialog);
 
     // HTML comments and other source-only markup must not create phantom
     // revisions when CKEditor normalizes them during opening.
@@ -858,8 +920,8 @@ async function main() {
     assert.equal(browserSchedule.is_enabled, true);
 
     scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
-    page.once("dialog", dialog => dialog.accept());
     await scheduleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
     await scheduleRow.waitFor({ state: "detached" });
     schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
     assert.equal(schedules.some(item => item.name === "Browser Smoke Schedule"), false,
@@ -1048,7 +1110,7 @@ async function main() {
     await createdRuleRow.getByRole("button", { name: "Edit", exact: true }).click();
     assert.equal(await conditionRows.last().locator('select[x-model="condition.kind"]').inputValue(), "sender_not_equals",
       "negative comparison must remain selected after saving and reopening a rule");
-    await ruleDialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await dismissAndDiscard(ruleDialog);
 
     checkpoint("rule create/update: complete");
     // Return to the group tab before interacting with its hidden Alpine panel.
@@ -1080,8 +1142,8 @@ async function main() {
 
     // Exercise explicit membership removal independently from group deletion.
     const updatedMemberRow = updatedMemberLabel.locator("xpath=..");
-    page.once("dialog", dialog => dialog.accept());
     await updatedMemberRow.getByRole("button", { name: "Remove", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
     await updatedMemberLabel.waitFor({ state: "detached" });
 
     // Update the signature metadata without creating an extra HTML version.
@@ -1095,14 +1157,14 @@ async function main() {
     checkpoint("group/signature updates: complete");
     // Remove the rule and group again so this test also covers destructive UI paths.
     await page.getByRole("button", { name: "Rules", exact: true }).click();
-    page.once("dialog", dialog => dialog.accept());
     const updatedRuleRow = rulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Rule" });
     await updatedRuleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
     await updatedRuleRow.waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
-    page.once("dialog", dialog => dialog.accept());
     await updatedGroupCard.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
@@ -1389,6 +1451,120 @@ async function main() {
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
 
     checkpoint("domain settings: complete");
+
+    // Visual regression matrix: actual Alpine dialogs in two themes and two viewports.
+    checkpoint("dialog visual matrix: desktop/mobile and dark/light");
+    for (const [mode, width, height] of [
+      ["dark", 1440, 900], ["light", 1440, 900],
+      ["dark", 390, 844], ["light", 390, 844],
+    ]) {
+      const visualContext = await browser.newContext({ viewport: { width, height } });
+      await visualContext.addCookies(await page.context().cookies());
+      const visualPage = await visualContext.newPage();
+      visualPage.setDefaultTimeout(15000);
+      try {
+        await visualPage.goto(baseURL + "/?view=admin&section=domains");
+        await visualPage.evaluate(theme => {
+          localStorage.setItem("opensigweave.theme.v1", theme);
+          document.documentElement.dataset.theme = theme;
+        }, mode);
+        const prefix = width + "x" + height + "-" + mode + "-";
+        const nav = async name => visualPage.getByRole("button", { name, exact: true }).click();
+        const shell = sel => visualPage.locator(sel);
+        const inspect = async (sel, name) => assertModalLayout(visualPage, shell(sel), prefix + name, true);
+        const close = async sel => {
+          await shell(sel).locator("[data-osw-dialog-close]:visible").first().click();
+          await shell(sel).waitFor({ state: "hidden" });
+        };
+        await nav("Identity Providers");
+        await visualPage.getByRole("button", { name: "+ Add Identity Provider" }).click();
+        const providerSelector = '[x-data="identityProviderManager"] [role="dialog"]';
+        await inspect(providerSelector, "identity-provider");
+        if (width === 1440 && mode === "dark") {
+          await shell(providerSelector).getByLabel("Display name").fill("Unsaved");
+          await shell(providerSelector).getByRole("button", { name: "Cancel", exact: true }).click();
+          const confirmation = visualPage.locator('[x-data="confirmModal"]');
+          await confirmation.waitFor({ state: "visible" });
+          await confirmation.getByRole("button", { name: "Cancel", exact: true }).click();
+          assert.equal(await shell(providerSelector).isVisible(), true, "canceling the discard must preserve the form");
+          await shell(providerSelector).getByRole("button", { name: "Cancel", exact: true }).click();
+          await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
+          await shell(providerSelector).waitFor({ state: "hidden" });
+          await visualPage.getByRole("button", { name: "+ Add Identity Provider" }).click();
+          assert.equal(await shell(providerSelector).getByLabel("Display name").inputValue(), "", "reopening must reset draft");
+        }
+        await close(providerSelector);
+        await nav("Signatures");
+        await visualPage.getByRole("button", { name: "+ Add Signature" }).click();
+        const signatureSelector = '[x-data="signatureManager"] [role="dialog"]';
+        await inspect(signatureSelector, "signature-editor");
+        const richToolbar = shell(signatureSelector).locator(".ck-toolbar");
+        await richToolbar.waitFor({ state: "visible" });
+        const fontButton = richToolbar.getByRole("button", { name: /Font Family/i });
+        await fontButton.click();
+        const dropdown = shell(signatureSelector).locator(".ck-dropdown__panel-visible").first();
+        await dropdown.waitFor({ state: "visible" });
+        const menuBounds = await dropdown.evaluate(element => {
+          const r = element.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, vw: innerWidth, vh: innerHeight };
+        });
+        assert.ok(menuBounds.left >= -2 && menuBounds.right <= menuBounds.vw + 2
+          && menuBounds.top >= -2 && menuBounds.bottom <= menuBounds.vh + 2,
+          "CKEditor font menu should fit viewport: " + JSON.stringify(menuBounds));
+        await fontButton.click();
+        await close(signatureSelector);
+        await nav("Signature Groups");
+        await visualPage.getByRole("button", { name: "+ Add Group" }).click();
+        const groupSelector = '[x-data="signatureGroupManager"] [x-show="editing"][role="dialog"]';
+        await inspect(groupSelector, "signature-group");
+        await close(groupSelector);
+        await visualPage.getByRole("button", { name: "+ Add Signature to Group" }).click();
+        const memberSelector = '[x-data="signatureGroupManager"] [x-show="memberEditor"][role="dialog"]';
+        await inspect(memberSelector, "group-member");
+        await close(memberSelector);
+        await nav("Rules");
+        await visualPage.getByRole("button", { name: "+ Add Rule" }).click();
+        const ruleSelector = '[x-data="ruleManager"] [role="dialog"]';
+        await inspect(ruleSelector, "rule");
+        await close(ruleSelector);
+        await nav("Scheduling");
+        await visualPage.getByRole("button", { name: "+ Add Schedule" }).click();
+        const scheduleSelector = '[x-data="scheduleManager"] [role="dialog"]';
+        await inspect(scheduleSelector, "schedule");
+        await close(scheduleSelector);
+        await nav("Domains");
+        await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
+        const addDomainSelector = '[x-data="addDomainModal"] [role="dialog"]';
+        await inspect(addDomainSelector, "add-domain");
+        await close(addDomainSelector);
+        const row = visualPage.locator('[x-data="domainManager"] tbody tr')
+          .filter({ hasText: "browser-smoke-domain.test" });
+        await row.getByRole("button", { name: "Settings & Users" }).click();
+        const domainSelector = '[x-data="domainSettingsModal"] [role="dialog"]';
+        await inspect(domainSelector, "domain-settings");
+        await shell(domainSelector).getByRole("button", { name: "Users & Overrides" }).click();
+        await inspect(domainSelector, "domain-users");
+        await close(domainSelector);
+        await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-sanitizer", { detail: "admin" })));
+        const importSelector = '[x-data="sanitizerModal"] [role="dialog"]';
+        await inspect(importSelector, "html-import");
+        await close(importSelector);
+        await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-preview", { detail: { html: "<p>Preview</p>" } })));
+        const previewSelector = '[x-data="previewModal"] [role="dialog"]';
+        await inspect(previewSelector, "preview");
+        await close(previewSelector);
+        await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-confirm", { detail: { action: "clear-user" } })));
+        const confirmSelector = '[x-data="confirmModal"] [role="alertdialog"]';
+        await inspect(confirmSelector, "confirmation");
+        await shell(confirmSelector).getByRole("button", { name: "Cancel", exact: true }).click();
+        await shell(confirmSelector).waitFor({ state: "hidden" });
+        assert.equal(await visualPage.evaluate(() => document.body.classList.contains("osw-overlay-open")), false);
+      } finally {
+        await visualContext.close();
+      }
+    }
+    checkpoint("dialog visual matrix: complete");
+
     // Run the same administrative path with a narrow mobile viewport.
     const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await mobileContext.addCookies(await page.context().cookies());
