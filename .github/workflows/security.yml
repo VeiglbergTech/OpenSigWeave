@@ -152,7 +152,9 @@ jobs:
       - name: Document image scan gate
         shell: bash
         run: |
-          echo '### Docker image security scan' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Full HIGH/CRITICAL findings (including unfixed) are reported in the first Trivy step.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'The blocking step fails for HIGH/CRITICAL vulnerabilities with available upstream fixes.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Unfixed HIGH/CRITICAL findings remain a security risk and are **not** a clean bill of health.' >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo '### Docker image security scan'
+            echo 'Full HIGH/CRITICAL findings (including unfixed) are reported in the first Trivy step.'
+            echo 'The blocking step fails for HIGH/CRITICAL vulnerabilities with available upstream fixes.'
+            echo 'Unfixed HIGH/CRITICAL findings remain a security risk and are **not** a clean bill of health.'
+          } >> "$GITHUB_STEP_SUMMARY"

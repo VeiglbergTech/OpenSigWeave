@@ -235,7 +235,7 @@ jobs:
           trap cleanup EXIT
 
           milter_ready=false
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if ! kill -0 "$MILTER_PID" 2>/dev/null; then
               cat /tmp/milter.log
               exit 1
@@ -249,7 +249,7 @@ jobs:
           test "$milter_ready" = true
 
           postfix start
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",25),1); s.close()' 2>/dev/null; then break; fi
             sleep 1
           done
@@ -288,7 +288,7 @@ jobs:
               print(f"Unauthorized envelope sender rejected: {code} {response!r}")
           PY
 
-          for attempt in $(seq 1 20); do
+          for _ in $(seq 1 20); do
             if grep -q 'CALLBACK_AUTH:authuser@localhost' /tmp/milter.log; then break; fi
             sleep 0.5
           done
@@ -394,13 +394,13 @@ jobs:
           MILTER_PID=$!
           cleanup() { kill "$MILTER_PID" 2>/dev/null || true; postfix stop 2>/dev/null || true; }
           trap cleanup EXIT
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if ! kill -0 "$MILTER_PID"; then cat /tmp/opensigweave-milter.log; exit 1; fi
             if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",8899),1); s.close()' 2>/dev/null; then break; fi
             sleep 1
           done
           postfix start
-          for attempt in $(seq 1 30); do
+          for _ in $(seq 1 30); do
             if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",25),1); s.close()' 2>/dev/null; then break; fi
             sleep 1
           done
