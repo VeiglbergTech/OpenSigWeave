@@ -54,11 +54,11 @@ class PromotionProofTests(unittest.TestCase):
     def test_stale_sha_blocks(self):
         with patch("scripts.verify_promotion.api", return_value={"commit": {"sha": B}}):
             with self.assertRaisesRegex(ValueError, "Stale"):
-                verify("VeiglbergTech/OpenSigWeave", "beta", "dev", "VeiglbergTech/OpenSigWeave", D, 2)
+                verify("VeiglbergTech/OpenSigWeave", "main", "beta", "VeiglbergTech/OpenSigWeave", D, 2)
     def test_api_403_blocks(self):
         with patch("scripts.verify_promotion.api", side_effect=RuntimeError("HTTP 403")):
             with self.assertRaisesRegex(RuntimeError, "403"):
-                verify("VeiglbergTech/OpenSigWeave", "beta", "dev", "VeiglbergTech/OpenSigWeave", D, 2)
+                verify("VeiglbergTech/OpenSigWeave", "main", "beta", "VeiglbergTech/OpenSigWeave", D, 2)
 
 if __name__ == "__main__":
     unittest.main()
