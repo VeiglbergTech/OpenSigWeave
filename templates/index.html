@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=image-url-toolbar-20261122"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=image-url-toolbar-20261122" rel="stylesheet">
+    <link href="/static/css/portal.css?v=responsive-layout-20261122" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
@@ -69,9 +69,9 @@
                     </div>
                     {% endif %}
 
-                    <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
+                    <div class="p-4 border-b border-gray-700 flex flex-wrap justify-between items-center gap-3 bg-gray-800">
                         <h2 class="text-lg font-semibold text-white">Custom Override Signature</h2>
-                        <div class="flex gap-2">
+                        <div class="flex flex-wrap gap-2">
                             <button @click="confirmClearUser()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
                             <button id="save-user-signature" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
                         </div>
@@ -88,7 +88,7 @@
                     </div>
                     
                     <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
-                        <div class="flex justify-between items-center px-4 py-3">
+                        <div class="flex flex-wrap justify-between items-center gap-3 px-4 py-3">
                             <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                             <div class="flex gap-2">
                                 <button @click="$dispatch('open-sanitizer', 'personal')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
@@ -121,11 +121,11 @@
                 <button @click="setAdminTab('imports')" :class="adminTab === 'imports' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Imports</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
-            <div class="flex justify-between items-center gap-3 mb-6">
+            <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Identity Providers</h1>
                 <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
             </div>
-            <div class="bg-gray-800 border border-gray-700 rounded-lg overflow-hidden mb-6">
+            <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll mb-6">
                 <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
                         <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
@@ -188,11 +188,11 @@
         </div>
 
         <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" class="osw-admin-section">
-            <div class="flex justify-between items-center mb-6">
+            <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
             </div>
-            <div class="bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-700">
+            <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
                 <table class="w-full text-left border-collapse">
                     <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Profile Provider</th><th class="px-6 py-4 font-medium">Login Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
@@ -214,11 +214,11 @@
         </div>
 
         <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
-            <div class="flex items-center justify-between">
+            <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Catalog</h2>
                 <button @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Signature</button>
             </div>
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll">
                 <table class="w-full text-left">
                     <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
                         <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
@@ -333,11 +333,11 @@
 
 
         <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="osw-admin-section">
-            <div class="flex items-center justify-between">
+            <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
             </div>
-            <div class="flex items-center gap-2 text-sm text-gray-300"><label for="group-preview-domain">Preview domain</label><select id="group-preview-domain" x-model="previewDomainId" class="bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select domain</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select><span class="text-xs text-gray-500">Preview does not advance rotation history.</span></div>
+            <div class="flex flex-wrap items-center gap-2 text-sm text-gray-300"><label for="group-preview-domain">Preview domain</label><select id="group-preview-domain" x-model="previewDomainId" class="bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select domain</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select><span class="text-xs text-gray-500">Preview does not advance rotation history.</span></div>
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 <template x-for="group in groups" :key="group.id">
                     <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
@@ -403,11 +403,11 @@
         </div>
 
         <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="osw-admin-section">
-            <div class="flex items-center justify-between">
+            <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Rules</h2>
                 <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
             </div>
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll">
                 <table class="w-full text-left">
                     <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
                         <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Action</th><th class="px-4 py-3">Conditions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
@@ -485,12 +485,12 @@
             </div>
         </div>
         <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="osw-admin-section">
-            <div class="flex items-center justify-between gap-4">
+            <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Scheduling</h2>
                 <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
             </div>
             <details class="rounded border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300"><summary class="cursor-pointer">Scheduling priority</summary><p class="mt-2 text-xs text-gray-400">Explicit per-message selection wins. Otherwise, schedules take priority over personal overrides and rules. Higher priority wins; domain-specific schedules win ties. Start is inclusive; end is exclusive.</p></details>
-            <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll osw-table-scroll--wide">
                 <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>
                         <td class="px-4 py-3 font-medium" x-text="schedule.name"></td><td class="px-4 py-3 text-sm" x-text="targetLabel(schedule)"></td><td class="px-4 py-3 text-sm" x-text="domainLabel(schedule.domain_id)"></td>
@@ -530,17 +530,17 @@
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                     <h3 class="font-semibold">Application identity</h3>
                     <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
+                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
                     </div>
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
-                    <div><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Light mode logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
-                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="logoPreview()" alt="Brand logo preview" class="max-h-28 max-w-full object-contain"></div>
+                    <div><div class="osw-branding-logo-heading"><h3 class="font-semibold">Light mode logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in logo</button></div>
+                        <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="logoPreview()" alt="Brand logo preview" class="osw-branding-logo-image"></div>
                         <input type="file" aria-label="Light mode logo" accept="image/png,.png" @change="chooseLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
-                    <div class="border-t border-gray-700 pt-4"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Dark mode logo</h3><button type="button" @click="restoreDarkLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use standard logo</button></div>
-                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 min-h-28 flex items-center justify-center"><img :src="darkLogoPreview()" alt="Dark mode logo preview" class="max-h-28 max-w-full object-contain"></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Dark mode logo</h3><button type="button" @click="restoreDarkLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use standard logo</button></div>
+                        <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="darkLogoPreview()" alt="Dark mode logo preview" class="osw-branding-logo-image"></div>
                         <input type="file" aria-label="Dark mode logo" accept="image/png,.png" @change="chooseDarkLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. Without an upload, the standard logo is used.</p></div>
-                    <div class="border-t border-gray-700 pt-4"><div class="flex items-center justify-between gap-3"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in fallback</button></div>
-                        <div class="mt-3 rounded border border-gray-700 bg-gray-950 p-4 h-20 flex items-center justify-center"><img :src="faviconPreview()" alt="Favicon preview" class="max-h-12 max-w-12 object-contain"></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use built-in fallback</button></div>
+                        <div class="mt-3 osw-branding-favicon-preview rounded border border-gray-700 bg-gray-950"><img :src="faviconPreview()" alt="Favicon preview"></div>
                         <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 256 KiB. Without a custom favicon, the built-in logo is used.</p></div>
                 </div>
             </div>
@@ -653,7 +653,7 @@
                     <p x-show="job.error" x-text="job.error" class="mt-2 text-red-300"></p>
                     <p x-show="job.target" class="mt-2">Restored deployment: <code class="break-all" x-text="job.target"></code></p>
                 </div>
-                <div class="overflow-x-auto rounded border border-gray-700">
+                <div class="osw-table-scroll rounded border border-gray-700">
                     <table class="w-full min-w-[40rem] text-left text-sm">
                         <thead class="border-b border-gray-700 bg-gray-900 text-gray-300">
                             <tr><th scope="col" class="px-4 py-3">Archive</th><th scope="col" class="px-4 py-3">Created</th><th scope="col" class="px-4 py-3">Size</th><th scope="col" class="px-4 py-3 text-right">Actions</th></tr>
@@ -785,18 +785,18 @@
                     </div>
 
                     <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
-                        <div class="flex justify-between items-center">
+                        <div class="flex flex-wrap justify-between items-center gap-3">
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Domain users</h4>
-                            <div class="flex gap-2">
+                            <div class="flex flex-wrap gap-2 min-w-0">
                                 <input type="text" x-model="newOverrideEmail" placeholder="user@domain.com" class="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
                                 <button @click="loadAdminEditor(newOverrideEmail)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm transition">+ Add / Edit</button>
                             </div>
                         </div>
 
                         <div x-show="editingUserEmail !== ''" class="bg-gray-900 border border-blue-900 rounded-lg overflow-hidden mb-6 flex flex-col">
-                            <div class="bg-blue-900/30 px-4 py-2 flex justify-between items-center border-b border-blue-900">
+                            <div class="bg-blue-900/30 px-4 py-2 flex flex-wrap justify-between items-center gap-3 border-b border-blue-900">
                                 <span class="text-sm font-medium text-blue-200">Editing: <span x-text="editingUserEmail" class="text-white"></span></span>
-                                <div class="flex gap-4">
+                                <div class="flex flex-wrap gap-4">
                                     <label class="flex items-center cursor-pointer border-r border-blue-800 pr-4">
                                         <div class="relative"><input type="checkbox" class="sr-only" x-model="editingUserDisabled"><div class="block bg-gray-700 w-8 h-4 rounded-full"></div><div class="dot absolute left-1 top-0.5 bg-white w-3 h-3 rounded-full transition transform" :class="editingUserDisabled ? 'translate-x-3 bg-red-500' : ''"></div></div>
                                         <div class="ml-2 text-xs font-medium text-gray-300">Disable Signature</div>
@@ -814,7 +814,7 @@
                                 <div id="admin-rich-editor" class="h-[200px]"><div data-editor-target></div></div>
                             </div>
                             <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
-                                <div class="flex justify-between items-center px-4 py-3">
+                                <div class="flex flex-wrap justify-between items-center gap-3 px-4 py-3">
                                     <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                     <div class="flex gap-2">
                                         <button @click="$dispatch('open-sanitizer', 'admin')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
@@ -835,7 +835,7 @@
                         </div>
                         <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>
                         <p x-show="userError" x-text="userError" role="alert" class="text-sm text-red-300"></p>
-                        <div class="overflow-x-auto rounded border border-gray-700 bg-gray-900">
+                        <div class="osw-table-scroll rounded border border-gray-700 bg-gray-900">
                             <table class="w-full min-w-[32rem] text-left text-sm">
                                 <thead class="border-b border-gray-700 text-gray-300"><tr><th class="px-4 py-2">Email</th><th class="px-4 py-2">Display name</th><th class="px-4 py-2">Source</th><th class="px-4 py-2">Override</th><th class="px-4 py-2 text-right">Action</th></tr></thead>
                                 <tbody class="divide-y divide-gray-700">

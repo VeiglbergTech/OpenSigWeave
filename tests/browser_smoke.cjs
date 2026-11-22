@@ -53,6 +53,71 @@ async function main() {
       label + " must fit vertically inside the viewport: " + JSON.stringify(layout));
   }
 
+
+  async function assertAdminSectionLayout(section, label) {
+    await section.waitFor({ state: "visible" });
+    const badButtons = await section.evaluate(root => {
+      const rect = root.getBoundingClientRect();
+      return [...root.querySelectorAll("button")]
+        .filter(button => button.getClientRects().length && !button.closest(".osw-modal-root")
+          && !button.closest(".osw-table-scroll"))
+        .filter(button => {
+          const box = button.getBoundingClientRect();
+          return box.left < rect.left - 2 || box.right > rect.right + 2
+            || button.scrollWidth > button.clientWidth + 3
+            || button.scrollHeight > button.clientHeight + 3;
+        }).map(button => button.textContent.trim().slice(0, 80));
+    });
+    assert.deepEqual(badButtons, [], label + " action labels must fit their buttons");
+    const tables = section.locator(".osw-table-scroll");
+    for (let i = 0; i < await tables.count(); i++) {
+      const layout = await tables.nth(i).evaluate(container => {
+        container.scrollLeft = container.scrollWidth;
+        const table = container.querySelector("table");
+        const last = table && table.querySelector("thead th:last-child");
+        const outer = container.getBoundingClientRect();
+        const edge = last && last.getBoundingClientRect();
+        return {
+          overflowX: getComputedStyle(container).overflowX,
+          containerWidth: container.clientWidth,
+          tableWidth: table?.getBoundingClientRect().width,
+          lastActionVisible: !edge || (edge.left >= outer.left - 2 && edge.right <= outer.right + 2),
+        };
+      });
+      assert.equal(layout.overflowX, "auto", label + " table must support horizontal scrolling");
+      assert.ok(layout.tableWidth >= layout.containerWidth - 2, label + " table width: " + JSON.stringify(layout));
+      assert.ok(layout.lastActionVisible, label + " Actions column must be reachable: " + JSON.stringify(layout));
+    }
+  }
+
+  async function assertCompactBrandingPreviews(panel, label) {
+    const previews = await panel.evaluate(root => ["Brand logo preview", "Dark mode logo preview"].map(alt => {
+      const image = root.querySelector('img[alt="' + alt + '"]');
+      const container = image.parentElement;
+      const img = image.getBoundingClientRect();
+      const frame = container.getBoundingClientRect();
+      return { alt, imageWidth: img.width, imageHeight: img.height, frameWidth: frame.width,
+        frameHeight: frame.height, left: img.left, right: img.right,
+        frameLeft: frame.left, frameRight: frame.right,
+        naturalWidth: image.naturalWidth, naturalHeight: image.naturalHeight };
+    }));
+    assert.ok(Math.abs(previews[0].frameHeight - previews[1].frameHeight) <= 1,
+      label + " preview containers must have equal heights");
+    for (const item of previews) {
+      assert.ok(item.frameHeight >= 70 && item.frameHeight <= 90,
+        label + " frame must be compact: " + JSON.stringify(item));
+      assert.ok(item.imageWidth <= Math.min(item.frameWidth, 208) + 2 && item.imageHeight <= 62,
+        label + " preview logo must fit the intended size: " + JSON.stringify(item));
+      assert.ok(item.left >= item.frameLeft - 2 && item.right <= item.frameRight + 2,
+        label + " logo must stay inside preview: " + JSON.stringify(item));
+      if (item.naturalWidth && item.naturalHeight && item.imageHeight) {
+        assert.ok(Math.abs(item.imageWidth / item.imageHeight
+          - item.naturalWidth / item.naturalHeight) < .05,
+          label + " logo must retain intrinsic aspect ratio: " + JSON.stringify(item));
+      }
+    }
+  }
+
   const artifactsDir = "test-artifacts/dialogs";
   async function assertModalLayout(testPage, dialog, label, capture = false) {
     await dialog.waitFor({ state: "visible" });
@@ -97,7 +162,8 @@ async function main() {
           .filter(el => el.getClientRects().length > 0)
           .filter(el => {
             const r = el.getBoundingClientRect();
-            return r.left < -2 || r.right > innerWidth + 2 || r.top < -2 || r.bottom > innerHeight + 2;
+            return r.left < -2 || r.right > innerWidth + 2 || r.top < -2 || r.bottom > innerHeight + 2
+              || el.scrollWidth > el.clientWidth + 3 || el.scrollHeight > el.clientHeight + 3;
           }).map(el => el.textContent.trim()),
         backdropCount: document.querySelectorAll("#osw-modal-backdrop").length,
         backdropVisible: document.querySelector("#osw-modal-backdrop").getClientRects().length > 0,
@@ -1221,6 +1287,7 @@ async function main() {
         && darkLogo.getAttribute("src").startsWith("data:image/png;base64,")
         && favicon.getAttribute("src").startsWith("data:image/x-icon;base64,");
     });
+    await assertCompactBrandingPreviews(brandingPanel, "uploaded branding previews");
     const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
     await Promise.all([
       page.waitForNavigation({ waitUntil: "domcontentloaded" }),
@@ -1787,6 +1854,24 @@ async function main() {
         const nav = async name => visualPage.getByRole("button", { name, exact: true }).click();
         const shell = sel => visualPage.locator(sel);
         const inspect = async (sel, name) => assertModalLayout(visualPage, shell(sel), prefix + name, true);
+        for (const [tab, selector] of [
+          ["Identity Providers", '[x-data="identityProviderManager"]'],
+          ["Domains", '[x-data="domainManager"]'],
+          ["Signatures", '[x-data="signatureManager"]'],
+          ["Signature Groups", '[x-data="signatureGroupManager"]'],
+          ["Rules", '[x-data="ruleManager"]'],
+          ["Scheduling", '[x-data="scheduleManager"]'],
+          ["Branding", '[x-data="brandingManager"]'],
+          ["Exports", '[x-data="adminExportManager"]'],
+          ["Imports", '[x-data="adminImportManager"]'],
+          ["Backups", '[x-data="backupManager"]'],
+          ["System", '[x-data="systemStatusManager"]'],
+        ]) {
+          await nav(tab);
+          const section = shell(selector);
+          await assertAdminSectionLayout(section, prefix + tab);
+          if (tab === "Branding") await assertCompactBrandingPreviews(section, prefix + tab);
+        }
         const close = async sel => {
           await shell(sel).locator("[data-osw-dialog-close]:visible").first().click();
           await shell(sel).waitFor({ state: "hidden" });
