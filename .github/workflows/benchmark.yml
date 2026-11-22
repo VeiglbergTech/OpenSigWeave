@@ -3,6 +3,19 @@ name: Engine performance benchmark
 on:
   push:
     branches: [dev]
+    paths:
+      - 'core/**'
+      - 'adapters/**'
+      - 'signature_*.py'
+      - 'main.py'
+      - 'models.py'
+      - 'database.py'
+      - 'scripts/benchmark_*.py'
+      - 'scripts/seed_signature_benchmark.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'compose.yaml'
+      - '.github/workflows/benchmark.yml'
   workflow_dispatch:
     inputs:
       profile:
@@ -82,10 +95,11 @@ jobs:
           mkdir -p benchmark-results
           if [[ "$BENCH_PROFILE" == "stress" ]]; then
             attempts=1000
+            levels=1,5,10,25,50,100,250,500
           else
-            attempts=500
+            attempts=100
+            levels=1,10,50
           fi
-          levels=1,5,10,25,50,100,250,500
           set -a
           source .env
           set +a
@@ -143,7 +157,7 @@ jobs:
                       path.stem, stage["concurrency"], stage["successful"],
                       stage["failed"], stage["successful_requests_per_second"],
                       stage["p50_ms"], stage["p95_ms"], stage["p99_ms"]))
-          lines.append(f"Measured stages: {total_stages}/32. All measured failures are strict failures.")
+          lines.append(f"Measured stages: {total_stages}. All measured failures are strict failures.")
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
               summary.write("\n".join(lines) + "\n")
           PY

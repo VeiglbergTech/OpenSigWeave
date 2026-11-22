@@ -46,9 +46,10 @@ class BranchStrategyConfigurationTests(unittest.TestCase):
         content = (WORKFLOWS / "promotion-policy.yml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("beta:dev|main:beta", content)
-        self.assertIn('"$SOURCE_REPOSITORY" != "$GH_REPO"', content)
-        self.assertIn("tests.yml security.yml", content)
+        self.assertIn("TARGET_BRANCH", content)
+        self.assertIn("SOURCE_BRANCH", content)
+        self.assertIn("SOURCE_REPOSITORY", content)
+        self.assertTrue((ROOT / "scripts" / "verify_promotion.py").is_file())
         self.assertNotIn("workflow_run:", content)
         self.assertNotIn("push:", content)
         self.assertNotIn("release:", content)

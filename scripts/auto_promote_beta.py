@@ -83,6 +83,8 @@ def changed_files(repo: str, before: str, sha: str) -> list[str]:
         return sorted(POSTFIX_PATHS)
     expected_sha(before)
     comparison = api("GET", f"repos/{repo}/compare/{before}...{sha}")
+    if len(comparison["files"]) >= 300:
+        return sorted(POSTFIX_PATHS)  # Treat truncated comparisons conservatively.
     return [entry["filename"] for entry in comparison["files"]]
 
 
@@ -161,6 +163,23 @@ def promote(repo: str, sha: str) -> None:
     if branch_sha(repo, "dev") != sha:
         print("dev changed after opening the pull request; no promotion.")
         return
+
+    # GitHub must propose exactly the tree that passed dev CI.
+    preview = None
+    for attempt in range(10):
+        current = api("GET", f"repos/{repo}/pulls/{pr['number']}")
+        if current["head"]["sha"] != sha or current["base"]["sha"] != branch_sha(repo, "beta"):
+            raise RuntimeError("Promotion PR or beta moved while verifying merge")
+        preview = current.get("merge_commit_sha")
+        if preview:
+            break
+        time.sleep(3)
+    if not preview:
+        raise RuntimeError("GitHub did not create a merge preview")
+    proposed_tree = api("GET", f"repos/{repo}/commits/{preview}")["commit"]["tree"]["sha"]
+    source_tree = api("GET", f"repos/{repo}/commits/{sha}")["commit"]["tree"]["sha"]
+    if proposed_tree != source_tree:
+        raise RuntimeError("PR merge would introduce an untested tree")
 
     result = api(
         "PUT",
