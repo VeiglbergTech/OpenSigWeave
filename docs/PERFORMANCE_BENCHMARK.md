@@ -40,7 +40,7 @@ signatures or attribute cache records.
 ~~~bash
 docker compose up -d --build --wait
 docker compose exec -T -e BENCHMARK_DISPOSABLE_DB=1 opensigweave \
-  python scripts/seed_signature_benchmark.py --confirm-disposable --senders 512
+  python -m scripts.seed_signature_benchmark --confirm-disposable --senders 512
 read -r -s -p "Disposable engine key: " ENGINE_API_KEY; echo
 export ENGINE_API_KEY
 python scripts/benchmark_engine.py --domain bench-static.example.test \
