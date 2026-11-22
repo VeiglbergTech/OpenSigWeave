@@ -2,7 +2,7 @@ name: Branch promotion policy
 
 on:
   pull_request:
-    branches: [beta, main]
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
@@ -22,6 +22,7 @@ jobs:
       - name: Checkout code without persisted credentials
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: dev # trusted verifier, not potentially untrusted PR merge code
           persist-credentials: false
       - name: Verify source commit, exact CI and candidate merge tree
         env:

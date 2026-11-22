@@ -9,6 +9,7 @@ from scripts.auto_promote_beta import (
     SECURITY_WORKFLOW,
     TESTS_WORKFLOW,
     expected_sha,
+    promote,
     requires_postfix,
     workflow_state,
 )
@@ -55,6 +56,42 @@ class AutoPromotionPolicyTests(unittest.TestCase):
         with patch("scripts.auto_promote_beta.subprocess.run", return_value=denied):
             with self.assertRaisesRegex(RuntimeError, "HTTP 403"):
                 api("POST", "repos/VeiglbergTech/OpenSigWeave/pulls")
+
+    def test_fast_forward_moves_beta_without_merge_or_force(self):
+        verified, old = "a" * 40, "b" * 40
+        with patch("scripts.auto_promote_beta.branch_sha", side_effect=[verified, old, verified, old, verified]), \
+             patch("scripts.auto_promote_beta.api", side_effect=[
+                 {"ahead_by": 3, "behind_by": 0},
+                 {"object": {"sha": verified}},
+             ]) as github_api:
+            promote("VeiglbergTech/OpenSigWeave", verified)
+        github_api.assert_any_call(
+            "PATCH", "repos/VeiglbergTech/OpenSigWeave/git/refs/heads/beta",
+            {"sha": verified, "force": False}
+        )
+
+    def test_diverged_beta_is_never_rewritten_or_merged(self):
+        verified, old = "a" * 40, "b" * 40
+        with patch("scripts.auto_promote_beta.branch_sha", side_effect=[verified, old]), \
+             patch("scripts.auto_promote_beta.api", return_value={"ahead_by": 7, "behind_by": 19}) as github_api:
+            with self.assertRaisesRegex(RuntimeError, "ancestor"):
+                promote("VeiglbergTech/OpenSigWeave", verified)
+        self.assertEqual(github_api.call_count, 1)
+
+    def test_noop_when_beta_is_exact_dev_head(self):
+        verified = "a" * 40
+        with patch("scripts.auto_promote_beta.branch_sha", side_effect=[verified, verified]), \
+             patch("scripts.auto_promote_beta.api", return_value={"ahead_by": 0, "behind_by": 0}) as github_api:
+            promote("VeiglbergTech/OpenSigWeave", verified)
+        self.assertEqual(github_api.call_count, 1)
+
+    def test_api_formats_explicit_false_as_json_boolean(self):
+        response = subprocess.CompletedProcess(args=["gh", "api"], returncode=0,
+                                               stdout='{"object":{"sha":"abc"}}', stderr="")
+        with patch("scripts.auto_promote_beta.subprocess.run", return_value=response) as call:
+            api("PATCH", "repos/owner/project/git/refs/heads/beta", {"sha": "a" * 40, "force": False})
+        self.assertIn("-F", call.call_args.args[0])
+        self.assertIn("force=false", call.call_args.args[0])
 
     def test_commit_sha_validation(self):
         sha = "a" * 40

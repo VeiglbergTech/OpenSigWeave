@@ -50,10 +50,13 @@ def requires_postfix(changed_paths: list[str]) -> bool:
     return bool(POSTFIX_PATHS.intersection(changed_paths))
 
 
-def api(method: str, endpoint: str, fields: dict[str, str] | None = None) -> Any:
+def api(method: str, endpoint: str, fields: dict[str, str | bool] | None = None) -> Any:
     command = ["gh", "api", "--method", method, endpoint]
     for key, value in (fields or {}).items():
-        command.extend(["-f", f"{key}={value}"])
+        if isinstance(value, bool):
+            command.extend(["-F", f"{key}={str(value).lower()}"])
+        else:
+            command.extend(["-f", f"{key}={value}"])
     result = subprocess.run(
         command, check=False, capture_output=True, text=True, timeout=45
     )
@@ -117,88 +120,47 @@ def wait_for_ci(repo: str, sha: str, postfix_expected: bool) -> bool:
 
 
 def promote(repo: str, sha: str) -> None:
+    """Move beta to a fully CI-verified dev SHA, strictly via fast-forward.
+
+    The GitHub refs update is forced explicitly *off*. A diverged beta is a
+    hard failure, never a reason to create a merge commit or rewrite history.
+    """
     if branch_sha(repo, "dev") != sha:
-        print("dev changed before merging; no promotion.")
+        print("dev changed before promotion; no update.")
         return
 
-    comparison = api("GET", f"repos/{repo}/compare/beta...{sha}")
-    if comparison["ahead_by"] == 0:
-        print("beta already includes this dev commit; nothing to promote.")
-        return
-
-    owner = repo.split("/", 1)[0]
-    pull_requests = api(
-        "GET",
-        f"repos/{repo}/pulls?state=open&base=beta&head={owner}:dev&per_page=20",
-    )
-    if len(pull_requests) > 1:
-        raise RuntimeError("Multiple competing dev -> beta pull requests.")
-    if pull_requests:
-        pr = pull_requests[0]
-    else:
-        pr = api(
-            "POST",
-            f"repos/{repo}/pulls",
-            {
-                "title": "Auto-promote verified dev to beta",
-                "body": (
-                    "Automatically promoted only after successful source-branch "
-                    f"push Tests and Security scan for commit {sha}. "
-                    "When relevant, Postfix Milter compatibility must also pass. "
-                    "No promotion to main or release is performed."
-                ),
-                "head": "dev",
-                "base": "beta",
-            },
+    beta_before = branch_sha(repo, "beta")
+    comparison = api("GET", f"repos/{repo}/compare/{beta_before}...{sha}")
+    if comparison.get("behind_by") != 0:
+        raise RuntimeError(
+            "beta is not an ancestor of the CI-verified dev commit; "
+            "refuse merge commits, rebases, and forced updates."
         )
-
-    if (
-        pr["head"]["sha"] != sha
-        or pr["head"]["ref"] != "dev"
-        or pr["head"]["repo"]["full_name"] != repo
-        or pr["base"]["ref"] != "beta"
-    ):
-        raise RuntimeError("Pull request source changed; refuse to merge.")
+    if comparison.get("ahead_by") == 0:
+        if beta_before == sha:
+            print("beta already points to the verified dev commit.")
+            return
+        raise RuntimeError("No forward commits available, but beta differs from dev.")
 
     if branch_sha(repo, "dev") != sha:
-        print("dev changed after opening the pull request; no promotion.")
+        print("dev changed during the promotion; skip stale commit.")
         return
+    if branch_sha(repo, "beta") != beta_before:
+        raise RuntimeError("beta moved while verifying fast-forward; retry after fresh CI.")
 
-    # GitHub must propose exactly the tree that passed dev CI.
-    preview = None
-    for attempt in range(10):
-        current = api("GET", f"repos/{repo}/pulls/{pr['number']}")
-        if current["head"]["sha"] != sha or current["base"]["sha"] != branch_sha(repo, "beta"):
-            raise RuntimeError("Promotion PR or beta moved while verifying merge")
-        preview = current.get("merge_commit_sha")
-        if preview:
-            break
-        time.sleep(3)
-    if not preview:
-        raise RuntimeError("GitHub did not create a merge preview")
-    proposed_tree = api("GET", f"repos/{repo}/commits/{preview}")["commit"]["tree"]["sha"]
-    source_tree = api("GET", f"repos/{repo}/commits/{sha}")["commit"]["tree"]["sha"]
-    if proposed_tree != source_tree:
-        raise RuntimeError("PR merge would introduce an untested tree")
-
+    # GitHub PATCH /git/refs has force=false by default. Set it explicitly.
+    # Passing False via gh -F sends a JSON boolean, never the string "false".
     result = api(
-        "PUT",
-        f"repos/{repo}/pulls/{pr['number']}/merge",
-        {
-            "sha": sha,
-            "merge_method": "merge",
-            "commit_title": "Promote CI-verified dev to beta",
-            "commit_message": (
-                f"CI-verified dev commit: {sha}\n"
-                "Tests + Security scan passed; Postfix compatibility verified "
-                "when applicable. No change to main."
-            ),
-        },
+        "PATCH",
+        f"repos/{repo}/git/refs/heads/beta",
+        {"sha": sha, "force": False},
     )
-    if not result.get("merged"):
-        raise RuntimeError(f"GitHub refused beta promotion: {result}")
-    print(f"Promoted dev {sha} to beta via PR #{pr['number']}: {result['sha']}")
+    if result.get("object", {}).get("sha") != sha:
+        raise RuntimeError("GitHub did not confirm the exact promoted SHA.")
+    if branch_sha(repo, "beta") != sha:
+        raise RuntimeError("beta was changed again during promotion; inspect ref.")
 
+    print(f"Fast-forward promoted verified dev {sha} to beta (no extra commits).")
 
 def main() -> None:
     repo = os.environ["GH_REPO"]

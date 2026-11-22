@@ -26,18 +26,19 @@ class PromotionProofTests(unittest.TestCase):
         self.assertEqual(workflow_result([run(TESTS_WORKFLOW), run(TESTS_WORKFLOW, conclusion="cancelled", when="2026-11-23T00:00:00Z")], TESTS_WORKFLOW, D), "success")
     def test_new_failure_not_ignored(self):
         self.assertEqual(workflow_result([run(TESTS_WORKFLOW), run(TESTS_WORKFLOW, conclusion="failure", when="2026-11-23T00:00:00Z")], TESTS_WORKFLOW, D), "failed")
-    def test_verified_merge_and_matching_tree(self):
-        def fake(method, endpoint):
-            if endpoint.endswith(B):
-                return {"parents": [{"sha": "d" * 40}, {"sha": D}], "commit": {
-                    "message": "Promote CI-verified dev to beta\nCI-verified dev commit: " + D, "tree": {"sha": T}}}
-            return {"commit": {"tree": {"sha": T}}}
-        with patch("scripts.verify_promotion.api", side_effect=fake):
-            self.assertEqual(beta_dev_proof("VeiglbergTech/OpenSigWeave", B), D)
-    def test_unproven_merge_blocks(self):
-        with patch("scripts.verify_promotion.api", return_value={"parents": []}):
-            with self.assertRaisesRegex(ValueError, "two-parent"):
+    def test_verified_beta_is_dev_ancestor(self):
+        with patch("scripts.verify_promotion.api", return_value={
+            "behind_by": 0, "merge_base_commit": {"sha": B}
+        }):
+            self.assertEqual(beta_dev_proof("VeiglbergTech/OpenSigWeave", B), B)
+
+    def test_diverged_beta_is_rejected(self):
+        with patch("scripts.verify_promotion.api", return_value={
+            "behind_by": 19, "merge_base_commit": {"sha": D}
+        }):
+            with self.assertRaisesRegex(ValueError, "fast-forward provenance"):
                 beta_dev_proof("VeiglbergTech/OpenSigWeave", B)
+
     def test_missing_security_scan_blocks(self):
         with patch("scripts.verify_promotion.api", side_effect=lambda method, path: (
             {"workflow_runs": [run(TESTS_WORKFLOW)]} if "/actions/runs?" in path else
@@ -46,8 +47,8 @@ class PromotionProofTests(unittest.TestCase):
                 source_ci_proof("VeiglbergTech/OpenSigWeave", D)
     def test_invalid_branches_and_forks_block(self):
         for target, source, org in (("main", "dev", "VeiglbergTech/OpenSigWeave"),
-                                    ("beta", "beta", "VeiglbergTech/OpenSigWeave"),
-                                    ("beta", "dev", "untrusted/fork")):
+                                    ("beta", "dev", "VeiglbergTech/OpenSigWeave"),
+                                    ("main", "beta", "untrusted/fork")):
             with self.assertRaises(ValueError):
                 verify("VeiglbergTech/OpenSigWeave", target, source, org, D, 2)
     def test_stale_sha_blocks(self):

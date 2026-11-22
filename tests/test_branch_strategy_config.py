@@ -46,6 +46,8 @@ class BranchStrategyConfigurationTests(unittest.TestCase):
         content = (WORKFLOWS / "promotion-policy.yml").read_text(
             encoding="utf-8"
         )
+        self.assertIn("branches: [main]", content)
+        self.assertIn("ref: dev # trusted verifier", content)
         self.assertIn("TARGET_BRANCH", content)
         self.assertIn("SOURCE_BRANCH", content)
         self.assertIn("SOURCE_REPOSITORY", content)
@@ -53,6 +55,15 @@ class BranchStrategyConfigurationTests(unittest.TestCase):
         self.assertNotIn("workflow_run:", content)
         self.assertNotIn("push:", content)
         self.assertNotIn("release:", content)
+
+    def test_beta_promotion_is_fast_forward_not_pr_merge(self):
+        script = (ROOT / "scripts" / "auto_promote_beta.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('"force": False', script)
+        self.assertIn('"PATCH"', script)
+        self.assertNotIn('"merge_method"', script)
+        self.assertNotIn('pulls/{pr', script)
 
     def test_postfix_compatibility_checks_are_path_filtered(self):
         content = (WORKFLOWS / "postfix-milter-compat.yml").read_text(

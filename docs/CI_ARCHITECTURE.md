@@ -1,6 +1,6 @@
 # OpenSigWeave GitHub CI
 
-The only branches are dev, beta and main. Changes are committed to dev. Tests and Security scan must pass on the exact dev push SHA. The Postfix workflow is required for relevant source changes. A benchmark is informative, never a required promotion check.
+The only active development/release branches are dev, beta and main. A one-time history archive branch (archive/beta-before-fast-forward-20261122) preserves the pre-migration beta merge history; it is not a release channel. Changes are committed to dev. Tests and Security scan must pass on the exact dev push SHA. The Postfix workflow is required for relevant source changes. A benchmark is informative, never a required promotion check.
 
 ## Workflows
 
@@ -9,17 +9,17 @@ The only branches are dev, beta and main. Changes are committed to dev. Tests an
 | tests.yml | Python, JavaScript, shell, actionlint, migrations, Docker, browser and backup/restore regression |
 | security.yml | Dependency audit, Bandit, Gitleaks history scan, Trivy filesystem/image, CodeQL and exact-SHA open CodeQL finding gate |
 | postfix-milter-compat.yml | Conditional real Postfix and PyMilter integration |
-| promotion-policy.yml | Exact branch and dev CI proof, second-parent ancestry, matching source and PR merge trees |
-| auto-promote-beta.yml | CI-gated dev to beta promotion only |
+| promotion-policy.yml | Manual beta to main PR proof: beta ancestry in dev, exact beta commit dev CI, and matching PR preview tree |
+| auto-promote-beta.yml | Force-free fast-forward from verified dev SHA to beta, with zero merge/squash/rebase commits |
 | benchmark.yml | Filtered dev quick benchmark; manually requested stress run |
 
-GitHub-created beta merges do not necessarily trigger a new push workflow when created with GITHUB_TOKEN. The policy therefore proves the underlying dev commit and exact tree rather than requiring an impossible beta push run. Missing, stale or failed source CI blocks promotion. A newer cancelled run cannot erase an earlier successful exact-SHA push run, but a later real failure still blocks. The PR merge preview must equal the verified source tree.
+Beta is advanced by Git refs PATCH with force=false, only if its previous commit is an ancestor of the exact successfully tested dev commit. No PR merges, new commit objects or history rewrites occur during routine promotion. GITHUB_TOKEN does not trigger a new beta push workflow; exact-sha dev push Tests + Security scan are the required gate. A dedicated GitHub App is optional: its installation token can trigger beta push workflows and can be granted a ruleset exception, if required. Missing, stale or failed source CI blocks promotion. The manual beta-to-main PR gate proves that beta is a real commit in dev history and verifies exact beta SHA dev CI.
 
 ## Required administrative setup
 
-1. Create a dedicated GitHub App, installed only on VeiglbergTech/OpenSigWeave, with **Contents read/write**, **Pull requests read/write**, **Actions read-only**, and no Administration rights. Add repository Actions secrets CI_PROMOTION_APP_ID and CI_PROMOTION_APP_PRIVATE_KEY. The workflow mints a short-lived installation token. Without both, it falls back to GITHUB_TOKEN and bot-created PRs may still need workflow approval.
-2. Repository Settings -> Actions -> General: choose read-only default GITHUB_TOKEN, allow GitHub Actions to create and approve pull requests if fallback is required, and check organization-level restrictions. Keep fork PR tokens read-only, without secrets, and approval for untrusted contributors.
-3. Repository Settings -> Rules -> Rulesets (or Branches): protect **main** with a PR from beta, required human review, and the successful Tests, Security scan and Promotion source and CI gate checks. Disallow direct pushes, bot bypasses, force pushes and deletion. Protect **beta** to permit only verified dev PRs; let the narrowly scoped App automate this branch only, never main. Check concrete job check names against actual runs. Do not require path-filtered jobs that can be skipped.
+1. **No GitHub App is required** for simple direct fast-forward promotion using GITHUB_TOKEN with Contents write access. If desired for beta push CI or protected-branch bypass, optionally install a dedicated App only on VeiglbergTech/OpenSigWeave, with **Contents read/write**, **Actions read-only** and no Administration rights; set CI_PROMOTION_APP_ID and CI_PROMOTION_APP_PRIVATE_KEY. Set both secrets together. Neither token is authorized to move main.
+2. Repository Settings -> Actions -> General: keep default GITHUB_TOKEN read-only (this isolated automation workflow explicitly elevates Contents write); check organization restrictions. No automatic beta pull request creation or approval is needed. Keep fork PR tokens read-only, without secrets, and approval for untrusted contributors.
+3. Repository Settings -> Rules -> Rulesets (or Branches): protect **main** with a PR from beta, required human review, and passing Tests, Security scan, and Promotion source and CI gate checks. Disallow direct pushes, bot bypasses, force pushes and deletion. Protect **beta** against force push and deletion; if restricting direct writes, explicitly allow the promotion actor to fast-forward the branch (GitHub App can act as that actor). A mandatory PR rule on beta without an appropriate bypass will block the direct fast-forward automation. Check real check names and do not require path-filtered jobs that can be skipped.
 4. Repository Security -> Advanced Security / Code scanning: verify whether default CodeQL setup duplicates Advanced Setup from security.yml. Keep Advanced Setup and its security-extended queries; only remove duplicate default setup after Advanced Setup has a working analysis. Do not treat a green CodeQL job as proof of zero security alerts.
 5. Repository Settings -> Environments: no deployment approval gates on ordinary CI; keep explicit manual approval for any production release/publishing environment.
 
@@ -27,7 +27,7 @@ GitHub-created beta merges do not necessarily trigger a new push workflow when c
 
 Inspect workflow event, branch, exact SHA, failed step, and merge preview tree. A 403 means missing permissions or a ruleset denial, not a reason to bypass security. Use the code scanning alerts page to individually review findings by rule, severity, file, line and exploitability; compare huge PRs against the base branch to separate old and new findings. Full benchmark artifacts are generated only for relevant changes or explicit manual runs.
 
-**Not yet provided by repository code:** branch protection, required checks and any GitHub App secret installation are GitHub-side settings. On 2026-11-22, the API showed protected=false for dev, beta and main, with no active repository rulesets.
+**Not managed by repository code:** branch rulesets, required checks and any optional GitHub App secrets are GitHub-side settings. On 2026-11-22, the API showed protected=false for dev, beta and main, with no active repository rulesets. Do not mistake the in-repository policy for enforcement against direct pushes.
 
 ## CodeQL warning gate
 

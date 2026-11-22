@@ -15,18 +15,13 @@ def workflow_result(runs, workflow, sha):
     return "missing"
 
 def beta_dev_proof(repo, beta_sha):
-    beta = api("GET", f"repos/{repo}/commits/{beta_sha}")
-    parents = beta.get("parents", [])
-    if len(parents) != 2:
-        raise ValueError("beta head is not a two-parent verified merge")
-    dev_sha = expected_sha(parents[1]["sha"])
-    message = beta["commit"]["message"]
-    if not message.startswith("Promote CI-verified dev to beta") or f"CI-verified dev commit: {dev_sha}" not in message:
-        raise ValueError("beta provenance is missing or does not match its second parent")
-    dev = api("GET", f"repos/{repo}/commits/{dev_sha}")
-    if dev["commit"]["tree"]["sha"] != beta["commit"]["tree"]["sha"]:
-        raise ValueError("beta tree does not match the verified dev tree")
-    return dev_sha
+    """Prove beta is the exact already-tested commit in dev ancestry."""
+    beta_sha = expected_sha(beta_sha)
+    comparison = api("GET", f"repos/{repo}/compare/{beta_sha}...dev")
+    base = comparison.get("merge_base_commit") or {}
+    if comparison.get("behind_by") != 0 or base.get("sha") != beta_sha:
+        raise ValueError("beta has commits not in dev; fast-forward provenance violated")
+    return beta_sha
 
 def source_ci_proof(repo, sha):
     resp = api("GET", f"repos/{repo}/actions/runs?branch=dev&head_sha={sha}&event=push&per_page=100")
@@ -51,12 +46,12 @@ def source_ci_proof(repo, sha):
 def verify(repo, target, source, source_repo, source_sha, pr_number):
     if repo != "VeiglbergTech/OpenSigWeave" or source_repo != repo:
         raise ValueError("External repository/fork is forbidden")
-    if (target, source) not in (("beta", "dev"), ("main", "beta")):
-        raise ValueError("Only dev -> beta and beta -> main allowed")
+    if (target, source) != ("main", "beta"):
+        raise ValueError("Only beta -> main manual pull requests are allowed")
     source_sha = expected_sha(source_sha)
     if api("GET", f"repos/{repo}/branches/{source}")["commit"]["sha"] != source_sha:
         raise ValueError("Stale source branch tip")
-    dev_sha = source_sha if target == "beta" else beta_dev_proof(repo, source_sha)
+    dev_sha = beta_dev_proof(repo, source_sha)
     checks = source_ci_proof(repo, dev_sha)
     pr = api("GET", f"repos/{repo}/pulls/{pr_number}")
     if (pr["head"]["sha"] != source_sha or pr["head"]["ref"] != source or pr["base"]["ref"] != target
@@ -75,7 +70,7 @@ if __name__ == "__main__":
     try:
         result = verify(os.environ["GH_REPO"], os.environ["TARGET_BRANCH"], os.environ["SOURCE_BRANCH"],
                         os.environ["SOURCE_REPOSITORY"], os.environ["SOURCE_SHA"], int(os.environ["PR_NUMBER"]))
-        print(f"Verified source, exact push CI, ancestry and merge tree: {result}")
+        print(f"Verified beta ancestry, exact dev push CI, and merge preview tree: {result}")
         print("This is a technical CI gate, not a manual beta -> main release approval.")
     except (ValueError, KeyError, RuntimeError, OSError, TypeError) as exc:
         print(f"::error::Promotion policy failed: {exc}", file=sys.stderr)
