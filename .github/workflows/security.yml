@@ -136,9 +136,22 @@ jobs:
           import json,sys
           analyses=json.load(open('/tmp/codeql-analyses.json',encoding='utf-8'))
           matching=[a for a in analyses if a.get('commit_sha') == sys.argv[1] and a.get('tool',{}).get('name') == 'CodeQL']
-          languages={a.get('language') for a in matching}
-          print('CodeQL analyses for exact dev commit:', len(matching), 'languages:', sorted(str(x) for x in languages))
-          sys.exit(0 if len(languages)>=2 else 1)
+          def read_language(a):
+              raw=a.get('environment') or '{}'
+              try:
+                  env=json.loads(raw) if isinstance(raw,str) else raw
+              except (ValueError,TypeError):
+                  env={}
+              lang=(env.get('language') if isinstance(env,dict) else None) or a.get('language')
+              category=a.get('category') or ''
+              if not lang and '/language:' in category:
+                  lang=category.rsplit('/language:',1)[1]
+              return (lang or '').lower()
+          languages={read_language(a) for a in matching}
+          has_python='python' in languages
+          has_javascript=any(x.startswith('javascript') for x in languages)
+          print('CodeQL analyses for exact dev commit:', len(matching), 'languages:', sorted(languages))
+          sys.exit(0 if has_python and has_javascript else 1)
           PY
             then
               found=1
