@@ -1708,7 +1708,7 @@ async function main() {
         await close(providerSelector);
         await nav("Signatures");
         await visualPage.getByRole("button", { name: "+ Add Signature" }).click();
-        const signatureSelector = '[x-data="signatureManager"] [role="dialog"]';
+        const signatureSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Signature editor"]';
         await inspect(signatureSelector, "signature-editor");
         const fontToolbar = shell(signatureSelector).locator(".osw-editor-font-toolbar");
         await fontToolbar.waitFor({ state: "visible" });
@@ -1733,6 +1733,12 @@ async function main() {
           "signature font dropdown must offer Georgia on every viewport and theme");
         assert.equal(await fontControls[1].locator('option[value="18"]').count(), 1,
           "signature font size dropdown must offer exact pixel presets");
+        const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Picture from URL" });
+        await urlButton.scrollIntoViewIfNeeded();
+        await urlButton.click();
+        const urlSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Import Picture from URL"]';
+        await inspect(urlSelector, "image-url-import");
+        await close(urlSelector);
         await close(signatureSelector);
         await nav("Signature Groups");
         await visualPage.getByRole("button", { name: "+ Add Group" }).click();
