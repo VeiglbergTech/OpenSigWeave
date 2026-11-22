@@ -801,7 +801,7 @@ async function main() {
     const imageImportDialog = signaturePanel.getByRole("dialog", { name: "Import Picture from URL" });
     await assertFloatingDialog(imageImportDialog, "image URL importer");
     await assertModalLayout(page, imageImportDialog, "image-url-import");
-    assert.equal(await signatureDialog.locator('input[x-model.trim="imageImportUrl"]').count(), 0,
+    assert.equal(await signatureDialog.locator('input[placeholder="https://example.com/logo.png"]').count(), 0,
       "obsolete URL input must not remain below the editor");
     const imageImportInput = imageImportDialog.getByRole("textbox", { name: "Image URL" });
     await imageImportInput.fill("http://127.0.0.1/internal.png");
