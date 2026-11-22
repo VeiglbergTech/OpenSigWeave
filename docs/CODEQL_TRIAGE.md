@@ -46,3 +46,19 @@ The baseline gate reported 22 open HIGH alerts. A successful CodeQL analysis alo
 - [ ] All open HIGH/MEDIUM/CRITICAL alerts individually triaged and resolved or justifiably dismissed
 - [ ] CodeQL open security findings gate green
 - [ ] dev → beta fast-forward check green, main unchanged
+
+## Post-remediation scan results
+
+- Commit `cb8e43ac3712bac155f9275531c27652bda7b7b8`, run https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/45072523779 : original #1–18, #29–31 no longer open. Five alerts remained (#19, #32–35).
+- Commit `24bbf26f48602298efabfc9f5fee6e1db64c92da`, run https://github.com/VeiglbergTech/OpenSigWeave/actions/runs/45072814405 : original #19 and new #35 test-only fixtures no longer open. Six analysis jobs passed; security gate correctly failed on precisely #32, #33, #34.
+- None of the original 22 alerts remains open. The three follow-on alerts are individually assessed here, not assumed fixed by a successful analysis job.
+
+| New alert | Source and sink | Technical evaluation | Disposition |
+| --- | --- | --- | --- |
+| #32 | identity/registry.py:88, untrusted slug reaches os.mkdir | False-positive candidate: validate_slug accepts a single ASCII component ([a-z0-9-], length 1–63), cannot contain '..' or path separators; the call is relative to a pre-opened, private, owned root dirfd. The resulting directory is re-opened with O_NOFOLLOW, and fstat ownership is verified. | Individually dismiss as false positive only after verified filesystem regressions |
+| #33 | identity/registry.py:91, slug reaches os.open | False-positive candidate: identical strict slug, dirfd root pin, O_DIRECTORY/O_NOFOLLOW/O_CLOEXEC ensure no symlink following or traversal, fstat verifies ownership and mode; directory swap test demonstrates fd confinement. | Individually dismiss as false positive only after verified filesystem regressions |
+| #34 | identity/registry.py:345, slug reaches os.rmdir | False-positive candidate: validated single-component slug, root dirfd pin, rmdir never follows a symlink; deletion operates on named child only after forbidding unexpected content. Even a rename race cannot redirect deletion outside the root directory. | Individually dismiss as false positive only after verified filesystem regressions |
+
+One-time individual triage requires exact reviewed registry source SHA `1beaaf081a15719e9ce9fd3549973b3c21e0787a`, live alerts matching these IDs, rule and locations (and no other new HIGH/MEDIUM/CRITICAL alerts), plus successful registry and identity-provider regression tests. A separately documented security justification is submitted per alert. The regular Security Scan gate is not changed, and the special triage workflow must be removed afterwards.
+
+Remaining acceptance evidence: full CI tests, host backup/restore, Security Scan gate and automatic fast-forward promotion. Do not claim complete success unless explicitly observed.

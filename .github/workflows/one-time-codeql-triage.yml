@@ -1,0 +1,91 @@
+name: One-time individually verified CodeQL false-positive triage
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - .github/workflows/one-time-codeql-triage.yml
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  individual-triage:
+    name: Validate 3 specific CodeQL findings before individually dismissing
+    if: github.repository == 'VeiglbergTech/OpenSigWeave' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Verify reviewed registry source identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object identity/registry.py)" = "1beaaf081a15719e9ce9fd3549973b3c21e0787a"
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Check real traversal, symlink, ownership, race and legacy compatibility tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tests -p 'test_identity_registry_security.py' -v
+          python -m unittest discover -s tests -p 'test_identity_provider.py' -v
+      - name: Verify all open alerts and individually dismiss only reviewed false positives
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp "repos/$GH_REPO/code-scanning/alerts?state=open&ref=refs/heads/dev&per_page=100" > /tmp/triage-alerts.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          pages = json.loads(Path('/tmp/triage-alerts.json').read_text(encoding='utf-8'))
+          if not isinstance(pages,list) or any(not isinstance(page,list) for page in pages):
+              raise SystemExit('Malformed CodeQL alerts API output')
+          alerts = [item for page in pages for item in page]
+          expected = {
+              32: ('identity/registry.py',88),
+              33: ('identity/registry.py',91),
+              34: ('identity/registry.py',345),
+          }
+          remaining = set()
+          for alert in alerts:
+              rule = alert.get('rule') or {}
+              severity = (rule.get('security_severity_level') or '').lower()
+              if severity not in {'medium','high','critical'}:
+                  continue
+              number = alert['number']
+              location = (alert.get('most_recent_instance') or {}).get('location') or {}
+              if (number not in expected or rule.get('id') != 'py/path-injection'
+                      or (location.get('path'),location.get('start_line')) != expected[number]
+                      or severity != 'high'):
+                  raise SystemExit('Unexpected live CodeQL security alert: %r: %r' % (number,location))
+              remaining.add(number)
+          if remaining != set(expected):
+              raise SystemExit('Not exactly the 3 pre-reviewed alerts; fail closed: %r' % remaining)
+          Path('/tmp/reviewed-alerts.txt').write_text('\n'.join(map(str, sorted(remaining))) + '\n')
+          print('Individually reviewed live false-positive alerts:', sorted(remaining))
+          PY
+          while read -r number; do
+            case "$number" in
+              32) comment="Individually audited false positive: validate_slug restricts this to a single ASCII directory name (length <=63, no slashes or traversal), and os.mkdir is confined to a pinned private root dir_fd. Real traversal, symlink and ownership regression tests passed. docs/CODEQL_TRIAGE.md.";;
+              33) comment="Individually audited false positive: strictly validated single-component ASCII slug, os.open with O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC relative to pinned private root dir_fd, followed by fstat owner verification. Real symlink-swap/descriptor regression passed. docs/CODEQL_TRIAGE.md.";;
+              34) comment="Individually audited false positive: os.rmdir acts on strictly validated ASCII single-component slug relative to pinned private root dir_fd; rmdir does not follow symlinks and cannot delete outside root. Real deletion/symlink tests passed. docs/CODEQL_TRIAGE.md.";;
+              *) exit 1;;
+            esac
+            gh api --method PATCH "repos/$GH_REPO/code-scanning/alerts/$number" \
+              -f state=dismissed -f dismissed_reason='false positive' \
+              -f dismissed_comment="$comment" >/dev/null
+            test "$(gh api "repos/$GH_REPO/code-scanning/alerts/$number" --jq .state)" = "dismissed"
+            echo "Individually dismissed justified false positive alert $number"
+          done < /tmp/reviewed-alerts.txt
+          echo '### Individually documented CodeQL triage' >> "$GITHUB_STEP_SUMMARY"
+          echo 'The reviewed source, all required regressions and three precise live alerts passed verification. Individually dismissed #32, #33, #34 as audited false positives. Remove this one-time workflow.' >> "$GITHUB_STEP_SUMMARY"
