@@ -65,13 +65,17 @@ class BranchStrategyConfigurationTests(unittest.TestCase):
         self.assertNotIn('"merge_method"', script)
         self.assertNotIn('pulls/{pr', script)
 
-    def test_beta_promotion_needs_no_github_app_or_pull_request(self):
+    def test_beta_promotion_uses_scoped_github_app_token(self):
         workflow = (WORKFLOWS / "auto-promote-beta.yml").read_text(
             encoding="utf-8"
         )
-        self.assertIn('GH_TOKEN: ${{ github.token }}', workflow)
-        self.assertNotIn("create-github-app-token", workflow)
-        self.assertNotIn("CI_PROMOTION_APP_", workflow)
+        self.assertIn("actions/create-github-app-token@", workflow)
+        self.assertIn("CI_PROMOTION_APP_ID", workflow)
+        self.assertIn("CI_PROMOTION_APP_PRIVATE_KEY", workflow)
+        self.assertIn('GH_TOKEN: ${{ steps.app-token.outputs.token }}', workflow)
+        self.assertIn("permission-contents: write", workflow)
+        self.assertIn("permission-actions: read", workflow)
+        self.assertIn("permissions:\n  contents: read\n  actions: read", workflow)
         self.assertNotIn("pull-requests: write", workflow)
 
     def test_postfix_compatibility_checks_are_path_filtered(self):
