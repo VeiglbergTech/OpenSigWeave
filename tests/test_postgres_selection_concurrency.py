@@ -27,8 +27,8 @@ class PostgreSQLSelectionConcurrencyTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.engine.dispose()
 
-    def test_catalog_row_lock_does_not_block_an_unrelated_sender(self):
-        """A management transaction must not create a global lock convoy."""
+    def test_catalog_share_lock_does_not_block_an_unrelated_sender(self):
+        """Concurrent catalog readers must not force every sender to queue."""
         principal = f"oidc:{uuid.uuid4().hex}"
         group_id = uuid.uuid4().hex
         signature_id = uuid.uuid4().hex
@@ -49,11 +49,14 @@ class PostgreSQLSelectionConcurrencyTests(unittest.TestCase):
                 group_id=group_id, signature_id=signature_id, weight=1, is_enabled=True,
             ))
         try:
-            # Simulates a concurrent signature edit holding the catalog row.
+            # A concurrent reader holds FOR SHARE. The previous group
+            # candidate FOR UPDATE blocked here; the new read does not.
+            # A real administrator's FOR UPDATE still legitimately blocks
+            # foreign-key KEY SHARE checks on the selected signature.
             with self.Session() as editor:
                 editor.execute(
                     select(SignatureDB).where(SignatureDB.id == signature_id)
-                    .with_for_update()
+                    .with_for_update(read=True)
                 ).scalar_one()
                 with ThreadPoolExecutor(max_workers=1) as executor:
                     def select_other_sender():

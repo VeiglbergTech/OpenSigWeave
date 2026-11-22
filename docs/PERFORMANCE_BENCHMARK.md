@@ -48,6 +48,13 @@ client conflated network errors and timeouts.
   connection-pool timeouts. Missing or malformed signature HTML counts as a
   failure. `--fail-on-errors` makes the workflow fail, after writing results.
 
+**SQLite compatibility:** SQLite connections may be thread-affine and
+in-memory databases are connection-local. When an existing injected SQLAlchemy
+Session is bound to SQLite, the engine retains its original event-loop
+execution context rather than passing the connection to another thread.
+SQLite is supported for compatibility/testing, **not** as the recommended
+high-concurrency production backend. The throughput target concerns PostgreSQL.
+
 **Important:** Offloading to a thread does not make synchronous SQLAlchemy
 operations nonblocking inside that thread. Lock waits, provider latency and
 large HTML rendering can still limit throughput. Holding the rotation row

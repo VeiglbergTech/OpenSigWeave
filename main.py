@@ -2217,6 +2217,16 @@ async def resolve_signature_engine(
     providers without sharing this SQLAlchemy Session across simultaneous tasks.
     Both HTTP routes and mail adapters use this same execution path.
     """
+    # SQLite connections may be bound to the creating thread and in-memory
+    # databases are per-connection. Transferring an injected SQLite Session
+    # to a worker can corrupt request isolation or fail to find its tables.
+    # Keep SQLite session work on its originating event loop; PostgreSQL is
+    # the supported scalable production path with worker offloading.
+    if isinstance(db, Session) and db.get_bind().dialect.name == "sqlite":
+        return await _signature_engine_service().resolve(
+            db, engine_request, commit_selection=commit_selection
+        )
+
     def process():
         return asyncio.run(_signature_engine_service().resolve(
             db, engine_request, commit_selection=commit_selection
