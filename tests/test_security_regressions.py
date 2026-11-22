@@ -331,7 +331,8 @@ class SecurityRegressionTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
 
-        self.assertIn('${APP_BIND_ADDRESS:-127.0.0.1}:8085:8085', compose)
+        self.assertIn('${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8085}:8085', compose)
+        self.assertIn('APP_PORT="8085"', env_example)
         self.assertIn('APP_BIND_ADDRESS="127.0.0.1"', env_example)
         self.assertIn("private-interface IP", readme)
         self.assertIn("only from the reverse-proxy private IP", readme)

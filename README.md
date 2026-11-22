@@ -50,7 +50,9 @@ cd OpenSigWeave
 ./update.sh
 ```
 
-`dev` and `beta` build Docker images locally; the updater also builds checked-out `main` locally until an independently verified GHCR release mechanism is introduced. The installer never switches channels automatically. Automatic updates are **blocked** unless a complete encrypted and verified age backup can be created on configured remote storage. New database migrations are serialized using a one-off container; no volume removal, automatic rollback, or mail server reconfiguration occurs.
+`dev` and `beta` build Docker images locally; the updater also builds checked-out `main` locally until an independently verified GHCR release mechanism is introduced. The installer never switches channels automatically. Automatic updates are **blocked** unless a complete encrypted and verified age backup can be created on configured remote storage.
+
+For a remote reverse proxy, bind `APP_BIND_ADDRESS` to the application host's **private-interface IP** and allow the application TCP port **only from the reverse-proxy private IP** at the host firewall. `TRUSTED_PROXY_CIDRS` controls trusted forwarded client-IP attribution but **does not make the proxy network boundary for you**. New database migrations are serialized using a one-off container; no volume removal, automatic rollback, or mail server reconfiguration occurs.
 
 For the security constraints, backup prerequisites and recovery limits, see [installation and update reference](docs/INSTALL_UPDATE.md) and the [documentation repository](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev/src/content/docs/installation).
 
