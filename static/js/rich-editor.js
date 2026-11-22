@@ -390,7 +390,7 @@
                 try { asset = new URL(url, window.location.origin); }
                 catch (_) { throw new Error("Invalid managed image URL."); }
                 if (asset.origin !== window.location.origin ||
-                    !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
+                    !/^\/signature-assets\/[a-f0-9]{64}\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
                     asset.search || asset.hash || editor.isReadOnly) {
                     throw new Error("Only local managed signature images may be inserted.");
                 }
