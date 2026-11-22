@@ -523,7 +523,7 @@ async function main() {
     // previous instance's HTML for the asynchronously retrieved saved version.
     await page.waitForFunction(() => {
       const html = document.querySelector("#signature-html-source")?.value || "";
-      return /font-family:\\s*Georgia/i.test(html) && /font-size:\\s*17px/i.test(html);
+      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17px/i.test(html);
     });
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
