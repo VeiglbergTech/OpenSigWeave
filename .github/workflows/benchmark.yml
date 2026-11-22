@@ -75,12 +75,18 @@ jobs:
           set -a
           source .env
           set +a
+          # Prevent a saturated app worker from contaminating later stages.
+          # Keep the disposable PostgreSQL dataset (and rotation state) intact.
           for mode in static rotation; do
-            python scripts/benchmark_engine.py \
-              --domain "bench-$mode.example.test" \
-              --levels "$levels" --requests-per-level "$attempts" \
-              --sender-count 128 --warmup 10 \
-              --output "benchmark-results/$mode.json"
+            for level in ${levels//,/ }; do
+              docker compose restart opensigweave
+              docker compose up -d --wait --wait-timeout 120
+              python scripts/benchmark_engine.py \
+                --domain "bench-$mode.example.test" \
+                --levels "$level" --requests-per-level "$attempts" \
+                --sender-count 128 --warmup 10 \
+                --output "benchmark-results/$mode-$level.json"
+            done
           done
       - name: Summarize benchmark measurements
         if: always()

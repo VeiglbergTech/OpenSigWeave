@@ -26,7 +26,11 @@ successes, failures and error types, successful requests per second, P50/P95/P99
 mean and maximum HTTP latency, concurrency and visible CPU count.
 A request only counts as successful if it returns non-empty HTML containing
 BENCHMARK_SIGNATURE. Measured errors and timeouts are included as explicit warnings while all stages
-continue to run. A successful workflow does not mean every request succeeded;
+continue to run.
+The application container is restarted before each separate concurrency stage;
+this prevents the 50-request stress result from leaving the single Uvicorn worker
+unresponsive and invalidating the next case. PostgreSQL fixtures and rotation
+state are retained across stages. A successful workflow does not mean every request succeeded;
 read the measurements. For an explicit strict zero-error run, pass
 --fail-on-errors to the client. Setup/configuration errors still fail CI.
 This independent benchmark is not a mandatory dev-to-beta release gate:
