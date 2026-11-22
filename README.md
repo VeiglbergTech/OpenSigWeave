@@ -35,28 +35,24 @@ This transition intentionally leaves existing source documents in place until cr
 
 Mailcow/Rspamd still requires live staging acceptance before production mail-flow use. This project does not replace a mail server and does not provide sender authorization.
 
-## Quick start (beta / release candidate)
+## Installation and channel-bound updates (release candidate)
 
-Requirements: Linux, Docker Engine, Docker Compose v2, Git and an HTTPS reverse proxy.
+The new installer creates a protected local environment, checks host prerequisites and uses the existing scrypt administrator hash mechanism. It does not configure or require mailcow.
 
 ```bash
-git clone --branch beta --single-branch https://github.com/VeiglbergTech/OpenSigWeave.git
+git clone --branch beta https://github.com/VeiglbergTech/OpenSigWeave.git
 cd OpenSigWeave
-cp .env.example .env
-chmod 600 .env
-python scripts/hash_password.py
+./install.sh
+./generate_config.sh --check
+./update.sh --check
+./update.sh --prefetch
+./update.sh --dry-run
+./update.sh
 ```
 
-Generate **independent** random values for the PostgreSQL password, session signing key and engine API key. Configure at minimum `POSTGRES_PASSWORD`, `SECRET_KEY`, `ENGINE_API_KEY`, `APP_ALLOWED_HOSTS`, `LOCAL_ADMIN_EMAIL` and `LOCAL_ADMIN_PASSWORD_HASH` in `.env`. Set an optional distinct `MANAGEMENT_API_KEY` only when trusted unattended administration is required.
+`dev` and `beta` build Docker images locally; the updater also builds checked-out `main` locally until an independently verified GHCR release mechanism is introduced. The installer never switches channels automatically. Automatic updates are **blocked** unless a complete encrypted and verified age backup can be created on configured remote storage. New database migrations are serialized using a one-off container; no volume removal, automatic rollback, or mail server reconfiguration occurs.
 
-```bash
-docker compose config --quiet
-docker compose up -d --build
-docker compose ps
-docker compose logs --tail=100 opensigweave
-```
-
-The app listens on container port 8085, bound to the host loopback by default; PostgreSQL is not exposed to the host. For a remote reverse proxy, set `APP_BIND_ADDRESS` to the application host's **private-interface IP** and restrict TCP/8085 **only from the reverse-proxy private IP** with the host firewall. `TRUSTED_PROXY_CIDRS` controls forwarded client-IP attribution but **does not make the proxy network boundary for you**. Consult the [upgrade instructions](docs/UPGRADE.md), [Mailcow staging integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) and [full backup notes](docs/BACKUP_RESTORE_DESIGN.md) before a deployment or upgrade.
+For the security constraints, backup prerequisites and recovery limits, see [installation and update reference](docs/INSTALL_UPDATE.md) and the [documentation repository](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev/src/content/docs/installation).
 
 ## Branch and release policy
 

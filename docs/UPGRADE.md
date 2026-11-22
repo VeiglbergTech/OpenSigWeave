@@ -1,5 +1,7 @@
 # Upgrade and recovery guide (v2026.11 / v1.0 candidate)
 
+> **Deployment automation:** The new `./install.sh`, `./generate_config.sh` and `./update.sh` workflows are described in [INSTALL_UPDATE.md](INSTALL_UPDATE.md) and in [OpenSigWeave-Docs](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev/src/content/docs/installation). This older candidate checklist remains for manual verification and recovery.
+
 **Status:** Candidate procedure, not a production acceptance certificate. Supported documented deployment path: standalone Docker Compose stack on `beta`. Never upgrade directly from `dev` or make changes in `main` as part of the candidate audit. Keep Mailcow/Rspamd integration disabled in production until the [adapter acceptance matrix](MAILCOW_RSPAMD_INTEGRATION.md) has passed.
 
 ## 1. Preflight and backup

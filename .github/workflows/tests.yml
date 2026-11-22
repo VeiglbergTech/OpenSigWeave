@@ -90,6 +90,14 @@ jobs:
           printf 'Alpine CSP SRI: sha384-'
           openssl dgst -sha384 -binary /tmp/alpine-csp.min.js | base64 -w0
           echo
+      - name: Check installer/updater shell entrypoints
+        run: |
+          bash -n install.sh generate_config.sh update.sh
+          python3 -m py_compile scripts/deploy_common.py scripts/config_manager.py scripts/install_manager.py scripts/update_manager.py
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck install.sh generate_config.sh update.sh
+          python3 -m unittest discover -s tests -p test_deployment_manager.py -v
       - name: Check backup automation shell syntax
         run: bash -n scripts/backup_to_mounted_storage.sh
       - name: Test scheduled backup remote-filesystem guards
