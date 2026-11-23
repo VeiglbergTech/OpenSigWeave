@@ -19,7 +19,7 @@ class BackupCliTests(unittest.TestCase):
         self.assertEqual(
             set(command_actions[0].choices),
             {"create", "restore", "package", "verify", "decrypt", "prune",
-             "create-application", "verify-application", "restore-staging"},
+             "create-application", "verify-application", "restore-staging", "preupdate"},
         )
 
     def test_backup_prune_is_dry_run_by_default(self):

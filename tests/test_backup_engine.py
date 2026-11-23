@@ -101,7 +101,7 @@ class ContainerBackupTests(unittest.TestCase):
             with self.assertRaisesRegex(backup_engine.BackupEngineError, "identity"):
                 backup_engine.create_application_backup(lambda *_: None)
         with patch.dict(os.environ, {"BACKUP_AGE_RECIPIENT": ""}):
-            with self.assertRaisesRegex(backup_engine.BackupEngineError, "RECIPIENT"):
+            with self.assertRaisesRegex(backup_engine.BackupEngineError, "recipient"):
                 backup_engine.create_application_backup(lambda *_: None)
 
     def test_never_overwrite_existing_restore_target(self):
