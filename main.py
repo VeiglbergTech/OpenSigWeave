@@ -1947,12 +1947,19 @@ async def apply_admin_import_endpoint(request: Request, db: Session = Depends(ge
         raise HTTPException(status_code=422, detail=str(exc))
 
 
+def _signature_image_upload_limit(db: Session) -> int:
+    """Resolve configured limit; direct calls without injection use the safe default."""
+    if isinstance(db, Session) and branding_context(db)["large_image_uploads"]:
+        return MAX_SIGNATURE_IMAGE_BYTES
+    return DEFAULT_SIGNATURE_IMAGE_BYTES
+
+
 @app.post("/api/admin/signature-assets", status_code=201)
 async def upload_signature_asset(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
-    image_limit = MAX_SIGNATURE_IMAGE_BYTES if branding_context(db)["large_image_uploads"] else DEFAULT_SIGNATURE_IMAGE_BYTES
+    image_limit = _signature_image_upload_limit(db)
     try:
         filename = signature_file_store.write_image(await request.body(), content_type, max_bytes=image_limit)
     except (SignatureStorageError, TypeError) as exc:
@@ -1969,7 +1976,7 @@ def import_signature_asset_url(request: Request, payload: ImageUrlImportRequest,
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     try:
-        image_limit = MAX_SIGNATURE_IMAGE_BYTES if branding_context(db)["large_image_uploads"] else DEFAULT_SIGNATURE_IMAGE_BYTES
+        image_limit = _signature_image_upload_limit(db)
         filename = import_image_from_url(signature_file_store, payload.url, max_bytes=image_limit)
     except SignatureImageImportError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

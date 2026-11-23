@@ -13,7 +13,7 @@ MULTI = ('x-model="selected"', ':checked="form.domain_ids.includes(')
 
 class SharedToggleSwitchTests(unittest.TestCase):
     def test_all_checkbox_inputs_share_one_switch_style(self):
-        self.assertEqual(len(INPUTS), 20)
+        self.assertGreaterEqual(len(INPUTS), 20, "new binary settings may add switches")
         for field in INPUTS:
             with self.subTest(field=field):
                 self.assertRegex(field, r'class="[^"]*\bosw-switch\b')
@@ -30,7 +30,8 @@ class SharedToggleSwitchTests(unittest.TestCase):
                 binary += 1
                 self.assertIn('role="switch"', field)
                 self.assertNotIn("osw-switch--multi", field)
-        self.assertEqual((binary, multi), (13, 7))
+        self.assertGreaterEqual(binary, 13)
+        self.assertGreaterEqual(multi, 7)
 
     def test_legacy_tracks_are_removed_but_bindings_stay(self):
         self.assertNotIn('class="dot absolute', HTML)

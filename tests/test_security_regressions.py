@@ -152,7 +152,10 @@ class SecurityRegressionTests(unittest.TestCase):
         self.assertIn("class SignatureScheduleDB", (ROOT / "models.py").read_text(encoding="utf-8"))
 
     def test_release_branding_asset_is_packaged_and_upload_budget_is_bounded(self):
-        self.assertIn('"/api/admin/branding": 2 * 1024 * 1024', self.source)
+        # Three optional 12 MiB images require a larger but bounded base64 request.
+        self.assertIn('"/api/admin/branding": 51 * 1024 * 1024', self.source)
+        self.assertIn('large_image_uploads', self.source)
+        self.assertIn('DEFAULT_SIGNATURE_IMAGE_BYTES', self.source)
         dockerignore = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
         gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertNotIn("branding/logo.png", dockerignore)

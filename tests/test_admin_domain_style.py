@@ -38,9 +38,12 @@ class AdminDomainParityTests(unittest.TestCase):
             with self.subTest(selector=selector):
                 self.assertIn(selector, CSS)
         for name in ("identity-providers", "domains", "signatures", "signature-groups",
-                     "rules", "scheduling", "branding", "backups", "import-export", "system"):
+                     "rules", "branding", "backups", "import-export", "system"):
             with self.subTest(tab=name):
                 self.assertRegex(HTML, r'x-show="adminTab === \'%s\'".*?class="osw-admin-section' % re.escape(name))
+
+        self.assertNotIn("adminTab === 'scheduling'", HTML)
+        self.assertIn('x-model="form.time_limited"', HTML)
 
     def test_admin_headings_are_uniform(self):
         for section in ("Branding", "Import / Export", "Backup Management", "System Status"):

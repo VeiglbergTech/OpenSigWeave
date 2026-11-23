@@ -331,7 +331,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
             self.assertEqual(raised.exception.status_code, 403)
             response = main.import_signature_asset_url(self.admin_request, body)
         self.assertEqual(response, {"url": "/signature-assets/" + "a" * 64 + ".png"})
-        importer.assert_called_once_with(main.signature_file_store, body.url)
+        importer.assert_called_once_with(main.signature_file_store, body.url, max_bytes=6 * 1024 * 1024)
 
     def test_engine_route_maps_service_errors_to_stable_http_statuses(self):
         cases = (
