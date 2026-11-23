@@ -1881,7 +1881,10 @@ async function main() {
     const scopePayload = JSON.parse(scopeResponse.request().postData() || "{}");
     assert.equal(scopePayload.settings?.OIDC_SCOPES, "openid email profile groups offline_access",
       "OIDC form must send the current scope value instead of an earlier x-model snapshot");
-    assert.equal(scopeResponse.status(), 200, "OIDC provider update must succeed; response: " + await scopeResponse.text());
+    // Do not read response.text() on a successful Playwright response:
+    // the browser's body-reading promise may outlive the request and stall CI.
+    assert.equal(scopeResponse.status(), 200,
+      "OIDC provider update must succeed (HTTP " + scopeResponse.status() + ")");
     await page.reload();
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
 
