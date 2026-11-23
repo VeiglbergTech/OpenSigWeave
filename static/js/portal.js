@@ -364,7 +364,10 @@ function identityProviderManager() { return {
                     if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
                 },
                 openImageImportDialog() {
-                    if (!this.editing || this.isViewingHistoricalVersion || !signatureRichEditor) return;
+                    // CKEditor mounts its URL toolbar button before the asynchronous adapter
+                    // is assigned to signatureRichEditor. Permit the dialog to open during
+                    // that short interval; importImageFromUrl still validates editor readiness.
+                    if (!this.editing || this.isViewingHistoricalVersion) return;
                     this.imageImportUrl = '';
                     this.imageImportOpen = true;
                 },
