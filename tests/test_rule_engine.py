@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 
 from core.rules import (
     RuleCondition,
@@ -120,6 +121,30 @@ class SignatureRuleTests(unittest.TestCase):
             RuleCondition("sender_not_equals", "alice@example.org"),
         ), "NONE")
         self.assertEqual(evaluate_rules([fallback, failed], self.context), fallback)
+
+
+    def test_active_timed_rule_overrides_higher_priority_always_rule(self):
+        default = SignatureRule("default", 100, (), "SIGNATURE")
+        timed = SignatureRule("christmas", -100, (
+            RuleCondition("time_window", "2026-12-27T00:00:00+00:00", key="2026-12-01T00:00:00+00:00"),
+            RuleCondition("domain_equals", "example.org"),
+        ), "GROUP")
+        during = RuleContext(sender="alice@example.org", domain="example.org",
+                             now=datetime(2026, 12, 24, tzinfo=timezone.utc))
+        before = RuleContext(sender="alice@example.org", domain="example.org",
+                             now=datetime(2026, 11, 24, tzinfo=timezone.utc))
+        after = RuleContext(sender="alice@example.org", domain="example.org",
+                            now=datetime(2026, 12, 27, tzinfo=timezone.utc))
+        self.assertEqual(evaluate_rules([default, timed], during), timed)
+        self.assertEqual(evaluate_rules([default, timed], before), default)
+        self.assertEqual(evaluate_rules([default, timed], after), default)
+
+    def test_invalid_time_window_never_matches(self):
+        fallback = SignatureRule("fallback", 1, (), "NONE")
+        invalid = SignatureRule("bad-window", 100, (
+            RuleCondition("time_window", "not-a-time", key="broken"),
+        ), "SIGNATURE")
+        self.assertEqual(evaluate_rules([invalid, fallback], self.context), fallback)
 
     def test_unknown_condition_is_rejected(self):
         invalid = SignatureRule(

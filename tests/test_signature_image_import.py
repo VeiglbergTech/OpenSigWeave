@@ -34,7 +34,8 @@ class _FakeTLSContext:
 
 
 class _Store:
-    def write_image(self, content, content_type):
+    def write_image(self, content, content_type, *, max_bytes):
+        assert max_bytes == 6 * 1024 * 1024
         assert content == b"\x89PNG\r\n\x1a\n" + b"hello"
         assert content_type == "image/png"
         return "asset.png"

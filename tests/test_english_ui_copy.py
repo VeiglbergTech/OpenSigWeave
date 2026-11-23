@@ -43,7 +43,6 @@ class EnglishUICopyTests(unittest.TestCase):
             "Signatures",
             "Signature Groups",
             "Rules",
-            "Schedules",
             "Branding",
             "Backup",
             "Import / Export",
@@ -54,7 +53,8 @@ class EnglishUICopyTests(unittest.TestCase):
         ):
             with self.subTest(label=label):
                 self.assertIn(label, html)
-        self.assertIn(">Schedules</button>", html)
+        self.assertNotIn(">Schedules</button>", html)
+        self.assertIn("Scheduling priority", html)
         self.assertIn(">Backup</button>", html)
 
     def test_important_actions_and_warnings(self):

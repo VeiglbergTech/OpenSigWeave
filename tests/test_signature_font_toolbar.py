@@ -11,7 +11,7 @@ CSS = (ROOT / "static/css/portal.css").read_text(encoding="utf-8")
 
 
 class SignatureFontToolbarTests(unittest.TestCase):
-    def test_shared_ck_editor_font_dropdowns(self):
+    def test_shared_ck_editor_editable_font_inputs(self):
         self.assertIn('componentFactory.add("signatureFontFamily"', JS)
         self.assertIn('componentFactory.add("signatureFontSize"', JS)
         self.assertIn('"signatureFontFamily", "signatureFontSize"', JS)
@@ -46,14 +46,16 @@ class SignatureFontToolbarTests(unittest.TestCase):
                 self.assertTrue(stack.startswith(name + ","))
                 self.assertRegex(stack, r", (?:sans-serif|serif|monospace)$")
                 self.assertEqual(stack, legacy_stacks.get(name, stack))
-        self.assertIn('editor.execute("fontFamily", { value: option[0] })', JS)
-        self.assertIn('value.split(",")[0]', JS)
+        self.assertIn('createInputControl(locale', JS)
+        self.assertIn('document.createElement("datalist")', JS)
+        self.assertIn('editor.execute(commandName, { value: parsed })', JS)
         self.assertIn('supportAllValues: true', JS)
 
     def test_custom_size_goes_through_original_font_size_command(self):
         self.assertIn('[8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36]', JS)
-        self.assertIn('dropdown.panelView.children.add(input)', JS)
-        self.assertIn('editor.execute("fontSize", { value })', JS)
+        self.assertNotIn('dropdown.panelView.children.add(input)', JS)
+        self.assertIn('editor.execute(commandName, { value: parsed })', JS)
+        self.assertIn('input.setAttribute("inputmode", "decimal")', JS)
         self.assertIn('supportAllValues: true', JS)
         self.assertIn('match[1].replace(",", ".")', JS)
         self.assertIn('size < 6 || size > 96', JS)
