@@ -1753,10 +1753,25 @@ async function main() {
     const createSsoProvider = page.waitForResponse(response =>
       response.request().method() === "POST"
       && response.url().endsWith("/api/admin/identity-providers")
-      && response.status() === 201
     );
+    // Do not hide a 4xx/5xx response behind the generic response timeout.
+    // Avoid logging credentials or the raw POST body when diagnosing a failure.
     await ssoProviderDialog.getByRole("button", { name: "Save", exact: true }).click();
-    await createSsoProvider;
+    let createSsoResponse;
+    try {
+      createSsoResponse = await createSsoProvider;
+    } catch (error) {
+      const diagnostic = await ssoProviderDialog.evaluate(el => {
+        const state = window.Alpine?.$data(el);
+        return { id: state?.form?.id, display_name: state?.form?.display_name,
+          provider_type: state?.form?.provider_type,
+          oidc_field_count: el.querySelectorAll('div[x-show="form.provider_type === \'oidc\'"] input').length };
+      });
+      throw new Error("No identity-provider POST after Save. Non-secret form state: "
+        + JSON.stringify(diagnostic), { cause: error });
+    }
+    assert.equal(createSsoResponse.status(), 201,
+      "Identity-provider POST failed with HTTP " + createSsoResponse.status());
     const ssoProviderRow = ssoProviderPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Login Provider" });
     await ssoProviderRow.waitFor();
 
