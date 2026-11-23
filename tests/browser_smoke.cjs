@@ -60,7 +60,7 @@ async function main() {
         body: style("body"),
         navigation: style("nav"),
         card: style(".bg-gray-800.rounded-lg, .bg-gray-800.rounded-xl"),
-        field: style("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]), select"),
+        field: style("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=color]), select, textarea"),
         primary: style("button.bg-blue-600"),
         tableHead: style(".osw-table-scroll thead"),
         editor: style("#user-rich-editor .ck-editor__editable"),
@@ -69,8 +69,9 @@ async function main() {
         modeScheme: tokens.colorScheme,
         bodyRatio: contrast(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor),
         fieldRatio: (() => {
-          const field = [...document.querySelectorAll("input,select")].find(node =>
-            node.getClientRects().length && node.type !== "checkbox" && node.type !== "hidden");
+          const field = [...document.querySelectorAll("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=color]), select, textarea")]
+            .find(node => node.getClientRects().length && getComputedStyle(node).visibility === "visible"
+              && Number(getComputedStyle(node).opacity) > .5);
           return field ? contrast(getComputedStyle(field).color, getComputedStyle(field).backgroundColor) : null;
         })(),
         primaryRatio: (() => {
