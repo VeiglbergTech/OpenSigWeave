@@ -47,15 +47,22 @@ def env_text(values):
 
 class ConfigTests(unittest.TestCase):
     def test_config_manager_standalone_script_resolves_auth_config(self):
-        # The installer runs config_manager.py directly from scripts/.
-        # Reproduce that import layout without inheriting unittest's sys.path.
+        # Exercise the standalone import layout in an isolated Python process.
         script = (
             "import sys; "
             f"sys.path.insert(0, {str(ROOT / 'scripts')!r}); "
             "import config_manager; "
             "from auth_config import hash_local_admin_password, is_valid_email; "
             "assert is_valid_email('admin@example.com'); "
-            "assert hash_local_admin_password('correct horse battery staple').startswith('scrypt    def test_new_install_auto_generates_independent_secrets_and_scrypt(self):
+            "assert hash_local_admin_password('correct horse battery staple').startswith('scrypt')"
+        )
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", script],
+            cwd=ROOT, capture_output=True, text=True, timeout=20,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_new_install_auto_generates_independent_secrets_and_scrypt(self):
         from auth_config import verify_local_admin_password
         with patch.object(cfg.sys, "stdin", Terminal(True)), \
              patch.object(cfg, "prompt", side_effect=["signature.example.test", "admin@example.test"]), \
