@@ -433,11 +433,11 @@ async function main() {
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     await page.goBack();
-    await page.getByRole("heading", { name: "Custom Override Signature" }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "Personal Signature Override" }).waitFor({ state: "visible" });
     await page.goForward();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     await page.goto(baseURL + "/?view=admin&section=system");
-    await page.getByRole("heading", { name: "System status" }).waitFor({ state: "visible" });
+    await page.getByRole("heading", { name: "System Status" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Domains", exact: true }).click();
 
     checkpoint("admin: open");
@@ -447,11 +447,11 @@ async function main() {
       { tab: "Signatures", heading: "Signature Catalog" },
       { tab: "Signature Groups", heading: "Signature Groups" },
       { tab: "Rules", heading: "Signature Rules" },
-      { tab: "Scheduling", heading: "Signature Scheduling" },
+      { tab: "Schedules", heading: "Schedules" },
       { tab: "Branding", heading: "Branding" },
-      { tab: "Backups", heading: "Backup management" },
+      { tab: "Backup", heading: "Backup Management" },
       { tab: "Import / Export", heading: "Import / Export" },
-      { tab: "System", heading: "System status" },
+      { tab: "System", heading: "System Status" },
     ];
     // The other tabs keep their relative positions, with Backups immediately before Import / Export.
     const adminNavigation = await page.evaluate(() => [...document.querySelectorAll("button")]
@@ -459,7 +459,7 @@ async function main() {
       .map(button => button.textContent.trim()));
     assert.deepEqual(adminNavigation, [
       "System", "Identity Providers", "Domains", "Signatures", "Signature Groups",
-      "Rules", "Scheduling", "Branding", "Backups", "Import / Export",
+      "Rules", "Schedules", "Branding", "Backup", "Import / Export",
     ]);
     assert.equal(await page.getByRole("button", { name: "Imports", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Exports", exact: true }).count(), 0);
@@ -486,12 +486,12 @@ async function main() {
       await page.getByRole("heading", { name: "Export", exact: true }).waitFor();
     }
     // Without an installed root-side operator, the backup tab must fail closed.
-    await page.getByRole("button", { name: "Backups", exact: true }).click();
+    await page.getByRole("button", { name: "Backup", exact: true }).click();
     const backupPanel = page.locator('[x-data="backupManager"]');
     await backupPanel.getByText(/Backup Rules cannot run|protected host backup operator is unavailable/i).first().waitFor();
     await expectBackupActionsDisabled();
     async function expectBackupActionsDisabled() {
-      assert.equal(await backupPanel.getByRole("button", { name: "Create backup" }).isDisabled(), true);
+      assert.equal(await backupPanel.getByRole("button", { name: "Run Backup" }).isDisabled(), true);
       assert.equal(await backupPanel.getByRole("button", { name: "Save backup settings" }).isDisabled(), true);
     }
 
@@ -511,7 +511,7 @@ async function main() {
     assert.match(uiCopy, /Historical versions are read-only/);
     assert.match(uiCopy, /HTTPS images only/);
     assert.match(uiCopy, /Imports never overwrite existing records/);
-    assert.match(uiCopy, /Outlook-spezifische Conditional Comments/);
+    assert.match(uiCopy, /Outlook-specific conditional comments/);
     assert.match(uiCopy, /External identity providers and mail servers are not checked/);
     const schedulingHelp = page.locator('[x-data="scheduleManager"] details').filter({ hasText: "Scheduling priority" });
     assert.equal(await schedulingHelp.count(), 1, "schedule precedence must remain available on demand");
@@ -527,23 +527,23 @@ async function main() {
       return next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom;
     });
     assert.ok(cardGap >= 20, "separate system context cards need visible spacing: " + cardGap);
-    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     await page.route("**/api/admin/system-status", route => route.fulfill({
       status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Synthetic dependency outage" }),
     }));
-    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByRole("alert").waitFor({ state: "visible" });
     assert.match(await systemPanel.getByRole("alert").textContent(), /Synthetic dependency outage/);
     await systemPanel.getByText("Unavailable", { exact: true }).first().waitFor();
     await page.unroute("**/api/admin/system-status");
-    await systemPanel.getByRole("button", { name: "Refresh status" }).click();
+    await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
-    await page.getByRole("button", { name: "Choose ZIP file", exact: true }).waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Choose ZIP File", exact: true }).waitFor({ state: "visible" });
     await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    await page.getByRole("button", { name: "Schedules", exact: true }).click();
     // Return to the shared Import / Export view after visiting other sections.
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
 
@@ -1026,7 +1026,7 @@ async function main() {
     // relying on public internet access in CI. Backend SSRF checks have unit tests.
     checkpoint("image URL toolbar import: validation, insertion, preview and persistence");
     const urlImportToolbarButton = signatureToolbar.getByRole("button", {
-      name: "Import Picture from URL", exact: true
+      name: "Import Image from URL", exact: true
     });
     await urlImportToolbarButton.waitFor({ state: "visible" });
     assert.equal(await urlImportToolbarButton.isEnabled(), true);
@@ -1055,7 +1055,7 @@ async function main() {
     await page.keyboard.type("BEFOREAFTER");
     for (let index = 0; index < 5; index++) await page.keyboard.press("ArrowLeft");
     await urlImportToolbarButton.click();
-    const imageImportDialog = signaturePanel.getByRole("dialog", { name: "Import Picture from URL" });
+    const imageImportDialog = signaturePanel.getByRole("dialog", { name: "Import Image from URL" });
     await assertFloatingDialog(imageImportDialog, "image URL importer");
     await assertModalLayout(page, imageImportDialog, "image-url-import");
     assert.equal(await signatureDialog.locator('input[placeholder="https://example.com/logo.png"]').count(), 0,
@@ -1327,7 +1327,7 @@ async function main() {
     checkpoint("signature version history/restore: complete");
 
     // Exercise scheduling create/update/delete through the real administrator UI.
-    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    await page.getByRole("button", { name: "Schedules", exact: true }).click();
     const schedulePanel = page.locator('[x-data="scheduleManager"]');
     await schedulePanel.getByRole("button", { name: "+ Add Schedule", exact: true }).click();
     const scheduleDialog = schedulePanel.locator('[x-show="editing"][role="dialog"]');
@@ -1405,7 +1405,7 @@ async function main() {
 
     // A browser reload must not discard or change any saved schedule fields.
     await page.reload();
-    await page.getByRole("button", { name: "Scheduling", exact: true }).click();
+    await page.getByRole("button", { name: "Schedules", exact: true }).click();
     scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
     await scheduleRow.waitFor();
     schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
@@ -1476,7 +1476,7 @@ async function main() {
         && favicon.getAttribute("src").startsWith("data:image/x-icon;base64,");
     });
     await assertCompactBrandingPreviews(brandingPanel, "uploaded branding previews");
-    const brandingSave = brandingPanel.getByRole("button", { name: "Save Branding", exact: true });
+    const brandingSave = brandingPanel.getByRole("button", { name: "Save Changes", exact: true });
     await Promise.all([
       page.waitForNavigation({ waitUntil: "domcontentloaded" }),
       brandingSave.click(),
@@ -1541,7 +1541,7 @@ async function main() {
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("button", { name: "Branding", exact: true }).click();
     brandingPanel = page.locator('[x-data="brandingManager"]');
-    const resetButton = brandingPanel.getByRole("button", { name: "Branding auf Standard zurücksetzen", exact: true });
+    const resetButton = brandingPanel.getByRole("button", { name: "Reset to Default", exact: true });
     const resetDialog = page.locator('[x-data="confirmModal"] [role="alertdialog"]');
     await resetButton.click();
     await resetDialog.waitFor({ state: "visible" });
@@ -1558,7 +1558,7 @@ async function main() {
     }));
     await resetButton.click();
     await resetDialog.waitFor({ state: "visible" });
-    assert.match(await resetDialog.locator("#osw-confirm-description").textContent(), /Light- und Dark-Mode-Logos/);
+    assert.match(await resetDialog.locator("#osw-confirm-description").textContent(), /light and dark mode logos/);
     await resetDialog.getByRole("button", { name: "Confirm", exact: true }).click();
     await page.waitForFunction(() => document.body.dataset.appColor === "#ff7043"
       && document.querySelector(".app-brand")?.textContent === "OpenSigWeave"
@@ -2063,9 +2063,9 @@ async function main() {
           ["Signatures", '[x-data="signatureManager"]'],
           ["Signature Groups", '[x-data="signatureGroupManager"]'],
           ["Rules", '[x-data="ruleManager"]'],
-          ["Scheduling", '[x-data="scheduleManager"]'],
+          ["Schedules", '[x-data="scheduleManager"]'],
           ["Branding", '[x-data="brandingManager"]'],
-          ["Backups", '[x-data="backupManager"]'],
+          ["Backup", '[x-data="backupManager"]'],
           ["Import / Export", '[x-show="adminTab === \'import-export\'"]'],
           ["System", '[x-data="systemStatusManager"]'],
         ]) {
@@ -2123,10 +2123,10 @@ async function main() {
           "signature font dropdown must offer Georgia on every viewport and theme");
         assert.equal(await fontControls[1].locator('option[value="18"]').count(), 1,
           "signature font size dropdown must offer exact pixel presets");
-        const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Picture from URL" });
+        const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Image from URL" });
         await urlButton.scrollIntoViewIfNeeded();
         await urlButton.click();
-        const urlSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Import Picture from URL"]';
+        const urlSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Import Image from URL"]';
         await inspect(urlSelector, "image-url-import");
         await close(urlSelector);
         await close(signatureSelector);
@@ -2144,7 +2144,7 @@ async function main() {
         const ruleSelector = '[x-data="ruleManager"] [role="dialog"]';
         await inspect(ruleSelector, "rule");
         await close(ruleSelector);
-        await nav("Scheduling");
+        await nav("Schedules");
         await visualPage.getByRole("button", { name: "+ Add Schedule" }).click();
         const scheduleSelector = '[x-data="scheduleManager"] [role="dialog"]';
         await inspect(scheduleSelector, "schedule");

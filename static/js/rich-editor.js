@@ -231,8 +231,8 @@
         const button = document.createElement("button");
         button.type = "button";
         button.className = "ck ck-button ck-off osw-editor-import-url-button";
-        button.setAttribute("aria-label", "Import Picture from URL");
-        button.title = "Import Picture from URL";
+        button.setAttribute("aria-label", "Import Image from URL");
+        button.title = "Import Image from URL";
 
         const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
         for (const [name, value] of Object.entries({
@@ -250,7 +250,7 @@
         addShape("path", { d: "m4 17 5-5 4 4 2-2 5 4" });
         const label = document.createElement("span");
         label.className = "ck ck-button__label";
-        label.textContent = "Import Picture from URL";
+        label.textContent = "Import Image from URL";
         button.append(icon, label);
         const update = () => { button.disabled = editor.isReadOnly; };
         editor.on("change:isReadOnly", update);

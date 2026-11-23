@@ -139,7 +139,7 @@ window.fetch = (resource, options = {}) => {
         async function saveUserSignature() {
             const finalHtml = document.getElementById('raw-html-editor').value;
             const res = await fetch('/api/my-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: finalHtml }) });
-            if(res.ok) notify("Signature saved successfully!"); else notify("Failed to save.", "error");
+            if(res.ok) notify("Signature saved."); else notify("Could not save signature.", "error");
         }
 
         function portalShell() {
@@ -267,7 +267,7 @@ function identityProviderManager() { return {
         const payload={id:this.form.id,display_name:this.form.display_name,provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,settings:{...this.form.settings}};
         const url=this.form.original_id ? '/api/admin/identity-providers/'+encodeURIComponent(this.form.original_id) : '/api/admin/identity-providers';
         const response=await fetch(url,{method:this.form.original_id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        if(!response.ok) { notify('Could not save provider: '+(await response.text()),'error'); return; }
+        if(!response.ok) { notify('Could not save identity provider: '+(await response.text()),'error'); return; }
         notify('Identity provider saved.');
         this.editing=false; await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
     },
@@ -279,7 +279,7 @@ function identityProviderManager() { return {
     async deleteProvider(provider) {
         if (!await oswAskConfirmation({ title: 'Delete identity provider?', message: 'Delete identity provider ' + provider.display_name + '? Unassign it from all domains first.' })) return;
         const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id),{method:'DELETE'});
-        if(!response.ok) { notify('Could not delete provider: '+(await response.text()),'error'); return; }
+        if(!response.ok) { notify('Could not delete identity provider: '+(await response.text()),'error'); return; }
         notify('Identity provider deleted.'); await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
     }
 } }
@@ -357,7 +357,7 @@ function identityProviderManager() { return {
                         signatureRichEditor.insertImage(localImageUrl.href);
                         this.form.html_content = signatureRichEditor.getData();
                         this.closeImageImportDialog();
-                        notify('Image imported into local storage and inserted into the editor.');
+                        notify('Image added to the signature.');
                     } catch (error) {
                         if (!controller.signal.aborted) {
                             notify(error && error.message ? error.message : 'Could not import image.', 'error');
@@ -934,8 +934,8 @@ function identityProviderManager() { return {
                 async resetAll() {
                     if (this.saving) return;
                     const confirmed = await oswAskConfirmation({
-                        title: 'Branding auf Standard zurücksetzen?',
-                        message: 'Alle individuellen Branding-Anpassungen (Name, Farben, Light- und Dark-Mode-Logos sowie Favicon) werden dauerhaft auf das ursprüngliche OpenSigWeave-Design zurückgesetzt. Domains, Signaturen, Regeln, Benutzer und deine Theme-Auswahl bleiben unverändert.'
+                        title: 'Reset Branding to Default?',
+                        message: 'This will reset the application name, accent color, light and dark mode logos, and favicon to the OpenSigWeave defaults. Domains, signatures, rules, users, and your theme preference will not change.'
                     });
                     if (!confirmed || this.saving) return;
                     this.saving = true;
@@ -963,9 +963,9 @@ function identityProviderManager() { return {
                         window.dispatchEvent(new CustomEvent('opensigweave-branding-change', {
                             detail: { app_color: defaults.app_color, version: this.cacheKey }
                         }));
-                        notify('OpenSigWeave-Branding wurde auf Standard zurückgesetzt.');
+                        notify('Branding reset to default settings.');
                     } catch (error) {
-                        notify('Branding-Reset fehlgeschlagen: ' + error.message, 'error');
+                        notify('Could not reset branding: ' + error.message, 'error');
                     } finally {
                         this.saving = false;
                     }
@@ -1080,18 +1080,18 @@ function identityProviderManager() { return {
                 async saveAdminOverride() {
                     const finalHtml = document.getElementById('admin-raw-html-editor').value;
                     const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); document.getElementById('admin-raw-html-editor').dispatchEvent(new CustomEvent('osw-dialog-saved', { bubbles: true })); this.editingUserEmail = ''; this.fetchOverrides(); this.fetchUsers(); }
+                    if(res.ok) { notify(`User override saved for ${this.editingUserEmail}`); document.getElementById('admin-raw-html-editor').dispatchEvent(new CustomEvent('osw-dialog-saved', { bubbles: true })); this.editingUserEmail = ''; this.fetchOverrides(); this.fetchUsers(); }
                 }
             }
         }
 
         window.addEventListener('submit-new-domain', async (e) => {
             const res = await fetch('/domains/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_name: e.detail, is_active: true }) });
-            if (res.ok) { notify("Domain registered!"); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Failed.", "error");
+            if (res.ok) { notify("Domain added."); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Could not add domain.", "error");
         });
         window.addEventListener('save-domain-settings', async (e) => {
             const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures }) });
-            if (res.ok) { notify("Settings saved!"); window.dispatchEvent(new CustomEvent('domain-updated')); }
+            if (res.ok) { notify("Domain settings saved."); window.dispatchEvent(new CustomEvent('domain-updated')); }
         });
         
         window.addEventListener('confirm-action', async (e) => {
@@ -1108,7 +1108,7 @@ function identityProviderManager() { return {
                     document.getElementById('raw-html-editor').value = '';
                     if (userRichEditor) userRichEditor.setData(''); 
                     checkAllLocks();
-                    notify("Signature cleared and removed from database!");
+                    notify("Signature cleared.");
                 } else { notify("Failed to clear signature.", "error"); }
             } else if (action === 'clear-admin') {
                 const res = await fetch(`/api/admin/overrides/${targetId}`, { method: 'DELETE' });
@@ -1394,10 +1394,10 @@ function backupManager() {
             try {
                 const response = await fetch(endpoint + "/locations", { credentials: "same-origin", cache: "no-store" });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Could not load backup locations");
+                if (!response.ok) throw new Error(data.detail || "Could not load backup locations.");
                 this.locations = data;
             } catch (error) {
-                this.error = error.message || "Could not load backup locations";
+                this.error = error.message || "Could not load backup locations.";
             }
         },
         openLocation(item = null) {
@@ -1430,13 +1430,13 @@ function backupManager() {
                     body: JSON.stringify(this.locationForm)
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not save location");
+                if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not save backup location.");
                 this.locationModal = false;
                 this.locationForm.password = "";
                 await this.fetchLocations();
                 notify("Backup location saved.");
             } catch (error) {
-                this.error = error.message || "Could not save location";
+                this.error = error.message || "Could not save backup location.";
             } finally {
                 this.locationSaving = false;
             }
@@ -1450,7 +1450,7 @@ function backupManager() {
                     username: item.username, domain: item.domain, password: "" })
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not change status"; return; }
+            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not update status."; return; }
             await this.fetchLocations();
         },
         async deleteLocation(item) {
@@ -1462,7 +1462,7 @@ function backupManager() {
                 method: "DELETE", credentials: "same-origin"
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not delete location"; return; }
+            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not delete backup location."; return; }
             await this.fetchLocations();
             notify("Backup location deleted.");
         },
@@ -1477,7 +1477,7 @@ function backupManager() {
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Connection test failed");
                 this.locationTestResult = item.name + ": " + data.detail;
-                notify("Backup location connection test passed.");
+                notify("Backup location connection test succeeded.");
             } catch (error) {
                 this.locationTestResult = item.name + ": " + (error.message || "Connection test failed");
                 notify(this.locationTestResult, "error");
@@ -1538,20 +1538,20 @@ function backupManager() {
             try {
                 const response = await fetch(endpoint + "/rules", { credentials: "same-origin", cache: "no-store" });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Could not load backup rules");
+                if (!response.ok) throw new Error(data.detail || "Could not load backup rules.");
                 this.rules = Array.isArray(data) ? data : [];
             } catch (error) {
-                this.error = error.message || "Could not load backup rules";
+                this.error = error.message || "Could not load backup rules.";
             }
         },
         async fetchHistory() {
             try {
                 const response = await fetch(endpoint + "/history?limit=200", { credentials: "same-origin", cache: "no-store" });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Could not load backup history");
+                if (!response.ok) throw new Error(data.detail || "Could not load backup history.");
                 this.history = Array.isArray(data) ? data : [];
             } catch (error) {
-                this.error = error.message || "Could not load backup history";
+                this.error = error.message || "Could not load backup history.";
             }
         },
         defaultRule() {
@@ -1592,12 +1592,12 @@ function backupManager() {
                     body: JSON.stringify(this.rulePayload(this.ruleForm))
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Could not save backup rule");
+                if (!response.ok) throw new Error(data.detail || "Could not save backup rule.");
                 this.ruleModal = false;
                 await this.fetchRules();
                 notify("Backup rule saved.");
             } catch (error) {
-                this.error = error.message || "Could not save backup rule";
+                this.error = error.message || "Could not save backup rule.";
             } finally {
                 this.ruleSaving = false;
             }
@@ -1609,7 +1609,7 @@ function backupManager() {
                 body: JSON.stringify(this.rulePayload({ ...item, enabled: !item.enabled }))
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) { this.error = data.detail || "Could not change backup rule"; return; }
+            if (!response.ok) { this.error = data.detail || "Could not update backup rule."; return; }
             await this.fetchRules();
         },
         async deleteRule(item) {
@@ -1621,7 +1621,7 @@ function backupManager() {
                 method: "DELETE", credentials: "same-origin"
             });
             const data = await response.json().catch(() => ({}));
-            if (!response.ok) { this.error = data.detail || "Could not delete backup rule"; return; }
+            if (!response.ok) { this.error = data.detail || "Could not delete backup rule."; return; }
             await this.fetchRules();
             await this.fetchHistory();
             notify("Backup rule deleted.");
@@ -1631,7 +1631,7 @@ function backupManager() {
             await this.fetchHistory();
             if (result) {
                 if (result.status === "failed") {
-                    this.error = result.error_detail || "Backup could not start";
+                    this.error = result.error_detail || "Could not start backup.";
                     notify(this.error, "error");
                 } else {
                     notify("Backup queued. The application may briefly disconnect during the snapshot.");
@@ -1663,21 +1663,21 @@ function backupManager() {
             try {
                 const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
                 const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.detail || "Backup status unavailable");
+                if (!response.ok) throw new Error(result.detail || "Backup status is unavailable.");
                 this.available = result.available === true;
                 this.mountReady = result.mount_ready === true;
                 this.managedAvailable = result.managed_available === true;
-                this.managedError = this.managedAvailable ? "" : (result.managed_error || "Host backup operator is not configured");
+                this.managedError = this.managedAvailable ? "" : (result.managed_error || "Host backup operator is not configured.");
                 if (result.settings) this.settings = { ...result.settings };
                 this.backups = Array.isArray(result.backups) ? result.backups : [];
                 this.job = result.job || { state: "idle" };
-                if (!this.available && !this.managedAvailable) this.error = result.error || "Host backup operator is unavailable";
+                if (!this.available && !this.managedAvailable) this.error = result.error || "Host backup operator is unavailable.";
             } catch (error) {
                 this.available = false;
                 this.mountReady = false;
                 this.managedAvailable = false;
-                this.managedError = "Host backup operator is unavailable";
-                this.error = error instanceof Error ? error.message : "Backup status unavailable";
+                this.managedError = "Host backup operator is unavailable.";
+                this.error = error instanceof Error ? error.message : "Backup status is unavailable.";
             } finally {
                 this.loading = false;
             }
@@ -1694,11 +1694,11 @@ function backupManager() {
                     body: body === null ? undefined : JSON.stringify(body)
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Backup operation failed");
+                if (!response.ok) throw new Error(data.detail || "Backup operation failed.");
                 await this.fetchAll();
                 return data;
             } catch (error) {
-                this.error = error instanceof Error ? error.message : "Backup operation failed";
+                this.error = error instanceof Error ? error.message : "Backup operation failed.";
                 return null;
             } finally {
                 this.busy = false;
@@ -1732,7 +1732,7 @@ function backupManager() {
         },
         async restoreBackup(item) {
             if (!await oswAskConfirmation({
-                title: "Restore backup into a NEW deployment?",
+                title: "Restore Backup to a New Deployment?",
                 message: "This will decrypt and restore " + item.name + " into a separate Docker Compose project. " +
                     "It will not replace the running installation. The recovered copy contains credentials " +
                     "and is bound to a separate localhost port. Verify it before changing production routing."
@@ -1777,7 +1777,7 @@ function systemStatusManager() {
                     credentials: "same-origin", cache: "no-store"
                 });
                 const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Status request failed");
+                if (!response.ok) throw new Error(data.detail || "Could not load system status.");
                 this.state = data.status === "healthy" ? "Healthy" : "Degraded";
                 this.version = data.version || "Unknown";
                 this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";

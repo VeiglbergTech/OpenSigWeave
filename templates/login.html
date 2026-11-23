@@ -36,7 +36,7 @@
         <div class="space-y-3">
             {% for provider in oidc_providers %}
             <a class="block w-full rounded-lg border border-gray-600 bg-gray-900 hover:bg-gray-700 p-4 text-center font-medium transition" href="/login/oidc/{{ provider.id }}">
-                Anmelden mit {{ provider.display_name }}
+                Sign in with {{ provider.display_name }}
             </a>
             {% endfor %}
         </div>
