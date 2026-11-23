@@ -1745,6 +1745,7 @@ def get_admin_backups(request: Request):
         return backup_request("status")
     except BackupControlError:
         return {"available": False, "settings": None, "backups": [], "job": {"state": "unavailable"},
+                "managed_available": False, "managed_error": "Protected host backup operator is unavailable",
                 "error": "Host backup service is not configured or unavailable"}
 
 
