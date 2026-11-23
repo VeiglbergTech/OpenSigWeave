@@ -73,7 +73,7 @@ from backup_locations import (
 from models import BackupLocationDB, BackupRuleDB, BackupRunDB, BackupRuntimeDB
 from backup_rules import (
     BackupRuleError, apply_rule, public_rule, public_run,
-    reserve_run, dispatch_run, start_scheduler, stop_scheduler,
+    reserve_run, dispatch_run, start_scheduler, stop_scheduler, open_managed_archive,
 )
 from sqlalchemy.exc import IntegrityError
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
@@ -1521,6 +1521,11 @@ def update_backup_location(location_id: str, payload: BackupLocationInput, reque
     _require_backup_location_admin(request)
     row = _backup_location_or_404(db, location_id)
     _unique_backup_location_name(db, payload.name, row.id)
+    if db.query(BackupRunDB).filter(
+        BackupRunDB.location_id == location_id,
+        BackupRunDB.status.in_(["pending", "running", "transferring"])
+    ).first():
+        raise HTTPException(status_code=409, detail="Location cannot change during a backup")
     # Once an archive exists, changing destination details could cause retention
     # to delete an unrelated remote file. Name/enabled changes remain possible.
     archived = db.query(BackupRunDB).filter(
@@ -1705,6 +1710,30 @@ def backup_history_details(run_id: str, request: Request, db: Session = Depends(
     if run is None:
         raise HTTPException(status_code=404, detail="Backup run not found")
     return public_run(run)
+
+
+@app.get("/api/admin/backups/history/{run_id}/download")
+def download_managed_backup(run_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise HTTPException(status_code=404, detail="Backup run not found")
+    run = db.get(BackupRunDB, run_id)
+    if run is None or run.status != "success":
+        raise HTTPException(status_code=404, detail="Backup archive not found")
+    location = db.get(BackupLocationDB, run.location_id)
+    if location is None:
+        raise HTTPException(status_code=404, detail="Backup location not found")
+    try:
+        size, stream = open_managed_archive(run, location)
+    except (BackupRuleError, BackupLocationError) as exc:
+        raise HTTPException(status_code=getattr(exc, "status", 503), detail=str(exc)) from None
+    except OSError:
+        raise HTTPException(status_code=503, detail="Encrypted archive is unavailable") from None
+    return StreamingResponse(stream, media_type="application/octet-stream", headers={
+        "Content-Length": str(size),
+        "Content-Disposition": f'attachment; filename="{run.file_key}"',
+        "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff",
+    })
 
 
 @app.get("/api/admin/backups")
