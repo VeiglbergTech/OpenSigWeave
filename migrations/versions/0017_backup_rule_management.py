@@ -48,6 +48,7 @@ def upgrade() -> None:
         sa.Column("requested_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
         sa.Column("started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("finished_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("transfer_started_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("size_bytes", sa.Integer(), nullable=True),
         sa.Column("archive_sha256", sa.String(64), nullable=True),
         sa.Column("file_key", sa.String(100), nullable=True),
