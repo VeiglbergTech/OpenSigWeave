@@ -365,6 +365,14 @@ async function main() {
       "font fields must not add a floating label over the placeholder");
     assert.equal(await personalFontFamily.getAttribute("aria-label"), "Font family");
     assert.equal(await personalFontSize.getAttribute("aria-label"), "Font size (pt)");
+    // Plain input styling prevents CKEditor's labeled-field decoration from
+    // painting a second placeholder or a light strip above our own field.
+    for (const field of [personalFontFamily, personalFontSize]) {
+      assert.equal(await field.evaluate(node => node.classList.contains("ck-input") || node.classList.contains("ck-input-text")), false,
+        "custom font fields must not inherit CKEditor native input decoration");
+      assert.equal(await field.evaluate(node => getComputedStyle(node, "::before").content), "none",
+        "custom font fields must have no decorative pseudo-label");
+    }
     const originalPersonalFont = await personalFontFamily.inputValue();
     await personalFontFamily.click();
     await personalFontList.waitFor({ state: "visible" });
@@ -374,6 +382,11 @@ async function main() {
     }));
     assert.ok(fontScroll.content > fontScroll.height && fontScroll.overflow === "auto",
       "font family popup must be scrollable: " + JSON.stringify(fontScroll));
+    await personalFontList.evaluate(element => { element.scrollTop = element.scrollHeight; });
+    assert.ok(await personalFontList.evaluate(element => element.scrollTop) > 0,
+      "font list must support scrolling independently of the search input");
+    assert.equal(await personalFontFamily.getAttribute("aria-expanded"), "true",
+      "scrolling the font choices must not dismiss the searchable dropdown");
     await personalFontFamily.fill("geo");
     assert.deepEqual(await personalFontList.locator('[role="option"]').allTextContents(), ["Georgia"],
       "typing must filter font family choices");
