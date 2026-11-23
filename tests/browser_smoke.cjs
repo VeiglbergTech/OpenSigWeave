@@ -360,10 +360,33 @@ async function main() {
       throw error;
     }
     await personalFontSize.waitFor({ state: "visible" });
+    const personalFontList = page.locator("#user-rich-editor .osw-font-listbox");
+    assert.equal(await page.locator("#user-rich-editor .osw-ckeditor-font-input .ck-label").count(), 0,
+      "font fields must not add a floating label over the placeholder");
+    assert.equal(await personalFontFamily.getAttribute("aria-label"), "Font family");
+    assert.equal(await personalFontSize.getAttribute("aria-label"), "Font size (pt)");
+    await personalFontFamily.click();
+    await personalFontList.waitFor({ state: "visible" });
+    const fontScroll = await personalFontList.evaluate(element => ({
+      height: element.clientHeight, content: element.scrollHeight,
+      overflow: getComputedStyle(element).overflowY,
+    }));
+    assert.ok(fontScroll.content > fontScroll.height && fontScroll.overflow === "auto",
+      "font family popup must be scrollable: " + JSON.stringify(fontScroll));
+    await personalFontFamily.fill("geo");
+    assert.deepEqual(await personalFontList.locator('[role="option"]').allTextContents(), ["Georgia"],
+      "typing must filter font family choices");
+    await personalFontFamily.press("ArrowDown");
+    assert.ok(await personalFontFamily.getAttribute("aria-activedescendant"),
+      "ArrowDown must set an accessible active option");
+    await personalFontFamily.press("Escape");
+    assert.equal(await personalFontList.isVisible(), false);
+    assert.equal(await personalFontFamily.inputValue(), "",
+      "Escape must restore the current formatting rather than committing a search");
     assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
       "font controls must not render above CKEditor");
-    assert.equal(await page.locator('#user-rich-editor .osw-signature-family-input datalist option[value="Georgia"]').count(), 1,
-      "Font family input must expose filtered browser suggestions");
+    assert.equal(await page.locator('#user-rich-editor .osw-signature-family-input [role="option"]').filter({ hasText: "Georgia" }).count(), 1,
+      "Font family input must expose its predefined listbox choices");
     const menuContrast = await personalFontFamily.evaluate(button => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
       const lum = value => channels(value).reduce((sum, v, i) => {
@@ -793,13 +816,19 @@ async function main() {
     await captureTheme("signature-editor-dark");
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
+    for (const input of [fontFamilyControl, fontSizeControl]) {
+      assert.equal(await input.locator("xpath=..").locator(".ck-label").count(), 0,
+        "neither font control may render overlapping labels");
+      assert.equal(await input.evaluate(element => getComputedStyle(element).backgroundColor === "rgba(0, 0, 0, 0)"), false,
+        "font inputs must have a themed background");
+    }
     for (const name of [
       "Arial", "Arial Black", "Calibri", "Cambria", "Courier New",
       "Garamond", "Georgia", "Helvetica", "Lucida Sans Unicode",
       "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman",
       "Trebuchet MS", "Verdana"
     ]) {
-      assert.equal(await fontToolbar.locator('.osw-signature-family-input datalist option[value="' + name + '"]').count(), 1,
+      assert.ok((await fontToolbar.locator(".osw-signature-family-input [role='option']").allTextContents()).includes(name),
         "CKEditor must offer email-safe font " + name);
     }
     for (const theme of ["dark", "light"]) {
@@ -848,8 +877,9 @@ async function main() {
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
-    await fontFamilyControl.fill("Cambria");
-    await fontFamilyControl.press("Enter");
+    await fontFamilyControl.fill("Camb");
+    assert.deepEqual(await fontToolbar.locator(".osw-font-listbox [role='option']").allTextContents(), ["Cambria"]);
+    await fontToolbar.getByRole("option", { name: "Cambria" }).click();
     await signatureCreateEditor.press("Control+A");
     await fontSizeControl.fill("18");
     await fontSizeControl.press("Enter");
@@ -2160,7 +2190,7 @@ async function main() {
     const adminFontSize = domainSettings.locator("#admin-rich-editor .osw-signature-size-input input");
     await adminFontFamily.waitFor({ state: "visible" });
     await adminFontSize.waitFor({ state: "visible" });
-    assert.equal(await domainSettings.locator('#admin-rich-editor .osw-signature-family-input datalist option[value="Georgia"]').count(), 1);
+    assert.equal(await domainSettings.locator('#admin-rich-editor .osw-signature-family-input [role="option"]').filter({ hasText: "Georgia" }).count(), 1);
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
     await adminEditor.press("Control+B");
