@@ -2360,7 +2360,13 @@ async function main() {
         await inspect(ruleSelector, "rule");
         await shell(ruleSelector).locator('input[x-model="form.time_limited"]').check();
         await inspect(ruleSelector, "timed-rule");
-        await close(ruleSelector);
+        // Changing the time toggle makes the draft dirty. The common modal
+        // coordinator correctly asks for discard confirmation before closing.
+        await shell(ruleSelector).locator("[data-osw-dialog-close]:visible").first().click();
+        const discardTimedRule = visualPage.locator('[x-data="confirmModal"] [role="alertdialog"]');
+        await discardTimedRule.waitFor({ state: "visible" });
+        await discardTimedRule.getByRole("button", { name: "Confirm", exact: true }).click();
+        await shell(ruleSelector).waitFor({ state: "hidden" });
         await nav("Domains");
         await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
         const addDomainSelector = '[x-data="addDomainModal"] [role="dialog"]';
