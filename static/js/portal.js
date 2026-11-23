@@ -11,13 +11,14 @@ window.fetch = (resource, options = {}) => {
     return originalFetch(resource, options);
 };
 
-        var userRichEditor, domainRichEditor, adminRichEditor, signatureRichEditor;
+        var userRichEditor, adminRichEditor, signatureRichEditor;
         const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
 
         async function mountRichEditor(hostId, rawId, options = {}) {
             const host = document.getElementById(hostId);
             const raw = document.getElementById(rawId);
             if (!host || !raw || !window.OpenSigWeaveEditor) return null;
+            host.classList.add("osw-rich-editor");
             if (host.__openSigWeaveEditor) {
                 host.__openSigWeaveEditor.setOnChange(html => {
                     raw.value = html;
@@ -33,7 +34,6 @@ window.fetch = (resource, options = {}) => {
                 initialData: raw.value,
                 readOnly: !!options.readOnly,
                 imageUpload: !!options.imageUpload,
-                signatureFontControls: !!options.signatureFontControls,
                 onImportImageFromUrl: options.onImportImageFromUrl,
                 uploadUrl: options.uploadUrl,
                 csrfToken: options.csrfToken,
@@ -59,7 +59,6 @@ window.fetch = (resource, options = {}) => {
             if (source) source.value = manager.form.html_content || "";
             signatureRichEditor = await mountRichEditor("signature-template-editor", "signature-html-source", {
                 imageUpload: true,
-                signatureFontControls: true,
                 onImportImageFromUrl: () => manager.openImageImportDialog(),
                 uploadUrl: "/api/admin/signature-assets",
                 csrfToken: opensigweaveCsrfToken,

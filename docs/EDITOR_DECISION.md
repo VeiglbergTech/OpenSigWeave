@@ -2,6 +2,30 @@
 
 **Decision:** Use the self-hosted CKEditor 5 GPL build for the portal's rich-text editing surfaces.
 
+## Unified integration (dev)
+
+All active rich-text surfaces (personal signature, administrator override, versioned
+signature catalog) use `OpenSigWeaveEditor.create` from `static/js/rich-editor.js`.
+The wrapper owns one shared plugin list, toolbar layout, pixel font-size policy,
+font family list, native font controls, theme styles and HTML support configuration.
+`portal.js` only binds each editor to its authorized source textarea and workflow;
+it must not assemble independent CKEditor configurations.
+
+Catalog-only image upload and HTTPS URL import remain explicitly permission-scoped:
+they use the administrator's validated asset endpoints, so do not expose a broken or
+unauthorized upload action in personal overrides. The rest of the editor toolbar
+and font styling are identical. The former domain-master editor is retired.
+
+**Source fidelity:** `getData()` returns the exact source provided at initialization
+or `setData()` until a real CKEditor model edit changes its normalized content.
+Programmatic loading does not invoke `onChange` or replace the raw textarea.
+After edits, CKEditor's serialization is the new editable source. Raw HTML mode
+remains the required path for unsupported comments, VML, and exotic Outlook
+markup. Rendering and mail output still pass through the server sanitizer,
+which intentionally strips unsupported Outlook/VML content. The design does
+not promise byte-for-byte HTML preservation *after* editing visually, nor that
+raw Outlook VML survives sanitization into delivered email.
+
 The application pins CKEditor 5 to **49.1.0**. The Dockerfile builds the browser bundle in a Node 22 Alpine stage with esbuild and copies the generated JavaScript, CSS and license into the application image. CKEditor is served locally from `/static/vendor/ckeditor5/49.1.0/`; there is no runtime dependency on a CKEditor CDN or cloud service.
 
 The shared `OpenSigWeaveEditor` adapter is used by:

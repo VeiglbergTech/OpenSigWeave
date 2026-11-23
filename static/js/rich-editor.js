@@ -82,10 +82,10 @@
     ];
     const SIGNATURE_FONT_SIZES = [10, 12, 14, 16, 18, 20, 24, 28, 32, 36];
 
-    // A permanent, browser-native toolbar avoids CKEditor's collapsing overflow
-    // and clipped popovers inside the scrollable signature modal.
-    // Commands are still CKEditor commands: no HTML mutation or parallel editor state.
-    function installSignatureFontControls(editor) {
+    // Every editor uses the same native font controls. This avoids clipped
+    // CKEditor font dropdowns in scrolling dialogs without maintaining a second
+    // editor state: all formatting still uses CKEditor commands.
+    function installSharedFontControls(editor) {
         const toolbar = editor.ui.view.toolbar.element;
         const familyCommand = editor.commands.get("fontFamily");
         const sizeCommand = editor.commands.get("fontSize");
@@ -284,7 +284,6 @@
         const plugins = pluginNames.map(name => library[name]);
         const toolbar = [
             "undo", "redo", "|", "heading", "|",
-            ...(config.signatureFontControls ? [] : ["fontFamily", "fontSize"]),
             "fontColor", "fontBackgroundColor", "|",
             "bold", "italic", "underline", "link", "|",
             "bulletedList", "numberedList", "|", "alignment", "insertTable"
@@ -294,15 +293,13 @@
         const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar: (config.imageUpload || config.signatureFontControls) ? { items: toolbar, shouldNotGroupWhenFull: true } : toolbar,
+            toolbar: { items: toolbar, shouldNotGroupWhenFull: true },
             // Numeric values produce inline font-size: Npx (not CKEditor text-size classes).
             // Keep other safe sizes and fonts when loading existing HTML signatures.
             fontSize: {
-                // Register the full editable range for command conversion even
-                // though the visible selector offers a shorter curated list.
-                options: config.signatureFontControls
-                    ? ["default", ...Array.from({ length: 91 }, (_, index) => index + 6)]
-                    : ["default", 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 28, 32, 36, 40, 48, 60, 72],
+                // All editor instances accept the same pixel sizes; the
+                // visible selector intentionally offers curated presets.
+                options: ["default", ...Array.from({ length: 91 }, (_, index) => index + 6)],
                 supportAllValues: true
             },
             fontFamily: {
@@ -356,7 +353,7 @@
             editorConfig.extraPlugins = [signatureImageUploadPlugin(config)];
         }
         const editor = await library.ClassicEditor.create(element, editorConfig);
-        if (config.signatureFontControls) installSignatureFontControls(editor);
+        installSharedFontControls(editor);
         let imageImportSelection = null;
         if (config.imageUpload && typeof config.onImportImageFromUrl === "function") {
             installSignatureImageUrlButton(editor, () => {
@@ -368,9 +365,30 @@
         }
 
         let onChange = typeof config.onChange === "function" ? config.onChange : null;
+        let sourceHtml = editorConfig.initialData;
+        let normalizedBaseline = editor.getData();
+        let settingData = false;
+
+        // CKEditor normalizes or drops unsupported markup (including Outlook
+        // comments/VML) during conversion. Merely opening, selecting or saving
+        // must not overwrite the exact source in the database or version file.
+        function getSourceOrEditedData() {
+            const normalized = editor.getData();
+            return normalized === normalizedBaseline ? sourceHtml : normalized;
+        }
         editor.model.document.on("change:data", function () {
-            if (onChange) onChange(editor.getData());
+            if (!settingData && onChange) onChange(getSourceOrEditedData());
         });
+        function loadSource(html) {
+            sourceHtml = typeof html === "string" ? html : "";
+            settingData = true;
+            try {
+                editor.setData(sourceHtml);
+                normalizedBaseline = editor.getData();
+            } finally {
+                settingData = false;
+            }
+        }
 
         let readOnlyLock = false;
         if (config.readOnly) {
@@ -379,9 +397,9 @@
         }
 
         return {
-            getData: function () { return editor.getData(); },
+            getData: getSourceOrEditedData,
             setOnChange: function (callback) { onChange = typeof callback === "function" ? callback : null; },
-            setData: function (html) { editor.setData(typeof html === "string" ? html : ""); },
+            setData: loadSource,
             focus: function () { editor.editing.view.focus(); },
             insertImage: function (url) {
                 // Only immutable images returned from the local asset store may be

@@ -339,23 +339,21 @@ async function main() {
       return ratio(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor);
     });
     assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
-    const fontDropdown = page.locator("#user-rich-editor .ck-toolbar").getByRole("button", { name: /Font Family/i });
-    await fontDropdown.click();
-    const dropdownPanel = page.locator("#user-rich-editor .ck-dropdown__panel-visible").first();
-    await dropdownPanel.waitFor({ state: "visible" });
-    const menuContrast = await dropdownPanel.evaluate(panel => {
-      const item = panel.querySelector(".ck-button");
-      if (!item) return 0;
+    const personalFontSelect = page.locator("#user-rich-editor .osw-editor-font-toolbar")
+      .getByRole("combobox", { name: "Signature font family" });
+    await personalFontSelect.waitFor({ state: "visible" });
+    assert.ok((await personalFontSelect.locator("option").allTextContents()).includes("Georgia"),
+      "the shared font family control must be available on personal signatures");
+    const menuContrast = await personalFontSelect.evaluate(select => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
       const lum = value => channels(value).reduce((sum, v, i) => {
         const s = v / 255, linear = s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
         return sum + linear * [.2126, .7152, .0722][i];
       }, 0);
       const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
-      return ratio(getComputedStyle(item).color, getComputedStyle(panel).backgroundColor);
+      return ratio(getComputedStyle(select).color, getComputedStyle(select).backgroundColor);
     });
-    assert.ok(menuContrast >= 4.5, "CKEditor dropdown items must meet WCAG AA contrast");
-    await fontDropdown.click();
+    assert.ok(menuContrast >= 4.5, "shared font controls must meet WCAG AA contrast");
     assert.equal(await personalEditor.evaluate(el => getComputedStyle(el).backgroundColor),
       "rgb(255, 255, 255)", "email composition canvas stays white in light mode");
     await page.reload();
@@ -411,6 +409,37 @@ async function main() {
       "rich editor must retain supported table dimensions");
     assert.match(richMarkupRoundTrip, /valign="top"/,
       "rich editor must retain supported table-cell alignment");
+
+    // Opening or reloading raw HTML must not emit changes or discard VML/comments.
+    const editorSourceProbe = await page.evaluate(async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const initial = '<p style="font-size:17px">Source</p><!--[if mso]><v:roundrect>VML</v:roundrect><![endif]-->';
+      const replacement = '<table role="presentation"><tr><td>Layout</td></tr></table><!--preserve-comment-->';
+      let changes = 0;
+      let instance;
+      try {
+        instance = await window.OpenSigWeaveEditor.create(host, {
+          initialData: initial, onChange: () => { changes++; }
+        });
+        const untouched = instance.getData() === initial;
+        instance.setData(replacement);
+        const reset = instance.getData() === replacement;
+        const silentLoad = changes === 0;
+        instance.insertText("changed");
+        return {
+          untouched, reset, silentLoad,
+          edited: changes > 0 && instance.getData() !== replacement
+            && instance.getData().includes("changed")
+        };
+      } finally {
+        if (instance) await instance.destroy();
+        host.remove();
+      }
+    });
+    assert.deepEqual(editorSourceProbe, {
+      untouched: true, reset: true, silentLoad: true, edited: true
+    }, "source-preserving adapter must distinguish reloads from real CKEditor edits");
 
     checkpoint("personal editor: complete");
     const personal = await page.request.get(baseURL + "/api/my-signature", { timeout: 15000 });
@@ -2063,6 +2092,12 @@ async function main() {
     await domainSettings.getByRole("button", { name: "+ Add or Edit User" }).click();
     const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
     await adminEditor.waitFor({ state: "visible" });
+    const adminFontSelect = domainSettings.locator("#admin-rich-editor .osw-editor-font-toolbar")
+      .getByRole("combobox", { name: "Signature font family" });
+    await adminFontSelect.waitFor({ state: "visible" });
+    assert.deepEqual(await adminFontSelect.locator("option").allTextContents(),
+      await personalFontSelect.locator("option").allTextContents(),
+      "personal and administrator editors must expose the same font families");
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
     await adminEditor.press("Control+B");

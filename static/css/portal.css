@@ -430,8 +430,8 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 .ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
 .ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
 
-/* Permanent signature-only font controls, immediately above CKEditor's own toolbar.
-   Native selectors remain usable inside the scrolling modal in either appearance. */
+/* Shared CKEditor font controls, immediately above the CKEditor toolbar.
+   Native selectors remain usable in scrolling dialogs in either appearance. */
 .osw-editor-font-toolbar {
     display: flex;
     flex-wrap: wrap;
@@ -483,12 +483,14 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
     .osw-editor-font-field.osw-editor-font-custom { flex: 1 1 100%; }
 }
 
-/* Keep the URL import alongside CKEditor's image upload, even on narrow screens. */
-#signature-template-editor .ck-toolbar__items {
+/* Allow every CKEditor toolbar to wrap instead of cutting off controls. */
+.osw-rich-editor .ck-toolbar__items {
     flex-wrap: wrap !important;
     max-width: 100%;
     min-width: 0;
 }
+.osw-rich-editor .ck-editor { min-width: 0; max-width: 100%; }
+.osw-rich-editor .ck-editor__top { min-width: 0; }
 #signature-template-editor .osw-editor-import-url-button {
     flex: 0 0 auto;
     cursor: pointer;
@@ -503,6 +505,21 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 #signature-template-editor .osw-editor-import-url-button:disabled {
     opacity: .45;
     cursor: not-allowed;
+}
+
+/* CKEditor floating panels render outside dialogs. Keep the balloons above
+   domain/signature modal shells and keep in-toolbar menus reachable. */
+.ck-body-wrapper .ck.ck-balloon-panel {
+    z-index: 130 !important;
+}
+.osw-rich-editor .ck.ck-dropdown__panel {
+    max-height: min(24rem, calc(100dvh - 8rem));
+    overflow-y: auto;
+}
+@supports selector(:has(*)) {
+    .osw-modal-body:has(.osw-rich-editor .ck-dropdown__panel-visible) {
+        overflow: visible;
+    }
 }
 
 /* Domain Management is the visual reference for all admin sections. Keep this
