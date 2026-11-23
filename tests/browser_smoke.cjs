@@ -365,6 +365,7 @@ async function main() {
       "font fields must not add a floating label over the placeholder");
     assert.equal(await personalFontFamily.getAttribute("aria-label"), "Font family");
     assert.equal(await personalFontSize.getAttribute("aria-label"), "Font size (pt)");
+    const originalPersonalFont = await personalFontFamily.inputValue();
     await personalFontFamily.click();
     await personalFontList.waitFor({ state: "visible" });
     const fontScroll = await personalFontList.evaluate(element => ({
@@ -381,7 +382,7 @@ async function main() {
       "ArrowDown must set an accessible active option");
     await personalFontFamily.press("Escape");
     assert.equal(await personalFontList.isVisible(), false);
-    assert.equal(await personalFontFamily.inputValue(), "",
+    assert.equal(await personalFontFamily.inputValue(), originalPersonalFont,
       "Escape must restore the current formatting rather than committing a search");
     assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
       "font controls must not render above CKEditor");
@@ -810,9 +811,17 @@ async function main() {
       "no external font toolbar may remain");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await fontFamilyControl.click();
+    const lightFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
+    await fontFamilyControl.press("Escape");
     await captureTheme("signature-editor-light");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await fontFamilyControl.click();
+    const darkFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
+    await fontFamilyControl.press("Escape");
+    assert.notEqual(lightFontMenuBg, darkFontMenuBg,
+      "font list must use different theme surfaces in light and dark appearance");
     await captureTheme("signature-editor-dark");
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
@@ -880,6 +889,10 @@ async function main() {
     await fontFamilyControl.fill("Camb");
     assert.deepEqual(await fontToolbar.locator(".osw-font-listbox [role='option']").allTextContents(), ["Cambria"]);
     await fontToolbar.getByRole("option", { name: "Cambria" }).click();
+    await fontFamilyControl.click();
+    assert.equal(await fontToolbar.locator(".osw-font-listbox [role='option']").count(), 15,
+      "opening a field with an existing family must show all choices");
+    await fontFamilyControl.press("Escape");
     await signatureCreateEditor.press("Control+A");
     await fontSizeControl.fill("18");
     await fontSizeControl.press("Enter");
