@@ -4,6 +4,22 @@ from sqlalchemy import Boolean, CheckConstraint, Column, DateTime, ForeignKey, I
 from database import Base
 
 
+class BackupLocationDB(Base):
+    """Named storage destinations, independent of the privileged host operator."""
+    __tablename__ = "backup_locations"
+    id = Column(String(32), primary_key=True)
+    name = Column(String(120), nullable=False, unique=True)
+    type = Column(String(8), nullable=False)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    server = Column(String(253), nullable=True)
+    share = Column(String(80), nullable=True)
+    directory = Column(String(512), nullable=True)
+    username = Column(String(255), nullable=True)
+    domain = Column(String(128), nullable=True)
+    password_ciphertext = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class DomainDB(Base):
     __tablename__ = "domains"
     id = Column(Integer, primary_key=True, index=True)

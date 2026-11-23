@@ -43,6 +43,8 @@ services:
     volumes:
       - opensigweave-signatures:/data/signatures
       - opensigweave-idp-data:/app/.idp
+      # Local backup locations persist across container recreation.
+      - opensigweave-backups:/app/backups
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
@@ -55,3 +57,4 @@ volumes:
   opensigweave-postgres-data:
   opensigweave-signatures:
   opensigweave-idp-data:
+  opensigweave-backups:

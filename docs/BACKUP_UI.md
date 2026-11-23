@@ -105,3 +105,46 @@ now restores alongside the running source to a different localhost port and
 verifies the original and recovered HTTP listeners, PostgreSQL records,
 signature files and identity-provider credentials. It remains a same-host
 test, not a substitute for a real two-host disaster-recovery drill.
+
+
+## Backup Locations (Local and SMB)
+
+The **Backup Locations** section is an independent PostgreSQL-backed registry
+for storage destinations. Administrators can add, edit, enable/disable, test
+and remove locations. The interface uses the same modal and confirmation
+patterns as Domain Management. No new scheduler is introduced.
+
+- **Local** uses a location-specific, immutable UUID directory under
+  \`/app/backups/\` (or \`BACKUP_LOCAL_ROOT\`). Docker Compose persists the
+  \`opensigweave-backups\` named volume. The application owns the directory,
+  mode 0700, and location names never form filesystem paths. Deleting a
+  location deliberately leaves its data intact for manual recovery.
+- **SMB** uses direct SMB3 (mandatory signing and encryption) over TCP/445,
+  with server/share/relative directory, username, password and optional
+  domain. It never calls mount or a shell. The connection test verifies both
+  access and write permissions with a temporary probe file.
+- SMB credentials are Fernet-encrypted in PostgreSQL using an independent
+  \`BACKUP_LOCATIONS_KEY\` from the protected application \`.env\`. Generate one
+  with \`python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"\`
+  and keep an offline copy. The API never returns passwords or ciphertext;
+  leaving the password blank while editing preserves the old encrypted value.
+  If the key is missing, SMB writes/tests fail with a configuration error.
+- Endpoints: \`GET/POST /api/admin/backups/locations\`,
+  \`PUT/DELETE /api/admin/backups/locations/{id}\`,
+  and \`POST /api/admin/backups/locations/{id}/test\`.
+  They require administrator access; mutations require CSRF protection.
+
+**Important integration boundary:** the existing age-encrypted full backup,
+host-side \`/etc/opensigweave/backup.env\`, host operator, legacy scheduling,
+download, retention and isolated restore remain unchanged. Creating a Location
+does **not** automatically redirect current host-operator backups: that operator
+still requires its approved, mounted remote destination. The registry is ready
+for a subsequent Backup Rules execution integration; this change does not
+create a second scheduler, open the Docker socket in the app, or expose age keys.
+The new Local volume is not automatically included inside the full snapshot
+(to avoid recursively backing up backup archives). Test recovery procedures and
+keep off-host copies before relying on it.
+
+For running installations, apply \`alembic upgrade head\` and recreate the
+application container to attach the new persistent backup volume. After
+deploying, configure \`BACKUP_LOCATIONS_KEY\` once and protect its recovery copy.

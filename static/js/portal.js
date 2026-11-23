@@ -1381,10 +1381,111 @@ function backupManager() {
         busy: false, loading: false, available: false, mountReady: false, error: "", message: "",
         settings: { directory: "", automatic: false, interval_hours: 24, keep: 14 },
         backups: [], job: { state: "idle" },
+        locations: [], locationModal: false, locationSaving: false, locationTesting: "",
+        locationEditingId: null, locationTestResult: "",
+        locationForm: { name: "", type: "local", enabled: true, server: "", share: "",
+                        directory: "", username: "", password: "", domain: "" },
+        async fetchLocations() {
+            try {
+                const response = await fetch(endpoint + "/locations", { credentials: "same-origin", cache: "no-store" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Could not load backup locations");
+                this.locations = data;
+            } catch (error) {
+                this.error = error.message || "Could not load backup locations";
+            }
+        },
+        openLocation(item = null) {
+            this.locationEditingId = item ? item.id : null;
+            this.locationForm = item
+                ? { name: item.name, type: item.type, enabled: item.enabled,
+                    server: item.server || "", share: item.share || "",
+                    directory: item.directory || "", username: item.username || "",
+                    password: "", domain: item.domain || "" }
+                : { name: "", type: "local", enabled: true, server: "",
+                    share: "", directory: "", username: "", password: "", domain: "" };
+            this.locationTestResult = "";
+            this.locationModal = true;
+        },
+        closeLocation() {
+            if (this.locationSaving) return;
+            this.locationModal = false;
+            this.locationForm.password = "";
+        },
+        async saveLocation() {
+            if (this.locationSaving) return;
+            this.locationSaving = true;
+            this.error = "";
+            try {
+                const path = this.locationEditingId ? "/locations/" + encodeURIComponent(this.locationEditingId) : "/locations";
+                const response = await fetch(endpoint + path, {
+                    method: this.locationEditingId ? "PUT" : "POST",
+                    credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(this.locationForm)
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Could not save location");
+                this.locationModal = false;
+                this.locationForm.password = "";
+                await this.fetchLocations();
+                notify("Backup location saved.");
+            } catch (error) {
+                this.error = error.message || "Could not save location";
+            } finally {
+                this.locationSaving = false;
+            }
+        },
+        async toggleLocation(item) {
+            const response = await fetch(endpoint + "/locations/" + encodeURIComponent(item.id), {
+                method: "PUT", credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: item.name, type: item.type, enabled: !item.enabled,
+                    server: item.server, share: item.share, directory: item.directory,
+                    username: item.username, domain: item.domain, password: "" })
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not change status"; return; }
+            await this.fetchLocations();
+        },
+        async deleteLocation(item) {
+            if (!await oswAskConfirmation({
+                title: "Delete backup location?",
+                message: "Delete " + item.name + " from the location registry? Existing backup files will not be removed."
+            })) return;
+            const response = await fetch(endpoint + "/locations/" + encodeURIComponent(item.id), {
+                method: "DELETE", credentials: "same-origin"
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) { this.error = typeof data.detail === "string" ? data.detail : "Could not delete location"; return; }
+            await this.fetchLocations();
+            notify("Backup location deleted.");
+        },
+        async testLocation(item) {
+            if (this.locationTesting) return;
+            this.locationTesting = item.id;
+            this.locationTestResult = "";
+            try {
+                const response = await fetch(endpoint + "/locations/" + encodeURIComponent(item.id) + "/test", {
+                    method: "POST", credentials: "same-origin"
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Connection test failed");
+                this.locationTestResult = item.name + ": " + data.detail;
+                notify("Backup location connection test passed.");
+            } catch (error) {
+                this.locationTestResult = item.name + ": " + (error.message || "Connection test failed");
+                notify(this.locationTestResult, "error");
+            } finally {
+                this.locationTesting = "";
+            }
+        },
+
         async fetchAll() {
             if (this.loading) return;
             this.loading = true;
             this.error = "";
+            await this.fetchLocations();
             try {
                 const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
                 const result = await response.json().catch(() => ({}));

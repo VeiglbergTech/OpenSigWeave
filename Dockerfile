@@ -32,8 +32,9 @@ COPY --from=ckeditor /assets/LICENSE.md /app/static/vendor/ckeditor5/49.1.0/LICE
 
 RUN groupadd --gid 10001 opensigweave \
     && useradd --uid 10001 --gid 10001 --no-create-home --shell /usr/sbin/nologin opensigweave \
-    && mkdir -p /data/signatures /app/.idp \
-    && chown -R 10001:10001 /app /data
+    && mkdir -p /data/signatures /app/.idp /app/backups \
+    && chown -R 10001:10001 /app /data \
+    && chmod 0700 /app/backups
 
 USER 10001:10001
 

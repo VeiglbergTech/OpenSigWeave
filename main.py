@@ -66,6 +66,12 @@ from signature_image_import import import_image_from_url, SignatureImageImportEr
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from backup_control_client import BackupControlError, backup_request, backup_download
+from backup_locations import (
+    BackupLocationError, apply_location, ensure_local_directory,
+    public_location, test_location,
+)
+from models import BackupLocationDB
+from sqlalchemy.exc import IntegrityError
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
 from adapters.stalwart import build_stalwart_hook_response
@@ -265,6 +271,18 @@ class BackupSettingsUpdate(BaseModel):
     automatic: bool = False
     interval_hours: int = Field(ge=1, le=720)
     keep: int = Field(ge=1, le=365)
+
+
+class BackupLocationInput(BaseModel):
+    name: str
+    type: Literal["local", "smb"]
+    enabled: bool = True
+    server: str = ""
+    share: str = ""
+    directory: str = ""
+    username: str = ""
+    password: Optional[str] = None
+    domain: str = ""
 
 
 class BackupActionRequest(BaseModel):
@@ -1417,6 +1435,92 @@ def _admin_backup_control(request: Request, action: str, **payload):
     except BackupControlError as exc:
         logger.warning("Backup operator request failed: action=%s", action)
         raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+def _require_backup_location_admin(request: Request) -> None:
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+
+
+def _backup_location_or_404(db: Session, location_id: str) -> BackupLocationDB:
+    if not re.fullmatch(r"[a-f0-9]{32}", location_id):
+        raise HTTPException(status_code=404, detail="Backup location not found")
+    row = db.get(BackupLocationDB, location_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Backup location not found")
+    return row
+
+
+def _unique_backup_location_name(db: Session, name: str, current_id: str = "") -> None:
+    row = db.query(BackupLocationDB).filter(func.lower(BackupLocationDB.name) == name.strip().lower()).first()
+    if row is not None and row.id != current_id:
+        raise HTTPException(status_code=409, detail="A backup location with this name already exists")
+
+
+@app.get("/api/admin/backups/locations")
+def list_backup_locations(request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    return [public_location(row) for row in db.query(BackupLocationDB).order_by(BackupLocationDB.name).all()]
+
+
+@app.post("/api/admin/backups/locations", status_code=201)
+def create_backup_location(payload: BackupLocationInput, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    _unique_backup_location_name(db, payload.name)
+    row = BackupLocationDB(id=uuid.uuid4().hex, type="local")
+    try:
+        apply_location(row, payload.model_dump(), creating=True)
+        if row.type == "local":
+            ensure_local_directory(row.id)
+        db.add(row)
+        db.commit()
+    except BackupLocationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Backup location already exists") from None
+    return public_location(row)
+
+
+@app.put("/api/admin/backups/locations/{location_id}")
+def update_backup_location(location_id: str, payload: BackupLocationInput, request: Request,
+                           db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    row = _backup_location_or_404(db, location_id)
+    _unique_backup_location_name(db, payload.name, row.id)
+    try:
+        apply_location(row, payload.model_dump())
+        if row.type == "local":
+            ensure_local_directory(row.id)
+        db.commit()
+    except BackupLocationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Backup location already exists") from None
+    return public_location(row)
+
+
+@app.delete("/api/admin/backups/locations/{location_id}")
+def delete_backup_location(location_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    row = _backup_location_or_404(db, location_id)
+    # Deliberately do not erase stored archives or directories.
+    db.delete(row)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@app.post("/api/admin/backups/locations/{location_id}/test")
+def test_backup_location_connection(location_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    row = _backup_location_or_404(db, location_id)
+    try:
+        return test_location(row)
+    except BackupLocationError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
 
 
 @app.get("/api/admin/backups")

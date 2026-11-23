@@ -667,6 +667,79 @@
                 Configuration import and export remain available under Import / Export.
             </div>
             <div x-show="available && !mountReady" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">The configured remote backup storage is not mounted or is not permitted. Save a valid remote mount to re-enable backup operations.</div>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h3 class="text-lg font-semibold">Backup Locations</h3>
+                        <p class="text-xs text-gray-400 mt-1">Manage Local and SMB destinations for future backup rules.</p>
+                    </div>
+                    <button type="button" @click="openLocation()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500">+ Add Backup Location</button>
+                </div>
+                <div class="osw-table-scroll border border-gray-700 rounded">
+                    <table class="w-full min-w-[38rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Destination</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in locations" :key="item.id">
+                                <tr class="hover:bg-gray-750">
+                                    <td class="px-4 py-3 font-medium" x-text="item.name"></td>
+                                    <td class="px-4 py-3 uppercase" x-text="item.type"></td>
+                                    <td class="px-4 py-3 break-all text-gray-300" x-text="item.type === 'local' ? item.local_path : '\\\\' + item.server + '\\' + item.share + (item.directory ? '\\' + item.directory.replaceAll('/', '\\') : '')"></td>
+                                    <td class="px-4 py-3"><button type="button" @click="toggleLocation(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
+                                    <td class="px-4 py-3"><div class="flex flex-wrap gap-3 justify-end">
+                                        <button type="button" class="text-blue-400 hover:text-blue-300" @click="openLocation(item)">Edit</button>
+                                        <button type="button" class="text-cyan-300 hover:text-cyan-200 disabled:opacity-40" :disabled="locationTesting !== ''" @click="testLocation(item)">Test Connection</button>
+                                        <button type="button" class="text-red-400 hover:text-red-300" @click="deleteLocation(item)">Delete</button>
+                                    </div></td>
+                                </tr>
+                            </template>
+                            <tr x-show="locations.length === 0"><td colspan="5" class="px-4 py-6 text-center text-gray-400">No backup locations configured.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p x-show="locationTestResult" x-text="locationTestResult" class="text-sm" role="status"></p>
+                <p class="text-xs text-gray-400">Existing encrypted backup operations still use the protected host operator and its mounted storage; adding a location does not change the current backup destination.</p>
+            </section>
+            <template x-teleport="body">
+                <div x-show="locationModal" x-cloak class="osw-modal-root" @keydown.escape.window="closeLocation()">
+                    <div class="osw-modal-placement">
+                        <div x-show="locationModal" role="dialog" aria-modal="true" aria-labelledby="backup-location-modal-title" class="osw-modal-shell osw-modal-width-small">
+                            <div class="osw-modal-header">
+                                <h3 id="backup-location-modal-title" class="text-lg font-bold" x-text="locationEditingId ? 'Edit Backup Location' : 'Add Backup Location'"></h3>
+                                <button type="button" class="osw-modal-dismiss" @click="closeLocation()" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <form @submit.prevent="saveLocation()">
+                                <div class="osw-modal-body space-y-4">
+                                    <label class="block text-sm">Name<input type="text" x-model="locationForm.name" maxlength="120" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                    <label class="block text-sm">Type
+                                        <select x-model="locationForm.type" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            <option value="local">Local</option><option value="smb">SMB</option>
+                                        </select>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="locationForm.enabled"> Enabled</label>
+                                    <div x-show="locationForm.type === 'local'" class="rounded border border-gray-700 bg-gray-900 p-3 text-sm text-gray-300">
+                                        Local backups use a protected subdirectory of /app/backups/ in the persistent Docker volume.
+                                    </div>
+                                    <div x-show="locationForm.type === 'smb'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label class="block text-sm">Server<input type="text" x-model="locationForm.server" :required="locationForm.type === 'smb'" maxlength="253" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Share<input type="text" x-model="locationForm.share" :required="locationForm.type === 'smb'" maxlength="80" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm sm:col-span-2">Directory / Subdirectory<input type="text" x-model="locationForm.directory" maxlength="512" placeholder="opensigweave/daily" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Username<input type="text" x-model="locationForm.username" :required="locationForm.type === 'smb'" maxlength="255" autocomplete="username" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Domain (optional)<input type="text" x-model="locationForm.domain" maxlength="128" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm sm:col-span-2">Password<input type="password" x-model="locationForm.password" :required="locationForm.type === 'smb' && !locationEditingId" autocomplete="new-password" :placeholder="locationEditingId ? 'Leave empty to keep existing password' : 'SMB password'" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                    </div>
+                                </div>
+                                <div class="osw-modal-footer">
+                                    <button type="button" @click="closeLocation()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>
+                                    <button type="submit" :disabled="locationSaving" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="locationSaving ? 'Saving…' : 'Save Location'"></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </template>
             <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
                 <h3 class="font-semibold">Backup settings</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
