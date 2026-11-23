@@ -193,9 +193,22 @@ def dispatch_run(db, run: BackupRunDB):
 
 
 def _archive_key(run: BackupRunDB) -> str:
-    if not RUN_ID.fullmatch(run.id) or not RUN_ID.fullmatch(run.rule_id or ""):
+    if not RUN_ID.fullmatch(run.id):
         raise BackupRuleError("Invalid backup archive identity")
-    return "opensigweave-" + run.rule_id + "-" + run.id + ".age"
+    rule_id = run.rule_id
+    if rule_id is None and isinstance(run.file_key, str):
+        # Deleting a rule retains its run history and encrypted archives.
+        # Recover the immutable original rule ID only from the stored,
+        # identity-bound archive name, never from client input.
+        match = re.fullmatch(
+            r"opensigweave-([a-f0-9]{32})-" + re.escape(run.id) + r"\.age",
+            run.file_key,
+        )
+        if match:
+            rule_id = match.group(1)
+    if not isinstance(rule_id, str) or not RUN_ID.fullmatch(rule_id):
+        raise BackupRuleError("Invalid backup archive identity")
+    return "opensigweave-" + rule_id + "-" + run.id + ".age"
 
 
 def _transfer_stream(stream, sink, expected_size: int, expected_digest: str):
