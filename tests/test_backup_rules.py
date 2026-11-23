@@ -28,7 +28,7 @@ os.environ["LOCAL_ADMIN_PASSWORD_HASH"] = hash_local_admin_password("correct hor
 
 import main
 import backup_rules
-from backup_control_client import BackupControlError
+from backup_engine import BackupEngineError
 from database import Base
 from models import BackupLocationDB, BackupRuleDB, BackupRunDB, BackupRuntimeDB
 
@@ -148,19 +148,22 @@ class BackupRuleTests(unittest.TestCase):
         item.schedule_kind = "interval"
         self.assertEqual(backup_rules.next_occurrence(item, instant), instant + timedelta(minutes=15))
 
-    def test_manual_run_operator_failure_and_history(self):
+    def test_manual_run_container_failure_and_history(self):
         self.auth(["signature-admins"])
         location = self.location()
         rule = self.create_rule(location["id"])
-        with patch.object(backup_rules, "backup_request", side_effect=BackupControlError("private secret")):
-            response = self.send("POST", "/api/admin/backups/rules/" + rule["id"] + "/run")
+        response = self.send("POST", "/api/admin/backups/rules/" + rule["id"] + "/run")
         self.assertEqual(response.status_code, 202, response.text)
         record = response.json()
-        self.assertEqual(record["status"], "failed")
-        self.assertNotIn("private secret", json.dumps(record))
+        self.assertEqual(record["status"], "pending")
+        with patch.object(backup_rules, "SessionLocal", self.Session), \
+             patch.object(backup_rules, "create_application_backup",
+                          side_effect=BackupEngineError("private secret")):
+            backup_rules.run_scheduler_tick()
         history = self.send("GET", "/api/admin/backups/history?status=failed").json()
         self.assertEqual(len(history), 1)
-        self.assertEqual(self.send("GET", "/api/admin/backups/history/" + record["id"]).json()["id"], record["id"])
+        self.assertNotIn("private secret", json.dumps(history))
+        self.assertEqual(self.send("GET", "/api/admin/backups/history/" + record["id"]).json()["status"], "failed")
         with self.Session() as db:
             self.assertIsNone(db.get(BackupRuntimeDB, 1).active_run_id)
 
@@ -217,33 +220,24 @@ class BackupRuleTests(unittest.TestCase):
             self.assertEqual(b"".join(stream), payload)
             self.assertEqual(size, len(payload))
 
-    def test_full_execution_cycle_reconcile_and_host_ack(self):
+    def test_full_execution_cycle_and_verified_local_publication(self):
         self.auth(["signature-admins"])
         location = self.location()
         rule = self.create_rule(location["id"])
-        data = b"age encrypted fake backup for transfer"
+        data = b"age encrypted fake backup for deterministic destination tests"
         digest = hashlib.sha256(data).hexdigest()
         with self.Session() as db:
-            r = db.get(BackupRuleDB, rule["id"])
+            db_rule = db.get(BackupRuleDB, rule["id"])
             loc = db.get(BackupLocationDB, location["id"])
-            run = backup_rules.reserve_run(db, r, loc, "manual")
-            run.status, run.started_at = "running", datetime.now(timezone.utc)
-            db.commit()
+            run = backup_rules.reserve_run(db, db_rule, loc, "manual")
 
-            def request(action, **values):
-                if action == "managed-status":
-                    return {"job": {"state": "success", "size": len(data), "sha256": digest}}
-                if action == "managed-ack":
-                    return {"acknowledged": True}
-                raise AssertionError(action)
+            def encrypt_and_deliver(deliver):
+                filename = Path(self.tmp.name) / "generated.age"
+                filename.write_bytes(data)
+                deliver(filename, len(data), digest)
+                return len(data), digest
 
-            def download(_):
-                def blocks():
-                    yield data
-                return len(data), blocks()
-
-            with patch.object(backup_rules, "backup_request", side_effect=request), \
-                 patch.object(backup_rules, "backup_managed_download", side_effect=download):
+            with patch.object(backup_rules, "create_application_backup", side_effect=encrypt_and_deliver):
                 backup_rules.reconcile_active(db)
             db.refresh(run)
             self.assertEqual(run.status, "success")
@@ -260,15 +254,27 @@ class BackupRuleTests(unittest.TestCase):
             item = db.get(BackupRuleDB, rule["id"])
             item.next_run_at = now - timedelta(minutes=1)
             db.commit()
+        ciphertext = b"encrypted backup"
+        digest = hashlib.sha256(ciphertext).hexdigest()
+
+        def deliver_local(deliver):
+            path = Path(self.tmp.name) / "scheduled.age"
+            path.write_bytes(ciphertext)
+            deliver(path, len(ciphertext), digest)
+            return len(ciphertext), digest
+
         with patch.object(backup_rules, "SessionLocal", self.Session), \
-             patch.object(backup_rules, "backup_request", return_value={"job": {"state": "pending"}}):
+             patch.object(backup_rules, "create_application_backup", side_effect=deliver_local):
+            backup_rules.run_scheduler_tick(now)
+            with self.Session() as db:
+                self.assertEqual(db.query(BackupRunDB).one().status, "pending")
             backup_rules.run_scheduler_tick(now)
             backup_rules.run_scheduler_tick(now)
         with self.Session() as db:
             self.assertEqual(db.query(BackupRunDB).count(), 1)
             record = db.query(BackupRunDB).one()
             self.assertEqual(record.trigger, "scheduled")
-            self.assertEqual(record.status, "running")
+            self.assertEqual(record.status, "success")
 
 
 if __name__ == "__main__":
