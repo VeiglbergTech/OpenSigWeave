@@ -201,7 +201,7 @@
                 placeholder: "Search font…",
                 options: SIGNATURE_FONT_FAMILIES.map(([name]) => name),
                 formatValue(value) {
-                    const first = String(value || "").split(",")[0].trim().replace(/^(['"])(.*)\\1$/, "$2");
+                    const first = String(value || "").split(",")[0].trim().replace(/^(['"])(.*)\1$/, "$2");
                     return SIGNATURE_FONT_FAMILIES.find(([name]) => name.toLowerCase() === first.toLowerCase())?.[0] || first;
                 },
                 parseInput(raw) {
@@ -218,7 +218,7 @@
                 placeholder: "Size (pt)",
                 formatValue(value) {
                     const label = fontSizeLabel(value);
-                    return label === "Font size" ? "" : label.replace(/\\s+(pt|px)$/i, "");
+                    return label === "Font size" ? "" : label.replace(/\s+(pt|px)$/i, "");
                 },
                 parseInput: parseFontSizeInput
             })

@@ -781,7 +781,7 @@ function identityProviderManager() { return {
                         ends_local: this.toInputValue(new Date(now.getTime() + 7 * 86400000)) };
                 },
                 validScheduleLocalTime(value) {
-                    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(value || '')) return false;
+                    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value || '')) return false;
                     const date = new Date(value);
                     if (Number.isNaN(date.getTime()) || this.toInputValue(date) !== value) return false;
                     for (const minutes of [-180,-120,-90,-60,-30,30,60,90,120,180]) {
