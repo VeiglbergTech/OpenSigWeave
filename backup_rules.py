@@ -136,7 +136,7 @@ def public_run(row: BackupRunDB) -> dict:
         "finished_at": finished.isoformat() if finished else None,
         "duration_seconds": round((finished - started).total_seconds(), 2) if started and finished else None,
         "size_bytes": row.size_bytes, "file_key": row.file_key,
-        "is_retained": bool(row.is_retained), "error_detail": row.error_detail,
+        "is_retained": bool(row.is_retained and row.status == "success"), "error_detail": row.error_detail,
     }
 
 
@@ -148,6 +148,7 @@ def _release(db, run_id: str):
 
 def _failed(db, run: BackupRunDB, reason: str):
     run.status = "failed"
+    run.is_retained = False
     run.error_detail = reason[:300]  # only internally generated, safe messages
     run.finished_at = utc()
     _release(db, run.id)
