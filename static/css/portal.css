@@ -258,6 +258,9 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
 body { color: var(--osw-text) !important; }
 .bg-gray-950 { background-color: var(--osw-input) !important; }
 .bg-blue-600, .bg-blue-700 { background-color: var(--osw-action-accent) !important; }
+/* Branding constrains action fills against white. Explicit white text prevents
+   inherited off-white dark-theme text from falling below WCAG AA. */
+:is(button, a):is(.bg-blue-600, .bg-blue-700) { color: #fff !important; }
 .hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-action-hover) !important; }
 .text-blue-300, .text-blue-400, .text-blue-500 { color: var(--osw-link) !important; }
 .hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: var(--osw-readable-accent) !important; }
