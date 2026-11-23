@@ -814,12 +814,14 @@ async function main() {
     await fontFamilyControl.click();
     const lightFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
     await fontFamilyControl.press("Escape");
+    assert.equal(await signatureDialog.isVisible(), true, "Escape in the font popup must not close the editor dialog");
     await captureTheme("signature-editor-light");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
     await fontFamilyControl.click();
     const darkFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
     await fontFamilyControl.press("Escape");
+    assert.equal(await signatureDialog.isVisible(), true, "Escape must dismiss only the font list, not the dialog");
     assert.notEqual(lightFontMenuBg, darkFontMenuBg,
       "font list must use different theme surfaces in light and dark appearance");
     await captureTheme("signature-editor-dark");

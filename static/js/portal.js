@@ -2199,7 +2199,9 @@ function initOswDialogs() {
         const dialog = top();
         if (!dialog) return;
         if (event.key === 'Escape') {
-            if ([...document.querySelectorAll('.ck-dropdown__panel-visible')].some(visible)) return;
+            // CKEditor's native popovers and OpenSigWeave's font listbox
+            // consume Escape themselves; do not close the parent modal.
+            if ([...document.querySelectorAll('.ck-dropdown__panel-visible, .osw-font-listbox:not([hidden])')].some(visible)) return;
             event.preventDefault();
             event.stopImmediatePropagation();
             requestClose(dialog);
