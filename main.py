@@ -65,7 +65,6 @@ from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIG
 from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
-from backup_control_client import BackupControlError, backup_request, backup_download
 from backup_engine import acquire_backup_gate, release_backup_gate
 from backup_locations import (
     BackupLocationError, apply_location, ensure_local_directory,
@@ -1474,14 +1473,14 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
     }
 
 
-def _admin_backup_control(request: Request, action: str, **payload):
+def _retired_backup_api(request: Request):
+    """Legacy host socket API is gone; use in-application rules and locations."""
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
-    try:
-        return backup_request(action, **payload)
-    except BackupControlError as exc:
-        logger.warning("Backup operator request failed: action=%s", action)
-        raise HTTPException(status_code=503, detail=str(exc)) from None
+    raise HTTPException(
+        status_code=410,
+        detail="Host-operated backup API retired. Use Backup Locations, Rules and History.",
+    )
 
 
 def _require_backup_location_admin(request: Request) -> None:
@@ -1753,64 +1752,32 @@ def download_managed_backup(run_id: str, request: Request, db: Session = Depends
 
 @app.get("/api/admin/backups")
 def get_admin_backups(request: Request):
-    """List encrypted host backups and the currently configured schedule."""
-    if not is_admin_user(request):
-        raise HTTPException(status_code=403, detail="Admins only")
-    try:
-        return backup_request("status")
-    except BackupControlError:
-        return {"available": False, "settings": None, "backups": [], "job": {"state": "unavailable"},
-                "managed_available": False, "managed_error": "Protected host backup operator is unavailable",
-                "error": "Host backup service is not configured or unavailable"}
+    return _retired_backup_api(request)
 
 
 @app.put("/api/admin/backups/settings")
 def save_admin_backup_settings(payload: BackupSettingsUpdate, request: Request):
-    return _admin_backup_control(request, "settings", settings=payload.model_dump())
+    return _retired_backup_api(request)
 
 
-@app.post("/api/admin/backups/create", status_code=202)
+@app.post("/api/admin/backups/create")
 def create_admin_backup(request: Request):
-    return _admin_backup_control(request, "create")
+    return _retired_backup_api(request)
 
 
 @app.delete("/api/admin/backups/{filename}")
 def delete_admin_backup(filename: str, payload: BackupActionRequest, request: Request):
-    return _admin_backup_control(request, "delete", name=filename, confirm=payload.confirm)
+    return _retired_backup_api(request)
 
 
-@app.post("/api/admin/backups/{filename}/restore", status_code=202)
+@app.post("/api/admin/backups/{filename}/restore")
 def restore_admin_backup(filename: str, payload: BackupActionRequest, request: Request):
-    """Never overwrite the live instance: restore only to a separate Compose project."""
-    return _admin_backup_control(request, "restore", name=filename, confirm=payload.confirm)
+    return _retired_backup_api(request)
 
 
 @app.get("/api/admin/backups/{filename}/download")
 def download_admin_backup(filename: str, request: Request):
-    if not is_admin_user(request):
-        raise HTTPException(status_code=403, detail="Admins only")
-    # A bounded, linear-time ASCII filename check avoids regular-expression backtracking.
-    prefix, suffix = "opensigweave-", ".age"
-    valid_name = (
-        isinstance(filename, str) and len(filename) <= 255
-        and filename.startswith(prefix) and filename.endswith(suffix)
-        and len(filename) > len(prefix) + len(suffix)
-        and all(
-            ("A" <= char <= "Z") or ("a" <= char <= "z")
-            or ("0" <= char <= "9") or char in "_-"
-            for char in filename[len(prefix):-len(suffix)]
-        )
-    )
-    if not valid_name:
-        raise HTTPException(status_code=404, detail="Backup not found")
-    try:
-        size, chunks = backup_download(filename)
-    except BackupControlError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
-    return StreamingResponse(chunks, media_type="application/octet-stream",
-        headers={"Content-Length": str(size),
-                 "Content-Disposition": f'attachment; filename="{filename}"',
-                 "Cache-Control": "no-store, private", "X-Content-Type-Options": "nosniff"})
+    return _retired_backup_api(request)
 
 
 @app.get("/api/admin/branding")
