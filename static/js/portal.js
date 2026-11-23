@@ -1438,9 +1438,7 @@ function adminImportManager() {
 function backupManager() {
     const endpoint = "/api/admin/backups";
     return {
-        busy: false, loading: false, available: false, mountReady: false, managedAvailable: false, managedError: "", error: "", message: "",
-        settings: { directory: "", automatic: false, interval_hours: 24, keep: 14 },
-        backups: [], job: { state: "idle" },
+        busy: false, loading: false, error: "", message: "",
         locations: [], locationModal: false, locationSaving: false, locationTesting: "",
         locationEditingId: null, locationTestResult: "",
         locationForm: { name: "", type: "local", enabled: true, server: "", share: "",
@@ -1717,27 +1715,10 @@ function backupManager() {
             if (this.loading) return;
             this.loading = true;
             this.error = "";
-            await this.fetchLocations();
-            await this.fetchRules();
-            await this.fetchHistory();
             try {
-                const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
-                const result = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(result.detail || "Backup status is unavailable.");
-                this.available = result.available === true;
-                this.mountReady = result.mount_ready === true;
-                this.managedAvailable = result.managed_available === true;
-                this.managedError = this.managedAvailable ? "" : (result.managed_error || "Host backup operator is not configured.");
-                if (result.settings) this.settings = { ...result.settings };
-                this.backups = Array.isArray(result.backups) ? result.backups : [];
-                this.job = result.job || { state: "idle" };
-                if (!this.available && !this.managedAvailable) this.error = result.error || "Host backup operator is unavailable.";
-            } catch (error) {
-                this.available = false;
-                this.mountReady = false;
-                this.managedAvailable = false;
-                this.managedError = "Host backup operator is unavailable.";
-                this.error = error instanceof Error ? error.message : "Backup status is unavailable.";
+                await this.fetchLocations();
+                await this.fetchRules();
+                await this.fetchHistory();
             } finally {
                 this.loading = false;
             }
@@ -1762,47 +1743,6 @@ function backupManager() {
                 return null;
             } finally {
                 this.busy = false;
-            }
-        },
-        async saveSettings() {
-            const data = await this.action("/settings", "PUT", {
-                ...this.settings,
-                interval_hours: Number(this.settings.interval_hours),
-                keep: Number(this.settings.keep)
-            });
-            if (data) {
-                this.message = "Backup settings saved.";
-                notify(this.message);
-            }
-        },
-        async createBackup() {
-            const data = await this.action("/create");
-            if (data) {
-                this.message = "Backup started. The application may briefly disconnect while data is captured.";
-                notify(this.message);
-            }
-        },
-        async deleteBackup(item) {
-            if (!await oswAskConfirmation({
-                title: "Delete backup?",
-                message: "Permanently delete the encrypted archive " + item.name + "? This cannot be undone."
-            })) return;
-            const result = await this.action("/" + encodeURIComponent(item.name), "DELETE", { confirm: "DELETE" });
-            if (result) { this.message = "Backup deleted."; notify(this.message); }
-        },
-        async restoreBackup(item) {
-            if (!await oswAskConfirmation({
-                title: "Restore Backup to a New Deployment?",
-                message: "This will decrypt and restore " + item.name + " into a separate Docker Compose project. " +
-                    "It will not replace the running installation. The recovered copy contains credentials " +
-                    "and is bound to a separate localhost port. Verify it before changing production routing."
-            })) return;
-            const result = await this.action("/" + encodeURIComponent(item.name) + "/restore", "POST", {
-                confirm: "RESTORE TO NEW DEPLOYMENT"
-            });
-            if (result) {
-                this.message = "Isolated recovery started. Check job status before using the recovered instance.";
-                notify(this.message);
             }
         },
         formatSize(bytes) {
