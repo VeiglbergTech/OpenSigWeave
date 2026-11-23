@@ -453,7 +453,7 @@ async function main() {
       { tab: "Import / Export", heading: "Import / Export" },
       { tab: "System", heading: "System Status" },
     ];
-    // The other tabs keep their relative positions, with Backups immediately before Import / Export.
+    // The other tabs keep their relative positions, with Backup immediately before Import / Export.
     const adminNavigation = await page.evaluate(() => [...document.querySelectorAll("button")]
       .filter(button => button.getAttribute("@click")?.startsWith("setAdminTab("))
       .map(button => button.textContent.trim()));
@@ -1657,7 +1657,7 @@ async function main() {
     const createdRuleRow = rulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Rule" });
     await createdRuleRow.getByRole("button", { name: "Edit", exact: true }).click();
     await rulesPanel.getByLabel("Priority").fill("25");
-    await rulesPanel.getByRole("button", { name: "+ Add condition" }).click();
+    await rulesPanel.getByRole("button", { name: "+ Add Condition" }).click();
     const conditionRows = rulesPanel.locator("div.grid.grid-cols-1.md\\:grid-cols-12");
     await conditionRows.last().locator('select[x-model="condition.kind"]').selectOption("sender_not_equals");
     await conditionRows.last().locator('input[placeholder="Value"]').fill("example.test");
@@ -1998,7 +1998,7 @@ async function main() {
       "administrator override API must return the formatted HTML");
     await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
     await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
-    const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" });
+    const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" });
     await allowOverridesLabel.click();
     const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" });
     await replyInjectionLabel.click();
@@ -2027,9 +2027,9 @@ async function main() {
       "login provider must remain selected after page reload");
     await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     const reloadedSettings = page.locator('[x-data="domainSettingsModal"]');
-    await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
+    await reloadedSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" })
       .locator('input[type="checkbox"]').waitFor();
-    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
+    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" })
       .locator('input[type="checkbox"]').isChecked(), false);
     assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" })
       .locator('input[type="checkbox"]').isChecked(), true);
