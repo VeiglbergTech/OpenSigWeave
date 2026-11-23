@@ -1378,7 +1378,7 @@ function adminImportManager() {
 function backupManager() {
     const endpoint = "/api/admin/backups";
     return {
-        busy: false, loading: false, available: false, mountReady: false, error: "", message: "",
+        busy: false, loading: false, available: false, mountReady: false, managedAvailable: false, managedError: "", error: "", message: "",
         settings: { directory: "", automatic: false, interval_hours: 24, keep: 14 },
         backups: [], job: { state: "idle" },
         locations: [], locationModal: false, locationSaving: false, locationTesting: "",
@@ -1632,13 +1632,17 @@ function backupManager() {
                 if (!response.ok) throw new Error(result.detail || "Backup status unavailable");
                 this.available = result.available === true;
                 this.mountReady = result.mount_ready === true;
+                this.managedAvailable = result.managed_available === true;
+                this.managedError = this.managedAvailable ? "" : (result.managed_error || "Host backup operator is not configured");
                 if (result.settings) this.settings = { ...result.settings };
                 this.backups = Array.isArray(result.backups) ? result.backups : [];
                 this.job = result.job || { state: "idle" };
-                if (!this.available || !this.mountReady) this.error = result.error || "Host backup service or storage is unavailable";
+                if (!this.available && !this.managedAvailable) this.error = result.error || "Host backup operator is unavailable";
             } catch (error) {
                 this.available = false;
                 this.mountReady = false;
+                this.managedAvailable = false;
+                this.managedError = "Host backup operator is unavailable";
                 this.error = error instanceof Error ? error.message : "Backup status unavailable";
             } finally {
                 this.loading = false;
