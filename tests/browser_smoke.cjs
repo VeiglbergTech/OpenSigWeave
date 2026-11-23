@@ -773,6 +773,40 @@ async function main() {
 
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
     await signatureRow.waitFor();
+    // Filter by search, state and scope without changing the persisted catalog.
+    const signatureSearch = signaturePanel.getByRole("searchbox", { name: "Search signatures" });
+    const signatureStatusFilter = signaturePanel.getByRole("combobox", { name: "Signature status" });
+    const signatureDomainFilter = signaturePanel.getByRole("combobox", { name: "Domain scope" });
+    await signatureSearch.fill("not-present-in-catalog");
+    await signaturePanel.getByText("No signatures match the selected filters.").waitFor({ state: "visible" });
+    await signatureSearch.fill("Browser Smoke Signature");
+    await signatureRow.waitFor({ state: "visible" });
+    await signatureStatusFilter.selectOption("inactive");
+    await signatureRow.waitFor({ state: "hidden" });
+    await signatureStatusFilter.selectOption("active");
+    await signatureRow.waitFor({ state: "visible" });
+    await signatureStatusFilter.selectOption("all");
+    await signatureDomainFilter.selectOption("global");
+    await signatureRow.waitFor({ state: "visible" });
+    await signatureDomainFilter.selectOption("all");
+    await signatureSearch.fill("");
+    // Preview must retrieve the saved current version without changing it.
+    await signatureRow.getByRole("button", { name: "Preview", exact: true }).click();
+    const catalogPreview = page.locator('[x-data="previewModal"]');
+    await catalogPreview.waitFor({ state: "visible" });
+    assert.match(await page.locator("#signature-preview-frame").getAttribute("srcdoc"), /Browser smoke version 1/,
+      "catalog preview must show the persisted current signature version");
+    await page.keyboard.press("Escape");
+    await catalogPreview.waitFor({ state: "hidden" });
+    // Status change uses the same confirmation pattern as other administrator actions.
+    const signatureBadge = signatureRow.getByRole("button", { name: "Disable signature Browser Smoke Signature" });
+    await signatureBadge.click();
+    const statusConfirm = page.locator('[x-data="confirmModal"]');
+    await statusConfirm.getByRole("button", { name: "Confirm", exact: true }).click();
+    await signatureRow.getByRole("button", { name: "Enable signature Browser Smoke Signature" }).waitFor();
+    await signatureRow.getByRole("button", { name: "Enable signature Browser Smoke Signature" }).click();
+    await statusConfirm.getByRole("button", { name: "Confirm", exact: true }).click();
+    await signatureBadge.waitFor({ state: "visible" });
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
     const signatureEditEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureEditEditor.waitFor({ state: "visible" });

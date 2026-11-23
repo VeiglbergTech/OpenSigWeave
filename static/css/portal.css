@@ -595,3 +595,6 @@ html[data-theme="light"] .osw-admin-status.text-amber-300 {
         padding: .75rem 1rem;
     }
 }
+
+/* Long signature markers must wrap inside the shared domain-style table cells. */
+.osw-signature-marker { overflow-wrap: anywhere; word-break: break-word; max-width: 26rem; }

@@ -285,13 +285,70 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], selectedGroupSlug: '', imageImportUrl: '', imageImportOpen: false, imageImportBusy: false, imageImportController: null, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
+                signatures: [], domains: [], groups: [], searchQuery: '', statusFilter: 'all', domainFilter: 'all', selectedGroupSlug: '', imageImportUrl: '', imageImportOpen: false, imageImportBusy: false, imageImportController: null, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
                 get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
                 get selectedVersion() { return this.versions.find(version => version.id === this.selectedVersionId) || null; },
                 get isViewingHistoricalVersion() {
                     return Boolean(this.currentVersion && this.selectedVersion && this.currentVersion.id !== this.selectedVersion.id);
+                },
+                get filteredSignatures() {
+                    const query = (this.searchQuery || '').trim().toLocaleLowerCase();
+                    return this.signatures.filter(signature => {
+                        if (this.statusFilter === 'active' && !signature.is_active) return false;
+                        if (this.statusFilter === 'inactive' && signature.is_active) return false;
+                        const domainIds = (signature.domain_ids || (signature.domain_id == null ? [] : [signature.domain_id])).map(Number);
+                        if (this.domainFilter === 'global' && domainIds.length) return false;
+                        if (this.domainFilter.startsWith('domain:') &&
+                            !domainIds.includes(Number(this.domainFilter.slice(7)))) return false;
+                        const matchable = [signature.name, this.domainNames(signature), signature.marker_code || '',
+                            this.formatSignatureMarker(signature)].join(' ').toLocaleLowerCase();
+                        return !query || matchable.includes(query);
+                    });
+                },
+                get signatureResultLabel() {
+                    return 'Showing ' + this.filteredSignatures.length + ' of ' + this.signatures.length + ' signatures';
+                },
+                signatureToggleLabel(signature) {
+                    return (signature.is_active ? 'Disable ' : 'Enable ') + 'signature ' + signature.name;
+                },
+                async toggleSignatureStatus(signature) {
+                    const nextActive = !signature.is_active;
+                    if (!await oswAskConfirmation({
+                        title: nextActive ? 'Enable signature?' : 'Disable signature?',
+                        message: (nextActive ? 'Enable ' : 'Disable ') + 'signature "' + signature.name + '"?'
+                    })) return;
+                    try {
+                        const domainIds = (signature.domain_ids ||
+                            (signature.domain_id == null ? [] : [signature.domain_id])).map(Number);
+                        const response = await fetch('/api/admin/signatures/' + encodeURIComponent(signature.id), {
+                            method: 'PUT', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({ name: signature.name, domain_ids: domainIds, is_active: nextActive })
+                        });
+                        if (!response.ok) throw new Error(await response.text());
+                        await this.fetchAll();
+                        window.dispatchEvent(new window.Event('signature-catalog-updated'));
+                        notify('Signature status updated.');
+                    } catch (error) {
+                        notify('Could not update signature status: ' + error.message, 'error');
+                    }
+                },
+                async previewSignature(signature) {
+                    try {
+                        const baseUrl = '/api/admin/signatures/' + encodeURIComponent(signature.id) + '/versions';
+                        const versionsResponse = await fetch(baseUrl);
+                        if (!versionsResponse.ok) throw new Error(await versionsResponse.text());
+                        const versions = await versionsResponse.json();
+                        const version = versions.find(item => item.is_current) || versions[0];
+                        if (!version) throw new Error('No version is available for preview.');
+                        const versionResponse = await fetch(baseUrl + '/' + encodeURIComponent(version.id));
+                        if (!versionResponse.ok) throw new Error(await versionResponse.text());
+                        const selected = await versionResponse.json();
+                        window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: selected.html_content || '' } }));
+                    } catch (error) {
+                        notify('Could not preview signature: ' + error.message, 'error');
+                    }
                 },
                 insertGroupTag(slug, editor) {
                     if (!slug) { notify('Select a signature group first.', 'error'); return; }

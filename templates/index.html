@@ -212,32 +212,59 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
-            <div class="osw-section-header">
-                <h2 class="text-2xl font-semibold">Signature Catalog</h2>
-                <button @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Signature</button>
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section">
+            <div class="osw-section-header mb-6">
+                <h1 class="text-2xl font-semibold">Signature Catalog</h1>
+                <button type="button" @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Signature</button>
             </div>
-            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
-                        <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Scope</th><th class="px-4 py-3">Versions</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
-                    </thead>
+            <div class="flex flex-wrap items-end gap-3 mb-4">
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[240px]">Search signatures
+                    <input type="search" x-model="searchQuery" placeholder="Name, domain or marker" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white" autocomplete="off">
+                </label>
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[150px]">Signature status
+                    <select x-model="statusFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                        <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Disabled</option>
+                    </select>
+                </label>
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[170px]">Domain scope
+                    <select x-model="domainFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                        <option value="all">All domains</option><option value="global">Global only</option>
+                        <template x-for="domain in domains" :key="domain.id"><option :value="'domain:' + domain.id" x-text="domain.domain_name"></option></template>
+                    </select>
+                </label>
+            </div>
+            <p class="text-xs text-gray-400 mb-3" role="status" x-text="signatureResultLabel"></p>
+            <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700">
+                        <th class="px-6 py-4 font-medium">Name &amp; Marker</th>
+                        <th class="px-6 py-4 font-medium">Scope</th>
+                        <th class="px-6 py-4 font-medium">Versions</th>
+                        <th class="px-6 py-4 font-medium">Status</th>
+                        <th class="px-6 py-4 font-medium text-right">Actions</th>
+                    </tr></thead>
                     <tbody class="divide-y divide-gray-700">
-                        <template x-for="signature in signatures" :key="signature.id">
-                            <tr>
-                                <td class="px-4 py-3 font-medium">
+                        <template x-for="signature in filteredSignatures" :key="signature.id">
+                            <tr class="hover:bg-gray-750 transition duration-150">
+                                <td class="px-6 py-4 font-medium text-white">
                                     <div x-text="signature.name"></div>
-                                    <div class="text-xs text-gray-500 font-mono mt-1" x-text="formatSignatureMarker(signature)"></div>
+                                    <div class="osw-signature-marker mt-1 text-xs text-gray-400 font-mono" x-text="formatSignatureMarker(signature)"></div>
                                 </td>
-                                <td class="px-4 py-3 text-sm" x-text="domainNames(signature)"></td>
-                                <td class="px-4 py-3 tabular-nums" x-text="signature.versions"></td>
-                                <td class="px-4 py-3"><span class="osw-admin-status" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Inactive'"></span></td>
-                                <td class="px-4 py-3 text-right whitespace-nowrap">
-                                    <button @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm">Edit</button>
+                                <td class="px-6 py-4 text-sm" x-text="domainNames(signature)"></td>
+                                <td class="px-6 py-4 tabular-nums" x-text="signature.versions"></td>
+                                <td class="px-6 py-4">
+                                    <button type="button" class="osw-admin-status cursor-pointer" :class="signature.is_active ? 'text-green-400' : 'text-red-400'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="osw-actions justify-end">
+                                        <button type="button" @click="previewSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Preview</button>
+                                        <button type="button" @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="signatures.length === 0"><td colspan="5" class="px-4 py-6 text-center text-gray-500">No signatures configured.</td></tr>
+                        <tr x-show="signatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures configured.</td></tr>
+                        <tr x-show="signatures.length > 0 && filteredSignatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures match the selected filters.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -245,8 +272,10 @@
             <div class="osw-modal-root">
                 <div class="osw-modal-placement">
                     <div x-show="editing" x-cloak role="dialog" aria-label="Signature editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-large">
-                        <div class="osw-modal-header"><h3 class="text-lg font-bold" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-header osw-domain-modal-header"><div><h3 class="text-lg font-bold text-white" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><p x-show="form.id" class="text-sm text-blue-400" x-text="form.name"></p></div><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
                         <div class="osw-modal-body">
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                             <div class="text-sm text-gray-300 md:col-span-2">
@@ -258,10 +287,19 @@
                                     <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
                                 </div>
                             </div>
-                            <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_active" class="rounded"> Active</label>
+                            <label class="flex items-center gap-3 cursor-pointer text-sm text-gray-300 md:col-span-2">
+                                <span class="relative inline-flex items-center">
+                                    <input type="checkbox" x-model="form.is_active" class="sr-only">
+                                    <span class="block w-10 h-6 rounded-full transition-colors duration-200" :class="form.is_active ? 'bg-blue-500' : 'bg-gray-700'"></span>
+                                    <span class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="form.is_active ? 'translate-x-4' : ''"></span>
+                                </span>
+                                Active signature
+                            </label>
                         </div>
+                        </section>
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">HTML Template &amp; Versions</h4>
                         <div class="block text-sm text-gray-300">
-                            <span>HTML template</span>
                             <div x-show="form.id" x-cloak class="mt-2 rounded border border-gray-700 bg-gray-900/60 p-3">
                                 <div class="flex flex-wrap items-end gap-2">
                                     <label class="text-xs text-gray-400 flex-1 min-w-[260px]">Version history
@@ -299,8 +337,9 @@
                                 <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" :disabled="isViewingHistoricalVersion" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
                             </div>
                         </div>
+                        </section>
                         </div>
-                        <div class="osw-modal-footer"><button data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm text-gray-300">Cancel</button><button @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">Save Signature</button></div>
+                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 rounded text-sm font-medium">Cancel</button><button type="button" @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition text-sm font-medium">Save Signature</button></div>
                     </div>
                 </div>
             </div>
@@ -1243,6 +1282,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=admin-domain-parity-20261123"></script>
+    <script src="/static/js/portal.js?v=signature-management-parity-20261123"></script>
 </body>
 </html>
