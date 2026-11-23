@@ -20,6 +20,11 @@ async function main() {
   // Bound browser operations so CI reports the stalled action before its outer timeout.
   page.setDefaultTimeout(15000);
   page.setDefaultNavigationTimeout(30000);
+  page.on("pageerror", error => process.stderr.write("[browser-smoke] pageerror: " + error.message + "\\n"));
+  page.on("console", message => {
+    if (message.type() === "error" || message.type() === "warning")
+      process.stderr.write("[browser-smoke] console " + message.type() + ": " + message.text() + "\\n");
+  });
   page.on("requestfailed", request => {
     const failure = request.failure();
     // Navigation intentionally aborts in-flight Alpine refresh requests.
@@ -341,7 +346,19 @@ async function main() {
     assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
     const personalFontFamily = page.locator("#user-rich-editor .osw-signature-family-input input");
     const personalFontSize = page.locator("#user-rich-editor .osw-signature-size-input input");
-    await personalFontFamily.waitFor({ state: "visible" });
+    try {
+      await personalFontFamily.waitFor({ state: "visible" });
+    } catch (error) {
+      const diagnostics = await page.evaluate(() => ({
+        CKEDITOR: !!window.CKEDITOR,
+        editorApi: !!window.OpenSigWeaveEditor,
+        editorHost: document.querySelector("#user-rich-editor")?.outerHTML.slice(0, 6500),
+        headings: [...document.querySelectorAll("#user-rich-editor .ck-toolbar button")].map(x => x.getAttribute("aria-label")),
+        fallback: document.querySelector("#user-rich-editor .osw-editor-fallback-warning")?.textContent
+      }));
+      process.stderr.write("[browser-smoke] font widget diagnostics " + JSON.stringify(diagnostics) + "\\n");
+      throw error;
+    }
     await personalFontSize.waitFor({ state: "visible" });
     assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
       "font controls must not render above CKEditor");
