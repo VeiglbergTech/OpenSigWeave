@@ -586,6 +586,14 @@ async function main() {
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
     const exportButton = exportPanel.getByRole("button", { name: "Download selected components" });
+    // Visual switch styling must not turn multi-select export fields into binary ARIA switches.
+    const exportGroupSelection = exportPanel.getByRole("checkbox", { name: "Signature groups and memberships" });
+    assert.equal(await exportGroupSelection.getAttribute("role"), null);
+    assert.equal(await exportGroupSelection.isChecked(), true);
+    await exportGroupSelection.uncheck();
+    assert.equal(await exportGroupSelection.isChecked(), false);
+    await exportGroupSelection.check();
+    assert.equal(await exportGroupSelection.isChecked(), true);
     assert.equal(await exportButton.isDisabled(), false, "export button must be enabled");
     const exportResponse = page.waitForResponse(response =>
       response.url().includes("/api/admin/exports?")
@@ -2077,6 +2085,15 @@ async function main() {
       .locator('input[type="checkbox"]').isChecked(), false);
     assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" })
       .locator('input[type="checkbox"]').isChecked(), true);
+    // Native on/off switches retain accessible names, Space-key operation and Alpine bindings.
+    const overridesSwitch = reloadedSettings.getByRole("switch", { name: "Allow Personal Signature Overrides" });
+    assert.equal(await overridesSwitch.isChecked(), false);
+    assert.equal(await overridesSwitch.evaluate(node => getComputedStyle(node).appearance), "none");
+    await overridesSwitch.focus();
+    await overridesSwitch.press("Space");
+    assert.equal(await overridesSwitch.isChecked(), true);
+    await overridesSwitch.press("Space");
+    assert.equal(await overridesSwitch.isChecked(), false);
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
 
     checkpoint("domain settings: complete");

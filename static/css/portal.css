@@ -606,3 +606,70 @@ html[data-theme="light"] .osw-admin-status.text-amber-300 {
     #signature-template-editor .osw-editor-import-url-button { display: none !important; }
     .osw-signature-mobile-import { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; }
 }
+
+/* Shared toggle control for binary settings and independent multi-selection.
+   Native checkbox inputs keep Alpine's checked/change bindings, labels and
+   keyboard semantics. Only binary controls use role="switch" in the template. */
+input[type="checkbox"].osw-switch {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    box-sizing: border-box;
+    display: inline-block;
+    flex: 0 0 2.75rem;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 1.5rem;
+    margin: 0;
+    vertical-align: middle;
+    border: 2px solid var(--osw-border);
+    border-radius: 9999px;
+    background-color: var(--osw-panel-raised);
+    cursor: pointer;
+    transition: background-color .18s ease, border-color .18s ease;
+}
+input[type="checkbox"].osw-switch::before {
+    content: "";
+    position: absolute;
+    top: .125rem;
+    left: .125rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+    transition: transform .18s ease;
+}
+input[type="checkbox"].osw-switch:checked {
+    background-color: var(--osw-action-accent);
+    border-color: var(--osw-action-accent);
+}
+input[type="checkbox"].osw-switch:checked::before {
+    transform: translateX(1.5rem);
+}
+input[type="checkbox"].osw-switch:focus-visible {
+    outline: 3px solid var(--osw-action-accent) !important;
+    outline-offset: 3px;
+}
+input[type="checkbox"].osw-switch:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+    filter: grayscale(.35);
+}
+label:has(> input.osw-switch), label:has(> .osw-switch) { cursor: pointer; }
+label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+    input[type="checkbox"].osw-switch,
+    input[type="checkbox"].osw-switch::before { transition: none; }
+}
+@media (forced-colors: active) {
+    input[type="checkbox"].osw-switch {
+        forced-color-adjust: none;
+        background-color: Canvas;
+        border-color: ButtonText;
+    }
+    input[type="checkbox"].osw-switch::before { background-color: ButtonText; box-shadow: none; }
+    input[type="checkbox"].osw-switch:checked { background-color: Highlight; border-color: Highlight; }
+    input[type="checkbox"].osw-switch:checked::before { background-color: HighlightText; }
+    input[type="checkbox"].osw-switch:disabled { border-color: GrayText; }
+}

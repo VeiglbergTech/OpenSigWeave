@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=signature-mobile-fallback-20261123"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=signature-mobile-fallback-20261123" rel="stylesheet">
+    <link href="/static/css/portal.css?v=toggle-switches-20261123" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
@@ -143,7 +143,7 @@
                             <label class="text-sm">Provider ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">Display Name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
                             <label class="text-sm">Provider Type<select x-model="form.provider_type" @change="changeType" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="oidc">OpenID Connect (generic)</option><option value="ldap">LDAP / Active Directory</option></select></label>
-                            <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled"> Enabled</label>
+                            <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Enabled</label>
                         </div>
                         <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
                             <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
@@ -282,17 +282,13 @@
                                 <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
                                     <template x-for="domain in domains" :key="domain.id">
-                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="rounded"><span x-text="domain.domain_name"></span></label>
+                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch osw-switch--multi"><span x-text="domain.domain_name"></span></label>
                                     </template>
                                     <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
                                 </div>
                             </div>
                             <label class="flex items-center gap-3 cursor-pointer text-sm text-gray-300 md:col-span-2">
-                                <span class="relative inline-flex items-center">
-                                    <input type="checkbox" x-model="form.is_active" class="sr-only">
-                                    <span class="block w-10 h-6 rounded-full transition-colors duration-200" :class="form.is_active ? 'bg-blue-500' : 'bg-gray-700'"></span>
-                                    <span class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="form.is_active ? 'translate-x-4' : ''"></span>
-                                </span>
+                                <input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">
                                 Active signature
                             </label>
                         </div>
@@ -390,7 +386,7 @@
                                 <div class="flex items-center gap-2 text-sm">
                                     <span class="flex-1 truncate" x-text="signatureName(member.signature_id)"></span>
                                     <label class="text-xs text-gray-400">Weight <input type="number" min="1" max="1000" class="w-16 bg-gray-900 border border-gray-600 rounded px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)"></label>
-                                    <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)">Active</label>
+                                    <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)" class="osw-switch" role="switch">Active</label>
                                     <button @click="removeMember(group, member)" class="text-red-400 text-xs">Remove</button>
                                 </div>
                             </template>
@@ -413,8 +409,8 @@
                             <label class="text-sm">Name<input x-model="form.name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
                             <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
                         </div>
-                        <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active">Group enabled</label>
-                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)"><span x-text="domain.domain_name"></span></label></template></div></div>
+                        <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">Group enabled</label>
+                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch osw-switch--multi"><span x-text="domain.domain_name"></span></label></template></div></div>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
                     </div>
@@ -495,7 +491,7 @@
                                 </select>
                             </label>
                         </div>
-                        <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled"> Rule enabled</label>
+                        <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Rule enabled</label>
                         <div class="border-t border-gray-700 pt-4 space-y-3">
                             <div class="flex items-center justify-between"><h4 class="font-medium">Conditions</h4><span class="text-xs text-gray-500">All conditions must match</span></div>
                             <template x-for="(condition, index) in form.conditions" :key="index">
@@ -595,7 +591,7 @@
                                 <label class="text-sm text-gray-300">Start<input type="datetime-local" x-model="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                                 <label class="text-sm text-gray-300">End<input type="datetime-local" x-model="form.ends_local" :min="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                             </div>
-                            <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled"> Schedule enabled</label>
+                            <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Schedule enabled</label>
                             <p class="text-xs text-gray-500">Times use your browser's local time zone. Start is included, end is excluded.</p>
                         </div>
                         <div class="osw-modal-footer">
@@ -679,11 +675,11 @@
             <h3 id="osw-export-section" class="text-lg font-semibold text-white">Export</h3>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="rounded"> Signatures and all HTML versions</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="rounded"> Domains and original templates</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="rounded"> Signature groups and memberships</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="rounded"> Rules and conditions</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="rounded"> Identity-provider metadata</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="osw-switch osw-switch--multi"> Signatures and all HTML versions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="osw-switch osw-switch--multi"> Domains and original templates</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="osw-switch osw-switch--multi"> Signature groups and memberships</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="osw-switch osw-switch--multi"> Rules and conditions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="osw-switch osw-switch--multi"> Identity-provider metadata</label>
                 </div>
                 <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
                     Provider credentials, application secrets, personal user overrides and identity caches are never included. Rule conditions can still contain email addresses or other identifiers; review the archive before sharing. This is a selective configuration export, not a disaster-recovery backup.
@@ -759,7 +755,7 @@
                                             <option value="local">Local</option><option value="smb">SMB</option>
                                         </select>
                                     </label>
-                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="locationForm.enabled"> Enabled</label>
+                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="locationForm.enabled" class="osw-switch" role="switch"> Enabled</label>
                                     <div x-show="locationForm.type === 'local'" class="rounded border border-gray-700 bg-gray-900 p-3 text-sm text-gray-300">
                                         Local backups use a protected subdirectory of /app/backups/ in the persistent Docker volume.
                                     </div>
@@ -842,7 +838,7 @@
                                         </select>
                                     </label>
                                     <label class="flex gap-2 items-center text-sm">
-                                        <input type="checkbox" x-model="ruleForm.enabled"> Enabled
+                                        <input type="checkbox" x-model="ruleForm.enabled" class="osw-switch" role="switch"> Enabled
                                     </label>
                                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         <label class="block text-sm">Schedule
@@ -977,7 +973,7 @@
                         <input type="number" min="1" max="365" x-model.number="settings.keep" :disabled="!available || busy" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
                     </label>
                     <label class="flex items-center gap-3 text-sm">
-                        <input type="checkbox" x-model="settings.automatic" :disabled="!available || busy" class="h-4 w-4 rounded">
+                        <input type="checkbox" x-model="settings.automatic" :disabled="!available || busy" class="osw-switch" role="switch">
                         Enable automatic backups
                     </label>
                 </div>
@@ -1088,38 +1084,22 @@
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
                             
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="allowOverrides">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="allowOverrides ? 'bg-blue-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="allowOverrides ? 'translate-x-4' : ''"></div>
-                                </div>
+                                <input type="checkbox" x-model="allowOverrides" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Allow Personal Signature Overrides</div>
                             </label>
 
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="injectOnReplies">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="injectOnReplies ? 'bg-purple-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="injectOnReplies ? 'translate-x-4' : ''"></div>
-                                </div>
+                                <input type="checkbox" x-model="injectOnReplies" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Apply Signatures to Replies (Experimental) <span class="text-gray-500 text-xs ml-2">(Applies signatures to email replies)</span></div>
                             </label>
 
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="trimWhitespace">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="trimWhitespace ? 'bg-green-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="trimWhitespace ? 'translate-x-4' : ''"></div>
-                                </div>
+                                <input type="checkbox" x-model="trimWhitespace" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Remove Extra Whitespace <span class="text-gray-500 text-xs ml-2">(Peels empty trailing lines before injecting)</span></div>
                             </label>
 
                             <label class="flex items-center cursor-pointer">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="stripDeviceSignatures">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="stripDeviceSignatures ? 'bg-red-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="stripDeviceSignatures ? 'translate-x-4' : ''"></div>
-                                </div>
+                                <input type="checkbox" x-model="stripDeviceSignatures" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Remove Mobile Signatures <span class="text-gray-500 text-xs ml-2">(Removes "Sent from my iPhone", etc.)</span></div>
                             </label>
                         </div>
@@ -1140,7 +1120,7 @@
                                 <span class="text-sm font-medium text-blue-200">Editing: <span x-text="editingUserEmail" class="text-white"></span></span>
                                 <div class="flex flex-wrap gap-4">
                                     <label class="flex items-center cursor-pointer border-r border-blue-800 pr-4">
-                                        <div class="relative"><input type="checkbox" class="sr-only" x-model="editingUserDisabled"><div class="block bg-gray-700 w-8 h-4 rounded-full"></div><div class="dot absolute left-1 top-0.5 bg-white w-3 h-3 rounded-full transition transform" :class="editingUserDisabled ? 'translate-x-3 bg-red-500' : ''"></div></div>
+                                        <input type="checkbox" x-model="editingUserDisabled" class="osw-switch" role="switch">
                                         <div class="ml-2 text-xs font-medium text-gray-300">Disable Signature</div>
                                     </label>
                                     <button @click="saveAdminOverride()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition">Save Changes</button>
