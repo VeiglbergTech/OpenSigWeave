@@ -57,6 +57,7 @@ class BackupRunDB(Base):
     requested_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     started_at = Column(DateTime(timezone=True), nullable=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
+    transfer_started_at = Column(DateTime(timezone=True), nullable=True)
     size_bytes = Column(Integer, nullable=True)
     archive_sha256 = Column(String(64), nullable=True)
     file_key = Column(String(100), nullable=True)
