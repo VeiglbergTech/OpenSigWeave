@@ -1003,7 +1003,7 @@ function identityProviderManager() { return {
         function brandingManager() {
             return {
                 settings: { app_name: 'OpenSigWeave', app_color: '#ff7043', logo_url: '/branding/logo.png', dark_logo_url: '/branding/logo-dark.png', has_custom_dark_logo: false, favicon_url: '/branding/favicon' },
-                logoDataUrl: null, darkLogoDataUrl: null, faviconDataUrl: null, resetLogo: false, resetDarkLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
+                logoDataUrl: null, darkLogoDataUrl: null, faviconDataUrl: null, logoFileName: '', darkLogoFileName: '', faviconFileName: '', resetLogo: false, resetDarkLogo: false, resetFavicon: false, cacheKey: Date.now(), saving: false,
                 async fetchSettings() {
                     try {
                         const response = await fetch('/api/admin/branding', { cache: 'no-store' });
@@ -1043,28 +1043,33 @@ function identityProviderManager() { return {
                         reader.readAsDataURL(file);
                     });
                 },
+                imageUploadLimitBytes() { return (this.settings.large_image_uploads ? 12 : 6) * 1024 * 1024; },
+                openBrandingPicker(event) {
+                    const input = event.currentTarget?.nextElementSibling;
+                    if (input?.type === 'file') input.click();
+                },
                 async chooseLogo(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
                     this.logoDataUrl = null;
-                    if (!file.size || file.size > 512 * 1024 || file.type !== 'image/png') {
-                        notify('Logo must be a PNG up to 512 KiB.', 'error');
+                    if (!file.size || file.size > this.imageUploadLimitBytes() || file.type !== 'image/png') {
+                        notify('Logo must be a PNG up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');
                         event.target.value = '';
                         return;
                     }
-                    try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.resetLogo = false; }
+                    try { this.logoDataUrl = await this.readFile(file, 'image/png'); this.logoFileName = file.name + ' · ' + (file.size / 1048576).toFixed(2) + ' MiB'; this.resetLogo = false; }
                     catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 async chooseDarkLogo(event) {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
                     this.darkLogoDataUrl = null;
-                    if (!file.size || file.size > 512 * 1024 || file.type !== 'image/png') {
-                        notify('Dark mode logo must be a PNG up to 512 KiB.', 'error');
+                    if (!file.size || file.size > this.imageUploadLimitBytes() || file.type !== 'image/png') {
+                        notify('Dark mode logo must be a PNG up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');
                         event.target.value = '';
                         return;
                     }
-                    try { this.darkLogoDataUrl = await this.readFile(file, 'image/png'); this.resetDarkLogo = false; }
+                    try { this.darkLogoDataUrl = await this.readFile(file, 'image/png'); this.darkLogoFileName = file.name + ' · ' + (file.size / 1048576).toFixed(2) + ' MiB'; this.resetDarkLogo = false; }
                     catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
                 async chooseFavicon(event) {
@@ -1072,17 +1077,17 @@ function identityProviderManager() { return {
                     if (!file) return;
                     this.faviconDataUrl = null;
                     const ico = file.name.toLowerCase().endsWith('.ico');
-                    if (!file.size || file.size > 256 * 1024 || (!ico && file.type !== 'image/png')) {
-                        notify('Favicon must be PNG or ICO up to 256 KiB.', 'error');
+                    if (!file.size || file.size > this.imageUploadLimitBytes() || (!ico && file.type !== 'image/png')) {
+                        notify('Favicon must be PNG or ICO up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');
                         event.target.value = '';
                         return;
                     }
-                    try { this.faviconDataUrl = await this.readFile(file, ico ? 'image/x-icon' : 'image/png'); this.resetFavicon = false; }
+                    try { this.faviconDataUrl = await this.readFile(file, ico ? 'image/x-icon' : 'image/png'); this.faviconFileName = file.name + ' · ' + (file.size / 1048576).toFixed(2) + ' MiB'; this.resetFavicon = false; }
                     catch (error) { notify(error.message, 'error'); event.target.value = ''; }
                 },
-                restoreLogo() { this.logoDataUrl = null; this.resetLogo = true; },
-                restoreDarkLogo() { this.darkLogoDataUrl = null; this.resetDarkLogo = true; },
-                restoreFavicon() { this.faviconDataUrl = null; this.resetFavicon = true; },
+                restoreLogo() { this.logoDataUrl = null; this.logoFileName = ''; this.resetLogo = true; },
+                restoreDarkLogo() { this.darkLogoDataUrl = null; this.darkLogoFileName = ''; this.resetDarkLogo = true; },
+                restoreFavicon() { this.faviconDataUrl = null; this.faviconFileName = ''; this.resetFavicon = true; },
                 async resetAll() {
                     if (this.saving) return;
                     const confirmed = await oswAskConfirmation({
@@ -1102,6 +1107,9 @@ function identityProviderManager() { return {
                         this.logoDataUrl = null;
                         this.darkLogoDataUrl = null;
                         this.faviconDataUrl = null;
+                        this.logoFileName = '';
+                        this.darkLogoFileName = '';
+                        this.faviconFileName = '';
                         this.resetLogo = false;
                         this.resetDarkLogo = false;
                         this.resetFavicon = false;
@@ -1126,6 +1134,8 @@ function identityProviderManager() { return {
                     if (this.saving) return;
                     if (!this.settings.app_name || !this.settings.app_name.trim()) { notify('Application name is required.', 'error'); return; }
                     if (!/^#[0-9a-fA-F]{6}$/.test(this.settings.app_color || '')) { notify('Accent color must be a six-digit hex value.', 'error'); return; }
+                    const tooBig = [this.logoDataUrl, this.darkLogoDataUrl, this.faviconDataUrl].some(data => data && (data.length - data.indexOf(',') - 1) * .75 > this.imageUploadLimitBytes() + 2);
+                    if (tooBig) { notify('A selected image exceeds the currently enabled upload limit.', 'error'); return; }
                     this.saving = true;
                     try {
                         const response = await fetch('/api/admin/branding', {
@@ -1133,7 +1143,8 @@ function identityProviderManager() { return {
                             body: JSON.stringify({
                                 app_name: this.settings.app_name.trim(), app_color: this.settings.app_color,
                                 logo_data_url: this.logoDataUrl, dark_logo_data_url: this.darkLogoDataUrl, favicon_data_url: this.faviconDataUrl,
-                                reset_logo: this.resetLogo, reset_dark_logo: this.resetDarkLogo, reset_favicon: this.resetFavicon
+                                reset_logo: this.resetLogo, reset_dark_logo: this.resetDarkLogo, reset_favicon: this.resetFavicon,
+                                large_image_uploads: this.settings.large_image_uploads
                             })
                         });
                         if (!response.ok) {

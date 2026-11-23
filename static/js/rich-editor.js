@@ -113,125 +113,117 @@
         return String(size) + (match[2] || "pt").toLowerCase();
     }
 
+    let fontListSerial = 0;
+
     function signatureFontToolbarPlugin(editor) {
         const ui = window.CKEDITOR;
 
-        function makeDropdown(locale, className, caption, command) {
-            const dropdown = ui.createDropdown(locale);
-            dropdown.class = className;
-            dropdown.buttonView.set({ label: caption, withText: true, tooltip: caption });
-            dropdown.bind("isEnabled").to(command, "isEnabled");
-            return dropdown;
-        }
-
-        function addOptions(dropdown, labels) {
-            const items = new ui.Collection();
-            for (const label of labels) {
-                items.add({ type: "button", model: new ui.UIModel({ label, withText: true }) });
-            }
-            ui.addListToDropdown(dropdown, items, { ariaLabel: "Font formatting options" });
-        }
-
-        editor.ui.componentFactory.add("signatureFontFamily", locale => {
-            const command = editor.commands.get("fontFamily");
-            const dropdown = makeDropdown(locale, "osw-signature-family-dropdown", "Font family", command);
-            addOptions(dropdown, ["Default font", ...SIGNATURE_FONT_FAMILIES.map(([name]) => name)]);
-
-            function update() {
-                const value = typeof command.value === "string" ? command.value.trim() : "";
-                // Imported HTML may quote a family containing spaces. Match
-                // the first face without discarding unknown legacy families.
-                const firstFamily = value.split(",")[0].trim().replace(/^(['"])(.*)\1$/, "$2");
-                const option = SIGNATURE_FONT_FAMILIES.find(([name, css]) =>
-                    firstFamily.toLowerCase() === name.toLowerCase() ||
-                    value.toLowerCase() === css.toLowerCase()
-                );
-                dropdown.buttonView.label = option ? option[0] : (value || "Font family");
-            }
-
-            dropdown.on("execute", event => {
-                const name = event.source.label;
-                if (name === "Default font") editor.execute("fontFamily");
-                else {
-                    const option = SIGNATURE_FONT_FAMILIES.find(([label]) => label === name);
-                    if (!option) return;
-                    editor.execute("fontFamily", { value: option[0] });
-                }
-                editor.editing.view.focus();
-                update();
-            });
-            command.on("change:value", update);
-            update();
-            return dropdown;
-        });
-
-        editor.ui.componentFactory.add("signatureFontSize", locale => {
-            const command = editor.commands.get("fontSize");
-            const dropdown = makeDropdown(locale, "osw-signature-size-dropdown", "Font size", command);
-            const input = new ui.LabeledFieldView(locale, ui.createLabeledInputText);
-            input.set({ label: "Custom font size (pt or px)", value: "" });
-            // Presets and free-form values share this one CKEditor dropdown.
-            dropdown.panelView.children.add(input);
-            addOptions(dropdown, ["Default size", ...SIGNATURE_FONT_SIZES_PT.map(size => size + " pt")]);
-
-            function update() {
-                dropdown.buttonView.label = fontSizeLabel(command.value);
-                const element = input.fieldView.element;
-                if (element && document.activeElement !== element) {
-                    element.value = command.value == null ? "" : String(command.value);
-                }
-            }
-
-            function apply(value) {
-                if (value === null) editor.execute("fontSize");
-                else editor.execute("fontSize", { value });
-                dropdown.isOpen = false;
-                editor.editing.view.focus();
-                update();
-            }
-
-            dropdown.on("execute", event => {
-                const label = event.source.label;
-                if (label === "Default size") apply(null);
-                else if (SIGNATURE_FONT_SIZES_PT.some(size => label === size + " pt")) {
-                    apply(label.replace(/\s+/g, ""));
-                }
-            });
-
-            // CKEditor renders and owns this input inside its dropdown panel.
-            // Only wire DOM keyboard/validation events after its first opening.
-            let inputBound = false;
-            dropdown.on("change:isOpen", () => {
-                if (!dropdown.isOpen) return;
-                const element = input.fieldView.element;
-                if (!element) return;
-                if (!inputBound) {
-                    inputBound = true;
-                    element.setAttribute("inputmode", "decimal");
-                    element.setAttribute("placeholder", "e.g. 13 or 17,5 pt");
-                    element.addEventListener("input", () => element.setCustomValidity(""));
-                    element.addEventListener("keydown", event => {
+        function createInputControl(locale, { commandName, label, className, placeholder, formatValue, parseInput, options }) {
+            const command = editor.commands.get(commandName);
+            // LabeledFieldView is a native CKEditor UI view, not a detached
+            // toolbar. Its input remains accessible by keyboard and screen readers.
+            class FontInputView extends ui.LabeledFieldView {
+                render() {
+                    super.render();
+                    this.element.classList.add("osw-ckeditor-font-input", className);
+                    const input = this.fieldView.element;
+                    input.setAttribute("aria-label", label);
+                    input.setAttribute("placeholder", placeholder);
+                    input.setAttribute("autocomplete", "off");
+                    input.setAttribute("spellcheck", "false");
+                    if (commandName === "fontSize") input.setAttribute("inputmode", "decimal");
+                    if (options) {
+                        const list = document.createElement("datalist");
+                        list.id = "osw-font-options-" + (++fontListSerial);
+                        options.forEach(name => {
+                            const option = document.createElement("option");
+                            option.value = name;
+                            list.appendChild(option);
+                        });
+                        input.setAttribute("list", list.id);
+                        this.element.appendChild(list);
+                    }
+                    let selectedRange = null;
+                    const captureSelection = () => {
+                        selectedRange = editor.model.document.selection.getFirstRange();
+                    };
+                    input.addEventListener("pointerdown", captureSelection);
+                    input.addEventListener("focus", captureSelection);
+                    const update = () => {
+                        if (document.activeElement !== input) {
+                            input.value = formatValue(command.value);
+                            input.setCustomValidity("");
+                        }
+                    };
+                    const apply = focusEditor => {
+                        const raw = input.value.trim();
+                        const parsed = raw ? parseInput(raw) : "";
+                        if (raw && !parsed) {
+                            input.setCustomValidity("Enter a valid " + label.toLowerCase() + ".");
+                            input.reportValidity();
+                            return;
+                        }
+                        input.setCustomValidity("");
+                        if (selectedRange) {
+                            try { editor.model.change(writer => writer.setSelection(selectedRange)); }
+                            catch (_) { selectedRange = null; }
+                        }
+                        if (!parsed) editor.execute(commandName);
+                        else editor.execute(commandName, { value: parsed });
+                        if (focusEditor) editor.editing.view.focus();
+                        update();
+                    };
+                    input.addEventListener("input", () => input.setCustomValidity(""));
+                    input.addEventListener("change", () => apply(false));
+                    input.addEventListener("keydown", event => {
+                        if (event.key === "Escape") { input.value = formatValue(command.value); input.setCustomValidity(""); return; }
                         if (event.key !== "Enter") return;
                         event.preventDefault();
                         event.stopPropagation();
-                        const value = parseFontSizeInput(element.value);
-                        if (!value) {
-                            element.setCustomValidity("Enter a size from 6 to 96 pt (or px), with up to two decimals.");
-                            element.reportValidity();
-                            return;
-                        }
-                        element.setCustomValidity("");
-                        apply(value);
+                        apply(true);
                     });
+                    this.listenTo(command, "change:value", update);
+                    update();
                 }
-                update();
-            });
-            command.on("change:value", update);
-            update();
-            return dropdown;
-        });
-    }
+            }
+            const view = new FontInputView(locale, ui.createLabeledInputText);
+            view.set({ label });
+            view.bind("isEnabled").to(command, "isEnabled");
+            view.fieldView.bind("isEnabled").to(command, "isEnabled");
+            return view;
+        }
 
+        editor.ui.componentFactory.add("signatureFontFamily", locale =>
+            createInputControl(locale, {
+                commandName: "fontFamily",
+                label: "Font family",
+                className: "osw-signature-family-input",
+                placeholder: "Search font…",
+                options: SIGNATURE_FONT_FAMILIES.map(([name]) => name),
+                formatValue(value) {
+                    const first = String(value || "").split(",")[0].trim().replace(/^(['"])(.*)\\1$/, "$2");
+                    return SIGNATURE_FONT_FAMILIES.find(([name]) => name.toLowerCase() === first.toLowerCase())?.[0] || first;
+                },
+                parseInput(raw) {
+                    return SIGNATURE_FONT_FAMILIES.find(([name]) => name.toLowerCase() === raw.toLowerCase())?.[0] || null;
+                }
+            })
+        );
+
+        editor.ui.componentFactory.add("signatureFontSize", locale =>
+            createInputControl(locale, {
+                commandName: "fontSize",
+                label: "Font size (pt)",
+                className: "osw-signature-size-input",
+                placeholder: "Size (pt)",
+                formatValue(value) {
+                    const label = fontSizeLabel(value);
+                    return label === "Font size" ? "" : label.replace(/\\s+(pt|px)$/i, "");
+                },
+                parseInput: parseFontSizeInput
+            })
+        );
+    }
 
     // An additional native control lives in CKEditor's existing toolbar. Using a
     // local button instead of duplicating the editor avoids altering upload plugins.
@@ -296,7 +288,7 @@
         }
         const plugins = pluginNames.map(name => library[name]);
         const toolbar = [
-            "undo", "redo", "|", "heading", "|",
+            "undo", "redo", "|",
             "signatureFontFamily", "signatureFontSize", "fontColor", "fontBackgroundColor", "|",
             "bold", "italic", "underline", "link", "|",
             "bulletedList", "numberedList", "|", "alignment", "insertTable"

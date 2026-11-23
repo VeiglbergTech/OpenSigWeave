@@ -9,10 +9,10 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js"></script>
-    <script src="/static/js/rich-editor.js?v=ui-regressions-20261123"></script>
+    <script src="/static/js/rich-editor.js?v=font-combobox-20261123"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=ui-regressions-20261123" rel="stylesheet">
+    <link href="/static/css/portal.css?v=font-combobox-20261123" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
@@ -329,7 +329,7 @@
                             </details>
                             <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
                             <button type="button" @click="openImageImportDialog()" :disabled="isViewingHistoricalVersion" class="osw-signature-mobile-import mt-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-3 py-2 rounded text-sm font-medium">Import Image from URL</button>
-                            <p class="mt-2 text-xs text-gray-500">Paste or drop PNG, JPEG, WebP or GIF images (up to 2 MiB each).</p>
+                            <p class="mt-2 text-xs text-gray-500">Paste or drop PNG, JPEG, WebP or GIF images (6 MiB by default; up to 12 MiB if enabled in Branding).</p>
                             <div x-data="htmlEditorToggle" class="mt-3">
                                 <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit Raw HTML</button>
                                 <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" :disabled="isViewingHistoricalVersion" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
@@ -389,7 +389,7 @@
                             <tr>
                                 <td class="align-top">
                                     <h3 class="font-medium" x-text="group.name"></h3>
-                                    <div class="mt-1 break-all font-mono text-xs text-gray-400" x-text="group.slug"></div>
+                                    
                                 </td>
                                 <td class="align-top text-gray-300" x-text="group.domain_ids.length ? group.domain_ids.length + ' assigned domain(s)' : 'All domains'"></td>
                                 <td class="align-top">
@@ -631,17 +631,25 @@
                     <h3 class="font-semibold">Application identity</h3>
                     <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
                     <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300"><input type="checkbox" x-model="settings.large_image_uploads" class="osw-switch" role="switch"> Allow large images (12 MiB instead of 6 MiB)</label>
+                    <p class="text-xs text-gray-400">This setting applies to signature images, web interface logos and favicons. Existing uploaded images are unaffected if disabled later.</p>
                     </div>
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
                     <div><div class="osw-branding-logo-heading"><h3 class="font-semibold">Light mode logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Logo</button></div>
                         <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="logoPreview()" alt="Brand logo preview" class="osw-branding-logo-image"></div>
-                        <input type="file" aria-label="Light mode logo" accept="image/png,.png" @change="chooseLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose PNG File</button>
+                        <input type="file" aria-label="Light mode logo" accept="image/png,.png" @change="chooseLogo($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="logoFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG only, maximum 6 MiB (12 MiB when enabled). <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
                     <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Dark mode logo</h3><button type="button" @click="restoreDarkLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Logo</button></div>
                         <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="darkLogoPreview()" alt="Dark mode logo preview" class="osw-branding-logo-image"></div>
-                        <input type="file" aria-label="Dark mode logo" accept="image/png,.png" @change="chooseDarkLogo($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG only, maximum 512 KiB. Without an upload, the standard logo is used.</p></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose PNG File</button>
+                        <input type="file" aria-label="Dark mode logo" accept="image/png,.png" @change="chooseDarkLogo($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="darkLogoFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG only, maximum 6 MiB (12 MiB when enabled). Without an upload, the standard logo is used.</p></div>
                     <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Favicon</button></div>
                         <div class="mt-3 osw-branding-favicon-preview rounded border border-gray-700 bg-gray-950"><img :src="faviconPreview()" alt="Favicon preview"></div>
-                        <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="mt-3 block w-full text-sm text-gray-300 file:mr-4 file:rounded file:border-0 file:bg-gray-700 file:px-4 file:py-2 file:text-white"><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 256 KiB. Without a custom favicon, the built-in logo is used.</p></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose ICO / PNG File</button>
+                        <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="faviconFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 6 MiB (12 MiB when enabled). Without a custom favicon, the built-in logo is used.</p></div>
                 </div>
             </div>
             <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-700 pt-4">
@@ -1276,6 +1284,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=ui-regressions-20261123"></script>
+    <script src="/static/js/portal.js?v=branding-file-picker-20261123"></script>
 </body>
 </html>

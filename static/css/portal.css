@@ -678,3 +678,24 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     input[type="checkbox"].osw-switch:checked::before { background-color: HighlightText; }
     input[type="checkbox"].osw-switch:disabled { border-color: GrayText; }
 }
+
+/* Compact, editable Word-style font fields inside every CKEditor toolbar. */
+.ck-toolbar .osw-ckeditor-font-input {
+    flex: 0 1 172px;
+    min-width: 92px;
+    max-width: 190px;
+    margin: 2px 3px;
+}
+.ck-toolbar .osw-signature-size-input {
+    flex-basis: 95px;
+    max-width: 105px;
+}
+.ck-toolbar .osw-ckeditor-font-input .ck-labeled-field-view__input-wrapper,
+.ck-toolbar .osw-ckeditor-font-input .ck-input {
+    width: 100%;
+    min-width: 0;
+}
+.ck-toolbar .osw-ckeditor-font-input input {
+    min-height: 32px;
+    padding: 4px 8px;
+}
