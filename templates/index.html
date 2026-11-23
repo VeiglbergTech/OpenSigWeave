@@ -9,10 +9,10 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js"></script>
-    <script src="/static/js/rich-editor.js?v=ckeditor-font-toolbar-20261123"></script>
+    <script src="/static/js/rich-editor.js?v=ui-regressions-20261123"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=ckeditor-font-toolbar-20261123" rel="stylesheet">
+    <link href="/static/css/portal.css?v=ui-regressions-20261123" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
@@ -373,33 +373,53 @@
                 <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
             </div>
-            <div class="flex flex-wrap items-center gap-2 text-sm text-gray-300"><label for="group-preview-domain">Preview domain</label><select id="group-preview-domain" x-model="previewDomainId" class="bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select domain</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select><span class="text-xs text-gray-500">Preview does not advance rotation history.</span></div>
-            <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                <template x-for="group in groups" :key="group.id">
-                    <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
-                        <div class="flex items-start justify-between">
-                            <div><h3 class="font-semibold" x-text="group.name"></h3><p class="text-xs text-gray-500 font-mono" x-text="group.slug"></p></div>
-                            <span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span>
-                        </div>
-                        <p class="text-xs text-gray-400" x-text="group.domain_ids.length ? 'Domain-scoped group' : 'Available to all domains'"></p>
-                        <div class="border-t border-gray-700 pt-3 space-y-2">
-                            <template x-for="member in group.members" :key="member.signature_id">
-                                <div class="flex items-center gap-2 text-sm">
-                                    <span class="flex-1 truncate" x-text="signatureName(member.signature_id)"></span>
-                                    <label class="text-xs text-gray-400">Weight <input type="number" min="1" max="1000" class="w-16 bg-gray-900 border border-gray-600 rounded px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)"></label>
-                                    <label class="text-xs flex items-center gap-1"><input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)" class="osw-switch" role="switch">Active</label>
-                                    <button @click="removeMember(group, member)" class="text-red-400 text-xs">Remove</button>
-                                </div>
-                            </template>
-                            <p x-show="group.members.length === 0" class="text-xs text-gray-500">No signatures assigned.</p>
-                        </div>
-                        <div class="flex justify-end gap-3 border-t border-gray-700 pt-3">
-                            <button @click="previewGroup(group)" class="text-emerald-400 text-sm">Preview</button>
-                            <button @click="editGroup(group)" class="text-blue-400 text-sm">Edit</button>
-                            <button @click="deleteGroup(group)" class="text-red-400 text-sm">Delete</button>
-                        </div>
-                    </div>
-                </template>
+            <div class="flex flex-wrap items-center gap-2 rounded border border-gray-700 bg-gray-800 p-4 text-sm text-gray-300">
+                <label for="group-preview-domain">Preview domain</label>
+                <select id="group-preview-domain" x-model="previewDomainId" class="rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                    <option value="">Select domain</option>
+                    <template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
+                </select>
+                <span class="text-xs text-gray-400">Preview does not advance rotation history.</span>
+            </div>
+            <div class="osw-table-scroll">
+                <table class="w-full min-w-[54rem] text-left text-sm">
+                    <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="group in groups" :key="group.id">
+                            <tr>
+                                <td class="align-top">
+                                    <div class="font-medium" x-text="group.name"></div>
+                                    <div class="mt-1 break-all font-mono text-xs text-gray-400" x-text="group.slug"></div>
+                                </td>
+                                <td class="align-top text-gray-300" x-text="group.domain_ids.length ? group.domain_ids.length + ' assigned domain(s)' : 'All domains'"></td>
+                                <td class="align-top">
+                                    <div class="space-y-2">
+                                        <template x-for="member in group.members" :key="member.signature_id">
+                                            <div class="flex flex-wrap items-center gap-3 rounded border border-gray-700 p-2">
+                                                <span class="min-w-[7rem] flex-1 break-words" x-text="signatureName(member.signature_id)"></span>
+                                                <label class="flex items-center gap-2 text-xs text-gray-300">Weight
+                                                    <input type="number" min="1" max="1000" class="w-20 rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)">
+                                                </label>
+                                                <label class="flex items-center gap-2 text-xs text-gray-300">
+                                                    <input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)" class="osw-switch" role="switch"> Enabled
+                                                </label>
+                                                <button type="button" @click="removeMember(group, member)" class="text-xs text-red-400 hover:text-red-300">Remove</button>
+                                            </div>
+                                        </template>
+                                        <p x-show="group.members.length === 0" class="text-xs text-gray-400">No signatures assigned.</p>
+                                    </div>
+                                </td>
+                                <td class="align-top"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="align-top"><div class="flex flex-wrap justify-end gap-3">
+                                    <button type="button" @click="previewGroup(group)" class="text-green-400 hover:text-green-300">Preview</button>
+                                    <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>
+                                    <button type="button" @click="deleteGroup(group)" class="text-red-400 hover:text-red-300">Delete</button>
+                                </div></td>
+                            </tr>
+                        </template>
+                        <tr x-show="groups.length === 0"><td colspan="5" class="text-center text-gray-400">No signature groups configured.</td></tr>
+                    </tbody>
+                </table>
             </div>
             <div class="osw-modal-root">
                 <div class="osw-modal-placement">
@@ -497,15 +517,15 @@
                             <div class="flex items-center justify-between"><h4 class="font-medium">Conditions</h4><span class="text-xs text-gray-500">All conditions must match</span></div>
                             <template x-for="(condition, index) in form.conditions" :key="index">
                                 <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
-                                    <select x-model="condition.kind" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                    <select x-model="condition.kind" @change="changeConditionKind(condition, $event)" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
                                         <option value="sender_equals">Sender equals</option><option value="sender_not_equals">Sender not equal to</option>
                                         <option value="domain_equals">Domain equals</option><option value="domain_not_equals">Domain not equal to</option>
                                         <option value="group_contains">Group contains</option>
                                         <option value="attribute_equals">Attribute equals</option><option value="attribute_not_equals">Attribute not equal to</option>
                                         <option value="claim_equals">Claim equals</option><option value="claim_not_equals">Claim not equal to</option>
                                     </select>
-                                    <input x-model="condition.key" :disabled="['sender_equals','sender_not_equals','domain_equals','domain_not_equals','group_contains'].includes(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm disabled:opacity-40">
-                                    <input x-model="condition.value" placeholder="Value" class="md:col-span-5 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                    <input x-show="requiresConditionKey(condition.kind)" x-model="condition.key" :disabled="!requiresConditionKey(condition.kind)" :required="requiresConditionKey(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                    <input x-model="condition.value" placeholder="Value" :class="requiresConditionKey(condition.kind) ? 'md:col-span-5' : 'md:col-span-8'" class="bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
                                     <button @click="form.conditions.splice(index,1)" class="text-red-400 text-sm md:col-span-1">Remove</button>
                                 </div>
                             </template>
@@ -816,7 +836,7 @@
                                 <h3 id="backup-rule-modal-title" class="text-lg font-bold" x-text="ruleEditingId ? 'Edit Backup Rule' : 'Add Backup Rule'"></h3>
                                 <button type="button" class="osw-modal-dismiss" @click="closeRule()" aria-label="Close dialog">&times;</button>
                             </div>
-                            <form @submit.prevent="saveRule()">
+                            <form class="osw-modal-form" @submit.prevent="saveRule()">
                                 <div class="osw-modal-body space-y-4">
                                     <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="backup-rule-general">
                                         <h4 id="backup-rule-general" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">General</h4>
@@ -897,6 +917,7 @@
                                     </section>
                                 </div>
                                 <div class="osw-modal-footer">
+                                    <p x-show="error" x-text="error" role="alert" class="w-full text-sm text-red-300"></p>
                                     <button type="button" @click="closeRule()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>
                                     <button type="submit" :disabled="ruleSaving" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="ruleSaving ? 'Saving…' : 'Save Rule'"></button>
                                 </div>
@@ -975,9 +996,9 @@
             </template>
 
         </div>
-        <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="osw-admin-section space-y-5">
+        <div id="osw-system-status-panel" x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="start()" class="osw-admin-section space-y-5">
             <div class="osw-section-header">
-                <h2 class="text-2xl font-semibold">System Status</h2>
+                <div><h2 class="text-2xl font-semibold">System Status</h2><p class="mt-1 text-xs text-gray-400">Automatically refreshes every 10 seconds while this tab is visible.</p></div>
                 <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh Status'">Refresh Status</button>
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
