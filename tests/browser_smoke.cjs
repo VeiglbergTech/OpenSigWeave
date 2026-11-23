@@ -2160,9 +2160,24 @@ async function main() {
         assert.equal(await fontControls[1].locator('option[value="18"]').count(), 1,
           "signature font size dropdown must offer exact pixel presets");
         const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Image from URL" });
+        // The toolbar button exists before OpenSigWeaveEditor.create() returns its adapter.
+        // Avoid clicking during that initialization window in the visual layout matrix.
+        await visualPage.waitForFunction(() => {
+          const manager = Alpine.$data(document.querySelector('[x-data="signatureManager"]'));
+          return manager.editing && !manager.isViewingHistoricalVersion
+            && !!window.signatureRichEditor
+            && !!document.getElementById("signature-template-editor").__openSigWeaveEditor;
+        });
         await urlButton.scrollIntoViewIfNeeded();
         await urlButton.click();
         const urlSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Import Image from URL"]';
+        const modalState = await visualPage.evaluate(() => {
+          const manager = Alpine.$data(document.querySelector('[x-data="signatureManager"]'));
+          return { editing: manager.editing, imageImportOpen: manager.imageImportOpen,
+            historic: manager.isViewingHistoricalVersion,
+            editorReady: !!window.signatureRichEditor };
+        });
+        console.log("[browser-smoke] signature URL dialog " + prefix + JSON.stringify(modalState));
         await inspect(urlSelector, "image-url-import");
         await close(urlSelector);
         await close(signatureSelector);
