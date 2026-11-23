@@ -136,7 +136,7 @@
                             tag: "input",
                             attributes: {
                                 type: "text",
-                                class: ["ck", "ck-input", "ck-input-text"],
+                                // Use a plain input: CKEditor input classes carry native\n                                // labeled-field decoration which conflicts with\n                                // the single placeholder and themed background.\n                                class: ["osw-font-text-field"],
                                 "aria-label": label,
                                 placeholder,
                                 autocomplete: "off",
@@ -163,6 +163,9 @@
                         listbox.setAttribute("role", "listbox");
                         listbox.setAttribute("aria-label", label + " options");
                         listbox.hidden = true;
+                        // Keep the search field focused while selecting items;
+                        // only individual option pointerdowns are suppressed so
+                        // the native scrollbar still supports pointer dragging.
                         this.element.appendChild(listbox);
                         input.setAttribute("role", "combobox");
                         input.setAttribute("aria-controls", listbox.id);
@@ -308,7 +311,10 @@
                         }
                         apply(true);
                     });
-                    input.addEventListener("blur", () => {
+                    input.addEventListener("blur", event => {
+                        // Moving focus to a list option should not discard the
+                        // selection before its click handler executes.
+                        if (listbox && event.relatedTarget && listbox.contains(event.relatedTarget)) return;
                         closeMenu();
                         update();
                     });
