@@ -177,6 +177,21 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
     border: 1px solid var(--osw-border); border-radius: .875rem;
     box-shadow: 0 24px 60px rgba(0, 0, 0, .45); pointer-events: auto;
 }
+/* A form inside a modal must shrink; otherwise its auto min-height blocks
+   the body's scrollbar and pushes the Save action below the viewport. */
+.osw-modal-form {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+}
+.osw-modal-form > .osw-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+.osw-modal-form > .osw-modal-footer { flex: 0 0 auto; }
 .osw-modal-width-small { --osw-dialog-width: 30rem; }
 .osw-modal-width-medium { --osw-dialog-width: 54rem; }
 .osw-modal-width-large { --osw-dialog-width: 64rem; }
