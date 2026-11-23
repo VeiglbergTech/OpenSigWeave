@@ -427,8 +427,9 @@ def reconcile_active(db, now: datetime | None = None):
         db.commit()
         return
     if run.status == "transferring":
-        if run.started_at and utc(run.started_at) + TRANSFER_LEASE < now:
+        if run.transfer_started_at and utc(run.transfer_started_at) + TRANSFER_LEASE < now:
             run.status = "running"
+            run.transfer_started_at = None
             db.commit()
         else:
             return
@@ -459,7 +460,7 @@ def reconcile_active(db, now: datetime | None = None):
         return
     claimed = db.execute(update(BackupRunDB).where(
         BackupRunDB.id == run.id, BackupRunDB.status.in_(["pending", "running"])
-    ).values(status="transferring", started_at=run.started_at or now))
+    ).values(status="transferring", started_at=run.started_at or now, transfer_started_at=now))
     if claimed.rowcount != 1:
         db.rollback()
         return
@@ -496,8 +497,10 @@ def run_scheduler_tick(now: datetime | None = None):
         lease = db.get(BackupRuntimeDB, 1)
         if lease is None or lease.active_run_id:
             return
-        due = db.query(BackupRuleDB).filter(
-            BackupRuleDB.is_enabled.is_(True),
+        due = db.query(BackupRuleDB).join(
+            BackupLocationDB, BackupRuleDB.location_id == BackupLocationDB.id
+        ).filter(
+            BackupLocationDB.is_enabled.is_(True), BackupRuleDB.is_enabled.is_(True),
             BackupRuleDB.next_run_at.is_not(None),
             BackupRuleDB.next_run_at <= now,
         ).order_by(BackupRuleDB.next_run_at, BackupRuleDB.id).limit(1).first()
