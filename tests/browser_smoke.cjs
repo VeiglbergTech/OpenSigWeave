@@ -1535,9 +1535,10 @@ async function main() {
     const customBranding = await (await page.request.get(baseURL + "/api/admin/branding")).json();
     assert.equal(customBranding.app_name, "OpenSigWeave Browser Smoke");
     assert.equal(customBranding.app_color, "#f97316");
-    assert.equal(customBranding.has_custom_logo, true);
-    assert.equal(customBranding.has_custom_dark_logo, true);
-    assert.equal(customBranding.has_custom_favicon, true);
+    assert.equal(customBranding.has_custom_logo, true, "branding update must persist the regular logo");
+    assert.equal(customBranding.has_custom_dark_logo, true, "branding update must persist the dark mode logo");
+    assert.equal(customBranding.has_custom_favicon, true, "branding update must persist the favicon");
+    checkpoint("branding: custom assets saved");
 
     const customLogoResponse = await page.request.get(baseURL + "/branding/logo.png");
     const customDarkLogoResponse = await page.request.get(baseURL + "/branding/logo-dark.png");
@@ -1551,15 +1552,21 @@ async function main() {
     assert.match(customLogoResponse.headers()["cache-control"], /no-cache/, "branding logo must revalidate after updates");
     assert.match(customFaviconResponse.headers()["cache-control"], /no-cache/, "branding favicon must revalidate after updates");
     assert.match(customFaviconResponse.headers()["content-type"], /^image\/x-icon/);
-    const navigationLogo = page.locator('nav img[data-osw-brand-logo]');
-    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo-dark.png');
-    assert.equal(await navigationLogo.evaluate(img => img.complete && img.naturalWidth > 0), true);
+    // A new src attribute does not mean that Chromium has decoded the image.
+    // Wait for both the correct theme asset and natural dimensions before asserting.
+    const awaitNavigationLogo = async expected => {
+      await page.waitForFunction(src => {
+        const img = document.querySelector('nav img[data-osw-brand-logo]');
+        return img?.getAttribute('src') === src && img.complete && img.naturalWidth > 0;
+      }, expected);
+    };
+    await awaitNavigationLogo('/branding/logo-dark.png');
     await page.locator('#theme-toggle').click();
-    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo.png');
+    await awaitNavigationLogo('/branding/logo.png');
     assert.equal(await page.evaluate(() => document.documentElement.dataset.theme), 'light');
     await page.locator('#theme-toggle').click();
-    await page.waitForFunction(() => document.querySelector('nav img[data-osw-brand-logo]')?.getAttribute('src') === '/branding/logo-dark.png');
-    assert.equal(await navigationLogo.evaluate(img => img.complete && img.naturalWidth > 0), true);
+    await awaitNavigationLogo('/branding/logo-dark.png');
+    checkpoint("branding: navigation assets decoded in both themes");
     const appliedColor = await page.locator(".app-brand").first().evaluate(el => getComputedStyle(el).color);
     assert.equal(appliedColor, "rgb(249, 115, 22)", "saved accent color must affect the actual UI");
     const loginBranding = await page.request.get(baseURL + "/login");
