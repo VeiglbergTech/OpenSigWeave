@@ -1492,6 +1492,40 @@ function backupManager() {
         ruleForm: { name: "", description: "", enabled: true, location_id: "", content: "full",
             schedule_kind: "daily", hour: 2, minute: 0, weekday: 0, monthday: 1,
             interval_minutes: 1440, timezone: "UTC", retention_count: 14, retention_days: null },
+        init() {
+            this.fetchAll();
+            this.startPolling();
+        },
+        get hasEnabledLocations() {
+            return this.locations.some(item => item.enabled);
+        },
+        get canDownloadHistory() {
+            return !!this.historyDetail && this.historyDetail.status === "success" && !!this.historyDetail.is_retained;
+        },
+        get hasHistoryError() {
+            return !!this.historyDetail && !!this.historyDetail.error_detail;
+        },
+        get historyDownloadUrl() {
+            return this.canDownloadHistory ? endpoint + "/history/" + encodeURIComponent(this.historyDetail.id) + "/download" : "#";
+        },
+        detailValue(key) {
+            const value = this.historyDetail && this.historyDetail[key];
+            return value === undefined || value === null || value === "" ? "—" : value;
+        },
+        detailDate(key) {
+            const value = this.historyDetail && this.historyDetail[key];
+            return value ? this.formatDate(value) : "—";
+        },
+        detailDuration() {
+            return this.historyDetail && this.historyDetail.duration_seconds !== null ?
+                this.historyDetail.duration_seconds + " s" : "—";
+        },
+        detailSize() {
+            return this.formatSize(this.historyDetail && this.historyDetail.size_bytes);
+        },
+        detailRetained() {
+            return this.historyDetail && this.historyDetail.is_retained ? "Yes" : "No";
+        },
         get filteredRules() {
             const text = this.ruleFilter.trim().toLowerCase();
             return this.rules.filter(item => !text || (item.name + " " + item.location_name).toLowerCase().includes(text));
