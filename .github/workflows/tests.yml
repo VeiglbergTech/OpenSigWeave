@@ -180,6 +180,29 @@ jobs:
               if target.exists():
                   shutil.rmtree(target)
           PY
+          # Exercise optional rule-managed pre-update backups end-to-end with
+          # no manually configured age keys or backup destinations.
+          docker compose exec -T opensigweave python backup_cli.py preupdate --check | \
+            python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "not_configured"'
+          docker compose exec -T opensigweave python - <<'PY'
+          import uuid
+          from database import SessionLocal
+          from models import BackupLocationDB, BackupRuleDB
+          with SessionLocal() as db:
+              local_id, rule_id = uuid.uuid4().hex, uuid.uuid4().hex
+              db.add(BackupLocationDB(id=local_id, name="CI Preupdate Local", type="local", is_enabled=True))
+              db.add(BackupRuleDB(
+                  id=rule_id, name="CI Preupdate Backup", location_id=local_id,
+                  is_enabled=True, content="full", schedule_kind="daily",
+                  retention_count=2,
+              ))
+              db.commit()
+          PY
+          docker compose exec -T opensigweave python backup_cli.py preupdate --check | \
+            python -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "configured" and x["rule_name"] == "CI Preupdate Backup"'
+          docker compose exec -T opensigweave python backup_cli.py preupdate | \
+            python -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "verified" and x["file_key"].endswith(".age"), x'
+          docker compose exec -T opensigweave test -s /app/backups/.recovery/age-identity.txt
           docker compose exec -T opensigweave test -s /app/branding/logo.png
           curl --fail --silent --show-error -H 'Host: signature.example.test'             http://127.0.0.1:8085/branding/logo.png -o /tmp/opensigweave-logo.png
           python - <<'PY'
