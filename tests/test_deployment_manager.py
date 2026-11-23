@@ -299,6 +299,18 @@ class UpdateTests(unittest.TestCase):
                                  "failed_and_overridden")
                 update.clear_update_journal()
 
+    def test_first_upgrade_from_legacy_image_without_rules(self):
+        with patch.object(update, "_backup_command", side_effect=common.DeploymentError("unknown CLI", 7)), \
+             patch.object(update, "compose", return_value="") as compose:
+            self.assertEqual(update.detect_backup()["status"], "not_configured")
+            self.assertEqual(compose.call_count, 1)
+
+    def test_legacy_image_with_enabled_rule_is_not_skipped(self):
+        with patch.object(update, "_backup_command", side_effect=common.DeploymentError("unknown CLI", 7)), \
+             patch.object(update, "compose", side_effect=["backup_rules", "1"]):
+            with self.assertRaises(common.DeploymentError):
+                update.detect_backup()
+
     def test_preupdate_cli_fail_closed_on_docker_errors(self):
         with patch.object(update, "compose", side_effect=common.DeploymentError("docker down", 3)):
             with self.assertRaises(common.DeploymentError) as error:

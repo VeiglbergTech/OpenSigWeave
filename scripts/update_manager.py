@@ -128,8 +128,39 @@ def _backup_command(*args: str) -> dict:
 
 
 def detect_backup() -> dict:
-    """Read-only: distinguish no active rules from a broken configured rule."""
-    return _backup_command("--check")
+    """Read-only check, including upgrades from older app images lacking this CLI.
+
+    A legacy container may not contain the new preupdate command yet. Only
+    PostgreSQL can then establish that zero enabled Backup Rules exist;
+    otherwise fail closed and ask for an explicit backup override.
+    """
+    try:
+        return _backup_command("--check")
+    except DeploymentError as previous:
+        sql_table = "SELECT to_regclass('public.backup_rules')"
+        try:
+            present = compose(
+                "exec", "-T", "postgres", "sh", "-c",
+                'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "' + sql_table + '"',
+                timeout=120,
+            ).strip()
+            if not present:
+                return {"status": "not_configured"}
+            count = compose(
+                "exec", "-T", "postgres", "sh", "-c",
+                'psql -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c '
+                '"SELECT count(*) FROM public.backup_rules WHERE is_enabled IS TRUE"',
+                timeout=120,
+            ).strip()
+            if count == "0":
+                return {"status": "not_configured"}
+        except DeploymentError:
+            pass
+        raise DeploymentError(
+            "Cannot verify Backup Rules using this application image; "
+            "a configured rule or an unavailable backup service must be "
+            "treated as a backup failure.", 7
+        ) from previous
 
 
 def create_backup() -> dict:
