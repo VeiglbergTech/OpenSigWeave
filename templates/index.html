@@ -914,6 +914,7 @@
                                 <div><strong>Duration:</strong> <span x-text="historyDetail?.duration_seconds === null ? '—' : historyDetail?.duration_seconds + ' s'"></span></div>
                                 <div><strong>Size:</strong> <span x-text="formatSize(historyDetail?.size_bytes)"></span></div>
                                 <div><strong>Archive:</strong> <code class="break-all" x-text="historyDetail?.file_key || '—'"></code></div>
+                                <div x-show="historyDetail?.status === 'success' && historyDetail?.is_retained"><a :href="'/api/admin/backups/history/' + encodeURIComponent(historyDetail.id) + '/download'" download class="text-blue-400 hover:text-blue-300">Download encrypted archive</a></div>
                                 <div><strong>Retained:</strong> <span x-text="historyDetail?.is_retained ? 'Yes' : 'No'"></span></div>
                                 <p x-show="historyDetail?.error_detail" class="text-red-300 break-words" x-text="historyDetail?.error_detail"></p>
                             </div>
