@@ -665,7 +665,7 @@ async function main() {
       root: !!dialog.closest(".osw-modal-root"),
       placement: !!dialog.closest(".osw-modal-placement"),
     })));
-    assert.equal(unifiedDialogs.length, 6, "six administrator create/edit dialogs should share one layout");
+    assert.equal(unifiedDialogs.length, 5, "five administrator create/edit dialogs should share one layout after merging schedules into rules");
     for (const item of unifiedDialogs) assert.deepEqual(item, {
       header: true, body: true, footer: true, shell: true, root: true, placement: true,
     }, "each administrator dialog must have the shared Domains-style shell");
