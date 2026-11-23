@@ -698,12 +698,7 @@
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
             <p x-show="message" x-text="message" role="status" class="text-sm text-green-300"></p>
-            <div x-show="!managedAvailable" role="status" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">
-                Backup Rules cannot run: <span x-text="managedError || 'Protected host backup operator is unavailable'"></span>.
-            </div>
-            <div x-show="!mountReady" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">
-                Legacy mount-based backup operations are unavailable. Local and SMB Backup Rules use their own destinations.
-            </div>
+            <p class="text-xs text-gray-400">Encrypted application backups run inside OpenSigWeave using Backup Rules, without a host operator or mounted SMB shares. Configure age recovery settings before enabling backups.</p>
 
             <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
@@ -737,7 +732,7 @@
                     </table>
                 </div>
                 <p x-show="locationTestResult" x-text="locationTestResult" class="text-sm" role="status"></p>
-                <p class="text-xs text-gray-400">Existing encrypted backup operations still use the protected host operator and its mounted storage; adding a location does not change the current backup destination.</p>
+                <p class="text-xs text-gray-400">Each Backup Rule publishes a verified, age-encrypted snapshot to its selected Local or SMB location. Keep the age recovery identity and deployment settings in off-host recovery storage.</p>
             </section>
             <template x-teleport="body">
                 <div x-show="locationModal" x-cloak class="osw-modal-root" @keydown.escape.window="closeLocation()">
@@ -963,61 +958,6 @@
                 </div>
             </template>
 
-            <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
-                <h3 class="font-semibold">Backup Settings</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <label class="block text-sm">Interval (hours)
-                        <input type="number" min="1" max="720" x-model.number="settings.interval_hours" :disabled="!available || busy" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
-                    </label>
-                    <label class="block text-sm">Maximum Backups to Keep
-                        <input type="number" min="1" max="365" x-model.number="settings.keep" :disabled="!available || busy" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
-                    </label>
-                    <label class="flex items-center gap-3 text-sm">
-                        <input type="checkbox" x-model="settings.automatic" :disabled="!available || busy" class="osw-switch" role="switch">
-                        Enable automatic backups
-                    </label>
-                </div>
-                <div class="flex justify-end">
-                    <button type="button" @click="saveSettings()" :disabled="!available || busy" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="busy ? 'Saving…' : 'Save backup settings'"></button>
-                </div>
-            </div>
-            <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
-                <div class="flex flex-wrap justify-between items-center gap-3">
-                    <h3 class="font-semibold">Encrypted Backups</h3>
-                    <button type="button" @click="createBackup()" :disabled="!available || !mountReady || busy || job.state === 'pending' || job.state === 'running'" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50">Run Backup</button>
-                </div>
-                <div x-show="job.state !== 'idle'" class="rounded border border-gray-700 bg-gray-900 p-3 text-sm" role="status">
-                    <span>Last operation: </span><strong x-text="job.action || '—'"></strong>
-                    <span> · </span><span x-text="job.state || 'unknown'"></span>
-                    <p x-show="job.error" x-text="job.error" class="mt-2 text-red-300"></p>
-                    <p x-show="job.target" class="mt-2">Restored deployment: <code class="break-all" x-text="job.target"></code></p>
-                </div>
-                <div class="osw-table-scroll rounded border border-gray-700">
-                    <table class="w-full min-w-[40rem] text-left text-sm">
-                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300">
-                            <tr><th scope="col" class="px-4 py-3">Archive</th><th scope="col" class="px-4 py-3">Created</th><th scope="col" class="px-4 py-3">Size</th><th scope="col" class="px-4 py-3 text-right">Actions</th></tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-700">
-                            <template x-for="item in backups" :key="item.name">
-                                <tr>
-                                    <td class="px-4 py-3 break-all" x-text="item.name"></td>
-                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatDate(item.created_at)"></td>
-                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatSize(item.size_bytes)"></td>
-                                    <td class="px-4 py-3">
-                                        <div class="flex flex-wrap justify-end gap-3">
-                                            <a :href="'/api/admin/backups/' + encodeURIComponent(item.name) + '/download'" download class="text-blue-400 hover:text-blue-300">Download</a>
-                                            <button type="button" @click="restoreBackup(item)" :disabled="!mountReady || busy || job.state === 'running' || job.state === 'pending'" class="text-amber-300 hover:text-amber-200 disabled:opacity-40">Restore</button>
-                                            <button type="button" @click="deleteBackup(item)" :disabled="!mountReady || busy || job.state === 'running' || job.state === 'pending'" class="text-red-300 hover:text-red-200 disabled:opacity-40">Delete</button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </template>
-                            <tr x-show="backups.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-400">No backups found.</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p class="text-xs text-gray-400">Backups use age encryption and include the PostgreSQL database, signatures, rules, schedules, branding, configuration and deployment data. Restoration creates a separate deployment; the running installation is never overwritten. Keep the decryption identity offline as well as on the secured backup host.</p>
-            </div>
         </div>
         <div x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="refresh()" class="osw-admin-section space-y-5">
             <div class="osw-section-header">
