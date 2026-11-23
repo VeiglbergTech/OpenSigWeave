@@ -263,6 +263,11 @@
                         captureSelection();
                         openMenu();
                     });
+                    // Escape keeps focus on the input. A second click must still
+                    // reopen the list even though no new focus event is fired.
+                    input.addEventListener("click", () => {
+                        if (listbox && listbox.hidden) openMenu();
+                    });
                     input.addEventListener("input", () => {
                         input.setCustomValidity("");
                         openMenu(true);
