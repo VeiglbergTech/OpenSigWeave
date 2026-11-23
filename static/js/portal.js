@@ -212,25 +212,34 @@ window.fetch = (resource, options = {}) => {
 }
 function htmlEditorToggle() { return { showHtml: false }; }
 
+function eligibleProfileProvider(provider) {
+    return provider && provider.is_enabled && provider.configured &&
+        (provider.provider_type === 'ldap' || provider.provider_type === 'authentik');
+}
+function eligibleLoginProvider(provider) {
+    if (!provider || !provider.is_enabled || !provider.configured) return false;
+    if (provider.provider_type === 'ldap') return true;
+    return (provider.provider_type === 'authentik' || provider.provider_type === 'oidc') &&
+        !!(provider.settings && provider.settings.OIDC_DISCOVERY_URL &&
+           provider.settings.OIDC_CLIENT_ID && provider.settings.OIDC_REDIRECT_URI &&
+           provider.secret_configured);
+}
+function domainProviderLabel(providers, providerId, kind) {
+    if (!providerId) return kind === 'profile' ? 'No provider' : 'Local Sign-in (No SSO)';
+    const provider = providers.find(item => item.id === providerId);
+    if (!provider) return 'Missing provider (' + providerId + ')';
+    const eligible = kind === 'profile' ? eligibleProfileProvider(provider) : eligibleLoginProvider(provider);
+    return provider.display_name + (eligible ? '' : ' (Unavailable)');
+}
 function domainManager() { return {
     domains: [], providers: [],
-    loginProviders() { return this.providers.filter(function(item) { if (!item.is_enabled || !item.configured) return false; if (item.provider_type === "ldap") return true; return (item.provider_type === "authentik" || item.provider_type === "oidc") && !!(item.settings && item.settings.OIDC_DISCOVERY_URL && item.settings.OIDC_CLIENT_ID && item.settings.OIDC_REDIRECT_URI); }); },
+    providerLabel(providerId, kind) { return domainProviderLabel(this.providers, providerId, kind); },
     async fetchDomains() {
         const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
-        this.domains = domainsResponse.ok ? await domainsResponse.json() : [];
-        this.providers = providersResponse.ok ? await providersResponse.json() : [];
-    },
-    async setProvider(domain, providerId) {
-        const response = await fetch('/domains/' + domain.id + '/identity-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({identity_provider_id: providerId || null})});
-        if (!response.ok) { notify('Could not assign identity provider.', 'error'); await this.fetchDomains(); return; }
-        domain.identity_provider_id = providerId || null;
-        notify('Identity provider assignment saved.');
-    },
-    async setAuthenticationProvider(domain, providerId) {
-        const response = await fetch('/domains/' + domain.id + '/authentication-provider', {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify({authentication_provider_id: providerId || null})});
-        if (!response.ok) { notify('Could not assign authentication provider.', 'error'); await this.fetchDomains(); return; }
-        domain.authentication_provider_id = providerId || null;
-        notify('Authentication provider assignment saved.');
+        if (domainsResponse.ok) this.domains = await domainsResponse.json();
+        else notify('Could not load domains.', 'error');
+        if (providersResponse.ok) this.providers = await providersResponse.json();
+        else notify('Could not load identity providers.', 'error');
     }
 } }
 function identityProviderManager() { return {
@@ -1060,11 +1069,51 @@ function identityProviderManager() { return {
         function domainSettingsModal() {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
+                providers: [], identityProviderId: '', authenticationProviderId: '', providerLoading: false, providerError: '', providerRequestId: 0, saving: false,
                 users: [], userQuery: '', userSource: 'all', userPage: 1, userTotal: 0,
                 userLoading: false, userError: '', userWarning: '', userRequestId: 0,
+                profileProviders() { return this.providers.filter(eligibleProfileProvider); },
+                loginProviders() { return this.providers.filter(eligibleLoginProvider); },
+                providerLabel(providerId, kind) { return domainProviderLabel(this.providers, providerId, kind); },
+                selectedProfileUnavailable() {
+                    return !!this.identityProviderId && !this.profileProviders().some(item => item.id === this.identityProviderId);
+                },
+                selectedLoginUnavailable() {
+                    return !!this.authenticationProviderId && !this.loginProviders().some(item => item.id === this.authenticationProviderId);
+                },
+                async fetchProviders() {
+                    const requestId = ++this.providerRequestId;
+                    this.providerLoading = true;
+                    this.providerError = '';
+                    try {
+                        const response = await fetch('/api/admin/identity-providers');
+                        if (!response.ok) throw new Error('HTTP ' + response.status);
+                        const providers = await response.json();
+                        if (requestId === this.providerRequestId) this.providers = providers;
+                    } catch (error) {
+                        if (requestId === this.providerRequestId) {
+                            this.providerError = 'Could not load available providers. Close and reopen Domain Management to retry.';
+                            notify(this.providerError, 'error');
+                        }
+                    } finally {
+                        if (requestId === this.providerRequestId) this.providerLoading = false;
+                    }
+                },
                 async open(domainData) {
-                    this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
+                    this.show = true;
+                    this.domain = domainData;
+                    this.allowOverrides = domainData.allow_overrides;
+                    this.injectOnReplies = domainData.inject_on_replies;
+                    this.trimWhitespace = domainData.trim_whitespace;
+                    this.stripDeviceSignatures = domainData.strip_device_signatures;
+                    this.identityProviderId = domainData.identity_provider_id || '';
+                    this.authenticationProviderId = domainData.authentication_provider_id || '';
+                    this.providers = [];
+                    this.saving = false;
+                    this.modalTab = 'settings';
+                    this.editingUserEmail = '';
                     await this.$nextTick();
+                    await this.fetchProviders();
                 },
                 async openUsers() {
                     this.modalTab = 'users';
@@ -1101,15 +1150,47 @@ function identityProviderManager() { return {
                 previousUsersPage() { if (this.userPage > 1) { this.userPage--; this.fetchUsers(); } },
                 nextUsersPage() { if (this.userPage * 20 < this.userTotal) { this.userPage++; this.fetchUsers(); } },
 
-                saveSettings() {
-                    window.dispatchEvent(new CustomEvent('save-domain-settings', { detail: {
-                        domain: this.domain,
-                        allowOverrides: this.allowOverrides,
-                        injectOnReplies: this.injectOnReplies,
-                        trimWhitespace: this.trimWhitespace,
-                        stripDeviceSignatures: this.stripDeviceSignatures
-                    }}));
-                    this.show = false;
+                async saveSettings() {
+                    if (!this.domain || this.saving || this.providerLoading || this.providerError) return;
+                    const profileChanged = this.identityProviderId !== (this.domain.identity_provider_id || '');
+                    const loginChanged = this.authenticationProviderId !== (this.domain.authentication_provider_id || '');
+                    if (profileChanged && this.selectedProfileUnavailable()) {
+                        notify('Select an available identity provider or choose no provider.', 'error');
+                        return;
+                    }
+                    if (loginChanged && this.selectedLoginUnavailable()) {
+                        notify('Select an available login provider or choose local sign-in.', 'error');
+                        return;
+                    }
+                    // Omit unchanged assignments. This preserves legacy, removed or
+                    // disabled provider references while editing unrelated settings.
+                    const payload = {
+                        is_active: this.domain.is_active,
+                        allow_overrides: this.allowOverrides,
+                        inject_on_replies: this.injectOnReplies,
+                        trim_whitespace: this.trimWhitespace,
+                        strip_device_signatures: this.stripDeviceSignatures
+                    };
+                    if (profileChanged) payload.identity_provider_id = this.identityProviderId || null;
+                    if (loginChanged) payload.authentication_provider_id = this.authenticationProviderId || null;
+                    this.saving = true;
+                    try {
+                        const response = await fetch('/domains/' + this.domain.id, {
+                            method: 'PUT', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify(payload)
+                        });
+                        if (!response.ok) {
+                            const error = await response.json().catch(() => ({}));
+                            throw new Error(typeof error.detail === 'string' ? error.detail : 'HTTP ' + response.status);
+                        }
+                        this.show = false;
+                        notify('Domain settings saved.');
+                        window.dispatchEvent(new CustomEvent('domain-updated'));
+                    } catch (error) {
+                        notify('Could not save domain settings: ' + error.message, 'error');
+                    } finally {
+                        this.saving = false;
+                    }
                 },
                 refreshDomainUsers() { this.fetchOverrides(); this.fetchUsers(); },
                 async fetchOverrides() {
@@ -1149,11 +1230,6 @@ function identityProviderManager() { return {
             const res = await fetch('/domains/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_name: e.detail, is_active: true }) });
             if (res.ok) { notify("Domain added."); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Could not add domain.", "error");
         });
-        window.addEventListener('save-domain-settings', async (e) => {
-            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures }) });
-            if (res.ok) { notify("Domain settings saved."); window.dispatchEvent(new CustomEvent('domain-updated')); }
-        });
-        
         window.addEventListener('confirm-action', async (e) => {
             const { domain, action, targetId } = e.detail;
             if (action === 'toggle') {

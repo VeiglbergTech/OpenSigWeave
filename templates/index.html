@@ -199,7 +199,8 @@
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
                                 <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
-                                <td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" x-model="domain.identity_provider_id" @change="setProvider(domain, $event.target.value)"><option value="">No provider</option><template x-for="provider in providers" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td><td class="px-6 py-4"><select class="bg-gray-900 border border-gray-600 rounded p-1 text-xs" x-model="domain.authentication_provider_id" @change="setAuthenticationProvider(domain, $event.target.value)"><option value="">Local Sign-in (No SSO)</option><template x-for="provider in loginProviders()" :key="provider.id"><option :value="provider.id" x-text="provider.display_name"></option></template></select></td>
+                                <td class="px-6 py-4 text-sm"><span class="osw-admin-status" x-text="providerLabel(domain.identity_provider_id, 'profile')"></span></td>
+                                <td class="px-6 py-4 text-sm"><span class="osw-admin-status" x-text="providerLabel(domain.authentication_provider_id, 'login')"></span></td>
                                 <td class="px-6 py-4 text-right space-x-3">
                                     <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Manage Domain</button>
                                     <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
@@ -1059,6 +1060,42 @@
                             </label>
                         </div>
 
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="domain-identity-heading">
+                            <div>
+                                <h4 id="domain-identity-heading" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Identity &amp; Authentication</h4>
+                                <p class="mt-2 text-xs text-gray-400">The identity provider supplies signature profile attributes. The authentication provider controls how users sign in. These can be different services.</p>
+                            </div>
+                            <p x-show="providerLoading" role="status" class="text-xs text-gray-400">Loading available providers…</p>
+                            <p x-show="providerError" x-text="providerError" role="alert" class="text-sm text-red-300"></p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="block text-sm text-gray-300">Identity Provider
+                                    <select x-model="identityProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                        <option value="">No identity provider</option>
+                                        <template x-for="provider in profileProviders()" :key="provider.id">
+                                            <option :value="provider.id" x-text="provider.display_name"></option>
+                                        </template>
+                                        <template x-if="selectedProfileUnavailable()">
+                                            <option :value="identityProviderId" disabled x-text="providerLabel(identityProviderId, 'profile')"></option>
+                                        </template>
+                                    </select>
+                                    <span class="mt-1 block text-xs text-gray-400">LDAP / Active Directory or an Authentik attribute source for signature fields.</span>
+                                </label>
+                                <label class="block text-sm text-gray-300">Authentication / SSO Provider
+                                    <select x-model="authenticationProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                        <option value="">Local Sign-in (No SSO)</option>
+                                        <template x-for="provider in loginProviders()" :key="provider.id">
+                                            <option :value="provider.id" x-text="provider.display_name"></option>
+                                        </template>
+                                        <template x-if="selectedLoginUnavailable()">
+                                            <option :value="authenticationProviderId" disabled x-text="providerLabel(authenticationProviderId, 'login')"></option>
+                                        </template>
+                                    </select>
+                                    <span class="mt-1 block text-xs text-gray-400">An enabled LDAP or configured OpenID Connect provider, or local sign-in without SSO.</span>
+                                </label>
+                            </div>
+                            <p x-show="selectedProfileUnavailable() || selectedLoginUnavailable()" role="status" class="text-xs text-amber-300">A previously assigned provider is unavailable or unsuitable. The existing assignment is preserved unless you explicitly change it.</p>
+                        </section>
+
                     </div>
 
                     <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
@@ -1139,7 +1176,7 @@
                 </div>
 
                 <div x-show="modalTab === 'settings'" class="osw-modal-footer">
-                    <button @click="saveSettings()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
+                    <button @click="saveSettings()" :disabled="saving || providerLoading || providerError" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">Save Settings</button>
                     <button data-osw-dialog-close class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
                 </div>
                 <div x-show="modalTab === 'users'" class="osw-modal-footer">

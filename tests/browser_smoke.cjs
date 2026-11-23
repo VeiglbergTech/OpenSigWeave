@@ -1928,47 +1928,51 @@ async function main() {
     assert.ok(createdDomain, "new domain must be persisted by the create workflow");
 
     checkpoint("domain create: complete");
-    // A profile provider is deliberately available without a configured login provider.
-    const profileProviderSelect = domainRow.locator("select").nth(0);
+    assert.equal(await domainRow.locator("select").count(), 0,
+      "provider assignments must not be editable in the domain overview");
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
+    const assignmentDialog = page.locator('[x-data="domainSettingsModal"]');
+    const profileProviderSelect = assignmentDialog.getByLabel("Identity Provider", { exact: true });
+    const loginProviderSelect = assignmentDialog.getByLabel("Authentication / SSO Provider", { exact: true });
+    await profileProviderSelect.selectOption("browser-smoke-profile-provider");
+    await loginProviderSelect.selectOption("browser-smoke-login-provider");
     const providerAssignmentResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
-      && response.url().endsWith("/domains/" + createdDomain.id + "/identity-provider")
+      && response.url().endsWith("/domains/" + createdDomain.id)
     );
-    await profileProviderSelect.selectOption("browser-smoke-profile-provider");
+    await assignmentDialog.getByRole("button", { name: "Save Settings", exact: true }).click();
     const providerAssignment = await providerAssignmentResponse;
-    assert.equal(providerAssignment.status(), 200, "profile provider assignment request must succeed");
-
-    const loginProviderSelect = domainRow.locator("select").nth(1);
-    await page.waitForFunction(() => {
-      const row = [...document.querySelectorAll('[x-data="domainManager"] tbody tr')]
-        .find(item => item.textContent.includes("browser-smoke-domain.test"));
-      const select = row ? row.querySelectorAll("select")[1] : null;
-      return select && [...select.options].some(option => option.value === "browser-smoke-login-provider");
-    });
-    const loginProviderAssignmentResponse = page.waitForResponse(response =>
-      response.request().method() === "PUT"
-      && response.url().endsWith("/domains/" + createdDomain.id + "/authentication-provider")
-    );
-    await loginProviderSelect.selectOption("browser-smoke-login-provider");
-    const loginProviderAssignment = await loginProviderAssignmentResponse;
-    assert.equal(loginProviderAssignment.status(), 200, "SSO login provider assignment request must succeed");
+    assert.equal(providerAssignment.status(), 200, "domain provider settings must save together");
 
     domainRecords = await (await page.request.get(baseURL + "/domains/")).json();
     createdDomain = domainRecords.find(item => item.domain_name === "browser-smoke-domain.test");
+    assert.equal(createdDomain.identity_provider_id, "browser-smoke-profile-provider",
+      "profile assignment must be saved from Manage Domain");
     assert.equal(createdDomain.authentication_provider_id, "browser-smoke-login-provider",
-      "SSO login provider assignment must be persisted by the domain API");
+      "SSO login assignment must be saved from Manage Domain");
 
-    // The admin/domain page must remain selected across a reload and both provider
-    // assignments must be reconstructed from persisted state.
+    // Both provider labels remain visible, but editable only inside Domain Management.
+    const providerRecords = await (await page.request.get(baseURL + "/api/admin/identity-providers")).json();
+    const profileRecord = providerRecords.find(item => item.id === "browser-smoke-profile-provider");
+    const loginRecord = providerRecords.find(item => item.id === "browser-smoke-login-provider");
+    assert.ok(profileRecord && loginRecord, "browser smoke providers must be configured");
+    assert.match(await domainRow.locator("td").nth(2).textContent(), new RegExp(profileRecord.display_name));
+    assert.match(await domainRow.locator("td").nth(3).textContent(), new RegExp(loginRecord.display_name));
+
     await page.reload();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     domainRow = page.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.waitFor();
-    assert.equal(await domainRow.locator("select").nth(0).inputValue(),
+    assert.equal(await domainRow.locator("select").count(), 0);
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
+    const restoredDialog = page.locator('[x-data="domainSettingsModal"]');
+    assert.equal(await restoredDialog.getByLabel("Identity Provider", { exact: true }).inputValue(),
       "browser-smoke-profile-provider",
-      "profile provider assignment must persist independently of the login provider");
-    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "browser-smoke-login-provider",
-      "SSO login provider assignment must remain selected after page reload");
+      "profile provider must remain selected after reload");
+    assert.equal(await restoredDialog.getByLabel("Authentication / SSO Provider", { exact: true }).inputValue(),
+      "browser-smoke-login-provider",
+      "login provider must remain selected after reload");
+    await restoredDialog.getByRole("button", { name: "Close", exact: true }).click();
 
     checkpoint("provider assignment and persistence: complete");
     // Disable and re-enable the domain through the confirmation dialog.
@@ -2083,11 +2087,13 @@ async function main() {
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     domainRow = page.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
     await domainRow.waitFor();
-    assert.equal(await domainRow.locator("select").nth(0).inputValue(), "browser-smoke-profile-provider");
-    assert.equal(await domainRow.locator("select").nth(1).inputValue(), "browser-smoke-login-provider",
-      "login provider must remain selected after page reload");
+    assert.equal(await domainRow.locator("select").count(), 0, "provider columns must stay read-only");
     await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     const reloadedSettings = page.locator('[x-data="domainSettingsModal"]');
+    assert.equal(await reloadedSettings.getByLabel("Identity Provider", { exact: true }).inputValue(),
+      "browser-smoke-profile-provider");
+    assert.equal(await reloadedSettings.getByLabel("Authentication / SSO Provider", { exact: true }).inputValue(),
+      "browser-smoke-login-provider", "login provider must remain selected after page reload");
     await reloadedSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" })
       .locator('input[type="checkbox"]').waitFor();
     assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" })
