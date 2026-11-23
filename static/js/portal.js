@@ -1759,11 +1759,11 @@ function backupManager() {
 function systemStatusManager() {
     const labels = {
         domains: "Domains", identity_providers: "Identity providers",
-        signatures: "Signatures", versions: "Versions", groups: "Groups",
+        signatures: "Signatures", groups: "Groups",
         rules: "Rules", schedules: "Schedules", overrides: "User overrides"
     };
     return {
-        loading: false, error: "", state: "Not checked", version: "—",
+        loading: false, error: "", state: "Not checked",
         checkedAt: "—", database: "Unknown", storage: "Unknown",
         assets: "Unknown", localAdmin: "Unknown", managementApi: "Unknown",
         records: [],
@@ -1779,14 +1779,13 @@ function systemStatusManager() {
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(data.detail || "Could not load system status.");
                 this.state = data.status === "healthy" ? "Healthy" : "Degraded";
-                this.version = data.version || "Unknown";
                 this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
                 this.database = data.database?.status === "ok" ? "OK" : "Unavailable";
                 this.storage = data.storage?.signature_files === true ? "Accessible" : "Unavailable";
                 this.assets = data.storage?.image_assets === true ? "Accessible" : "Unavailable";
                 this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
                 this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
-                this.records = Object.entries(data.counts || {}).map(([key, count]) => ({
+                this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
                     key, label: labels[key] || key, count
                 }));
             } catch (error) {
