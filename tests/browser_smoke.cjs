@@ -2284,6 +2284,12 @@ async function main() {
         const domainSelector = '[x-data="domainSettingsModal"] [role="dialog"]';
         await inspect(domainSelector, "domain-settings");
         await shell(domainSelector).getByRole("button", { name: "Users & Overrides" }).click();
+        // The Users view fetches asynchronously. Wait for its content to settle
+        // before measuring footer position across a body scroll.
+        await visualPage.waitForFunction(() => {
+          const controller = Alpine.$data(document.querySelector('[x-data="domainSettingsModal"]'));
+          return controller.modalTab === "users" && !controller.userLoading;
+        });
         await inspect(domainSelector, "domain-users");
         await close(domainSelector);
         await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-sanitizer", { detail: "admin" })));
