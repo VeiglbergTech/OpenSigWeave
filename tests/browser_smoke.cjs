@@ -2103,7 +2103,14 @@ async function main() {
     assert.equal(await overridesSwitch.isChecked(), true);
     await overridesSwitch.press("Space");
     assert.equal(await overridesSwitch.isChecked(), false);
+    // Keyboard changes correctly mark the dialog as dirty, even when reverted.
+    // Confirm the discard instead of leaving a modal backdrop over later tests.
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
+    const discardDomainSettings = page.locator('[x-data="confirmModal"]');
+    await discardDomainSettings.waitFor({ state: "visible" });
+    await discardDomainSettings.getByRole("button", { name: "Confirm", exact: true }).click();
+    await reloadedSettings.waitFor({ state: "hidden" });
+    await discardDomainSettings.waitFor({ state: "hidden" });
 
     checkpoint("domain settings: complete");
 
