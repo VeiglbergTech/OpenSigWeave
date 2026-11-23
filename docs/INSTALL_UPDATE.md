@@ -81,9 +81,11 @@ application container. The following behavior applies:
 
 Configured preference: `PREUPDATE_BACKUP_RULE_ID` in the application's
 protected `.env` selects one **enabled** rule by ID. Without it, select the
-enabled rule sorted by case-insensitive rule name and then stable ID. A
-preferred rule that is missing, disabled or invalid fails closed rather than
-falling back silently. Existing schedules, retention and locations are not
+first usable enabled rule sorted by case-insensitive rule name and then
+stable ID. Unusable enabled rules are skipped only when another usable rule
+exists; if none is usable, the configured backup fails and requires explicit
+administrator approval before updating. A preferred rule that is missing,
+disabled or invalid fails closed rather than falling back silently. Existing schedules, retention and locations are not
 changed; the pre-update run is recorded in regular Backup History.
 
 **Lazy age generation:** When a real backup is requested and no legacy age
