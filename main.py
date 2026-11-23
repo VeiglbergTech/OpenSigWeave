@@ -66,6 +66,7 @@ from signature_image_import import import_image_from_url, SignatureImageImportEr
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from backup_control_client import BackupControlError, backup_request, backup_download
+from backup_engine import backup_gate
 from backup_locations import (
     BackupLocationError, apply_location, ensure_local_directory,
     public_location, test_location,
@@ -427,6 +428,19 @@ def has_valid_management_key(request: Request) -> bool:
     )
 
 
+class BackupSnapshotGateMiddleware(BaseHTTPMiddleware):
+    """Quiesce request handlers while a single-worker backup snapshots data."""
+
+    async def dispatch(self, request: Request, call_next):
+        # A normal threading.Lock (not RLock) permits release from the async
+        # request context after acquiring from a worker thread.
+        await asyncio.to_thread(backup_gate.acquire)
+        try:
+            return await call_next(request)
+        finally:
+            backup_gate.release()
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
@@ -516,6 +530,7 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
 # SecurityHeadersMiddleware wraps both middlewares, including 400/429/503 responses.
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(BackupSnapshotGateMiddleware)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -1453,7 +1468,7 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
         "configuration": {
             "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
             "management_api_enabled": bool(MANAGEMENT_API_KEY),
-            "backup_management": "host-operator" if os.environ.get("BACKUP_CONTROL_SOCKET") else "operator-cli",
+            "backup_management": "in-application",
             "mail_adapters": "external",
         },
     }
