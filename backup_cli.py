@@ -6,6 +6,8 @@ snapshot orchestration and destructive restore are intentionally separate work.
 from __future__ import annotations
 
 import argparse
+import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -22,11 +24,21 @@ from backup_restore import BackupRestoreError, restore_fresh_deployment
 from backup_engine import (BackupEngineError, restore_application_to_new_directory,
                            create_preupdate_backup, verify_preupdate_backup)
 from backup_retention import BackupRetentionError, prune_backups
+from backup_preupdate import PreupdateBackupError, detect, execute
+from backup_rules import BackupRuleError
+from backup_locations import BackupLocationError
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="opensigweave-backup")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    preupdate = commands.add_parser(
+        "preupdate", help="Detect or run a verified backup using enabled Backup Rules"
+    )
+    preupdate.add_argument("--check", action="store_true", help="Detect only; never write")
+    preupdate.add_argument("--preferred-rule", default=None,
+                           help="Override PREUPDATE_BACKUP_RULE_ID with an enabled rule ID")
 
     container_create = commands.add_parser(
         "create-application", help="Create a verified in-container pre-update age backup"
@@ -92,6 +104,20 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "preupdate":
+            preferred = (args.preferred_rule
+                         if args.preferred_rule is not None
+                         else os.environ.get("PREUPDATE_BACKUP_RULE_ID", "").strip())
+            try:
+                outcome = detect(preferred) if args.check else execute(preferred)
+            except (PreupdateBackupError, BackupRuleError, BackupLocationError,
+                    BackupEngineError, BackupEncryptionError, BackupArchiveError) as exc:
+                outcome = {"status": "failed", "reason": str(exc)}
+            except Exception:
+                # Never emit driver errors, database URLs or SMB credentials.
+                outcome = {"status": "failed", "reason": "Backup service or database failed"}
+            print(json.dumps(outcome, sort_keys=True))
+            return 0
         if args.command == "create-application":
             result = create_preupdate_backup(args.filename)
             print(f"Encrypted, verified application snapshot: {result}")

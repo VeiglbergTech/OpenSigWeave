@@ -1,29 +1,112 @@
-# OpenSigWeave host-side installation and updates
+# Installation, configuration and safe channel-bound updates
 
-These tools are implemented for review on `dev`. They are **not** a production acceptance certificate and do not publish a release.
+> Release candidate on `dev`; no statement of production acceptance.
 
 ## Host requirements
 
-Linux x86_64/aarch64, Docker Engine >= 24, Docker Compose v2 >= 2.20, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free local space. They never install system packages or open firewall ports. The service is mailserver-independent.
+Linux x86_64/aarch64, Docker Engine >= 24, Docker Compose v2 >= 2.20,
+Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free space.
+The scripts do not install Docker, modify the firewall or create remote accounts.
+The checkout must be a clean, non-shallow clone from the approved Git origin.
 
-## Installation and configuration
+## First installation: no manual key creation
 
 ```bash
 git clone --branch dev https://github.com/VeiglbergTech/OpenSigWeave.git
 cd OpenSigWeave
 ./install.sh
-# Or separately, before installation:
-./generate_config.sh
-./generate_config.sh --check
-./generate_config.sh --preview
-./generate_config.sh --migrate
 ```
 
-The installer only works in the checked-out branch and never changes a remote branch. For `beta` or `main`, explicitly clone that branch. A local admin email, public hostname, private bind address and host port are prompted. The password is accepted through getpass and transformed into the application's existing salted scrypt format. The PostgreSQL password, SECRET_KEY and ENGINE_API_KEY are independently generated. `.env` is mode 0600, never automatically overwritten, and remains ignored by Git.
+The wizard proposes the host FQDN (or `localhost`), a local administrator
+email and the first free loopback port from 8085–8105. It asks for a hidden
+administrator password and confirmation; the saved value is a salted scrypt
+hash, not plaintext. Non-interactive installation requires an explicit
+`--generate-admin-password` option; this creates a **0600** local file
+`.admin-recovery-credentials` with the one-time initial password. Move this
+file to a protected offline password manager promptly, then delete its local
+copy. It is ignored by Git.
 
-`--preview` and `--migrate` can add only missing, nonsecret defaults; newly required secrets must be populated by the administrator, not guessed. The application container always listens on 8085; `APP_PORT` changes only the host mapping. Use HTTPS on a trusted reverse proxy.
+```bash
+./install.sh --hostname signatures.example.com --admin-email admin@example.com
+# Headless first install (explicit opt-in to generated admin password):
+./install.sh --generate-admin-password --hostname signatures.example.com
+```
 
-## Secure updates
+Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
+`ENGINE_API_KEY` and Fernet-compatible `BACKUP_LOCATIONS_KEY`. It writes
+a protected `.env` with atomic create, validates Compose, starts and checks
+PostgreSQL, builds/starts the app, applies Alembic on startup and performs a
+final healthcheck. Docker creates the persistent PostgreSQL, signature,
+identity-provider and backup named volumes. No backup location, encryption
+identity, OIDC, LDAP, Stalwart or other optional integration is required.
+
+The application binds to loopback by default. For a reverse proxy on
+another host, change `APP_BIND_ADDRESS` in the protected `.env` to the
+server's private-interface IP and restrict the host firewall to the proxy's
+source IP. TLS must terminate at a trusted reverse proxy; do not expose
+plaintext management endpoints to the internet.
+
+## Existing deployments and configuration
+
+```bash
+./generate_config.sh          # first creation, or safe idempotent migration
+./generate_config.sh --check  # read-only validation
+./generate_config.sh --preview
+./generate_config.sh --migrate
+./install.sh                  # resume partial deployment or report healthy
+```
+
+Repeated execution preserves working passwords, scrypt hashes, URLs,
+identity-provider credentials, and existing configuration values. Missing
+safe defaults and `BACKUP_LOCATIONS_KEY` are appended atomically with mode
+0600; **no key is rotated**. Missing existing PostgreSQL or essential
+application secrets are not invented, because a replacement might make
+existing databases or encrypted credentials unusable. Restore missing original
+credentials from secure records. Never commit `.env` to Git.
+
+## Backup behavior: entirely optional
+
+The update manager queries **enabled Backup Rules** through the running
+application container. The following behavior applies:
+
+| Situation | Update behavior |
+| --- | --- |
+| No enabled Backup Rules | Continue normally; no backup warning or failure |
+| Enabled usable rule | Create encrypted, complete application backup using that rule's Local/SMB location; re-read, decrypt, verify manifest and run `pg_restore --list` against the extracted DB dump |
+| Enabled rule, but disabled/missing destination or invalid configuration | Treat as a failed configured backup, not an absent backup |
+| Backup, transfer or verification failure | Stop before source changes; ask `Backup failed. Continue updating without a backup? [y/N]` |
+| Answer `y` | Proceed, journal `failed_and_overridden` and display that no verified recovery point exists |
+| Answer `N`, empty, Ctrl+C, EOF or unattended run without override | Abort with exit code 7; do not change the checkout, services or data |
+| Unattended explicit override | Only `./update.sh --yes --continue-without-backup` permits continuing after failure |
+
+Configured preference: `PREUPDATE_BACKUP_RULE_ID` in the application's
+protected `.env` selects one **enabled** rule by ID. Without it, select the
+enabled rule sorted by case-insensitive rule name and then stable ID. A
+preferred rule that is missing, disabled or invalid fails closed rather than
+falling back silently. Existing schedules, retention and locations are not
+changed; the pre-update run is recorded in regular Backup History.
+
+**Lazy age generation:** When a real backup is requested and no legacy age
+environment values are provided, the container generates a new age identity
+using `age-keygen` once, writes it as mode 0600 beneath the persistent
+`/app/backups/.recovery/` directory (0700), and derives its public
+recipient. No secret is displayed or committed. Export the recovery private
+key to a separate protected destination after your first backup:
+
+```bash
+mkdir -m 700 -p /media/offline/opensigweave-recovery
+./export_backup_key.sh /media/offline/opensigweave-recovery/age-identity.txt
+```
+
+The target file must not exist. Keep the key on different storage, outside
+the OpenSigWeave deployment; losing the volume and the only recovery identity
+makes saved ciphertext unusable. The protected `.env`, exact source/Compose
+configuration and encrypted backup archive also need separate disaster-
+recovery escrow. Existing explicit `BACKUP_AGE_RECIPIENT` with exactly one
+`BACKUP_AGE_IDENTITY` or `BACKUP_AGE_IDENTITY_FILE` remains supported;
+incomplete legacy configuration fails instead of generating a mismatched key.
+
+## Updates
 
 ```bash
 ./update.sh --version
@@ -31,61 +114,67 @@ The installer only works in the checked-out branch and never changes a remote br
 ./update.sh --prefetch
 ./update.sh --dry-run
 ./update.sh
-./update.sh --skip-start
-./update.sh --yes --approve-breaking   # only after explicit review
+./update.sh --yes
+# Only after reviewing critical source/schema changes:
+./update.sh --yes --approve-breaking
+# Unattended explicit acceptance of backup failures:
+./update.sh --yes --continue-without-backup
 ```
 
-`--check` is read-only, using `git ls-remote`, and may not know the target's details until `--prefetch` downloads the commit to a remote-tracking ref. `--dry-run` performs read-only runtime preflight. Actual updates require a clean, non-shallow Git checkout, authorized upstream, fast-forward ancestry, healthy PostgreSQL/application with correct volumes, and a verified encrypted application-profile age backup **before any source or app changes**.
+`--check`, `--prefetch` and `--dry-run` do not require or create backups.
+`--check` is a read-only remote comparison. `--prefetch` fetches Git
+objects but does not change the checked-out source, services or data.
+`--dry-run` validates the current deployment without mutation. The actual
+update checks Git fast-forward ancestry, existing Docker/Compose health,
+PostgreSQL and Alembic, persistent named volumes, and critical paths (which
+require independent `--approve-breaking`). It does not auto-switch branches.
 
-The update manager now creates an encrypted pre-update **application-profile**
-backup inside the `opensigweave-backups` Docker named volume, without running
-a host backup operator, mounting a host NFS/SMB directory, or requiring host
-`age`/`findmnt`. Configure `BACKUP_AGE_RECIPIENT` plus exactly one of
-`BACKUP_AGE_IDENTITY` or `BACKUP_AGE_IDENTITY_FILE` in the protected
-application `.env`. The container must have the configured identity available.
-The updater runs:
+After the backup decision, the updater writes a protected 0600 journal under
+`.git/opensigweave-update-state.json` with structured `backup.status`:
+`not_configured`, `verified`, or `failed_and_overridden`. Successful
+records include Backup Rule, Location, run ID and stored archive filename.
+No imaginary backup path is printed. Only then does it fast-forward the
+source, migrate safe `.env` settings, validate Compose, build the app image,
+stop the application for a one-off Alembic migration, restart it and perform
+health checks. Named volumes are never removed.
 
-```bash
-docker compose exec -T opensigweave python backup_cli.py create-application --filename opensigweave-before-update-<UTC>-<sha>.age
-docker compose exec -T opensigweave python backup_cli.py verify-application --filename opensigweave-before-update-<UTC>-<sha>.age
-```
-
-The filename above is illustrative; the updater generates the concrete UTC
-timestamp and current Git SHA. The application snapshot includes PostgreSQL,
-signatures and identity-provider files, but **does not include Docker image
-exports or the protected host `.env`**. Off-host escrow of the image/source,
-deployment config, age key and resulting archive remains mandatory for full
-disaster recovery. A previous installation's app image might not yet know
-these new CLI commands: first take a verified **legacy full backup**, then
-perform a controlled upgrade and verify a new application backup. See
-[BACKUP_RULE_MANAGEMENT.md](BACKUP_RULE_MANAGEMENT.md) and
-[BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
-
-The updater then performs `git merge --ff-only`, Compose/config validation,
-image build, application stop, one-off Alembic migration, service start and
-healthchecks. `--skip-start` leaves the application stopped after migration.
-
-Critical adapter, Docker/Compose, environment, backup or schema changes require a separate `--approve-breaking` option, even with `--yes`. No automatic reset, downgrade or full restore is attempted. After a verified backup and before changing the checkout, an update journal is written to `.git/opensigweave-update-state.json` (0600). In case of an interrupted or failed source/build/migration/startup step, the journal remains and **all further update commands, including `--check`, fail with exit code 8** instead of claiming the installation is current. Inspect the recorded stage and backup; only remove the journal after an administrator has safely reconciled deployment state. Completed updates and deliberate `--skip-start` runs clear the journal. If migration or post-migration startup fails, **do not use an older application against the new schema**: use the verified backup and the appropriate fresh-target recovery procedure as described in [BACKUP_RESTORE_DESIGN.md](BACKUP_RESTORE_DESIGN.md).
+On an interrupted build, migration or restart, the journal remains and
+blocks further update checks until the operator reconciles actual state.
+**A failed migration never initiates a code-only or database rollback.**
+Without a verified backup, no automatic restoration point exists. Even with
+a verified application-profile backup, recovery needs a **fresh isolated
+target**, the original encrypted archive, identity, source, protected
+configuration and manual database/file restore as described in
+[BACKUP_RULE_MANAGEMENT.md](BACKUP_RULE_MANAGEMENT.md).
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
 | 0 | Success or no update |
-| 2 | Configuration/parser error |
-| 3 | Subprocess or command failure |
-| 4 | Unsupported environment, Git state, configuration or cancelled operation |
-| 5 | Concurrent deployment lock held |
-| 6 | Unhealthy runtime, migration version or missing volume |
-| 7 | Missing/unsafe backup or failed backup verification |
-| 8 | Migration/startup failure requiring explicit recovery |
+| 2 | Parser/configuration error |
+| 3 | Subprocess failure |
+| 4 | Unsupported host/Git/configuration or cancelled operation |
+| 5 | Concurrent installation/update |
+| 6 | Unhealthy runtime, volume or database schema |
+| 7 | Configured backup failed and wasn't explicitly overridden |
+| 8 | Interrupted/failed migration or startup; manual recovery required |
 
-## Known limits for acceptance testing
+## Acceptance and limitations
 
-The `main` channel builds locally; there is no automatic prebuilt GHCR pull or provenance attestation yet. Version comparison uses exact Git object IDs, not lexicographic tags; prior-to-prefetch remote release notes may be unavailable. Signed Git commit verification is not enforced. The update manager is not an unattended remote monitor or a scheduler. Integration with active external Rspamd/Postfix/Stalwart servers must be validated separately. Real SMB transfer tests, an interrupted upgrade, and a physical cross-host restore are still required before production approval. Existing Compose deployments continue to work without these scripts.
+```bash
+bash -n install.sh generate_config.sh update.sh export_backup_key.sh
+python3 -m unittest discover -s tests -p test_deployment_manager.py -v
+python3 -m unittest discover -s tests -p test_backup_preupdate.py -v
+python3 -m unittest discover -s tests -p test_backup_engine.py -v
+docker compose config --quiet
+```
 
-## Testing
-
-Run `bash -n install.sh generate_config.sh update.sh`, `shellcheck` on the wrappers, and `python3 -m unittest discover -s tests -p test_deployment_manager.py -v`. The existing CI also exercises encrypted Docker backup and fresh restore; it is *not* proof of a successful live production update.
-
-Public canonical docs: [OpenSigWeave-Docs](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev/src/content/docs/installation).
+The in-container backup **does not capture Docker images or the host `.env`**;
+it stores PostgreSQL, signatures and identity-provider configuration only.
+Manifest checks, ciphertext readback and `pg_restore --list` validate
+artifact structure, but are **not proof** of a full cross-host production
+restore. Real SMB/NAS failure testing, cold restore and live mail-server
+integration remain separate release acceptance steps. `dev` is development,
+`beta` is tested code and `main` is manually approved; no new release
+branch or publishing workflow is introduced.

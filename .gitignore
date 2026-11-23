@@ -24,3 +24,6 @@ backups/
 *.age
 *.tar.gz
 *.dump
+
+# Generated first-login password (move to offline storage)
+.admin-recovery-credentials

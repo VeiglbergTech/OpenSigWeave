@@ -1,22 +1,25 @@
-"""Interactive, idempotent .env creation and conservative configuration migration."""
+"""Minimal, idempotent and atomic OpenSigWeave configuration assistant."""
 from __future__ import annotations
 
 import argparse
-import ipaddress
+import base64
 from getpass import getpass
 import os
 from pathlib import Path
+import re
 import secrets
+import socket
 import sys
 import tempfile
 from urllib.parse import quote
 
 from deploy_common import (
-    ROOT, DeploymentError, CONFIG_KEYS, dotenv_quote, exclusive_lock,
-    info, ok, parse_env, validate_config, warn,
+    ROOT, DeploymentError, dotenv_quote, exclusive_lock, info, ok, parse_env,
+    validate_config,
 )
 
 ENV = ROOT / ".env"
+GENERATED_PASSWORD_FILE = ROOT / ".admin-recovery-credentials"
 DEFAULTS = {
     "POSTGRES_DB": "opensigweave",
     "POSTGRES_USER": "opensigweave",
@@ -30,50 +33,85 @@ DEFAULTS = {
     "ENGINE_RATE_LIMIT": "1800",
     "TRUSTED_PROXY_CIDRS": "",
 }
-# Keys without an explicit value require administrator intervention, not placeholders.
-REQUIRED = ("POSTGRES_PASSWORD", "SECRET_KEY", "ENGINE_API_KEY",
-            "APP_ALLOWED_HOSTS")
+REQUIRED = ("POSTGRES_PASSWORD", "SECRET_KEY", "ENGINE_API_KEY", "APP_ALLOWED_HOSTS")
+GENERATED_KEYS = ("BACKUP_LOCATIONS_KEY",)
 
 
 def prompt(label: str, default: str = "") -> str:
+    """Optional prompt: safe values work for local/headless defaults."""
+    if not sys.stdin.isatty():
+        return default
     answer = input(f"{label} [{default}]: " if default else f"{label}: ").strip()
     return answer or default
 
 
-def create_values() -> dict[str, str]:
+def _hostname_default() -> str:
+    value = socket.getfqdn().lower().strip(".")
+    if (value and "." in value and
+            re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", value)):
+        return value
+    return "localhost"
+
+
+def _available(bind: str, port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET6 if ":" in bind else socket.AF_INET,
+                           socket.SOCK_STREAM) as probe:
+            probe.bind((bind, port))
+            return True
+    except OSError:
+        return False
+
+
+def _free_port(bind: str) -> int:
+    for port in range(8085, 8106):
+        if _available(bind, port):
+            return port
+    raise DeploymentError("No free application port in 8085-8105; free a port before installing", 4)
+
+
+def _fernet_key() -> str:
+    """32 random bytes, Fernet's URL-safe base64 encoding; no host dependency."""
+    return base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii")
+
+
+def create_values(*, hostname: str | None = None, admin_email: str | None = None,
+                  generate_admin_password: bool = False) -> dict[str, str]:
     from auth_config import hash_local_admin_password, is_valid_email
 
-    hostname = prompt("Public hostname (FQDN)")
-    if not hostname:
-        raise DeploymentError("Public hostname is required", 4)
-    bind = prompt("Bind IP (loopback is recommended for a local proxy)", "127.0.0.1")
-    port = prompt("Host application port", "8085")
-    email = prompt("Local administrator email", "admin@" + hostname)
+    host = hostname or prompt("Hostname (localhost for local-only use)", _hostname_default())
+    host = host.lower().strip()
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", host):
+        raise DeploymentError("Invalid application hostname", 4)
+    email_default = "admin@" + (host if "." in host else "localhost.localdomain")
+    email = admin_email or prompt("Administrator email", email_default)
     if not is_valid_email(email):
-        raise DeploymentError("Invalid email address", 4)
-    password = getpass("Administrator password (at least 12 characters): ")
-    confirm = getpass("Confirm administrator password: ")
-    if password != confirm:
-        raise DeploymentError("Passwords do not match", 4)
-    local_hash = hash_local_admin_password(password)
-    del password, confirm
-    print("Reverse proxy: terminate TLS at your trusted proxy and forward to the configured bind IP/port.")
-    proxy_cidrs = prompt("Trusted immediate reverse proxy IPs/CIDRs (optional, comma-separated)", "")
-    if proxy_cidrs:
-        try:
-            for network in proxy_cidrs.split(","):
-                ipaddress.ip_network(network.strip(), strict=False)
-        except ValueError as exc:
-            raise DeploymentError("Invalid reverse proxy CIDR list", 4) from exc
+        raise DeploymentError("Invalid administrator email", 4)
+    if generate_admin_password:
+        password = secrets.token_urlsafe(32)
+    else:
+        if not sys.stdin.isatty():
+            raise DeploymentError(
+                "An interactive terminal is required for the administrator password; "
+                "alternatively use --generate-admin-password", 4
+            )
+        password = getpass("Administrator password (at least 12 characters): ")
+        confirm = getpass("Confirm administrator password: ")
+        if password != confirm:
+            raise DeploymentError("Administrator passwords do not match", 4)
+        del confirm
+    try:
+        local_hash = hash_local_admin_password(password)
+    except ValueError as exc:
+        raise DeploymentError(str(exc), 4) from exc
     values = dict(DEFAULTS)
-    values["TRUSTED_PROXY_CIDRS"] = proxy_cidrs
     values.update({
         "POSTGRES_PASSWORD": secrets.token_urlsafe(48),
         "SECRET_KEY": secrets.token_urlsafe(48),
         "ENGINE_API_KEY": secrets.token_urlsafe(48),
-        "APP_ALLOWED_HOSTS": hostname,
-        "APP_BIND_ADDRESS": bind,
-        "APP_PORT": port,
+        "BACKUP_LOCATIONS_KEY": _fernet_key(),
+        "APP_ALLOWED_HOSTS": host,
+        "APP_PORT": str(_free_port(values["APP_BIND_ADDRESS"])),
         "LOCAL_ADMIN_EMAIL": email,
         "LOCAL_ADMIN_PASSWORD_HASH": local_hash,
     })
@@ -82,6 +120,9 @@ def create_values() -> dict[str, str]:
         quote(values["POSTGRES_PASSWORD"], safe="") + "@postgres:5432/" +
         values["POSTGRES_DB"]
     )
+    if generate_admin_password:
+        values["_GENERATED_ADMIN_PASSWORD"] = password
+    del password
     validate_config(values)
     return values
 
@@ -100,51 +141,75 @@ def _atomic_create(content: str) -> None:
         raise
 
 
-def create_config() -> None:
-    values = create_values()
-    content = "# OpenSigWeave local deployment (never commit)\n"
+def _save_generated_password(password: str) -> None:
+    fd = os.open(GENERATED_PASSWORD_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write("OpenSigWeave initial local administrator password\n")
+            stream.write(password + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        GENERATED_PASSWORD_FILE.unlink(missing_ok=True)
+        raise
+
+
+def create_config(*, hostname: str | None = None, admin_email: str | None = None,
+                  generate_admin_password: bool = False) -> None:
+    values = create_values(hostname=hostname, admin_email=admin_email,
+                           generate_admin_password=generate_admin_password)
+    content = "# OpenSigWeave protected local configuration (never commit)\n"
     for key in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
                 "DATABASE_URL", "SIGNATURE_STORAGE_PATH", "APP_BIND_ADDRESS",
-                "APP_PORT", "SECRET_KEY", "ENGINE_API_KEY", "APP_ALLOWED_HOSTS",
-                "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
-        # Compose interpolates $ inside double quotes; scrypt contains $ separators.
+                "APP_PORT", "SECRET_KEY", "ENGINE_API_KEY", "BACKUP_LOCATIONS_KEY",
+                "APP_ALLOWED_HOSTS", "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
+        # Compose interpolates $ in double quotes; preserve the literal scrypt separators.
         value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
         content += f"{key}={value}\n"
-    if values.get("TRUSTED_PROXY_CIDRS"):
-        content += "TRUSTED_PROXY_CIDRS=" + dotenv_quote(values["TRUSTED_PROXY_CIDRS"]) + "\n"
-    _atomic_create(content)
-    ok("Created .env with permissions 0600; secrets were not displayed")
+    if generate_admin_password:
+        _save_generated_password(values["_GENERATED_ADMIN_PASSWORD"])
+    try:
+        _atomic_create(content)
+    except BaseException:
+        if generate_admin_password:
+            GENERATED_PASSWORD_FILE.unlink(missing_ok=True)
+        raise
+    ok("Created .env with mode 0600 and independent cryptographic secrets")
+    if generate_admin_password:
+        info(f"Initial administrator password stored in {GENERATED_PASSWORD_FILE} (0600); move it offline")
 
 
 def missing_options(env: dict[str, str]) -> dict[str, str]:
-    """Only auto-add keys with safe defaults; required secrets never guessed."""
+    """Never invent a missing database password or rotate an existing secret."""
     missing_required = [key for key in REQUIRED if not env.get(key)]
     if missing_required:
         raise DeploymentError(
-            "Required values missing: " + ", ".join(missing_required) +
-            ". Add them manually; the generator will not rotate or guess secrets.", 4
+            "Required existing credentials are missing: " + ", ".join(missing_required) +
+            ". Restore them from secure records; generating replacements could break existing data.", 4
         )
-    return {key: value for key, value in DEFAULTS.items() if key not in env}
+    additions = {key: value for key, value in DEFAULTS.items() if key not in env}
+    if not env.get("BACKUP_LOCATIONS_KEY"):
+        additions["BACKUP_LOCATIONS_KEY"] = _fernet_key()
+    return additions
 
 
-def migrate_config(*, yes: bool = False, preview: bool = False) -> None:
+def migrate_config(*, yes: bool = True, preview: bool = False) -> None:
     existing = parse_env(ENV)
     validate_config(existing)
     additions = missing_options(existing)
     if not additions:
-        ok("Configuration is valid; no changes needed")
+        ok("Configuration valid; existing secrets preserved")
         return
-    info("Missing optional keys: " + ", ".join(sorted(additions)))
-    for key, value in sorted(additions.items()):
-        print(f"  + {key}={dotenv_quote(value)}")
+    info("Safe configuration additions: " + ", ".join(sorted(additions)))
     if preview:
+        for key, value in sorted(additions.items()):
+            print(f"  + {key}=" + ("<generated securely>" if key in GENERATED_KEYS else dotenv_quote(value)))
         return
-    if not yes and input("Append these defaults to .env? [y/N]: ").strip().lower() != "y":
-        raise DeploymentError("Configuration migration cancelled", 4)
     content = ENV.read_text(encoding="utf-8")
-    content += "\n# Optional defaults appended by generate_config.sh\n"
-    content += "".join(f"{key}={dotenv_quote(value)}\n" for key, value in additions.items())
-    descriptor, temp = tempfile.mkstemp(prefix=".env.pending-", dir=ROOT)
+    content += "\n# Idempotent safe additions from generate_config.sh\n"
+    for key, value in sorted(additions.items()):
+        content += f"{key}={dotenv_quote(value)}\n"
+    descriptor, temp = tempfile.mkstemp(prefix=".env.pending-", dir=ENV.parent)
     try:
         os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -155,35 +220,39 @@ def migrate_config(*, yes: bool = False, preview: bool = False) -> None:
         if ENV.is_symlink():
             raise DeploymentError("Refusing to replace a symlinked .env", 4)
         os.replace(temp, ENV)
-        ok("Configuration migrated atomically; existing values preserved")
+        ok("Configuration extended atomically; previous credentials preserved")
     finally:
         if os.path.exists(temp):
             os.unlink(temp)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Create, check or safely migrate OpenSigWeave .env")
+    parser = argparse.ArgumentParser(description="Create, check or safely extend OpenSigWeave .env")
     group = parser.add_mutually_exclusive_group()
-    group.add_argument("--check", action="store_true", help="Validate existing .env without changing it")
-    group.add_argument("--preview", action="store_true", help="Show missing optional keys, without secrets")
-    group.add_argument("--migrate", action="store_true", help="Append missing safe defaults")
-    parser.add_argument("--yes", action="store_true", help="Approve optional default additions")
+    group.add_argument("--check", action="store_true", help="Read-only validation")
+    group.add_argument("--preview", action="store_true", help="Preview safe additions without secrets")
+    group.add_argument("--migrate", action="store_true", help="Idempotently append safe missing settings")
+    parser.add_argument("--yes", action="store_true", help="Compatibility option; safe migration is automatic")
+    parser.add_argument("--hostname", help="Use an explicit public hostname on first install")
+    parser.add_argument("--admin-email", help="Use an explicit administrator email on first install")
+    parser.add_argument("--generate-admin-password", action="store_true",
+                        help="Create a protected 0600 initial password file instead of prompting")
     args = parser.parse_args(argv)
     try:
         with exclusive_lock():
             if not ENV.exists() and not ENV.is_symlink():
                 if args.check or args.preview or args.migrate:
                     raise DeploymentError(".env does not exist; run ./generate_config.sh", 4)
-                create_config()
+                create_config(hostname=args.hostname, admin_email=args.admin_email,
+                              generate_admin_password=args.generate_admin_password)
             elif args.check:
-                validate_config(parse_env(ENV))
-                ok("Configuration valid")
+                env = parse_env(ENV)
+                validate_config(env)
+                ok("Configuration valid (read-only)")
             elif args.preview:
                 migrate_config(preview=True)
-            elif args.migrate:
-                migrate_config(yes=args.yes)
             else:
-                warn(".env already exists. Use --check, --preview or --migrate; no changes made.")
+                migrate_config()
         return 0
     except (DeploymentError, ValueError, OSError, EOFError, KeyboardInterrupt) as exc:
         code = exc.code if isinstance(exc, DeploymentError) else 4

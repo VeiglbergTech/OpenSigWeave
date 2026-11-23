@@ -42,37 +42,40 @@ export. Keep an off-host copy of the exact deployable source/Compose files,
 your protected `.env`/secrets and age private identity. Without those,
 restoring a running instance cannot be guaranteed.
 
-## Required configuration
+## Optional encryption configuration and private-key export
 
-Add to the installation's protected `.env` (mode 0600):
+No Backup Location, Rule, age identity, or backup storage is required for
+installation or for an update when **no rule is enabled**. The first actual
+backup automatically generates an age key pair inside the container using
+`age-keygen`, with a **0600** private identity under
+`/app/backups/.recovery/age-identity.txt` on the persistent backups volume.
+The directory is private (0700), and the identity is never included in the
+application-profile backup payload or printed to the console.
 
-```dotenv
-BACKUP_AGE_RECIPIENT="age1YOUR_PUBLIC_RECIPIENT"
-BACKUP_AGE_IDENTITY="AGE-SECRET-KEY-YOUR_PRIVATE_RECOVERY_IDENTITY"
-BACKUP_RULE_SCHEDULER_ENABLED="true"
-BACKUP_LOCAL_ROOT="/app/backups"
-BACKUP_WORK_ROOT="/app/backups"
+**Export the private identity off-host immediately after your first backup:**
+
+```bash
+mkdir -m 700 -p /media/offline/opensigweave-recovery
+./export_backup_key.sh /media/offline/opensigweave-recovery/age-identity.txt
 ```
 
-Generate a real key pair using `age-keygen`. The strings above are **NOT**
-usable keys. Store the identity OFF-HOST too, preferably encrypted or in an
-offline password manager. The private identity is used only to verify/decrypt
-archives, never included in the backup payload. Alternatively set
-`BACKUP_AGE_IDENTITY_FILE` to a private (mode 0600) file already accessible
-inside the container, and leave `BACKUP_AGE_IDENTITY` blank; exactly one
-source must be present. Do not mount Docker sockets or privileged host
-paths to supply it. Before starting the scheduler, ensure disk capacity for
-the plaintext dump, staged files, archive and verification copy; staging files
-are created with restrictive permissions inside a private directory and removed
-after each run. Keep the backups volume on trustworthy storage.
+This securely copies the file without displaying the private key, refuses
+to overwrite an existing destination and requires a private target directory.
+For full disaster recovery also separately escrow the protected `.env`,
+matching source/Compose configuration and encrypted archives. A key saved
+only on the backup volume does **not** protect against losing that volume.
 
-SMB credentials remain encrypted at rest using `BACKUP_LOCATIONS_KEY` (a
-separately generated Fernet key) and are never returned by the API. Keep a
-separate offline copy of this key, since restored location records are useless
-without it. SMB uses direct SMB3 encrypted and signed connections via Python
-`smbclient` (TCP 445); no host mount or password-bearing command line.
-Configure the share and optional subdirectory in **Backup Locations** and
-test the connection before running a rule.
+Existing age installations remain compatible: a configured
+`BACKUP_AGE_RECIPIENT` plus exactly one of
+`BACKUP_AGE_IDENTITY` or `BACKUP_AGE_IDENTITY_FILE` (0600, accessible inside
+the container) is honored unchanged. An incomplete legacy key configuration
+is a real backup failure; no replacement key is generated.
+
+`BACKUP_LOCATIONS_KEY` is generated automatically as an independent Fernet
+key during first installation or safe `generate_config.sh --migrate`. It
+protects SMB credentials stored in PostgreSQL. Never rotate it without
+re-encrypting those stored credentials, and escrow it with the protected
+`.env`. SMB requires encrypted and signed SMB3 and uses no host mount.
 
 ## Backup Rules
 
@@ -139,18 +142,33 @@ manual test, inspect and download the ciphertext, and test a recovery on a
 different isolated host. After the new recovery has been accepted, stop and
 remove the obsolete host operator service and legacy systemd definitions.
 
-## Updates
+## Updates with optional pre-update backup
 
-`update.sh` now creates an encrypted, independently verified
-`opensigweave-before-update-*.age` inside the shared
-`opensigweave-backups` named volume through `docker compose exec`, using
-the same cross-process snapshot lock. No `OSW_BACKUP_CONFIG`, `findmnt`,
-`age` installation on the host, or remote filesystem mount is required.
-**Export this pre-update archive to off-host storage before relying on it for
-disaster recovery.** A first upgrade from an older container that does not
-yet implement `backup_cli.py create-application` will refuse the new update
-path: take and verify a legacy full backup first, perform a controlled manual
-upgrade, and only then use the container-native updater.
+`update.sh` queries enabled Backup Rules/Locations in the **running**
+OpenSigWeave container. If no active rule is configured, it continues normally
+without running a backup, requiring age configuration, or emitting warnings.
+
+If an enabled rule is present, the updater selects it by
+`PREUPDATE_BACKUP_RULE_ID` (when supplied in the protected `.env`) or,
+by default, case-insensitive rule name followed by ID. Invalid preferred
+rules or disabled/broken destinations fail closed. The existing backup engine
+creates a full encrypted application archive and publishes it to the rule's
+Local or SMB destination. The updater re-reads the **retained archive**,
+checks ciphertext size and SHA256, extracts it into isolated temporary
+storage, verifies the manifest, and validates the dump with `pg_restore --list`.
+The exact rule, destination, archive identifier and result are journaled.
+
+If this configured backup fails, no update begins until an interactive
+administrator explicitly answers `y` to
+`Backup failed. Continue updating without a backup? [y/N]`.
+`--yes` alone does not override a backup failure; in a noninteractive
+process only `--yes --continue-without-backup` authorizes an override.
+An abort preserves source and volumes. Successful and intentionally skipped
+backups are represented by different journal statuses.
+
+The archive profile contains PostgreSQL, signatures, and identity-provider
+files. It **does not** include the protected `.env` or Docker image. A full
+cross-host recovery procedure is not yet automated or acceptance-tested.
 
 ## Verification
 

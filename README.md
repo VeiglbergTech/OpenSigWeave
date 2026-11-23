@@ -37,7 +37,7 @@ Mailcow/Rspamd still requires live staging acceptance before production mail-flo
 
 ## Installation and channel-bound updates (release candidate)
 
-The new installer creates a protected local environment, checks host prerequisites and uses the existing scrypt administrator hash mechanism. It does not configure or require mailcow.
+The installer interactively requests only the initial administrator password (and offers hostname/email defaults), checks Docker/Compose, creates a protected `.env`, generates independent secrets including `BACKUP_LOCATIONS_KEY`, and preserves existing installations. For a headless first install, use `./install.sh --generate-admin-password` to store a one-time password in a protected local file that should immediately be moved offline. No backup, manually generated keys, OIDC or LDAP setup is required.
 
 ```bash
 git clone --branch beta https://github.com/VeiglbergTech/OpenSigWeave.git
@@ -50,7 +50,7 @@ cd OpenSigWeave
 ./update.sh
 ```
 
-`dev` and `beta` build Docker images locally; the updater also builds checked-out `main` locally until an independently verified GHCR release mechanism is introduced. The installer never switches channels automatically. Automatic updates are **blocked** unless a complete encrypted and verified age backup can be created on configured remote storage.
+`dev` and `beta` build Docker images locally; the updater also builds checked-out `main` locally until an independently verified GHCR release mechanism is introduced. The installer never switches channels automatically. **Backups are optional.** Updates without any active Backup Rule proceed normally and without backup warnings. If enabled Backup Rules exist, the updater uses the selected rule and its Local/SMB destination, then verifies the retained encrypted archive and PostgreSQL dump. If it fails, the update stops and requires an explicit administrator confirmation; `--yes` alone never bypasses the error. For unattended overrides only, `--yes --continue-without-backup` is supported. Do not confuse an update without backup with a recoverable restore point.
 
 For a remote reverse proxy, bind `APP_BIND_ADDRESS` to the application host's **private-interface IP** and allow the application TCP port **only from the reverse-proxy private IP** at the host firewall. `TRUSTED_PROXY_CIDRS` controls trusted forwarded client-IP attribution but **does not make the proxy network boundary for you**. New database migrations are serialized using a one-off container; no volume removal, automatic rollback, or mail server reconfiguration occurs.
 

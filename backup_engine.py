@@ -24,6 +24,7 @@ from sqlalchemy.engine import make_url
 from backup_archive import BackupArchiveError, create_archive, extract_archive, write_manifest
 from backup_encryption import BackupEncryptionError, decrypt_archive, encrypt_archive
 from backup_locations import local_root
+from backup_recovery import RecoveryKeyError, recipient_for_backup, automatic_identity_if_configured
 
 
 class BackupEngineError(Exception):
@@ -127,6 +128,14 @@ def _copy_private_tree(source: Path, destination: Path) -> None:
 def _identity(work: Path) -> Iterator[Path]:
     value = os.environ.get("BACKUP_AGE_IDENTITY", "").strip()
     filename = os.environ.get("BACKUP_AGE_IDENTITY_FILE", "").strip()
+    if not value and not filename:
+        try:
+            auto = automatic_identity_if_configured(_work_root())
+        except RecoveryKeyError as exc:
+            raise BackupEngineError(str(exc)) from None
+        if auto is not None:
+            yield auto
+            return
     if bool(value) == bool(filename):
         raise BackupEngineError("Set exactly one age recovery identity source")
     if value:
@@ -163,10 +172,11 @@ def create_application_backup(deliver: Callable[[Path, int, str], None]) -> tupl
     The callback publishes ciphertext atomically to the selected destination.
     Failures discard work and must never mark a run successful.
     """
-    recipient = os.environ.get("BACKUP_AGE_RECIPIENT", "").strip()
-    if not recipient.startswith("age1") or len(recipient) > 200:
-        raise BackupEngineError("Configure BACKUP_AGE_RECIPIENT before starting backups")
     root = _work_root()
+    try:
+        recipient = recipient_for_backup(root)
+    except RecoveryKeyError as exc:
+        raise BackupEngineError(str(exc)) from None
     with tempfile.TemporaryDirectory(prefix=".osw-snapshot-", dir=root) as name:
         work = Path(name)
         staging = work / "staging"

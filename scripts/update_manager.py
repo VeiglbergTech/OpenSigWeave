@@ -1,14 +1,11 @@
-"""Safe channel-bound OpenSigWeave updater: preflight, verified age backup, migration."""
+"""Channel-bound, optional-backup updater with fail-closed migration handling."""
 from __future__ import annotations
 
 import argparse
-from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import re
-import shutil
-import stat
 import sys
 
 from deploy_common import (
@@ -27,33 +24,37 @@ UPDATE_JOURNAL = ROOT / ".git" / "opensigweave-update-state.json"
 
 
 def ensure_no_incomplete_update() -> None:
-    """Never report 'already updated' after an interrupted source switch."""
+    """Never assume a partially migrated schema can be automatically rolled back."""
     if UPDATE_JOURNAL.is_symlink():
         raise DeploymentError("Unsafe update journal symlink; review it manually", 8)
-    if UPDATE_JOURNAL.exists():
-        if not UPDATE_JOURNAL.is_file():
-            raise DeploymentError("Unexpected update journal file type", 8)
-        try:
-            record = json.loads(UPDATE_JOURNAL.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as exc:
-            raise DeploymentError("Unreadable update journal; manual inspection required", 8) from exc
-        raise DeploymentError(
-            "An earlier update did not finish: "
-            f"stage={record.get('stage', 'unknown')}, "
-            f"target={record.get('target', 'unknown')}, "
-            f"verified backup={record.get('backup', 'unknown')}. "
-            "Do not run another update or assume the database schema is compatible. "
-            "Review source, container health and the backup; follow the documented "
-            "fresh-target restore procedure when migration might have started.", 8
-        )
+    if not UPDATE_JOURNAL.exists():
+        return
+    if not UPDATE_JOURNAL.is_file():
+        raise DeploymentError("Unexpected update journal type", 8)
+    try:
+        record = json.loads(UPDATE_JOURNAL.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise DeploymentError("Unreadable update journal; manual inspection required", 8) from exc
+    backup = record.get("backup", {})
+    if isinstance(backup, str):
+        backup = {"status": "verified", "file_key": backup} if backup else {"status": "unknown"}
+    raise DeploymentError(
+        "An earlier update did not finish: "
+        f"stage={record.get('stage', 'unknown')}, "
+        f"target={record.get('target', 'unknown')}, "
+        f"backup_status={backup.get('status', 'unknown')}. "
+        "Do not start another update or revert application code on a potentially "
+        "migrated database. Inspect the journal, database schema and containers; "
+        "use a fresh-target restore only if a verified archive actually exists.", 8
+    )
 
 
 def write_update_journal(*, channel: str, installed: str, target: str,
-                         backup: Path, stage: str = "source-switch") -> None:
-    """Atomic 0600 state file outside the tracked tree; never store credentials."""
+                         backup: dict, stage: str = "source-switch") -> None:
+    """Atomically persist backup provenance and the current update stage (0600)."""
     record = {
         "channel": channel, "installed": installed, "target": target,
-        "backup": str(backup), "stage": stage,
+        "backup": backup, "stage": stage,
     }
     if UPDATE_JOURNAL.is_symlink():
         raise DeploymentError("Unsafe update journal path", 8)
@@ -108,43 +109,80 @@ def preflight() -> dict[str, str]:
     return env
 
 
-def backup_options() -> None:
-    """Require in-container age recovery configuration before updates."""
-    env = parse_env(ENV)
-    recipient = env.get("BACKUP_AGE_RECIPIENT", "")
-    inline_identity = env.get("BACKUP_AGE_IDENTITY", "")
-    mounted_identity = env.get("BACKUP_AGE_IDENTITY_FILE", "")
-    if not recipient.startswith("age1") or len(recipient) > 200:
-        raise DeploymentError("Configure BACKUP_AGE_RECIPIENT in the protected application .env", 7)
-    if bool(inline_identity) == bool(mounted_identity):
-        raise DeploymentError(
-            "Configure exactly one BACKUP_AGE_IDENTITY or BACKUP_AGE_IDENTITY_FILE for verification", 7
-        )
-    if inline_identity and not inline_identity.startswith("AGE-SECRET-KEY-"):
-        raise DeploymentError("Invalid age identity configuration", 7)
-    # Permissions and mounted identity availability are rechecked inside the
-    # application by backup_engine before encryption or deployment changes.
-
-
-def create_backup() -> Path:
-    backup_options()
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    filename = f"opensigweave-before-update-{stamp}-{current_sha()[:12]}.age"
-    backup = Path("/app/backups") / filename
-    info(f"Creating age-encrypted pre-update snapshot in persistent volume: {backup}")
+def _backup_command(*args: str) -> dict:
+    """Parse structured responses from the existing in-container Backup Rules CLI."""
     try:
-        compose("exec", "-T", "opensigweave", "python", "backup_cli.py",
-                "create-application", "--filename", filename, timeout=7200)
-        compose("exec", "-T", "opensigweave", "python", "backup_cli.py",
-                "verify-application", "--filename", filename, timeout=7200)
-    except DeploymentError as exc:
+        raw = compose("exec", "-T", "opensigweave", "python", "backup_cli.py",
+                      "preupdate", *args, timeout=7200)
+        result = json.loads(raw)
+    except (DeploymentError, ValueError, TypeError) as exc:
         raise DeploymentError(
-            "Mandatory in-container age backup or verification failed. Source was not changed. "
-            "Check age key configuration, PostgreSQL, persistent volumes and available disk space. "
-            "Do not bypass backup verification.", 7
+            "Cannot query or execute the in-container backup service. "
+            "Check PostgreSQL, running containers and application logs.", 7
         ) from exc
-    ok(f"Encrypted pre-update recovery backup verified in app volume: {backup}")
-    return backup
+    if not isinstance(result, dict) or result.get("status") not in {
+        "not_configured", "configured", "verified", "failed"
+    }:
+        raise DeploymentError("Invalid response from backup service", 7)
+    return result
+
+
+def detect_backup() -> dict:
+    """Read-only: distinguish no active rules from a broken configured rule."""
+    return _backup_command("--check")
+
+
+def create_backup() -> dict:
+    """Execute selected active rule and verify the retained encrypted artifact."""
+    result = _backup_command()
+    if result["status"] != "verified":
+        raise DeploymentError(
+            result.get("reason", "Configured backup did not produce a verified archive"), 7
+        )
+    ok("Encrypted pre-update backup verified: "
+       f"rule={result['rule_name']} location={result['location_name']} "
+       f"archive={result['file_key']}")
+    return result
+
+
+def select_backup_for_update(*, yes: bool, continue_without_backup: bool) -> dict:
+    """No rule is normal; a failed rule requires an explicit separate decision."""
+    try:
+        detected = detect_backup()
+        if detected["status"] == "not_configured":
+            info("No backup configured. Continuing normally.")
+            return {"status": "not_configured"}
+        if detected["status"] != "configured":
+            raise DeploymentError(detected.get("reason", "Backup configuration is unusable"), 7)
+        info("Pre-update backup selected: "
+             f"rule={detected['rule_name']} location={detected['location_name']}")
+        return create_backup()
+    except DeploymentError as exc:
+        warn(f"Pre-update backup failed: {exc}")
+        if continue_without_backup:
+            info("Explicit override accepted: continuing without a verified recovery point")
+            return {"status": "failed_and_overridden"}
+        if sys.stdin.isatty():
+            try:
+                answer = input("Backup failed. Continue updating without a backup? [y/N] ")
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            if answer.strip().lower() == "y":
+                info("Administrator explicitly accepted an update without a recovery point")
+                return {"status": "failed_and_overridden"}
+        raise DeploymentError(
+            "Backup failed and continuing without a backup was not authorized. "
+            "Source, containers and data are unchanged.", 7
+        ) from exc
+
+
+def recovery_guidance(backup: dict) -> str:
+    if backup.get("status") == "verified":
+        return ("Verified archive " + backup.get("file_key", "(unknown)") +
+                " at Backup Location " + backup.get("location_name", "(unknown)") +
+                "; follow the documented fresh-target restore procedure.")
+    return ("No verified recovery point exists. Do not automatically roll back code "
+            "after a schema migration; investigate and recover manually.")
 
 
 def validate_target(target: str) -> list[str]:
@@ -177,7 +215,9 @@ def show_plan(channel: str, installed: str, remote: str, critical: list[str] | N
     print("Review docs/UPGRADE.md and the relevant release notes before applying.")
 
 
-def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool, skip_start: bool) -> None:
+def apply_update(channel: str, remote: str, *, yes: bool,
+                 approve_breaking: bool, skip_start: bool,
+                 continue_without_backup: bool = False) -> None:
     with exclusive_lock():
         ensure_no_incomplete_update()
         env = preflight()
@@ -185,7 +225,6 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
         if installed == remote:
             ok("Already up-to-date")
             return
-        # Fetch only the chosen channel; never write to remote or switch local branches.
         info(f"Fetching authorized {channel} source without executing downloaded scripts")
         git("fetch", "--no-tags", "origin", f"refs/heads/{channel}:refs/remotes/origin/{channel}")
         fetched = git("rev-parse", f"refs/remotes/origin/{channel}")
@@ -194,26 +233,25 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
         critical = validate_target(fetched)
         show_plan(channel, installed, fetched, critical)
         if critical and not approve_breaking:
-            raise DeploymentError(
-                "Critical changes need --approve-breaking after manual review", 4
-            )
-        if not yes:
-            if input("Create mandatory backup and update this checkout? [y/N]: ").strip().lower() != "y":
-                raise DeploymentError("Update cancelled", 4)
-        backup_options()  # Fail before attempting code or service modification.
-        backup = create_backup()
+            raise DeploymentError("Critical changes need --approve-breaking after manual review", 4)
+        if not yes and input("Update this checkout? [y/N]: ").strip().lower() != "y":
+            raise DeploymentError("Update cancelled", 4)
+        backup = select_backup_for_update(
+            yes=yes, continue_without_backup=continue_without_backup,
+        )
+        if backup["status"] != "verified":
+            info("No verified pre-update recovery point exists for this update.")
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="source-switch")
         info("Fast-forwarding only the current local branch")
         git("merge", "--ff-only", fetched)
         if current_channel() != channel:
-            raise DeploymentError("Channel changed unexpectedly; stop for manual recovery", 4)
-        # No service is stopped until new source/Compose are checked and built.
+            raise DeploymentError("Checkout channel changed unexpectedly; inspect deployment", 8)
         env = parse_env(ENV)
         validate_config(env)
         migrate_config(yes=True)
         compose("config", "--quiet")
-        info("Building the new application image locally (no dev/beta registry images)")
+        info("Building the application image locally")
         compose("build", "--pull", "opensigweave", timeout=3600)
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="migration")
@@ -221,7 +259,6 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
         compose("stop", "--timeout", "30", "opensigweave", timeout=120)
         try:
             compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "upgrade", "head", timeout=1200)
-            # One-off migration has terminated; no other web worker may migrate concurrently.
             revision = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "current", timeout=120)
             heads = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "heads", timeout=120)
             if not revision or revision.split()[0] != heads.split()[0]:
@@ -229,16 +266,16 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
             info(f"Alembic after migration: {revision}")
         except DeploymentError as exc:
             raise DeploymentError(
-                f"Database migration failed. Do NOT roll back only application code. "
-                f"Keep service stopped; use verified backup {backup} and the fresh-target "
-                f"restore procedure. Reason: {exc}", 8
+                "Database migration failed. Do NOT roll back application code on a "
+                "potentially migrated database. " + recovery_guidance(backup) +
+                f" Reason: {exc}", 8
             ) from exc
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="migration-complete")
         if skip_start:
             clear_update_journal()
-            warn("Update prepared and migrated, but application intentionally remains stopped (--skip-start).")
-            print(f"Commit: {current_sha()}\nVerified recovery backup: {backup}")
+            warn("Update migrated; application intentionally remains stopped (--skip-start).")
+            print(f"Commit: {current_sha()}\n{recovery_guidance(backup)}")
             return
         try:
             info("Starting updated OpenSigWeave")
@@ -247,12 +284,12 @@ def apply_update(channel: str, remote: str, *, yes: bool, approve_breaking: bool
             healthcheck(parse_env(ENV))
         except DeploymentError as exc:
             raise DeploymentError(
-                f"Post-migration startup/healthcheck failed. No automatic rollback is safe. "
-                f"Restore to a fresh target using {backup}, then review routing. Reason: {exc}", 8
+                "Post-migration startup or healthcheck failed. Automatic rollback is unsafe. "
+                + recovery_guidance(backup) + f" Reason: {exc}", 8
             ) from exc
         clear_update_journal()
         ok(f"Update successful: channel={channel} commit={current_sha()}")
-        print(f"Verified recovery backup: {backup}")
+        print(recovery_guidance(backup))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -265,8 +302,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="store_true", help="Print checkout version, SHA and channel")
     parser.add_argument("--yes", action="store_true", help="Confirm ordinary update without prompting")
     parser.add_argument("--approve-breaking", action="store_true", help="Explicitly approve reviewed critical paths")
+    parser.add_argument("--continue-without-backup", action="store_true",
+                        help="Explicitly override a failed configured backup; requires --yes")
     args = parser.parse_args(argv)
     try:
+        if args.continue_without_backup and not args.yes:
+            raise DeploymentError("--continue-without-backup requires --yes", 4)
         channel = current_channel()
         installed = current_sha()
         if args.version:
@@ -292,7 +333,6 @@ def main(argv: list[str] | None = None) -> int:
             except DeploymentError:
                 pass
             show_plan(channel, installed, remote, critical)
-            backup_options()
             ok("Read-only preflight completed; no containers, code or data changed")
             return 0
         if args.prefetch:
@@ -307,12 +347,14 @@ def main(argv: list[str] | None = None) -> int:
                 ok("Source fetched only; no checkout, containers or volumes changed")
             return 0
         apply_update(channel, remote, yes=args.yes,
-                     approve_breaking=args.approve_breaking, skip_start=args.skip_start)
+                     approve_breaking=args.approve_breaking, skip_start=args.skip_start,
+                     continue_without_backup=args.continue_without_backup)
         return 0
     except (DeploymentError, OSError, ValueError, KeyboardInterrupt, EOFError) as exc:
         code = exc.code if isinstance(exc, DeploymentError) else 4
         print(f"[FAIL] {exc}", file=sys.stderr)
-        print("No volumes were removed. Review status and verified backup before manual recovery.", file=sys.stderr)
+        print("No named volumes were removed. Inspect the update journal before recovery; "
+              "a verified backup may not exist.", file=sys.stderr)
         return code
 
 
