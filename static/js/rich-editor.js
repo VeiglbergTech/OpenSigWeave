@@ -354,15 +354,41 @@
         if (config.imageUpload) {
             editorConfig.extraPlugins.push(signatureImageUploadPlugin(config));
         }
-        const editor = await library.ClassicEditor.create(element, editorConfig);
+        let editor;
+        try {
+            editor = await library.ClassicEditor.create(element, editorConfig);
+        } catch (customToolbarError) {
+            // Never let the optional custom font dropdowns take the entire
+            // signature editor offline. The native CKEditor font commands remain
+            // available while the failing integration is diagnosed.
+            console.error("OpenSigWeave: custom CKEditor toolbar failed; retrying with native font controls.", customToolbarError);
+            const fallbackConfig = {
+                ...editorConfig,
+                toolbar: {
+                    items: toolbar.map(item => item === "signatureFontFamily" ? "fontFamily"
+                        : item === "signatureFontSize" ? "fontSize" : item),
+                    shouldNotGroupWhenFull: true
+                },
+                extraPlugins: config.imageUpload ? [signatureImageUploadPlugin(config)] : []
+            };
+            // CKEditor can leave a partially constructed view after a plugin
+            // initialization exception; reset the host before retrying.
+            element.replaceChildren();
+            editor = await library.ClassicEditor.create(element, fallbackConfig);
+        }
         let imageImportSelection = null;
         if (config.imageUpload && typeof config.onImportImageFromUrl === "function") {
-            installSignatureImageUrlButton(editor, () => {
-                // Retain the model range while the URL dialog is focused and the
-                // download is in progress; inserting must not jump to the end.
-                imageImportSelection = editor.model.document.selection.getFirstRange();
-                config.onImportImageFromUrl();
-            });
+            try {
+                installSignatureImageUrlButton(editor, () => {
+                    // Retain the model range while the URL dialog is focused and the
+                    // download is in progress; inserting must not jump to the end.
+                    imageImportSelection = editor.model.document.selection.getFirstRange();
+                    config.onImportImageFromUrl();
+                });
+            } catch (imageButtonError) {
+                // A missing optional button must not discard the loaded editor.
+                console.error("OpenSigWeave: image URL toolbar button could not be mounted.", imageButtonError);
+            }
         }
 
         let onChange = typeof config.onChange === "function" ? config.onChange : null;
