@@ -143,7 +143,7 @@
                 else {
                     const option = SIGNATURE_FONT_FAMILIES.find(([label]) => label === name);
                     if (!option) return;
-                    editor.execute("fontFamily", { value: option[1] });
+                    editor.execute("fontFamily", { value: option[0] });
                 }
                 editor.editing.view.focus();
                 update();
