@@ -1,5 +1,16 @@
 # Backup and disaster recovery design
 
+> **New in-container application-profile backup (dev):** The host-side full
+> image/Compose snapshot and restore described below are retained for legacy
+> archive compatibility. The new Backup Rules create encrypted
+> PostgreSQL/signature/identity-provider archives inside the application, no
+> Docker socket or host operator required. These archives can be recovered
+> safely to a NEW staging directory via `backup_cli.py restore-staging`.
+> A full automated running-instance restore of the new profile has **not**
+> yet been implemented or cross-host validated. Read
+> [BACKUP_RULE_MANAGEMENT.md](BACKUP_RULE_MANAGEMENT.md) before migration.
+>
+
 **Status:** Versioned archive primitives, age encryption, Docker Compose full-backup creation (including saved container images), encrypted archive verification, fresh-deployment restore, verified retention, guarded scheduled remote-filesystem backups and selective administrator component exports are implemented. Cross-host restore testing, destructive restore and validation against a real NFS/SMB target remain outstanding. A dedicated two-host operator drill is documented in [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md); it is a procedure, not evidence that the drill has passed.
 **Scope:** Standalone OpenSigWeave deployment. This design does not configure or modify Mailcow.
 
