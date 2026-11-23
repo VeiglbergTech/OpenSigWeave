@@ -5,6 +5,8 @@ No Docker daemon, real SMB share or scheduled cron service is required.
 import base64
 from datetime import datetime, timedelta, timezone
 import hashlib
+import io
+from types import SimpleNamespace
 import json
 import os
 from pathlib import Path
@@ -244,6 +246,51 @@ class BackupRuleTests(unittest.TestCase):
             self.assertEqual(run.archive_sha256, digest)
             self.assertIsNone(db.get(BackupRuntimeDB, 1).active_run_id)
             self.assertEqual(Path(backup_rules.ensure_local_directory(loc.id) / run.file_key).read_bytes(), data)
+
+    def test_smb_encrypted_publish_and_partial_transfer_cleanup(self):
+        """Direct SMB copy with read-back, atomic rename, no host mount."""
+        files = {}
+        class Writer(io.BytesIO):
+            def __init__(self, path):
+                super().__init__()
+                self.path = path
+            def close(self):
+                if not self.closed:
+                    files[self.path] = self.getvalue()
+                super().close()
+        class Client:
+            path = SimpleNamespace(exists=lambda path: path in files)
+            def open_file(self, path, mode):
+                if mode == "xb":
+                    if path in files:
+                        raise FileExistsError(path)
+                    return Writer(path)
+                if mode == "rb":
+                    return io.BytesIO(files[path])
+                raise AssertionError(mode)
+            def rename(self, src, dest):
+                files[dest] = files.pop(src)
+            def remove(self, path):
+                files.pop(path, None)
+
+        loc = SimpleNamespace(server="nas.example.org", share="archives", directory="osw",
+                              username="backup", domain="LOCAL", password_ciphertext="secret")
+        data = b"encrypted ciphertext test payload"
+        digest = hashlib.sha256(data).hexdigest()
+        def blocks():
+            yield data[:7]
+            yield data[7:]
+        with patch.object(backup_rules, "_smb_session", return_value=Client()):
+            backup_rules._smb_publish(loc, "archive.age", blocks(), len(data), digest)
+            self.assertEqual(len(files), 1)
+            self.assertEqual(next(iter(files.values())), data)
+            # Repeated upload must verify, not replace, existing archives.
+            backup_rules._smb_publish(loc, "archive.age", blocks(), len(data), digest)
+            self.assertEqual(len(files), 1)
+            with self.assertRaises(backup_rules.BackupRuleError):
+                backup_rules._smb_publish(loc, "different.age", iter([data[:5]]), len(data), digest)
+            self.assertEqual(len(files), 1, "partial SMB staging files must be removed")
+            self.assertNotIn("secret", str(files))
 
     def test_scheduler_claims_due_and_does_not_duplicate(self):
         self.auth(["signature-admins"])
