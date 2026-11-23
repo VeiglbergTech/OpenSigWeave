@@ -449,11 +449,20 @@ async function main() {
       { tab: "Rules", heading: "Signature Rules" },
       { tab: "Scheduling", heading: "Signature Scheduling" },
       { tab: "Branding", heading: "Branding" },
-      { tab: "Exports", heading: "Configuration exports" },
-      { tab: "Imports", heading: "Configuration imports" },
       { tab: "Backups", heading: "Backup management" },
+      { tab: "Import / Export", heading: "Import / Export" },
       { tab: "System", heading: "System status" },
     ];
+    // The other tabs keep their relative positions, with Backups immediately before Import / Export.
+    const adminNavigation = await page.evaluate(() => [...document.querySelectorAll("button")]
+      .filter(button => button.getAttribute("@click")?.startsWith("setAdminTab("))
+      .map(button => button.textContent.trim()));
+    assert.deepEqual(adminNavigation, [
+      "System", "Identity Providers", "Domains", "Signatures", "Signature Groups",
+      "Rules", "Scheduling", "Branding", "Backups", "Import / Export",
+    ]);
+    assert.equal(await page.getByRole("button", { name: "Imports", exact: true }).count(), 0);
+    assert.equal(await page.getByRole("button", { name: "Exports", exact: true }).count(), 0);
     // Test every administrator tab in each appearance. Capture comparable
     // reference images; CI stores them alongside the dialog snapshots.
     for (const appearance of ["light", "dark"]) {
@@ -467,6 +476,15 @@ async function main() {
       }
     }
 
+    // Old bookmarks and browser history must land on the one canonical section.
+    for (const legacySection of ["imports", "exports"]) {
+      await page.goto(baseURL + "/?view=admin&section=" + legacySection);
+      await page.getByRole("heading", { name: "Import / Export", exact: true }).waitFor();
+      assert.match(page.url(), /[?&]section=import-export(?:&|$)/,
+        "old " + legacySection + " link must be canonicalized");
+      await page.getByRole("heading", { name: "Import", exact: true }).waitFor();
+      await page.getByRole("heading", { name: "Export", exact: true }).waitFor();
+    }
     // Without an installed root-side operator, the backup tab must fail closed.
     await page.getByRole("button", { name: "Backups", exact: true }).click();
     const backupPanel = page.locator('[x-data="backupManager"]');
@@ -522,12 +540,12 @@ async function main() {
     await systemPanel.getByRole("button", { name: "Refresh status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
 
-    await page.getByRole("button", { name: "Imports", exact: true }).click();
+    await page.getByRole("button", { name: "Import / Export", exact: true }).click();
     await page.getByRole("button", { name: "Choose ZIP file", exact: true }).waitFor({ state: "visible" });
     await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Scheduling", exact: true }).click();
-    // Return to Exports after visiting every administrator section.
-    await page.getByRole("button", { name: "Exports", exact: true }).click();
+    // Return to the shared Import / Export view after visiting other sections.
+    await page.getByRole("button", { name: "Import / Export", exact: true }).click();
 
     checkpoint("admin sections: complete");
     // Every create/edit workspace must float above the overview instead of
@@ -563,7 +581,7 @@ async function main() {
       "identity provider dialog must show a fixed action footer");
     await providerDialog.press("Escape");
     await providerDialog.waitFor({ state: "hidden" });
-    await page.getByRole("button", { name: "Exports", exact: true }).click();
+    await page.getByRole("button", { name: "Import / Export", exact: true }).click();
 
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
@@ -590,8 +608,12 @@ async function main() {
     checkpoint("export: complete");
     // Validate the downloaded archive through the real import UI. Existing matching
     // domains/providers should be reusable and the preview must not write anything.
-    await page.getByRole("button", { name: "Imports", exact: true }).click();
+    await page.getByRole("button", { name: "Import / Export", exact: true }).click();
     const importPanel = page.locator('[x-data="adminImportManager"]');
+    assert.equal(await page.locator('[x-show="adminTab === \'import-export\'"] > section').count(), 2,
+      "combined tab must contain exactly the Import and Export sections");
+    assert.equal(await exportPanel.getByRole("button", { name: "Download selected components" }).isVisible(), true,
+      "export must remain available when Import is active");
     await importPanel.locator("#admin-import-file").setInputFiles(exportPath);
     const importPreviewButton = importPanel.getByRole("button", { name: "Validate and preview" });
     assert.equal(await importPreviewButton.isDisabled(), false, "import preview button must be enabled after selecting a file");
@@ -610,6 +632,35 @@ async function main() {
     assert.equal(await importPanel.getByText("New: 0 · Reused: 1").count(), 1,
       "preview should identify the matching identity-provider metadata as reusable");
 
+    // Replacing the selection must invalidate the previous preview.
+    await importPanel.locator("#admin-import-file").setInputFiles({
+      name: "invalid.zip", mimeType: "application/zip", buffer: Buffer.from("not a ZIP archive"),
+    });
+    assert.equal(await importPanel.getByText("Archive validated. No conflicts detected.").isVisible(), false);
+    const invalidResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/admin/imports/preview")
+    );
+    await importPreviewButton.click();
+    const invalidResponse = await invalidResponsePromise;
+    assert.ok(invalidResponse.status() >= 400 && invalidResponse.status() < 500,
+      "invalid archive should produce a client error, received " + invalidResponse.status());
+    await importPanel.getByRole("alert").waitFor({ state: "visible" });
+
+    await importPanel.locator("#admin-import-file").setInputFiles({
+      name: "incomplete.zip", mimeType: "application/zip", buffer: Buffer.from([0x50, 0x4b, 0x03, 0x04]),
+    });
+    const incompleteResponsePromise = page.waitForResponse(response =>
+      response.url().includes("/api/admin/imports/preview")
+    );
+    await importPreviewButton.click();
+    const incompleteResponse = await incompleteResponsePromise;
+    assert.ok(incompleteResponse.status() >= 400 && incompleteResponse.status() < 500,
+      "incomplete archive should produce a client error, received " + incompleteResponse.status());
+    await importPanel.getByRole("alert").waitFor({ state: "visible" });
+
+    await importPanel.locator("#admin-import-file").setInputFiles([]);
+    assert.equal(await importPreviewButton.isDisabled(), true, "no archive selected must disable validation");
+    assert.equal(await importPanel.getByText("No file selected", { exact: true }).isVisible(), true);
     checkpoint("import preview: complete");
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
@@ -1999,9 +2050,8 @@ async function main() {
           ["Rules", '[x-data="ruleManager"]'],
           ["Scheduling", '[x-data="scheduleManager"]'],
           ["Branding", '[x-data="brandingManager"]'],
-          ["Exports", '[x-data="adminExportManager"]'],
-          ["Imports", '[x-data="adminImportManager"]'],
           ["Backups", '[x-data="backupManager"]'],
+          ["Import / Export", '[x-show="adminTab === \'import-export\'"]'],
           ["System", '[x-data="systemStatusManager"]'],
         ]) {
           await nav(tab);

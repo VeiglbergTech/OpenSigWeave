@@ -147,15 +147,18 @@ window.fetch = (resource, options = {}) => {
     const isAdmin = document.body.dataset.isAdmin === "true";
     const allowedAdminTabs = new Set([
         "identity-providers", "domains", "signatures", "signature-groups",
-        "rules", "scheduling", "branding", "exports", "imports", "backups", "system"
+        "rules", "scheduling", "branding", "backups", "import-export", "system"
     ]);
     let saved = {};
     try { saved = JSON.parse(sessionStorage.getItem(stateKey) || "{}"); } catch (_error) {}
+    // Keep existing bookmarked URLs and session state valid after merging the two tabs.
+    const normalizeAdminTab = section => (section === "imports" || section === "exports")
+        ? "import-export" : section;
     const initialUrl = new URL(window.location.href);
-    const directSection = initialUrl.searchParams.get("section");
+    const directSection = normalizeAdminTab(initialUrl.searchParams.get("section"));
     const directView = initialUrl.searchParams.get("view");
     const initialAdminTab = allowedAdminTabs.has(directSection) ? directSection
-        : (allowedAdminTabs.has(saved.adminTab) ? saved.adminTab : "identity-providers");
+        : (allowedAdminTabs.has(normalizeAdminTab(saved.adminTab)) ? normalizeAdminTab(saved.adminTab) : "identity-providers");
     const initialView = isAdmin && (
         directView === "admin" || (directView !== "personal" && !directView && (
             allowedAdminTabs.has(directSection) || saved.tab === "admin" ||
@@ -182,12 +185,12 @@ window.fetch = (resource, options = {}) => {
             window.addEventListener("popstate", () => {
                 const url = new URL(window.location.href);
                 const view = url.searchParams.get("view");
-                const section = url.searchParams.get("section");
+                const section = normalizeAdminTab(url.searchParams.get("section"));
                 this.adminTab = allowedAdminTabs.has(section) ? section : this.adminTab;
                 this.tab = isAdmin && (view === "admin" || (!view && allowedAdminTabs.has(section)))
                     ? "admin" : "personal";
-                try { sessionStorage.setItem(stateKey, JSON.stringify({tab: this.tab, adminTab: this.adminTab})); }
-                catch (_error) {}
+                // Replace legacy URLs without creating an extra history entry.
+                this.saveNavigation(false);
             });
         },
         setAdminTab(section) {
