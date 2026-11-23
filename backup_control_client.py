@@ -75,3 +75,28 @@ def backup_download(name: str) -> tuple[int, Iterator[bytes]]:
             connection.close()
 
     return length, stream()
+
+
+def backup_managed_download(run_id: str) -> tuple[int, Iterator[bytes]]:
+    """Stream verified ciphertext from the root-side managed spool."""
+    connection, reader, response = _exchange("managed-download", run_id=run_id)
+    length = response.get("size")
+    if type(length) is not int or length <= 0:
+        reader.close()
+        connection.close()
+        raise BackupControlError("Invalid managed archive download length")
+
+    def stream() -> Iterator[bytes]:
+        remaining = length
+        try:
+            while remaining:
+                data = reader.read(min(1024 * 1024, remaining))
+                if not data:
+                    raise BackupControlError("Encrypted archive transfer was interrupted")
+                remaining -= len(data)
+                yield data
+        finally:
+            reader.close()
+            connection.close()
+
+    return length, stream()
