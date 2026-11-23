@@ -66,7 +66,7 @@ from signature_image_import import import_image_from_url, SignatureImageImportEr
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
 from backup_control_client import BackupControlError, backup_request, backup_download
-from backup_engine import backup_gate
+from backup_engine import acquire_backup_gate, release_backup_gate
 from backup_locations import (
     BackupLocationError, apply_location, ensure_local_directory,
     public_location, test_location,
@@ -429,16 +429,16 @@ def has_valid_management_key(request: Request) -> bool:
 
 
 class BackupSnapshotGateMiddleware(BaseHTTPMiddleware):
-    """Quiesce request handlers while a single-worker backup snapshots data."""
+    """Quiesce HTTP handlers against snapshots across app worker processes."""
 
     async def dispatch(self, request: Request, call_next):
-        # A normal threading.Lock (not RLock) permits release from the async
-        # request context after acquiring from a worker thread.
-        await asyncio.to_thread(backup_gate.acquire)
+        # The lock inode lives in the shared backups volume. It also coordinates
+        # a compose-exec pre-update backup, without a Docker socket in the app.
+        fd = await asyncio.to_thread(acquire_backup_gate)
         try:
             return await call_next(request)
         finally:
-            backup_gate.release()
+            release_backup_gate(fd)
 
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
