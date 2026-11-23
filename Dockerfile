@@ -20,6 +20,7 @@ WORKDIR /app
 # Apply security updates available for the pinned Debian base image.
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends age postgresql-client \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
