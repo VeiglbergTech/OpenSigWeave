@@ -220,9 +220,9 @@
                             input.removeAttribute("aria-activedescendant");
                         }
                     };
-                    const renderOptions = () => {
+                    const renderOptions = (rawQuery = "") => {
                         if (!listbox) return;
-                        const query = input.value.trim().toLowerCase();
+                        const query = rawQuery.trim().toLowerCase();
                         matches = options.filter(name => name.toLowerCase().includes(query));
                         activeIndex = -1;
                         listbox.replaceChildren();
@@ -250,9 +250,10 @@
                         }
                         syncActive();
                     };
-                    const openMenu = () => {
+                    const openMenu = (filterTypedValue = false) => {
                         if (!listbox || !this.isEnabled) return;
-                        renderOptions();
+                        // A chosen family is not a search: show all fonts on focus.
+                        renderOptions(filterTypedValue ? input.value : "");
                         listbox.hidden = false;
                         input.setAttribute("aria-expanded", "true");
                     };
@@ -264,7 +265,7 @@
                     });
                     input.addEventListener("input", () => {
                         input.setCustomValidity("");
-                        openMenu();
+                        openMenu(true);
                     });
                     input.addEventListener("change", () => {
                         // Never validate a partially typed search when choosing an option.
