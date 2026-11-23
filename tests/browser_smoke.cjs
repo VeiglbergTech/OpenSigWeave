@@ -1066,13 +1066,21 @@ async function main() {
     assert.equal(await urlImportToolbarButton.isEnabled(), true);
     const previousViewport = page.viewportSize();
     await page.setViewportSize({ width: 390, height: 780 });
-    await urlImportToolbarButton.scrollIntoViewIfNeeded();
-    const buttonFits = await urlImportToolbarButton.evaluate(button => {
+    await urlImportToolbarButton.waitFor({ state: "hidden" });
+    const mobileUrlImportButton = signatureDialog.getByRole("button", {
+      name: "Import Image from URL", exact: true
+    });
+    await mobileUrlImportButton.waitFor({ state: "visible" });
+    assert.equal(await mobileUrlImportButton.isEnabled(), true,
+      "mobile image URL import action must remain enabled");
+    await mobileUrlImportButton.scrollIntoViewIfNeeded();
+    const buttonFits = await mobileUrlImportButton.evaluate(button => {
       const rect = button.getBoundingClientRect();
       return rect.left >= 0 && rect.right <= window.innerWidth;
     });
-    assert.equal(buttonFits, true, "image URL toolbar control must be visible on narrow screens");
+    assert.equal(buttonFits, true, "mobile image URL import action must fit narrow screens");
     await page.setViewportSize(previousViewport);
+    await urlImportToolbarButton.waitFor({ state: "visible" });
 
     let remoteImportRequests = 0;
     await page.route("**/api/admin/signature-assets/import-url", async route => {
