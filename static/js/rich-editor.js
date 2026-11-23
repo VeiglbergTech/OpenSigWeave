@@ -125,7 +125,6 @@
             class FontInputView extends ui.LabeledFieldView {
                 render() {
                     super.render();
-                    this.element.classList.add("osw-ckeditor-font-input", className);
                     const input = this.fieldView.element;
                     input.setAttribute("aria-label", label);
                     input.setAttribute("placeholder", placeholder);
@@ -187,7 +186,9 @@
                 }
             }
             const view = new FontInputView(locale, ui.createLabeledInputText);
-            view.set({ label });
+            // CKEditor owns the element class attribute; direct classList edits
+            // are overwritten when its observable template updates.
+            view.set({ label, class: "osw-ckeditor-font-input " + className });
             view.bind("isEnabled").to(command, "isEnabled");
             view.fieldView.bind("isEnabled").to(command, "isEnabled");
             return view;
