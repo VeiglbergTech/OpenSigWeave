@@ -141,6 +141,45 @@ jobs:
           docker compose config --quiet
           docker compose up -d --build --wait --wait-timeout 120
           docker compose exec -T opensigweave alembic current
+          # Real container-native age/pg_dump/snapshot/recovery smoke test.
+          # The temporary key exists only for the CI environment.
+          age_pair="$(docker compose exec -T opensigweave age-keygen)"
+          age_identity="$(printf '%s\n' "$age_pair" | sed -n '/^AGE-SECRET-KEY-/p' | head -n 1)"
+          age_recipient="$(printf '%s\n' "$age_pair" | sed -n 's/^# public key: //p' | head -n 1)"
+          test -n "$age_identity" && test -n "$age_recipient"
+          ci_snapshot="opensigweave-before-update-20261123T000000Z-aaaaaaaaaaaa.age"
+          docker compose exec -T -e BACKUP_AGE_RECIPIENT="$age_recipient" \
+            -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave \
+            python backup_cli.py create-application --filename "$ci_snapshot"
+          docker compose exec -T -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave \
+            python backup_cli.py verify-application --filename "$ci_snapshot"
+          docker compose exec -T -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave python - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+          from backup_engine import restore_application_to_new_directory
+          root = Path("/app/backups")
+          identity = root / ".ci-recovery-identity"
+          target = root / ".ci-recovery-staging"
+          assert not identity.exists() and not target.exists()
+          try:
+              identity.write_text(os.environ["BACKUP_AGE_IDENTITY"] + "\n", encoding="ascii")
+              identity.chmod(0o600)
+              restored = restore_application_to_new_directory(
+                  root / "opensigweave-before-update-20261123T000000Z-aaaaaaaaaaaa.age",
+                  identity, target,
+              )
+              assert restored["metadata"]["backup_kind"] == "application"
+              assert (target / "database" / "opensigweave.dump").read_bytes().startswith(b"PGDMP")
+              assert (target / "manifest.json").exists()
+              assert (target / "data" / "signatures").is_dir() or (
+                  target / "data" / "idp-config"
+              ).is_dir() or restored["files"], "Expected a versioned snapshot manifest"
+          finally:
+              identity.unlink(missing_ok=True)
+              if target.exists():
+                  shutil.rmtree(target)
+          PY
           docker compose exec -T opensigweave test -s /app/branding/logo.png
           curl --fail --silent --show-error -H 'Host: signature.example.test'             http://127.0.0.1:8085/branding/logo.png -o /tmp/opensigweave-logo.png
           python - <<'PY'
