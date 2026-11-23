@@ -225,7 +225,7 @@ def _verify_stream(reader, size: int, digest: str):
 def _local_publish(location, key, blocks, size, sha):
     directory = ensure_local_directory(location.id)
     fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    temporary = "." + key + ".tmp"
+    temporary = "." + key + "." + uuid.uuid4().hex + ".tmp"
     try:
         try:
             existing = os.open(key, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=fd)
@@ -316,6 +316,53 @@ def publish_run(run: BackupRunDB, location: BackupLocationDB, status: dict):
         blocks.close()
     return key, size, expected_sha
 
+
+
+
+def open_managed_archive(run: BackupRunDB, location: BackupLocationDB):
+    """Authorized download of a previously verified, retained ciphertext file."""
+    if (run.status != "success" or not run.is_retained or
+            run.location_id != location.id or run.file_key != _archive_key(run)):
+        raise BackupRuleError("Encrypted backup is not available", 404)
+    key = run.file_key
+    if location.type == "local":
+        directory = ensure_local_directory(location.id)
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            fd = os.open(key, os.O_RDONLY | os.O_NOFOLLOW, dir_fd=directory_fd)
+        finally:
+            os.close(directory_fd)
+        import stat
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_size != run.size_bytes:
+            os.close(fd)
+            raise BackupRuleError("Encrypted archive is missing or changed", 404)
+
+        def stream():
+            with os.fdopen(fd, "rb") as reader:
+                for block in iter(lambda: reader.read(1024 * 1024), b""):
+                    yield block
+        return info.st_size, stream()
+    if location.type == "smb":
+        try:
+            client = _smb_session(location)
+            file = client.open_file(_smb_unc(location) + "\\" + key, mode="rb")
+            size = file.seek(0, 2)
+            file.seek(0)
+            if size != run.size_bytes:
+                file.close()
+                raise BackupRuleError("Encrypted archive is missing or changed", 404)
+
+            def stream():
+                with file:
+                    for block in iter(lambda: file.read(1024 * 1024), b""):
+                        yield block
+            return size, stream()
+        except BackupRuleError:
+            raise
+        except Exception:
+            raise BackupRuleError("Encrypted SMB archive cannot be opened", 503) from None
+    raise BackupRuleError("Unsupported archive location", 422)
 
 def _delete_archive(location: BackupLocationDB, key: str):
     if not re.fullmatch(r"opensigweave-[a-f0-9]{32}-[a-f0-9]{32}\.age", key):
