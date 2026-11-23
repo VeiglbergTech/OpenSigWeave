@@ -1310,6 +1310,7 @@ async function main() {
     assert.ok(browserSchedule, "schedule created in the UI must be persisted");
     assert.equal(browserSchedule.target_type, "SIGNATURE");
     assert.equal(browserSchedule.priority, 10);
+    const originalWindow = { starts_at: browserSchedule.starts_at, ends_at: browserSchedule.ends_at };
 
     const scheduleSearch = schedulePanel.getByRole("searchbox", { name: "Search schedules" });
     const scheduleStatusFilter = schedulePanel.getByLabel("Status filter");
@@ -1324,8 +1325,8 @@ async function main() {
     schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
     browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
     assert.equal(browserSchedule.is_enabled, false, "quick disable must persist");
-    assert.equal(browserSchedule.starts_at, new Date(new Date(browserSchedule.starts_at)).toISOString(),
-      "quick status changes preserve the original UTC window representation");
+    assert.equal(browserSchedule.starts_at, originalWindow.starts_at, "disabling must preserve the start timestamp");
+    assert.equal(browserSchedule.ends_at, originalWindow.ends_at, "disabling must preserve the end timestamp");
     await scheduleStatusFilter.selectOption("disabled");
     await scheduleRow.waitFor({ state: "visible" });
     await scheduleRow.getByRole("button", { name: "Enable", exact: true }).click();
@@ -1335,6 +1336,8 @@ async function main() {
     schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
     browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
     assert.equal(browserSchedule.is_enabled, true, "quick enable must persist");
+    assert.equal(browserSchedule.starts_at, originalWindow.starts_at, "enabling must preserve the start timestamp");
+    assert.equal(browserSchedule.ends_at, originalWindow.ends_at, "enabling must preserve the end timestamp");
     await scheduleSearch.fill("");
 
     await scheduleRow.getByRole("button", { name: "Edit", exact: true }).click();
