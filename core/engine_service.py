@@ -223,12 +223,6 @@ class SignatureEngineService:
                     "SIGNATURE_ASSET_UNAVAILABLE", "Signature asset unavailable"
                 )
 
-        elif override and domain_obj.allow_overrides:
-            identity_attributes = await self.identity_resolver(
-                db, normalized_email, domain_obj.identity_provider_id
-            )
-            raw_template = override.html_content
-
         else:
             identity_attributes = await self.identity_resolver(
                 db, normalized_email, domain_obj.identity_provider_id
@@ -241,7 +235,16 @@ class SignatureEngineService:
                 attributes=identity_attributes.attributes,
             )
             matched_rule = evaluate_rules(load_signature_rules(db), context)
-            if matched_rule and matched_rule.action == "GROUP":
+            timed_rule_active = bool(
+                matched_rule and any(
+                    condition.kind == "time_window" for condition in matched_rule.conditions
+                )
+            )
+            # Preserve the old schedule precedence: active time-bound rules
+            # override personal HTML, while normal rules do not.
+            if override and domain_obj.allow_overrides and not timed_rule_active:
+                raw_template = override.html_content
+            elif matched_rule and matched_rule.action == "GROUP":
                 if not matched_rule.group_id or not identity_attributes.principal_id:
                     return empty_result
                 selected_signature = select_and_record_group_signature(
