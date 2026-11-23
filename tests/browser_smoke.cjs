@@ -2358,9 +2358,9 @@ async function main() {
         await visualPage.getByRole("button", { name: "+ Add Rule" }).click();
         const ruleSelector = '[x-data="ruleManager"] [role="dialog"]';
         await inspect(ruleSelector, "rule");
-        await close(ruleSelector);
         await shell(ruleSelector).locator('input[x-model="form.time_limited"]').check();
         await inspect(ruleSelector, "timed-rule");
+        await close(ruleSelector);
         await nav("Domains");
         await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
         const addDomainSelector = '[x-data="addDomainModal"] [role="dialog"]';
