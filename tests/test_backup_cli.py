@@ -7,7 +7,7 @@ import backup_cli
 
 
 class BackupCliTests(unittest.TestCase):
-    def test_v1_operator_cli_exposes_only_existing_backup_commands(self):
+    def test_cli_supports_legacy_and_native_container_backup_commands(self):
         import argparse
 
         parser = backup_cli.build_parser()
@@ -18,7 +18,8 @@ class BackupCliTests(unittest.TestCase):
         self.assertEqual(len(command_actions), 1)
         self.assertEqual(
             set(command_actions[0].choices),
-            {"create", "restore", "package", "verify", "decrypt", "prune"},
+            {"create", "restore", "package", "verify", "decrypt", "prune",
+             "create-application", "verify-application", "restore-staging"},
         )
 
     def test_backup_prune_is_dry_run_by_default(self):
