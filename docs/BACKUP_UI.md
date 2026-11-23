@@ -148,3 +148,12 @@ keep off-host copies before relying on it.
 For running installations, apply \`alembic upgrade head\` and recreate the
 application container to attach the new persistent backup volume. After
 deploying, configure \`BACKUP_LOCATIONS_KEY\` once and protect its recovery copy.
+
+## Backup Rules and Backup History
+
+For the new rule-managed full encrypted backups, UTC scheduling, Local/SMB
+publication, per-rule retention, run history, migration 0017, and restore
+limitations, see [Backup Rule Management](BACKUP_RULE_MANAGEMENT.md).
+These features require the updated host operator, its protected age configuration
+and a persistent local backup volume. Legacy remote-mount backup controls remain
+available independently.
