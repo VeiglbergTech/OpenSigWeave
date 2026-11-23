@@ -4,6 +4,7 @@ These tests cover the markup the current server-side sanitizer is expected to re
 They intentionally do not claim that arbitrary Outlook VML or conditional comments
 survive: nh3 currently strips comments and disallowed VML elements.
 """
+import re
 import unittest
 
 from signature_sanitizer import sanitize_signature_html
@@ -94,9 +95,13 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
                 source = f'<span style="font-family: {stack}; font-size: 12pt;">Signature</span>'
                 sanitized = sanitize_signature_html(source)
                 rendered = render_signature_template(sanitized, {})
-                self.assertIn("font-family:", sanitized)
-                self.assertIn(stack, sanitized)
-                self.assertIn(stack, rendered)
+                # nh3 normalizes whitespace around commas in CSS font lists.
+                # Compare the ordered faces, not the exact source spacing.
+                css_pattern = r"font-family:\s*" + r"\s*,\s*".join(
+                    re.escape(face.strip()) for face in stack.split(",")
+                )
+                self.assertRegex(sanitized, css_pattern)
+                self.assertRegex(rendered, css_pattern)
                 self.assertIn("12pt", rendered)
                 self.assertNotIn("<link", rendered)
 
