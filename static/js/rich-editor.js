@@ -164,7 +164,7 @@
 
             function update() {
                 dropdown.buttonView.label = fontSizeLabel(command.value);
-                const element = input.inputView.element;
+                const element = input.fieldView.element;
                 if (element && document.activeElement !== element) {
                     element.value = command.value == null ? "" : String(command.value);
                 }
@@ -191,7 +191,7 @@
             let inputBound = false;
             dropdown.on("change:isOpen", () => {
                 if (!dropdown.isOpen) return;
-                const element = input.inputView.element;
+                const element = input.fieldView.element;
                 if (!element) return;
                 if (!inputBound) {
                     inputBound = true;
