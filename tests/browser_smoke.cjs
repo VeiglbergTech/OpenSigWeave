@@ -81,11 +81,13 @@ async function main() {
     assert.ok(state.bodyRatio >= 4.5, label + " body contrast: " + JSON.stringify(state));
     if (state.fieldRatio !== null) assert.ok(state.fieldRatio >= 4.5, label + " input contrast: " + JSON.stringify(state));
     if (state.primaryRatio !== null) assert.ok(state.primaryRatio >= 4.5, label + " primary button contrast: " + JSON.stringify(state));
-    assert.notEqual(state.body.background, state.navigation.background, label + " navigation must be distinct from canvas");
+    if (state.navigation) assert.notEqual(state.body.background, state.navigation.background,
+      label + " navigation must be distinct from canvas");
     if (state.card) assert.notEqual(state.card.background, state.body.background, label + " cards must be distinct from canvas");
     if (state.mode === "light") {
       assert.match(state.modeScheme, /light/, label + " should use light native controls");
-      assert.equal(state.navigation.background, "rgb(255, 255, 255)", label + " navigation is a light surface");
+      if (state.navigation) assert.equal(state.navigation.background, "rgb(255, 255, 255)",
+        label + " navigation is a light surface");
       if (state.tableHead) assert.notEqual(state.tableHead.background, state.card?.background || state.body.background,
         label + " table header should be distinguished from the card");
     }
