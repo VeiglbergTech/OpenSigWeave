@@ -204,6 +204,146 @@ def _try_lock():
     return fd
 
 
+
+# Rule-managed backups are first created on the HOST in an encrypted, private
+# spool. The unprivileged application transfers only verified ciphertext to the
+# selected Local/SMB destination after the application container has restarted.
+MANAGED_SPOOL = Path(os.environ.get("BACKUP_MANAGED_SPOOL", "/var/lib/opensigweave-backup-spool")).absolute()
+MANAGED_ID = re.compile(r"[a-f0-9]{32}\Z")
+
+
+def _managed_dir():
+    root = MANAGED_SPOOL
+    if root.is_symlink() or (root.exists() and not root.is_dir()):
+        raise OperatorError("Managed backup spool is unsafe")
+    root.mkdir(parents=True, mode=0o700, exist_ok=True)
+    info = root.stat()
+    if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o700:
+        raise OperatorError("Managed backup spool must be owned by root with mode 0700")
+    return root
+
+
+def _managed_paths(run_id):
+    if not isinstance(run_id, str) or not MANAGED_ID.fullmatch(run_id):
+        raise OperatorError("Invalid managed backup run ID")
+    root = _managed_dir()
+    return root / ("opensigweave-" + run_id + ".age"), root / (run_id + ".json")
+
+
+def _managed_record(run_id):
+    archive, record = _managed_paths(run_id)
+    if record.is_symlink() or not record.is_file():
+        return {"state": "missing"}
+    try:
+        value = json.loads(record.read_text(encoding="utf-8"))
+        if value.get("run_id") != run_id or value.get("state") not in {
+            "pending", "running", "success", "failed"
+        }:
+            raise ValueError("Invalid record")
+        # An operator restart cannot resume an in-memory worker. Fail closed,
+        # leaving ciphertext untouched until the administrator inspects it.
+        with job_lock:
+            active = current_job.get("id") == run_id and current_job.get("state") in {"pending", "running"}
+        if value["state"] in {"pending", "running"} and not active:
+            value = {"run_id": run_id, "state": "failed", "error": "Host backup job was interrupted"}
+            _write_private(record, json.dumps(value))
+        return value
+    except (OSError, ValueError, TypeError):
+        raise OperatorError("Managed backup status is invalid") from None
+
+
+def _managed_execute(run_id):
+    archive, record = _managed_paths(run_id)
+    with job_lock:
+        current_job.update({"state": "running", "action": "managed-create", "id": run_id})
+    _write_private(record, json.dumps({"run_id": run_id, "state": "running"}))
+    try:
+        # The caller must receive HTTP 202 before the application is stopped.
+        time.sleep(2)
+        if not os.environ.get("AGE_RECIPIENT") or not os.environ.get("AGE_IDENTITY"):
+            raise OperatorError("Encrypted host backup configuration is incomplete")
+        if archive.exists() or archive.is_symlink():
+            raise OperatorError("Managed archive already exists")
+        python = os.environ.get("PYTHON_BINARY", sys.executable)
+        completed = subprocess.run([
+            python, str(PROJECT_DIR / "backup_cli.py"), "create",
+            "--project-dir", str(PROJECT_DIR), "--output", str(archive),
+            "--recipient", os.environ["AGE_RECIPIENT"],
+            "--identity", os.environ["AGE_IDENTITY"],
+            "--docker-binary", os.environ.get("DOCKER_BINARY", "docker"),
+            "--age-binary", os.environ.get("AGE_BINARY", "age"),
+        ], cwd=PROJECT_DIR, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, timeout=21600, check=False)
+        if completed.returncode or archive.is_symlink() or not archive.is_file():
+            raise OperatorError("Encrypted backup creation or verification failed")
+        import hashlib
+        digest = hashlib.sha256()
+        with archive.open("rb") as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                digest.update(chunk)
+        _write_private(record, json.dumps({
+            "run_id": run_id, "state": "success", "size": archive.stat().st_size,
+            "sha256": digest.hexdigest(),
+        }))
+        with job_lock:
+            current_job.update({"state": "complete", "error": None})
+    except Exception:
+        # No library/subprocess exception text (including credential-bearing
+        # paths) is returned to the unprivileged caller.
+        archive.unlink(missing_ok=True)
+        _write_private(record, json.dumps({
+            "run_id": run_id, "state": "failed",
+            "error": "Host could not create and verify the encrypted backup",
+        }))
+        with job_lock:
+            current_job.update({"state": "failed", "error": "Managed backup failed"})
+
+
+def _managed_queue(run_id):
+    archive, record = _managed_paths(run_id)
+    with job_lock:
+        existing = _managed_record(run_id)
+        if existing["state"] != "missing":
+            return {"job": existing}
+        if current_job["state"] in {"pending", "running"}:
+            raise OperatorError("A backup operation is already running")
+        # Serialize managed and legacy backup jobs with the same host lock.
+        current_job.update({"state": "pending", "action": "managed-create", "id": run_id, "error": None})
+        _write_private(record, json.dumps({"run_id": run_id, "state": "pending"}))
+        threading.Thread(target=_managed_execute, args=(run_id,), daemon=True).start()
+        return {"job": {"run_id": run_id, "state": "pending"}}
+
+
+def _managed_open(run_id):
+    archive, _ = _managed_paths(run_id)
+    status = _managed_record(run_id)
+    if status.get("state") != "success":
+        raise OperatorError("Managed backup is not ready")
+    if archive.is_symlink() or not archive.is_file():
+        raise OperatorError("Managed encrypted archive is unavailable")
+    fd = os.open(archive, os.O_RDONLY | os.O_NOFOLLOW)
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_size != status["size"]:
+        os.close(fd)
+        raise OperatorError("Managed encrypted archive changed")
+    return os.fdopen(fd, "rb"), info.st_size
+
+
+def _managed_ack(run_id):
+    archive, record = _managed_paths(run_id)
+    status = _managed_record(run_id)
+    if status.get("state") != "success":
+        raise OperatorError("Only successful managed backups can be acknowledged")
+    with job_lock:
+        if current_job["state"] in {"pending", "running"}:
+            raise OperatorError("A backup operation is running")
+        if archive.is_symlink() or record.is_symlink():
+            raise OperatorError("Unsafe managed archive")
+        archive.unlink(missing_ok=True)
+        record.unlink()
+    return {"acknowledged": True}
+
+
 def _delete(name, confirm):
     if confirm != "DELETE":
         raise OperatorError("Explicit deletion confirmation is required")
@@ -326,6 +466,12 @@ def _dispatch(request):
         except OperatorError as exc:
             return {"available": True, "mount_ready": False, "settings": settings,
                     "backups": [], "job": state, "error": str(exc)}
+    if action == "managed-create":
+        return _managed_queue(request.get("run_id"))
+    if action == "managed-status":
+        return {"job": _managed_record(request.get("run_id"))}
+    if action == "managed-ack":
+        return _managed_ack(request.get("run_id"))
     if action == "settings":
         return {"settings": _save_settings(request.get("settings"))}
     if action == "create":
@@ -355,6 +501,14 @@ class Handler(socketserver.StreamRequestHandler):
             request = json.loads(message)
             if not isinstance(request, dict):
                 raise OperatorError("Invalid backup request")
+            if request.get("action") == "managed-download":
+                stream, size = _managed_open(request.get("run_id"))
+                try:
+                    self.wfile.write(json.dumps({"ok": True, "size": size}).encode() + b"\n")
+                    shutil.copyfileobj(stream, self.wfile, length=1024 * 1024)
+                finally:
+                    stream.close()
+                return
             if request.get("action") == "download":
                 stream, size = _open_backup(request.get("name"))
                 try:
