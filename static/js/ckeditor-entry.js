@@ -26,6 +26,7 @@ import {
     UIModel,
     createDropdown,
     addListToDropdown,
+    View,
     LabeledFieldView,
     createLabeledInputText
 } from "ckeditor5";
@@ -60,6 +61,7 @@ window.CKEDITOR = {
     UIModel,
     createDropdown,
     addListToDropdown,
+    View,
     LabeledFieldView,
     createLabeledInputText
 };

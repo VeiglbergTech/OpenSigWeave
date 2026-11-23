@@ -115,39 +115,71 @@
 
     let fontListSerial = 0;
 
+    // A single CKEditor View avoids LabeledFieldView's second floating label.
+    // An explicit listbox replaces the browser datalist (which cannot be styled
+    // or reliably scrolled across platforms).
     function signatureFontToolbarPlugin(editor) {
         const ui = window.CKEDITOR;
 
         function createInputControl(locale, { commandName, label, className, placeholder, formatValue, parseInput, options }) {
             const command = editor.commands.get(commandName);
-            // LabeledFieldView is a native CKEditor UI view, not a detached
-            // toolbar. Its input remains accessible by keyboard and screen readers.
-            class FontInputView extends ui.LabeledFieldView {
+            const hasOptions = Array.isArray(options);
+
+            class FontInputView extends ui.View {
+                constructor(locale) {
+                    super(locale);
+                    this.set("isEnabled", true);
+                    this.setTemplate({
+                        tag: "div",
+                        attributes: { class: ["ck", "osw-ckeditor-font-input", className] },
+                        children: [{
+                            tag: "input",
+                            attributes: {
+                                type: "text",
+                                class: ["ck", "ck-input", "ck-input-text"],
+                                "aria-label": label,
+                                placeholder,
+                                autocomplete: "off",
+                                spellcheck: "false"
+                            }
+                        }]
+                    });
+                }
+
                 render() {
                     super.render();
-                    const input = this.fieldView.element;
-                    input.setAttribute("aria-label", label);
-                    input.setAttribute("placeholder", placeholder);
-                    input.setAttribute("autocomplete", "off");
-                    input.setAttribute("spellcheck", "false");
+                    const input = this.element.querySelector("input");
                     if (commandName === "fontSize") input.setAttribute("inputmode", "decimal");
-                    if (options) {
-                        const list = document.createElement("datalist");
-                        list.id = "osw-font-options-" + (++fontListSerial);
-                        options.forEach(name => {
-                            const option = document.createElement("option");
-                            option.value = name;
-                            list.appendChild(option);
-                        });
-                        input.setAttribute("list", list.id);
-                        this.element.appendChild(list);
-                    }
+
                     let selectedRange = null;
+                    let activeIndex = -1;
+                    let matches = [];
+                    let listbox = null;
+
+                    if (hasOptions) {
+                        listbox = document.createElement("div");
+                        listbox.className = "osw-font-listbox";
+                        listbox.id = "osw-font-options-" + (++fontListSerial);
+                        listbox.setAttribute("role", "listbox");
+                        listbox.setAttribute("aria-label", label + " options");
+                        listbox.hidden = true;
+                        this.element.appendChild(listbox);
+                        input.setAttribute("role", "combobox");
+                        input.setAttribute("aria-controls", listbox.id);
+                        input.setAttribute("aria-autocomplete", "list");
+                        input.setAttribute("aria-expanded", "false");
+                    }
+
                     const captureSelection = () => {
                         selectedRange = editor.model.document.selection.getFirstRange();
                     };
-                    input.addEventListener("pointerdown", captureSelection);
-                    input.addEventListener("focus", captureSelection);
+                    const closeMenu = () => {
+                        if (!listbox) return;
+                        listbox.hidden = true;
+                        activeIndex = -1;
+                        input.setAttribute("aria-expanded", "false");
+                        input.removeAttribute("aria-activedescendant");
+                    };
                     const update = () => {
                         if (document.activeElement !== input) {
                             input.value = formatValue(command.value);
@@ -160,7 +192,7 @@
                         if (raw && !parsed) {
                             input.setCustomValidity("Enter a valid " + label.toLowerCase() + ".");
                             input.reportValidity();
-                            return;
+                            return false;
                         }
                         input.setCustomValidity("");
                         if (selectedRange) {
@@ -169,28 +201,123 @@
                         }
                         if (!parsed) editor.execute(commandName);
                         else editor.execute(commandName, { value: parsed });
+                        closeMenu();
                         if (focusEditor) editor.editing.view.focus();
                         update();
+                        return true;
                     };
-                    input.addEventListener("input", () => input.setCustomValidity(""));
-                    input.addEventListener("change", () => apply(false));
+                    const syncActive = () => {
+                        if (!listbox) return;
+                        const choices = [...listbox.querySelectorAll('[role="option"]')];
+                        choices.forEach((choice, index) => {
+                            choice.classList.toggle("osw-font-option-active", index === activeIndex);
+                            choice.setAttribute("aria-selected", String(index === activeIndex));
+                        });
+                        if (activeIndex >= 0 && choices[activeIndex]) {
+                            input.setAttribute("aria-activedescendant", choices[activeIndex].id);
+                            choices[activeIndex].scrollIntoView({ block: "nearest" });
+                        } else {
+                            input.removeAttribute("aria-activedescendant");
+                        }
+                    };
+                    const renderOptions = () => {
+                        if (!listbox) return;
+                        const query = input.value.trim().toLowerCase();
+                        matches = options.filter(name => name.toLowerCase().includes(query));
+                        activeIndex = -1;
+                        listbox.replaceChildren();
+                        matches.forEach((name, index) => {
+                            const choice = document.createElement("button");
+                            choice.type = "button";
+                            choice.className = "osw-font-option";
+                            choice.id = listbox.id + "-option-" + index;
+                            choice.setAttribute("role", "option");
+                            choice.setAttribute("aria-selected", "false");
+                            choice.textContent = name;
+                            choice.addEventListener("pointerdown", event => event.preventDefault());
+                            choice.addEventListener("click", () => {
+                                input.value = name;
+                                apply(true);
+                            });
+                            listbox.appendChild(choice);
+                        });
+                        if (!matches.length) {
+                            const empty = document.createElement("div");
+                            empty.className = "osw-font-empty";
+                            empty.setAttribute("role", "status");
+                            empty.textContent = "No matching fonts";
+                            listbox.appendChild(empty);
+                        }
+                        syncActive();
+                    };
+                    const openMenu = () => {
+                        if (!listbox || !this.isEnabled) return;
+                        renderOptions();
+                        listbox.hidden = false;
+                        input.setAttribute("aria-expanded", "true");
+                    };
+
+                    input.addEventListener("pointerdown", captureSelection);
+                    input.addEventListener("focus", () => {
+                        captureSelection();
+                        openMenu();
+                    });
+                    input.addEventListener("input", () => {
+                        input.setCustomValidity("");
+                        openMenu();
+                    });
+                    input.addEventListener("change", () => {
+                        // Never validate a partially typed search when choosing an option.
+                        if (!hasOptions || !input.value.trim() || parseInput(input.value.trim())) {
+                            apply(false);
+                        }
+                    });
                     input.addEventListener("keydown", event => {
-                        if (event.key === "Escape") { input.value = formatValue(command.value); input.setCustomValidity(""); return; }
+                        if (event.key === "Escape") {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            closeMenu();
+                            input.value = formatValue(command.value);
+                            input.setCustomValidity("");
+                            return;
+                        }
+                        if (listbox && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (listbox.hidden) openMenu();
+                            if (matches.length) {
+                                const delta = event.key === "ArrowDown" ? 1 : -1;
+                                activeIndex = activeIndex < 0
+                                    ? (delta > 0 ? 0 : matches.length - 1)
+                                    : (activeIndex + delta + matches.length) % matches.length;
+                                syncActive();
+                            }
+                            return;
+                        }
                         if (event.key !== "Enter") return;
                         event.preventDefault();
                         event.stopPropagation();
+                        if (listbox && !listbox.hidden && activeIndex >= 0) {
+                            input.value = matches[activeIndex];
+                        }
                         apply(true);
                     });
+                    input.addEventListener("blur", () => {
+                        closeMenu();
+                        update();
+                    });
+                    this.on("change:isEnabled", () => {
+                        input.disabled = !this.isEnabled;
+                        if (!this.isEnabled) closeMenu();
+                    });
+                    input.disabled = !this.isEnabled;
                     this.listenTo(command, "change:value", update);
                     update();
                 }
             }
-            const view = new FontInputView(locale, ui.createLabeledInputText);
-            // CKEditor owns the element class attribute; direct classList edits
-            // are overwritten when its observable template updates.
-            view.set({ label, class: "osw-ckeditor-font-input " + className });
+
+            const view = new FontInputView(locale);
             view.bind("isEnabled").to(command, "isEnabled");
-            view.fieldView.bind("isEnabled").to(command, "isEnabled");
             return view;
         }
 

@@ -445,32 +445,6 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 .ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
 .ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
 
-/* CKEditor component-factory font dropdowns; no external toolbar.
-   Keep sizes usable on narrow screens and in both themes. */
-.osw-rich-editor .osw-signature-family-dropdown .ck-dropdown__button {
-    min-width: 7rem;
-    max-width: 12rem;
-}
-.osw-rich-editor .osw-signature-size-dropdown .ck-dropdown__button {
-    min-width: 6.5rem;
-}
-.osw-rich-editor :is(.osw-signature-family-dropdown, .osw-signature-size-dropdown) .ck-button__label {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.osw-rich-editor .osw-signature-size-dropdown .ck-dropdown__panel {
-    min-width: 12rem;
-    max-width: min(18rem, 90vw);
-}
-.osw-rich-editor .osw-signature-size-dropdown .ck-labeled-field-view {
-    margin: .55rem .65rem;
-}
-.osw-rich-editor .osw-signature-size-dropdown .ck-input-text:focus-visible {
-    outline: 2px solid var(--osw-action-accent);
-    outline-offset: 1px;
-}
-
 /* Allow every CKEditor toolbar to wrap instead of cutting off controls. */
 .osw-rich-editor .ck-toolbar__items {
     flex-wrap: wrap !important;
@@ -505,7 +479,8 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
     overflow-y: auto;
 }
 @supports selector(:has(*)) {
-    .osw-modal-body:has(.osw-rich-editor .ck-dropdown__panel-visible) {
+    .osw-modal-body:has(.osw-rich-editor .ck-dropdown__panel-visible),
+    .osw-modal-body:has(.osw-rich-editor .osw-font-listbox:not([hidden])) {
         overflow: visible;
     }
 }
@@ -679,23 +654,78 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     input[type="checkbox"].osw-switch:disabled { border-color: GrayText; }
 }
 
-/* Compact, editable Word-style font fields inside every CKEditor toolbar. */
+/* Shared single-label CKEditor font fields in dark mode and light mode. */
 .ck-toolbar .osw-ckeditor-font-input {
+    position: relative;
+    display: flex;
     flex: 0 1 172px;
     min-width: 92px;
     max-width: 190px;
     margin: 2px 3px;
+    overflow: visible;
 }
 .ck-toolbar .osw-signature-size-input {
     flex-basis: 95px;
     max-width: 105px;
 }
-.ck-toolbar .osw-ckeditor-font-input .ck-labeled-field-view__input-wrapper,
-.ck-toolbar .osw-ckeditor-font-input .ck-input {
+.ck-toolbar .osw-ckeditor-font-input input.ck-input {
+    box-sizing: border-box;
     width: 100%;
     min-width: 0;
-}
-.ck-toolbar .osw-ckeditor-font-input input {
     min-height: 32px;
     padding: 4px 8px;
+    color: var(--osw-text) !important;
+    background: var(--osw-input) !important;
+    border: 1px solid var(--osw-border) !important;
+    border-radius: 5px;
+}
+.ck-toolbar .osw-ckeditor-font-input input.ck-input::placeholder {
+    color: var(--osw-muted);
+    opacity: 1;
+}
+.ck-toolbar .osw-ckeditor-font-input input.ck-input:focus {
+    border-color: var(--osw-action-accent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-action-accent) 20%, transparent);
+    outline: none;
+}
+.ck-toolbar .osw-font-listbox {
+    position: absolute;
+    z-index: 140;
+    top: calc(100% + 4px);
+    left: 0;
+    box-sizing: border-box;
+    width: max(100%, 210px);
+    max-width: calc(100vw - 3rem);
+    max-height: 210px;
+    padding: 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    color: var(--osw-text);
+    background: var(--osw-panel);
+    border: 1px solid var(--osw-border);
+    border-radius: 6px;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 18%);
+}
+.ck-toolbar .osw-font-listbox[hidden] { display: none !important; }
+.ck-toolbar .osw-font-option {
+    display: block;
+    width: 100%;
+    padding: 7px 9px;
+    text-align: left;
+    color: var(--osw-text);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.ck-toolbar .osw-font-option:hover,
+.ck-toolbar .osw-font-option.osw-font-option-active,
+.ck-toolbar .osw-font-option:focus-visible {
+    background: var(--osw-panel-raised);
+    outline: 1px solid var(--osw-action-accent);
+    outline-offset: -1px;
+}
+.ck-toolbar .osw-font-empty {
+    padding: 8px;
+    color: var(--osw-muted);
 }
