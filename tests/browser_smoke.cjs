@@ -473,6 +473,11 @@ async function main() {
     await page.goto(baseURL + "/?view=admin&section=system");
     await page.getByRole("heading", { name: "System Status" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Domains", exact: true }).click();
+    const systemTabReload = page.waitForResponse(response =>
+      response.url().includes("/api/admin/system-status") && response.request().method() === "GET");
+    await page.getByRole("button", { name: "System", exact: true }).click();
+    assert.equal((await systemTabReload).status(), 200, "revisiting System must request fresh status");
+    await page.getByRole("button", { name: "Domains", exact: true }).click();
 
     checkpoint("admin: open");
     const sections = [
@@ -1715,7 +1720,7 @@ async function main() {
     await assertFloatingDialog(groupDialog, "signature group editor");
     await groupPanel.getByLabel("Name").fill("Browser Smoke Group");
     await groupPanel.getByRole("button", { name: "Save Group", exact: true }).click();
-    const groupCard = groupPanel.locator("div.bg-gray-800.border.border-gray-700.rounded-lg.p-5.space-y-3").filter({ has: page.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
+    const groupCard = groupPanel.locator(".osw-table-scroll tbody tr").filter({ has: page.getByRole("heading", { name: "Browser Smoke Group", exact: true }) });
     await groupCard.getByRole("heading", { name: "Browser Smoke Group", exact: true }).waitFor();
     await groupPanel.getByRole("button", { name: "+ Add Signature to Group", exact: true }).click();
     const memberDialog = groupPanel.locator('div[x-show="memberEditor"]');
@@ -1723,7 +1728,7 @@ async function main() {
     await memberDialog.locator('select[x-model="memberForm.group_id"]').selectOption({ label: "Browser Smoke Group" });
     await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
     await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
-    await groupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" }).waitFor();
+    await groupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" }).waitFor();
 
     checkpoint("group create/membership: complete");
     const rulesPanel = page.locator('[x-data="ruleManager"]');
@@ -1755,7 +1760,14 @@ async function main() {
     await rulesPanel.getByLabel("Priority").fill("25");
     await rulesPanel.getByRole("button", { name: "+ Add Condition" }).click();
     const conditionRows = rulesPanel.locator("div.grid.grid-cols-1.md\\:grid-cols-12");
-    await conditionRows.last().locator('select[x-model="condition.kind"]').selectOption("sender_not_equals");
+    const kindSelect = conditionRows.last().locator('select[x-model="condition.kind"]');
+    const attributeKey = conditionRows.last().locator('input[x-model="condition.key"]');
+    await kindSelect.selectOption("attribute_equals");
+    await attributeKey.waitFor({ state: "visible" });
+    await attributeKey.fill("department");
+    await kindSelect.selectOption("sender_not_equals");
+    await attributeKey.waitFor({ state: "hidden" });
+    assert.equal(await attributeKey.inputValue(), "", "irrelevant attribute key must be cleared");
     await conditionRows.last().locator('input[placeholder="Value"]').fill("example.test");
     await rulesPanel.getByRole("button", { name: "Save Rule", exact: true }).click();
     await page.waitForFunction(() => {
@@ -1788,10 +1800,10 @@ async function main() {
     );
     await groupForm.getByRole("button", { name: "Save Group", exact: true }).click();
     await groupUpdateResponse;
-    const updatedGroupCard = groupPanel.locator("div.grid.grid-cols-1.xl\\:grid-cols-2 > div")
-      .filter({ hasText: "Browser Smoke Group Updated" });
+    const updatedGroupCard = groupPanel.locator(".osw-table-scroll tbody tr")
+      .filter({ has: page.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
     await updatedGroupCard.getByText("Browser Smoke Group Updated", { exact: true }).waitFor();
-    const updatedMemberLabel = updatedGroupCard.locator("span.flex-1.truncate").filter({ hasText: "Browser Smoke Signature" });
+    const updatedMemberLabel = updatedGroupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" });
     await updatedMemberLabel.waitFor();
 
     // Update a group member's weight and verify the UI remains operational.
