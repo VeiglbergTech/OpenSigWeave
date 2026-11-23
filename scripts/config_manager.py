@@ -7,7 +7,6 @@ from getpass import getpass
 import os
 from pathlib import Path
 import re
-import re
 import secrets
 import socket
 import sys
@@ -18,6 +17,11 @@ from deploy_common import (
     ROOT, DeploymentError, dotenv_quote, exclusive_lock, info, ok, parse_env,
     validate_config,
 )
+
+# Shell entrypoints execute this file from scripts/, not the repository root.
+# Keep top-level authentication helpers importable on a clean installation.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 ENV = ROOT / ".env"
 GENERATED_PASSWORD_FILE = ROOT / ".admin-recovery-credentials"
