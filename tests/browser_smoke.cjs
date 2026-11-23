@@ -1749,7 +1749,8 @@ async function main() {
     await updatedSignatureRow.getByRole("button", { name: "Edit", exact: true }).click();
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature Updated");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
-    await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
+    await signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature Updated" })
+      .getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
     checkpoint("group/signature updates: complete");
     // Remove the rule and group again so this test also covers destructive UI paths.
@@ -1765,7 +1766,8 @@ async function main() {
     await groupPanel.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }).waitFor({ state: "detached" });
 
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
-    await signaturePanel.getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
+    await signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature Updated" })
+      .getByText("Browser Smoke Signature Updated", { exact: true }).waitFor();
 
     checkpoint("rule/group deletion: complete");
 
