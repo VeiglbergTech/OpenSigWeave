@@ -97,7 +97,7 @@ class SignatureFileStoreTests(unittest.TestCase):
     def test_signature_image_limit_defaults_to_six_mib_and_large_uploads_are_explicit(self):
         with tempfile.TemporaryDirectory() as directory:
             store = SignatureFileStore(directory)
-            payload = b"\\x89PNG\\r\\n\\x1a\\n" + b"x" * (DEFAULT_SIGNATURE_IMAGE_BYTES + 1 - 8)
+            payload = bytes([137, 80, 78, 71, 13, 10, 26, 10]) + b"x" * (DEFAULT_SIGNATURE_IMAGE_BYTES + 1 - 8)
             with self.assertRaises(SignatureStorageError):
                 store.write_image(payload, "image/png")
             filename = store.write_image(payload, "image/png", max_bytes=MAX_SIGNATURE_IMAGE_BYTES)
