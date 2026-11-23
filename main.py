@@ -1816,7 +1816,7 @@ def update_admin_branding(
         db.add(settings)
     settings.app_name = payload.app_name.strip()
     settings.app_color = payload.app_color.lower()
-    allow_large = settings.large_image_uploads if payload.large_image_uploads is None else payload.large_image_uploads
+    allow_large = bool(settings.large_image_uploads) if payload.large_image_uploads is None else payload.large_image_uploads
     image_limit = MAX_SIGNATURE_IMAGE_BYTES if allow_large else DEFAULT_SIGNATURE_IMAGE_BYTES
 
     try:
