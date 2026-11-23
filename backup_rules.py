@@ -283,7 +283,7 @@ def _smb_publish(location, key, blocks, size, sha):
         client = _smb_session(location)
         root = _smb_unc(location)
         final = root + "\\" + key
-        temporary = root + "\\." + key + ".tmp"
+        temporary = root + "\\." + key + "." + uuid.uuid4().hex + ".tmp"
         if client.path.exists(final):
             with client.open_file(final, mode="rb") as reader:
                 if not _verify_stream(reader, size, sha):
