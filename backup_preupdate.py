@@ -39,21 +39,34 @@ def select_rule(db, preferred: str = ""):
         if preferred:
             raise PreupdateBackupError("Preferred pre-update backup rule is not enabled or does not exist")
         return None
+    ordered = sorted(enabled, key=lambda r: (r.name.casefold(), r.id))
     if preferred:
-        matches = [r for r in enabled if r.id == preferred]
+        matches = [r for r in ordered if r.id == preferred]
         if not matches:
             raise PreupdateBackupError("Preferred pre-update backup rule is not enabled or does not exist")
-        selected = matches[0]
-    else:
-        selected = sorted(enabled, key=lambda r: (r.name.casefold(), r.id))[0]
-    location = db.get(BackupLocationDB, selected.location_id)
-    if location is None or not location.is_enabled:
-        raise PreupdateBackupError("Selected backup rule has no enabled destination")
-    if selected.content != "full" or location.type not in {"local", "smb"}:
-        raise PreupdateBackupError("Selected backup rule cannot create a complete restorable archive")
-    if location.type == "smb" and not location.password_ciphertext:
-        raise PreupdateBackupError("Selected SMB backup location has no stored credentials")
-    return selected, location
+        ordered = matches
+
+    # A broken rule must not prevent a different usable rule from providing
+    # protection. An explicitly preferred rule, however, must fail closed.
+    problems = []
+    for selected in ordered:
+        location = db.get(BackupLocationDB, selected.location_id)
+        if location is None or not location.is_enabled:
+            problems.append("no enabled destination")
+            continue
+        if selected.content != "full" or location.type not in {"local", "smb"}:
+            problems.append("not a complete, restorable archive")
+            continue
+        if location.type == "smb" and not location.password_ciphertext:
+            problems.append("SMB destination lacks credentials")
+            continue
+        return selected, location
+
+    raise PreupdateBackupError(
+        "Enabled backup rules exist but none is usable"
+        + (" (preferred rule invalid)" if preferred else "")
+        + "; inspect Backup Rules and Backup Locations"
+    )
 
 
 def detect(preferred: str = "") -> dict:
