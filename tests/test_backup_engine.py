@@ -10,6 +10,8 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from unittest.mock import patch
 
@@ -85,14 +87,14 @@ class ContainerBackupTests(unittest.TestCase):
         self.assertEqual((restored / "data/idp-config/provider.json").read_text(), '{"token":"private"}')
         self.assertEqual((restored / "database/opensigweave.dump").read_bytes(), b"PGDMP\x00test database")
         self.assertFalse((restored / "age-identity.txt").exists())
-        self.assertEqual(list((self.root / "backups").iterdir()), [])
+        self.assertFalse(list((self.root / "backups").glob(".osw-snapshot-*")))
 
     def test_rejects_symlinked_signature_data(self):
         (self.root / "signatures" / "unsafe").symlink_to(self.root / "idp" / "provider.json")
         with patch.object(backup_engine.subprocess, "run", side_effect=self.fake_pg):
             with self.assertRaisesRegex(backup_engine.BackupEngineError, "symbolic link"):
                 backup_engine.create_application_backup(lambda *_: None)
-        self.assertEqual(list((self.root / "backups").iterdir()), [])
+        self.assertFalse(list((self.root / "backups").glob(".osw-snapshot-*")))
 
     def test_no_encryption_without_identity_or_recipient(self):
         with patch.dict(os.environ, {"BACKUP_AGE_IDENTITY": "", "BACKUP_AGE_IDENTITY_FILE": ""}):
@@ -110,10 +112,26 @@ class ContainerBackupTests(unittest.TestCase):
                 self.root / "missing.age", self.root / "missing.key", target,
             )
 
-    def test_no_multiprocess_snapshot_without_shared_gate(self):
-        with patch.dict(os.environ, {"UVICORN_WORKERS": "2"}):
-            with self.assertRaisesRegex(backup_engine.BackupEngineError, "UVICORN_WORKERS"):
-                backup_engine.create_application_backup(lambda *_: None)
+    def test_interprocess_gate_blocks_snapshot_until_request_finishes(self):
+        fd = backup_engine.acquire_backup_gate()
+        started = threading.Event()
+        acquired = threading.Event()
+
+        def backup():
+            started.set()
+            with backup_engine.exclusive_backup_gate():
+                acquired.set()
+
+        worker = threading.Thread(target=backup)
+        worker.start()
+        try:
+            self.assertTrue(started.wait(2))
+            self.assertFalse(acquired.wait(0.05))
+        finally:
+            backup_engine.release_backup_gate(fd)
+        worker.join(timeout=2)
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(acquired.is_set())
 
 
 if __name__ == "__main__":
