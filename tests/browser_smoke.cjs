@@ -929,10 +929,10 @@ async function main() {
       "stored decimal pt size must survive closing and reopening");
     await signatureEditEditor.click();
     await signatureEditEditor.press("Control+A");
-    assert.match(await fontFamilyControl.innerText(), /Cambria/i,
-      "family dropdown must reflect a previously stored selection");
-    assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
-      "size dropdown must reflect a previously stored custom value");
+    assert.match(await fontFamilyControl.inputValue(), /Cambria/i,
+      "font family input must reflect a previously stored selection");
+    assert.match(await fontSizeControl.inputValue(), /17\.5/i,
+      "font size input must reflect a previously stored custom value");
     const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
     // Versions load from a separate asynchronous API request. The editor
     // could still display data from its previous instance; wait for the
