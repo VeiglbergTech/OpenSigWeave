@@ -198,6 +198,35 @@ class SignatureEngineServiceTests(unittest.TestCase):
         resolver.assert_awaited_once()
         store.read.assert_not_called()
 
+    def test_time_window_rule_overrides_personal_override_only_while_active(self):
+        domain = DomainDB(domain_name="example.org", is_active=True, allow_overrides=True)
+        self.db.add(domain)
+        signature = self._add_versioned_signature("Campaign", "<p>Campaign</p>")
+        self.db.add(UserOverrideDB(user_email="ada@example.org",
+                                   html_content="<p>Personal override</p>", is_disabled=False))
+        rule = SignatureRuleDB(id=uuid.uuid4().hex, name="Timed campaign",
+                               priority=-100, action_mode="SIGNATURE",
+                               signature_id=signature.id, is_enabled=True)
+        self.db.add(rule)
+        now = datetime.now(timezone.utc)
+        window = SignatureRuleConditionDB(rule_id=rule.id, kind="time_window",
+                                          key=(now - timedelta(hours=1)).isoformat(),
+                                          value=(now + timedelta(hours=1)).isoformat())
+        self.db.add(window)
+        self.db.commit()
+
+        store = Mock()
+        store.read.return_value = "<p>Campaign</p>"
+        service, _, _ = self._service(file_store=store)
+        active = asyncio.run(service.resolve(self.db, normalize_engine_request("ada@example.org")))
+        self.assertEqual(active.html, "<p>Campaign</p>")
+
+        window.key = (now - timedelta(days=3)).isoformat()
+        window.value = (now - timedelta(days=2)).isoformat()
+        self.db.commit()
+        inactive = asyncio.run(service.resolve(self.db, normalize_engine_request("ada@example.org")))
+        self.assertEqual(inactive.html, "<p>Personal override</p>")
+
     def test_active_signature_schedule_overrides_personal_override(self):
         domain = DomainDB(domain_name="example.org", is_active=True, allow_overrides=True)
         self.db.add(domain)
