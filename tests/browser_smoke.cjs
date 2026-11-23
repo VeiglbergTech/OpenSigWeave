@@ -485,15 +485,15 @@ async function main() {
       await page.getByRole("heading", { name: "Import", exact: true }).waitFor();
       await page.getByRole("heading", { name: "Export", exact: true }).waitFor();
     }
-    // Without an installed root-side operator, the backup tab must fail closed.
+    // Container-native backups must not require a root-side host operator.
     await page.getByRole("button", { name: "Backup", exact: true }).click();
     const backupPanel = page.locator('[x-data="backupManager"]');
-    await backupPanel.getByText(/Backup Rules cannot run|protected host backup operator is unavailable/i).first().waitFor();
-    await expectBackupActionsDisabled();
-    async function expectBackupActionsDisabled() {
-      assert.equal(await backupPanel.getByRole("button", { name: "Run Backup" }).isDisabled(), true);
-      assert.equal(await backupPanel.getByRole("button", { name: "Save backup settings" }).isDisabled(), true);
-    }
+    await backupPanel.getByRole("heading", { name: "Backup Locations" }).waitFor();
+    await backupPanel.getByRole("heading", { name: "Backup Rules" }).waitFor();
+    await backupPanel.getByRole("heading", { name: "Backup History" }).waitFor();
+    assert.equal(await backupPanel.getByRole("heading", { name: "Backup Settings" }).count(), 0);
+    assert.equal(await backupPanel.getByRole("heading", { name: "Encrypted Backups" }).count(), 0);
+    assert.equal(await backupPanel.getByText(/host backup operator is unavailable/i).count(), 0);
 
     // Confirm outdated implementation notes stay absent across all administration tabs and dialogs.
     const uiCopy = await page.locator("body").textContent();
