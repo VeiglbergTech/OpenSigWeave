@@ -172,17 +172,18 @@ def test_location(row) -> dict:
     if row.type == "local":
         target = ensure_local_directory(row.id)
         # Probe this directory only, without following links.
-        fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
-            marker = ".osw-probe-" + uuid.uuid4().hex
-            probe_fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
-                               0o600, dir_fd=fd)
-            os.close(probe_fd)
-            os.unlink(marker, dir_fd=fd)
+            fd = os.open(target, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                marker = ".osw-probe-" + uuid.uuid4().hex
+                probe_fd = os.open(marker, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+                                   0o600, dir_fd=fd)
+                os.close(probe_fd)
+                os.unlink(marker, dir_fd=fd)
+            finally:
+                os.close(fd)
         except OSError:
             raise BackupLocationError("Local backup directory is not writable.", 503) from None
-        finally:
-            os.close(fd)
         return {"ok": True, "detail": "Local directory is writable."}
 
     if row.type != "smb" or not row.password_ciphertext:
@@ -201,9 +202,10 @@ def test_location(row) -> dict:
         )
         smbclient.listdir(path)
         with smbclient.open_file(probe, mode="xb") as stream:
+            created = True
             stream.write(b"OpenSigWeave write probe\n")
-        created = True
         smbclient.remove(probe)
+        created = False
         return {"ok": True, "detail": "SMB3 connection and write access verified."}
     except Exception as exc:
         kind = type(exc).__name__.lower()

@@ -1385,6 +1385,11 @@ function backupManager() {
         locationEditingId: null, locationTestResult: "",
         locationForm: { name: "", type: "local", enabled: true, server: "", share: "",
                         directory: "", username: "", password: "", domain: "" },
+        locationDescription(item) {
+            if (item.type === "local") return item.local_path;
+            const path = item.directory ? "\\" + item.directory.replaceAll("/", "\\") : "";
+            return "\\\\" + item.server + "\\" + item.share + path;
+        },
         async fetchLocations() {
             try {
                 const response = await fetch(endpoint + "/locations", { credentials: "same-origin", cache: "no-store" });
