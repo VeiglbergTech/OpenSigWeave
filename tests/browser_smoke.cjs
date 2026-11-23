@@ -342,7 +342,8 @@ async function main() {
     const personalFontSelect = page.locator("#user-rich-editor .osw-editor-font-toolbar")
       .getByRole("combobox", { name: "Signature font family" });
     await personalFontSelect.waitFor({ state: "visible" });
-    assert.ok((await personalFontSelect.locator("option").allTextContents()).includes("Georgia"),
+    const personalFontOptions = await personalFontSelect.locator("option").allTextContents();
+    assert.ok(personalFontOptions.includes("Georgia"),
       "the shared font family control must be available on personal signatures");
     const menuContrast = await personalFontSelect.evaluate(select => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
@@ -2096,7 +2097,7 @@ async function main() {
       .getByRole("combobox", { name: "Signature font family" });
     await adminFontSelect.waitFor({ state: "visible" });
     assert.deepEqual(await adminFontSelect.locator("option").allTextContents(),
-      await personalFontSelect.locator("option").allTextContents(),
+      personalFontOptions,
       "personal and administrator editors must expose the same font families");
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
