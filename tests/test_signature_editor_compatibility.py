@@ -71,6 +71,47 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
                 self.assertIn(size, rendered)
         self.assertIn("font-family", sanitized)
 
+    def test_extended_email_safe_font_stacks_survive_delivery(self):
+        stacks = (
+            "Arial, Helvetica, sans-serif",
+            "Arial Black, Arial, sans-serif",
+            "Calibri, Arial, sans-serif",
+            "Cambria, Georgia, Times New Roman, serif",
+            "Courier New, Courier, monospace",
+            "Garamond, Georgia, Times New Roman, serif",
+            "Georgia, serif",
+            "Helvetica, Arial, sans-serif",
+            "Lucida Sans Unicode, Lucida Grande, sans-serif",
+            "Palatino Linotype, Palatino, Georgia, serif",
+            "Segoe UI, Tahoma, Arial, sans-serif",
+            "Tahoma, Geneva, sans-serif",
+            "Times New Roman, Times, serif",
+            "Trebuchet MS, Helvetica, sans-serif",
+            "Verdana, Geneva, sans-serif",
+        )
+        for stack in stacks:
+            with self.subTest(stack=stack):
+                source = f'<span style="font-family: {stack}; font-size: 12pt;">Signature</span>'
+                sanitized = sanitize_signature_html(source)
+                rendered = render_signature_template(sanitized, {})
+                self.assertIn("font-family:", sanitized)
+                self.assertIn(stack, sanitized)
+                self.assertIn(stack, rendered)
+                self.assertIn("12pt", rendered)
+                self.assertNotIn("<link", rendered)
+
+    def test_mixed_font_families_survive_repeated_sanitization(self):
+        source = (
+            '<p><span style="font-family: Arial Black, Arial, sans-serif;">Bold</span>'
+            '<span style="font-family: Segoe UI, Tahoma, Arial, sans-serif;">Modern</span>'
+            '<span style="font-family: Palatino Linotype, Palatino, Georgia, serif;">Classic</span></p>'
+        )
+        rendered = render_signature_template(sanitize_signature_html(source), {})
+        self.assertEqual(rendered.count("font-family:"), 3)
+        for family in ("Arial Black", "Segoe UI", "Palatino Linotype"):
+            self.assertIn(family, rendered)
+        self.assertEqual(sanitize_signature_html(rendered), rendered)
+
     def test_links_have_non_underlined_inline_style_for_email_clients(self):
         source = (
             '<a href="https://example.org">Default link</a>'

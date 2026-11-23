@@ -733,6 +733,17 @@ async function main() {
     await captureTheme("signature-editor-dark");
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
+    await fontFamilyControl.click();
+    for (const name of [
+      "Arial", "Arial Black", "Calibri", "Cambria", "Courier New",
+      "Garamond", "Georgia", "Helvetica", "Lucida Sans Unicode",
+      "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman",
+      "Trebuchet MS", "Verdana"
+    ]) {
+      assert.equal(await fontFamilyDropdown.getByRole("button", { name, exact: true }).count(), 1,
+        "CKEditor must offer email-safe font " + name);
+    }
+    await fontFamilyControl.click();
     for (const theme of ["dark", "light"]) {
       const contrast = await fontSizeControl.evaluate((button, themeName) => {
         const root = document.documentElement;
@@ -780,7 +791,7 @@ async function main() {
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
     await fontFamilyControl.click();
-    await fontFamilyDropdown.getByRole("button", { name: "Georgia", exact: true }).click();
+    await fontFamilyDropdown.getByRole("button", { name: "Cambria", exact: true }).click();
     await signatureCreateEditor.press("Control+A");
     await fontSizeControl.click();
     await fontSizeDropdown.getByRole("button", { name: "18 pt", exact: true }).click();
@@ -797,11 +808,11 @@ async function main() {
     await customFontInput.fill("17,5");
     await customFontInput.press("Enter");
     const completedFontFormatting = await signaturePanel.locator("#signature-html-source").inputValue();
-    assert.match(completedFontFormatting, /font-family:\s*Georgia/i,
+    assert.match(completedFontFormatting, /font-family:\s*Cambria/i,
       "font family must appear in synchronized HTML");
     assert.match(completedFontFormatting, /font-size:\s*17\.5pt/i,
       "custom decimal point sizes must become email-compatible inline styles");
-    assert.match(await fontFamilyControl.innerText(), /Georgia/i,
+    assert.match(await fontFamilyControl.innerText(), /Cambria/i,
       "family toolbar dropdown must reflect the selected formatting");
     assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
       "combined font size dropdown must reflect a custom decimal value");
@@ -850,18 +861,18 @@ async function main() {
     // previous instance's HTML for the asynchronously retrieved saved version.
     await page.waitForFunction(() => {
       const html = document.querySelector("#signature-html-source")?.value || "";
-      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17\.5pt/i.test(html);
+      return /font-family:\s*Cambria/i.test(html) && /font-size:\s*17\.5pt/i.test(html);
     });
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
     const reloadedHtml = await signaturePanel.locator("#signature-html-source").inputValue();
-    assert.match(reloadedHtml, /font-family:\s*Georgia/i,
+    assert.match(reloadedHtml, /font-family:\s*Cambria/i,
       "the stored font family must survive closing and reopening the signature editor");
     assert.match(reloadedHtml, /font-size:\s*17\.5pt/i,
       "stored decimal pt size must survive closing and reopening");
     await signatureEditEditor.click();
     await signatureEditEditor.press("Control+A");
-    assert.match(await fontFamilyControl.innerText(), /Georgia/i,
+    assert.match(await fontFamilyControl.innerText(), /Cambria/i,
       "family dropdown must reflect a previously stored selection");
     assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
       "size dropdown must reflect a previously stored custom value");
@@ -879,7 +890,7 @@ async function main() {
       return { status: response.status, version: await response.json() };
     });
     assert.equal(storedVersion.status, 200, "saved signature HTML must be retrievable from the backend");
-    assert.match(storedVersion.version.html_content, /font-family:\s*Georgia/i);
+    assert.match(storedVersion.version.html_content, /font-family:\s*Cambria/i);
     assert.match(storedVersion.version.html_content, /font-size:\s*17\.5pt/i);
 
     // Clicking the editor must focus the editable surface. A surrounding label used
@@ -921,7 +932,7 @@ async function main() {
       "preview must be the topmost rendered dialog at the viewport center");
     assert.match(previewLayering.srcdoc, /Browser smoke preview overlay/,
       "signature preview iframe must receive the requested HTML");
-    assert.match(previewLayering.srcdoc, /font-family:\s*Georgia/i,
+    assert.match(previewLayering.srcdoc, /font-family:\s*Cambria/i,
       "signature preview must retain the configured font family");
     assert.match(previewLayering.srcdoc, /font-size:\s*17\.5pt/i,
       "signature preview must retain the custom point size");

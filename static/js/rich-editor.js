@@ -72,15 +72,25 @@
 
     // Font formatting is a single CKEditor component-factory integration.
     // Both controls execute CKEditor's native fontFamily/fontSize commands.
+    // Use system fonts with CSS fallbacks; no webfont downloads are required.
+    // CKEditor uses the first family name as the command value and serializes
+    // the full configured stack as an inline font-family declaration.
     const SIGNATURE_FONT_FAMILIES = [
         ["Arial", "Arial, Helvetica, sans-serif"],
+        ["Arial Black", "Arial Black, Arial, sans-serif"],
         ["Calibri", "Calibri, Arial, sans-serif"],
-        ["Verdana", "Verdana, Geneva, sans-serif"],
-        ["Tahoma", "Tahoma, Geneva, sans-serif"],
-        ["Trebuchet MS", "Trebuchet MS, Helvetica, sans-serif"],
+        ["Cambria", "Cambria, Georgia, Times New Roman, serif"],
+        ["Courier New", "Courier New, Courier, monospace"],
+        ["Garamond", "Garamond, Georgia, Times New Roman, serif"],
         ["Georgia", "Georgia, serif"],
+        ["Helvetica", "Helvetica, Arial, sans-serif"],
+        ["Lucida Sans Unicode", "Lucida Sans Unicode, Lucida Grande, sans-serif"],
+        ["Palatino Linotype", "Palatino Linotype, Palatino, Georgia, serif"],
+        ["Segoe UI", "Segoe UI, Tahoma, Arial, sans-serif"],
+        ["Tahoma", "Tahoma, Geneva, sans-serif"],
         ["Times New Roman", "Times New Roman, Times, serif"],
-        ["Courier New", "Courier New, Courier, monospace"]
+        ["Trebuchet MS", "Trebuchet MS, Helvetica, sans-serif"],
+        ["Verdana", "Verdana, Geneva, sans-serif"]
     ];
     const SIGNATURE_FONT_SIZES_PT = [8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36];
 
@@ -129,10 +139,12 @@
 
             function update() {
                 const value = typeof command.value === "string" ? command.value.trim() : "";
+                // Imported HTML may quote a family containing spaces. Match
+                // the first face without discarding unknown legacy families.
+                const firstFamily = value.split(",")[0].trim().replace(/^(['"])(.*)\1$/, "$2");
                 const option = SIGNATURE_FONT_FAMILIES.find(([name, css]) =>
-                    value.toLowerCase() === name.toLowerCase() ||
-                    value.toLowerCase() === css.toLowerCase() ||
-                    value.toLowerCase().startsWith(name.toLowerCase() + ",")
+                    firstFamily.toLowerCase() === name.toLowerCase() ||
+                    value.toLowerCase() === css.toLowerCase()
                 );
                 dropdown.buttonView.label = option ? option[0] : (value || "Font family");
             }
