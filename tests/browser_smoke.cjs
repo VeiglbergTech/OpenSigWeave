@@ -534,6 +534,47 @@ async function main() {
     assert.equal(await backupPanel.getByRole("heading", { name: "Encrypted Backups" }).count(), 0);
     assert.equal(await backupPanel.getByText(/host backup operator is unavailable/i).count(), 0);
 
+    // Create a real local Backup Location and save a disabled rule through
+    // the entire dialog, including a footer reachable below the scroll area.
+    await backupPanel.getByRole("button", { name: "+ Add Backup Location" }).click();
+    const backupLocationDialog = page.getByRole("dialog", { name: "Add Backup Location" });
+    await backupLocationDialog.locator('input[x-model="locationForm.name"]').fill("Browser Smoke Backup Location");
+    const locationCreated = page.waitForResponse(response =>
+      response.url().endsWith("/api/admin/backups/locations") && response.request().method() === "POST");
+    await backupLocationDialog.getByRole("button", { name: "Save Location" }).click();
+    assert.equal((await locationCreated).status(), 201, "local backup location must save");
+    const backupLocationRow = backupPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Backup Location" });
+    await backupLocationRow.waitFor({ state: "visible" });
+
+    await backupPanel.getByRole("button", { name: "+ Add Backup Rule" }).click();
+    const backupRuleDialog = page.getByRole("dialog", { name: "Add Backup Rule" });
+    await backupRuleDialog.locator('input[x-model="ruleForm.name"]').fill("Browser Smoke Backup Rule");
+    await backupRuleDialog.locator('input[x-model="ruleForm.enabled"]').uncheck();
+    const backupRuleLayout = await backupRuleDialog.evaluate(dialog => {
+      const body = dialog.querySelector(".osw-modal-body");
+      const footer = dialog.querySelector(".osw-modal-footer");
+      const shell = dialog.getBoundingClientRect();
+      const actions = footer.getBoundingClientRect();
+      return { scrollable: getComputedStyle(body).overflowY === "auto",
+        scrollHeight: body.scrollHeight, clientHeight: body.clientHeight,
+        footerVisible: actions.bottom <= shell.bottom + 1 && actions.top >= shell.top };
+    });
+    assert.ok(backupRuleLayout.scrollable && backupRuleLayout.footerVisible,
+      "backup rule body must scroll independently of the visible Save Rule footer: " + JSON.stringify(backupRuleLayout));
+    const backupRuleCreated = page.waitForResponse(response =>
+      response.url().endsWith("/api/admin/backups/rules") && response.request().method() === "POST");
+    await backupRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    assert.equal((await backupRuleCreated).status(), 201, "Backup Rule must persist");
+    const backupRuleRow = backupPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Backup Rule" });
+    await backupRuleRow.waitFor({ state: "visible" });
+    await backupRuleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
+    await backupRuleRow.waitFor({ state: "detached" });
+    await backupLocationRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
+    await backupLocationRow.waitFor({ state: "detached" });
+    checkpoint("backup rule save and dialog scrolling: complete");
+
     // Confirm outdated implementation notes stay absent across all administration tabs and dialogs.
     const uiCopy = await page.locator("body").textContent();
     for (const obsolete of [
