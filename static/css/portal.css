@@ -668,7 +668,7 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     flex-basis: 95px;
     max-width: 105px;
 }
-.ck-toolbar .osw-ckeditor-font-input input.ck-input {
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field {
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -679,11 +679,11 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     border: 1px solid var(--osw-border) !important;
     border-radius: 5px;
 }
-.ck-toolbar .osw-ckeditor-font-input input.ck-input::placeholder {
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field::placeholder {
     color: var(--osw-muted);
     opacity: 1;
 }
-.ck-toolbar .osw-ckeditor-font-input input.ck-input:focus {
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field:focus {
     border-color: var(--osw-action-accent) !important;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-action-accent) 20%, transparent);
     outline: none;
@@ -699,7 +699,10 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     max-height: 210px;
     padding: 4px;
     overflow-y: auto;
+    overflow-x: hidden;
     overscroll-behavior: contain;
+    scrollbar-color: var(--osw-border) var(--osw-panel);
+    scrollbar-width: thin;
     color: var(--osw-text);
     background: var(--osw-panel);
     border: 1px solid var(--osw-border);
