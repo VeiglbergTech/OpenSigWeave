@@ -702,7 +702,7 @@ async function main() {
 
     await importPanel.locator("#admin-import-file").setInputFiles([]);
     assert.equal(await importPreviewButton.isDisabled(), true, "no archive selected must disable validation");
-    assert.equal(await importPanel.getByText("No file selected", { exact: true }).isVisible(), true);
+    await importPanel.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
     checkpoint("import preview: complete");
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
