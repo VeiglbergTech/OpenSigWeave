@@ -18,13 +18,11 @@ from deploy_common import (
 )
 from config_manager import ENV, migrate_config
 
-BACKUP_CONFIG = Path(os.environ.get("OSW_BACKUP_CONFIG", "/etc/opensigweave/backup.env"))
 CRITICAL_PATHS = (
     "migrations/", "adapters/", "rspamd/", "core/engine_contract.py",
     "core/engine_service.py", "main.py", "models.py", "database.py", "alembic.ini",
     "compose.yaml", "Dockerfile", ".env.example", "backup_",
 )
-REMOTE_FS = {"nfs", "nfs4", "cifs", "smb3", "fuse.sshfs", "fuse.rclone"}
 UPDATE_JOURNAL = ROOT / ".git" / "opensigweave-update-state.json"
 
 
@@ -110,65 +108,42 @@ def preflight() -> dict[str, str]:
     return env
 
 
-def backup_options() -> tuple[Path, str, Path]:
-    if BACKUP_CONFIG.is_symlink() or not BACKUP_CONFIG.is_file():
+def backup_options() -> None:
+    """Require in-container age recovery configuration before updates."""
+    env = parse_env(ENV)
+    recipient = env.get("BACKUP_AGE_RECIPIENT", "")
+    inline_identity = env.get("BACKUP_AGE_IDENTITY", "")
+    mounted_identity = env.get("BACKUP_AGE_IDENTITY_FILE", "")
+    if not recipient.startswith("age1") or len(recipient) > 200:
+        raise DeploymentError("Configure BACKUP_AGE_RECIPIENT in the protected application .env", 7)
+    if bool(inline_identity) == bool(mounted_identity):
         raise DeploymentError(
-            f"Encrypted backup config missing: {BACKUP_CONFIG}. "
-            "Create protected backup.env with BACKUP_DIRECTORY, AGE_RECIPIENT and AGE_IDENTITY.", 7
+            "Configure exactly one BACKUP_AGE_IDENTITY or BACKUP_AGE_IDENTITY_FILE for verification", 7
         )
-    mode = stat.S_IMODE(BACKUP_CONFIG.stat().st_mode)
-    if mode & 0o077:
-        raise DeploymentError("Backup configuration must have permissions 0600", 7)
-    conf = parse_env(BACKUP_CONFIG)
-    try:
-        target = Path(conf["BACKUP_DIRECTORY"]).expanduser()
-        recipient = conf["AGE_RECIPIENT"]
-        identity = Path(conf["AGE_IDENTITY"]).expanduser()
-    except KeyError as exc:
-        raise DeploymentError(f"Missing backup setting: {exc}", 7) from exc
-    if not target.is_absolute() or target.is_symlink() or not target.is_dir():
-        raise DeploymentError("BACKUP_DIRECTORY must be an existing absolute directory (not symlink)", 7)
-    if ROOT == target or ROOT in target.parents:
-        raise DeploymentError("Backup directory must be outside the application checkout", 7)
-    if not identity.is_absolute() or identity.is_symlink() or not identity.is_file():
-        raise DeploymentError("Offline age identity file is missing or unsafe", 7)
-    if stat.S_IMODE(identity.stat().st_mode) & 0o077:
-        raise DeploymentError("age identity permissions must be 0600", 7)
-    if not recipient.startswith("age1") or len(recipient) < 20:
-        raise DeploymentError("Invalid age public recipient", 7)
-    if not shutil.which("age"):
-        raise DeploymentError("age is not installed", 7)
-    filesystem = run("findmnt", "-n", "-o", "FSTYPE", "--target", str(target))
-    if filesystem not in REMOTE_FS:
-        raise DeploymentError("Backups require a dedicated mounted NFS/SMB/SSHFS/rclone target", 7)
-    # A directory within a remotely mounted filesystem is allowed, but never local disk.
-    if not os.access(target, os.W_OK):
-        raise DeploymentError("Backup target is not writable", 7)
-    return target, recipient, identity
+    if inline_identity and not inline_identity.startswith("AGE-SECRET-KEY-"):
+        raise DeploymentError("Invalid age identity configuration", 7)
+    # Permissions and mounted identity availability are rechecked inside the
+    # application by backup_engine before encryption or deployment changes.
 
 
 def create_backup() -> Path:
-    target, recipient, identity = backup_options()
+    backup_options()
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    backup = target / f"opensigweave-before-update-{stamp}-{current_sha()[:12]}.age"
-    if backup.exists() or backup.is_symlink():
-        raise DeploymentError("Backup path already exists; refusing overwrite", 7)
-    info(f"Creating encrypted verified backup: {backup}")
+    filename = f"opensigweave-before-update-{stamp}-{current_sha()[:12]}.age"
+    backup = Path("/app/backups") / filename
+    info(f"Creating age-encrypted pre-update snapshot in persistent volume: {backup}")
     try:
-        run(sys.executable, str(ROOT / "backup_cli.py"), "create", "--project-dir",
-            str(ROOT), "--output", str(backup), "--recipient", recipient,
-            "--identity", str(identity), timeout=7200)
-        if not backup.is_file() or backup.stat().st_size == 0:
-            raise DeploymentError("Backup output missing or empty", 7)
-        run(sys.executable, str(ROOT / "backup_cli.py"), "verify", str(backup),
-            "--identity", str(identity), timeout=7200)
+        compose("exec", "-T", "opensigweave", "python", "backup_cli.py",
+                "create-application", "--filename", filename, timeout=7200)
+        compose("exec", "-T", "opensigweave", "python", "backup_cli.py",
+                "verify-application", "--filename", filename, timeout=7200)
     except DeploymentError as exc:
         raise DeploymentError(
-            "Mandatory full age backup or verification failed. No code update was applied. "
-            "Check remote mount, private age identity, available space and Docker volumes "
-            "with backup_cli.py; do not bypass verification.", 7
+            "Mandatory in-container age backup or verification failed. Source was not changed. "
+            "Check age key configuration, PostgreSQL, persistent volumes and available disk space. "
+            "Do not bypass backup verification.", 7
         ) from exc
-    ok(f"Full age backup independently verified: {backup}")
+    ok(f"Encrypted pre-update recovery backup verified in app volume: {backup}")
     return backup
 
 
