@@ -341,7 +341,9 @@ html[data-theme="light"] :is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-gree
   .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700, .bg-green-500).text-white,
 html[data-theme="light"] :is(button, a):is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
   .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700),
-html[data-theme="light"] :is(.bg-blue-600, .bg-green-700, .bg-red-600, .bg-yellow-600) .text-white,
+html[data-theme="light"] :is(.bg-blue-600, .bg-green-700, .bg-red-600, .bg-yellow-600) .text-white {
+  color: #fff !important;
+}
 /* Locked/disabled editor layers are light scrims, not dark-mode islands. */
 html[data-theme="light"] .bg-gray-900\/95 { background-color: rgba(248, 250, 252, .96) !important; }
 html[data-theme="light"] .bg-gray-900\/80 { background-color: rgba(241, 245, 249, .88) !important; }
