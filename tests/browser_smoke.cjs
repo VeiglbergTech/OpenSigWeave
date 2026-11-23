@@ -619,7 +619,7 @@ async function main() {
 
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
     await page.getByRole("button", { name: "Choose ZIP File", exact: true }).waitFor({ state: "visible" });
-    await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
+    await page.locator('[x-data="adminImportManager"]').getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     // Return to the shared Import / Export view after visiting other sections.
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
@@ -782,8 +782,6 @@ async function main() {
       "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman",
       "Trebuchet MS", "Verdana"
     ]) {
-      assert.equal(await fontToolbar.locator('.osw-signature-family-input datalist option').filter({has: page.locator('unlikely')}).count(), 0,
-        "No duplicate detached font menus");
       assert.equal(await fontToolbar.locator('.osw-signature-family-input datalist option[value="' + name + '"]').count(), 1,
         "CKEditor must offer email-safe font " + name);
     }

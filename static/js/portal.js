@@ -1128,6 +1128,7 @@ function identityProviderManager() { return {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
                     this.logoDataUrl = null;
+                    this.logoFileName = '';
                     if (!file.size || file.size > this.imageUploadLimitBytes() || file.type !== 'image/png') {
                         notify('Logo must be a PNG up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');
                         event.target.value = '';
@@ -1140,6 +1141,7 @@ function identityProviderManager() { return {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
                     this.darkLogoDataUrl = null;
+                    this.darkLogoFileName = '';
                     if (!file.size || file.size > this.imageUploadLimitBytes() || file.type !== 'image/png') {
                         notify('Dark mode logo must be a PNG up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');
                         event.target.value = '';
@@ -1152,6 +1154,7 @@ function identityProviderManager() { return {
                     const file = event.target.files && event.target.files[0];
                     if (!file) return;
                     this.faviconDataUrl = null;
+                    this.faviconFileName = '';
                     const ico = file.name.toLowerCase().endsWith('.ico');
                     if (!file.size || file.size > this.imageUploadLimitBytes() || (!ico && file.type !== 'image/png')) {
                         notify('Favicon must be PNG or ICO up to ' + (this.settings.large_image_uploads ? 12 : 6) + ' MiB.', 'error');

@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import patch
 
-from signature_storage import SignatureFileStore, SignatureStorageError
+from signature_storage import SignatureFileStore, SignatureStorageError, DEFAULT_SIGNATURE_IMAGE_BYTES, MAX_SIGNATURE_IMAGE_BYTES
 
 
 class SignatureFileStoreTests(unittest.TestCase):
@@ -92,6 +92,19 @@ class SignatureFileStoreTests(unittest.TestCase):
             for name in ("../outside", "a/b", "a\\b", ".."):
                 with self.assertRaises(SignatureStorageError):
                     store.write(uuid.uuid4(), name, "unsafe")
+
+
+    def test_signature_image_limit_defaults_to_six_mib_and_large_uploads_are_explicit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = SignatureFileStore(directory)
+            payload = b"\\x89PNG\\r\\n\\x1a\\n" + b"x" * (DEFAULT_SIGNATURE_IMAGE_BYTES + 1 - 8)
+            with self.assertRaises(SignatureStorageError):
+                store.write_image(payload, "image/png")
+            filename = store.write_image(payload, "image/png", max_bytes=MAX_SIGNATURE_IMAGE_BYTES)
+            self.assertEqual(store.image_path(filename).stat().st_size, len(payload))
+            with self.assertRaises(SignatureStorageError):
+                store.write_image(payload + b"x" * (MAX_SIGNATURE_IMAGE_BYTES - len(payload) + 1),
+                                  "image/png", max_bytes=MAX_SIGNATURE_IMAGE_BYTES)
 
     def test_signature_images_support_png_jpeg_webp_and_content_addressing(self):
         fixtures = (

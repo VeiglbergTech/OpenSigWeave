@@ -74,6 +74,21 @@ class BrandingTests(unittest.TestCase):
         payload.update(changes)
         return main.update_admin_branding(main.BrandingUpdateRequest(**payload), self.admin, self.db)
 
+
+    def test_large_image_toggle_is_persisted_and_resets_to_six_mib(self):
+        initial = self.update()
+        self.assertFalse(initial["large_image_uploads"])
+        self.assertEqual(initial["image_upload_limit_mib"], 6)
+        enabled = self.update(large_image_uploads=True)
+        self.assertTrue(enabled["large_image_uploads"])
+        self.assertEqual(enabled["image_upload_limit_mib"], 12)
+        self.db.close()
+        self.db = self.Session()
+        self.assertTrue(self.db.get(BrandingSettingsDB, 1).large_image_uploads)
+        reset = main.reset_admin_branding(self.admin, self.db)
+        self.assertFalse(reset["large_image_uploads"])
+        self.assertEqual(reset["image_upload_limit_mib"], 6)
+
     def test_defaults_are_available_without_database_row(self):
         result = branding_context(self.db)
         self.assertEqual(result["app_name"], DEFAULT_APP_NAME)
