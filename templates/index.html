@@ -655,7 +655,7 @@
             </div>
         </section>
         </div>
-        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="fetchAll()" class="osw-admin-section space-y-5">
+        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="fetchAll(); startPolling()" class="osw-admin-section space-y-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h2 class="text-xl font-semibold">Backup management</h2>
                 <button type="button" @click="fetchAll()" :disabled="loading || busy" class="rounded bg-gray-700 px-4 py-2 text-sm disabled:opacity-50" x-text="loading ? 'Loading…' : 'Refresh'"></button>
@@ -672,7 +672,7 @@
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
                     <div>
                         <h3 class="text-lg font-semibold">Backup Locations</h3>
-                        <p class="text-xs text-gray-400 mt-1">Manage Local and SMB destinations for future backup rules.</p>
+                        <p class="text-xs text-gray-400 mt-1">Manage Local and SMB storage destinations.</p>
                     </div>
                     <button type="button" @click="openLocation()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500">+ Add Backup Location</button>
                 </div>
@@ -740,6 +740,191 @@
                     </div>
                 </div>
             </template>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <h3 class="text-lg font-semibold">Backup Rules</h3>
+                    <button type="button" @click="openRule()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500" :disabled="!locations.some(item => item.enabled)">+ Add Backup Rule</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <input type="search" aria-label="Search backup rules" x-model="ruleFilter" placeholder="Search rules…" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm min-w-[14rem]">
+                </div>
+                <div class="osw-table-scroll rounded border border-gray-700">
+                    <table class="w-full min-w-[52rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Next run (local)</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in filteredRules" :key="item.id">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium" x-text="item.name"></td>
+                                    <td class="px-4 py-3" x-text="item.location_name"></td>
+                                    <td class="px-4 py-3 capitalize" x-text="item.schedule_kind === 'interval' ? 'Every ' + item.interval_minutes + ' min' : item.schedule_kind + ' (UTC)'"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'"></td>
+                                    <td class="px-4 py-3"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'"></button></td>
+                                    <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-3">
+                                        <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !item.enabled" @click="runRule(item)">Run Now</button>
+                                        <button type="button" class="text-blue-400 hover:text-blue-300" @click="openRule(item)">Edit</button>
+                                        <button type="button" class="text-red-400 hover:text-red-300" @click="deleteRule(item)">Delete</button>
+                                    </div></td>
+                                </tr>
+                            </template>
+                            <tr x-show="filteredRules.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-400">No matching backup rules.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <template x-teleport="body">
+                <div x-show="ruleModal" x-cloak class="osw-modal-root">
+                    <div class="osw-modal-placement">
+                        <div x-show="ruleModal" role="dialog" aria-modal="true" aria-labelledby="backup-rule-modal-title" class="osw-modal-shell osw-modal-width-small">
+                            <div class="osw-modal-header">
+                                <h3 id="backup-rule-modal-title" class="text-lg font-bold" x-text="ruleEditingId ? 'Edit Backup Rule' : 'Add Backup Rule'"></h3>
+                                <button type="button" class="osw-modal-dismiss" @click="closeRule()" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <form @submit.prevent="saveRule()">
+                                <div class="osw-modal-body space-y-4">
+                                    <label class="block text-sm">Rule Name
+                                        <input type="text" x-model="ruleForm.name" required maxlength="120" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                    </label>
+                                    <label class="block text-sm">Backup Location
+                                        <select x-model="ruleForm.location_id" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            <option value="" disabled>Select location</option>
+                                            <template x-for="item in locations" :key="item.id">
+                                                <option :value="item.id" x-text="item.name + (item.enabled ? '' : ' (disabled)')"></option>
+                                            </template>
+                                        </select>
+                                    </label>
+                                    <label class="block text-sm">Backup Content
+                                        <select x-model="ruleForm.content" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            <option value="full">Full backup</option>
+                                        </select>
+                                    </label>
+                                    <label class="flex gap-2 items-center text-sm">
+                                        <input type="checkbox" x-model="ruleForm.enabled"> Enabled
+                                    </label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label class="block text-sm">Schedule
+                                            <select x-model="ruleForm.schedule_kind" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                <option value="daily">Daily</option><option value="weekly">Weekly</option>
+                                                <option value="monthly">Monthly</option><option value="interval">Custom interval</option>
+                                            </select>
+                                        </label>
+                                        <label x-show="ruleForm.schedule_kind === 'weekly'" class="block text-sm">Weekday
+                                            <select x-model.number="ruleForm.weekday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                <option :value="0">Monday</option><option :value="1">Tuesday</option><option :value="2">Wednesday</option>
+                                                <option :value="3">Thursday</option><option :value="4">Friday</option><option :value="5">Saturday</option><option :value="6">Sunday</option>
+                                            </select>
+                                        </label>
+                                        <label x-show="ruleForm.schedule_kind === 'monthly'" class="block text-sm">Day of month (1–28)
+                                            <input type="number" min="1" max="28" x-model.number="ruleForm.monthday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                        </label>
+                                        <label x-show="ruleForm.schedule_kind === 'interval'" class="block text-sm">Interval (minutes)
+                                            <input type="number" min="15" max="43200" x-model.number="ruleForm.interval_minutes" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                        </label>
+                                        <template x-if="ruleForm.schedule_kind !== 'interval'">
+                                            <div class="grid grid-cols-2 gap-3 sm:col-span-2">
+                                                <label class="block text-sm">Hour (UTC)
+                                                    <input type="number" min="0" max="23" x-model.number="ruleForm.hour" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                </label>
+                                                <label class="block text-sm">Minute (UTC)
+                                                    <input type="number" min="0" max="59" x-model.number="ruleForm.minute" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                </label>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="rounded border border-gray-700 p-3 space-y-3">
+                                        <h4 class="text-sm font-semibold">Retention</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <label class="block text-sm">Max backups
+                                                <input type="number" min="1" max="10000" placeholder="Unlimited" x-model.number="ruleForm.retention_count" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label class="block text-sm">Max age (days)
+                                                <input type="number" min="1" max="3650" placeholder="Unlimited" x-model.number="ruleForm.retention_days" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <label class="block text-sm">Description (optional)
+                                        <textarea x-model="ruleForm.description" rows="2" maxlength="500" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></textarea>
+                                    </label>
+                                </div>
+                                <div class="osw-modal-footer">
+                                    <button type="button" @click="closeRule()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>
+                                    <button type="submit" :disabled="ruleSaving" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="ruleSaving ? 'Saving…' : 'Save Rule'"></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <h3 class="text-lg font-semibold">Backup History</h3>
+                    <button type="button" @click="fetchHistory()" class="rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600">Refresh</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <select x-model="historyStatus" aria-label="Filter history status" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm">
+                        <option value="">All statuses</option><option value="pending">Pending</option>
+                        <option value="running">Running</option><option value="success">Success</option><option value="failed">Failed</option>
+                    </select>
+                    <select x-model="historyRule" aria-label="Filter history rule" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm">
+                        <option value="">All rules</option>
+                        <template x-for="item in rules" :key="item.id"><option :value="item.id" x-text="item.name"></option></template>
+                    </select>
+                </div>
+                <div class="osw-table-scroll rounded border border-gray-700">
+                    <table class="w-full min-w-[55rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Started</th><th class="px-4 py-3">Duration</th><th class="px-4 py-3">Size</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Details</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in filteredHistory" :key="item.id">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium" x-text="item.rule_name"></td>
+                                    <td class="px-4 py-3" x-text="item.location_name"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatDate(item.started_at || item.requested_at)"></td>
+                                    <td class="px-4 py-3" x-text="item.duration_seconds === null ? '—' : item.duration_seconds + ' s'"></td>
+                                    <td class="px-4 py-3" x-text="formatSize(item.size_bytes)"></td>
+                                    <td class="px-4 py-3 capitalize" :class="item.status === 'success' ? 'text-green-300' : (item.status === 'failed' ? 'text-red-300' : 'text-amber-300')" x-text="item.status"></td>
+                                    <td class="px-4 py-3 text-right"><button type="button" class="text-blue-400 hover:text-blue-300" @click="openHistoryDetails(item)">View</button></td>
+                                </tr>
+                            </template>
+                            <tr x-show="filteredHistory.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-400">No backup runs found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <template x-teleport="body">
+                <div x-show="historyDetail !== null" x-cloak class="osw-modal-root">
+                    <div class="osw-modal-placement">
+                        <div x-show="historyDetail !== null" role="dialog" aria-modal="true" aria-labelledby="backup-history-modal-title" class="osw-modal-shell osw-modal-width-small">
+                            <div class="osw-modal-header">
+                                <h3 id="backup-history-modal-title" class="text-lg font-bold">Backup Run Details</h3>
+                                <button type="button" class="osw-modal-dismiss" @click="historyDetail = null" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <div class="osw-modal-body text-sm space-y-3" x-show="historyDetail">
+                                <div><strong>Rule:</strong> <span x-text="historyDetail?.rule_name"></span></div>
+                                <div><strong>Location:</strong> <span x-text="historyDetail?.location_name"></span></div>
+                                <div><strong>Trigger:</strong> <span class="capitalize" x-text="historyDetail?.trigger"></span></div>
+                                <div><strong>Content:</strong> Full encrypted backup</div>
+                                <div><strong>Status:</strong> <span class="capitalize" x-text="historyDetail?.status"></span></div>
+                                <div><strong>Started:</strong> <span x-text="historyDetail?.started_at ? formatDate(historyDetail.started_at) : '—'"></span></div>
+                                <div><strong>Finished:</strong> <span x-text="historyDetail?.finished_at ? formatDate(historyDetail.finished_at) : '—'"></span></div>
+                                <div><strong>Duration:</strong> <span x-text="historyDetail?.duration_seconds === null ? '—' : historyDetail?.duration_seconds + ' s'"></span></div>
+                                <div><strong>Size:</strong> <span x-text="formatSize(historyDetail?.size_bytes)"></span></div>
+                                <div><strong>Archive:</strong> <code class="break-all" x-text="historyDetail?.file_key || '—'"></code></div>
+                                <div><strong>Retained:</strong> <span x-text="historyDetail?.is_retained ? 'Yes' : 'No'"></span></div>
+                                <p x-show="historyDetail?.error_detail" class="text-red-300 break-words" x-text="historyDetail?.error_detail"></p>
+                            </div>
+                            <div class="osw-modal-footer">
+                                <button type="button" @click="historyDetail = null" class="rounded bg-gray-700 px-4 py-2 text-sm">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
             <div class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
                 <h3 class="font-semibold">Backup settings</h3>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
