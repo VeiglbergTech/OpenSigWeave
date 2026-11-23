@@ -339,16 +339,14 @@ async function main() {
       return ratio(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor);
     });
     assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
-    const personalFontFamily = page.locator("#user-rich-editor .osw-signature-family-dropdown .ck-dropdown__button");
-    const personalFontSize = page.locator("#user-rich-editor .osw-signature-size-dropdown .ck-dropdown__button");
+    const personalFontFamily = page.locator("#user-rich-editor .osw-signature-family-input input");
+    const personalFontSize = page.locator("#user-rich-editor .osw-signature-size-input input");
     await personalFontFamily.waitFor({ state: "visible" });
     await personalFontSize.waitFor({ state: "visible" });
     assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
       "font controls must not render above CKEditor");
-    await personalFontFamily.click();
-    await page.locator("#user-rich-editor .osw-signature-family-dropdown")
-      .getByRole("button", { name: "Georgia", exact: true }).waitFor({ state: "visible" });
-    await personalFontFamily.click();
+    assert.equal(await page.locator('#user-rich-editor .osw-signature-family-input datalist option[value="Georgia"]').count(), 1,
+      "Font family input must expose filtered browser suggestions");
     const menuContrast = await personalFontFamily.evaluate(button => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
       const lum = value => channels(value).reduce((sum, v, i) => {
@@ -486,7 +484,6 @@ async function main() {
       { tab: "Signatures", heading: "Signature Catalog" },
       { tab: "Signature Groups", heading: "Signature Groups" },
       { tab: "Rules", heading: "Signature Rules" },
-      { tab: "Schedules", heading: "Schedules" },
       { tab: "Branding", heading: "Branding" },
       { tab: "Backup", heading: "Backup Management" },
       { tab: "Import / Export", heading: "Import / Export" },
@@ -498,7 +495,7 @@ async function main() {
       .map(button => button.textContent.trim()));
     assert.deepEqual(adminNavigation, [
       "System", "Identity Providers", "Domains", "Signatures", "Signature Groups",
-      "Rules", "Schedules", "Branding", "Backup", "Import / Export",
+      "Rules", "Branding", "Backup", "Import / Export",
     ]);
     assert.equal(await page.getByRole("button", { name: "Imports", exact: true }).count(), 0);
     assert.equal(await page.getByRole("button", { name: "Exports", exact: true }).count(), 0);
@@ -593,7 +590,7 @@ async function main() {
     assert.match(uiCopy, /Imports never overwrite existing records/);
     assert.match(uiCopy, /Outlook-specific conditional comments/);
     assert.match(uiCopy, /External identity providers and mail servers are not checked/);
-    const schedulingHelp = page.locator('[x-data="scheduleManager"] details').filter({ hasText: "Scheduling priority" });
+    const schedulingHelp = page.locator('[x-data="ruleManager"] details').filter({ hasText: "Scheduling priority" });
     assert.equal(await schedulingHelp.count(), 1, "schedule precedence must remain available on demand");
     assert.equal(await schedulingHelp.getAttribute("open"), null, "scheduling help should start collapsed");
 
@@ -623,7 +620,7 @@ async function main() {
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
     await page.getByRole("button", { name: "Choose ZIP File", exact: true }).waitFor({ state: "visible" });
     await page.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
-    await page.getByRole("button", { name: "Schedules", exact: true }).click();
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
     // Return to the shared Import / Export view after visiting other sections.
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
 
@@ -763,12 +760,12 @@ async function main() {
     assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
       "signature editor must not submit retired selector fields");
     const fontToolbar = signatureDialog.locator("#signature-template-editor .ck-toolbar");
-    const fontFamilyDropdown = fontToolbar.locator(".osw-signature-family-dropdown");
-    const fontSizeDropdown = fontToolbar.locator(".osw-signature-size-dropdown");
-    const fontFamilyControl = fontFamilyDropdown.locator(".ck-dropdown__button");
-    const fontSizeControl = fontSizeDropdown.locator(".ck-dropdown__button");
+    const fontFamilyControl = fontToolbar.locator(".osw-signature-family-input input");
+    const fontSizeControl = fontToolbar.locator(".osw-signature-size-input input");
     await fontFamilyControl.waitFor({ state: "visible" });
     await fontSizeControl.waitFor({ state: "visible" });
+    assert.equal(await fontToolbar.getByRole("button", { name: /Paragraph|Heading/ }).count(), 0,
+      "heading presets must not appear in the signature toolbar");
     assert.equal(await signatureDialog.locator(".osw-editor-font-toolbar").count(), 0,
       "no external font toolbar may remain");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
@@ -779,17 +776,17 @@ async function main() {
     await captureTheme("signature-editor-dark");
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
-    await fontFamilyControl.click();
     for (const name of [
       "Arial", "Arial Black", "Calibri", "Cambria", "Courier New",
       "Garamond", "Georgia", "Helvetica", "Lucida Sans Unicode",
       "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman",
       "Trebuchet MS", "Verdana"
     ]) {
-      assert.equal(await fontFamilyDropdown.getByRole("button", { name, exact: true }).count(), 1,
+      assert.equal(await fontToolbar.locator('.osw-signature-family-input datalist option').filter({has: page.locator('unlikely')}).count(), 0,
+        "No duplicate detached font menus");
+      assert.equal(await fontToolbar.locator('.osw-signature-family-input datalist option[value="' + name + '"]').count(), 1,
         "CKEditor must offer email-safe font " + name);
     }
-    await fontFamilyControl.click();
     for (const theme of ["dark", "light"]) {
       const contrast = await fontSizeControl.evaluate((button, themeName) => {
         const root = document.documentElement;
@@ -836,17 +833,16 @@ async function main() {
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
-    await fontFamilyControl.click();
-    await fontFamilyDropdown.getByRole("button", { name: "Cambria", exact: true }).click();
+    await fontFamilyControl.fill("Cambria");
+    await fontFamilyControl.press("Enter");
     await signatureCreateEditor.press("Control+A");
-    await fontSizeControl.click();
-    await fontSizeDropdown.getByRole("button", { name: "18 pt", exact: true }).click();
+    await fontSizeControl.fill("18");
+    await fontSizeControl.press("Enter");
     await page.waitForFunction(() => /font-size:\s*18pt/i.test(
       document.querySelector("#signature-html-source")?.value || ""
     ));
     await signatureCreateEditor.press("Control+A");
-    await fontSizeControl.click();
-    const customFontInput = fontSizeDropdown.getByRole("textbox", { name: "Custom font size (pt or px)" });
+    const customFontInput = fontSizeControl;
     await customFontInput.fill("0");
     await customFontInput.press("Enter");
     assert.notEqual(await customFontInput.evaluate(input => input.validationMessage), "",
@@ -858,10 +854,10 @@ async function main() {
       "font family must appear in synchronized HTML");
     assert.match(completedFontFormatting, /font-size:\s*17\.5pt/i,
       "custom decimal point sizes must become email-compatible inline styles");
-    assert.match(await fontFamilyControl.innerText(), /Cambria/i,
-      "family toolbar dropdown must reflect the selected formatting");
-    assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
-      "combined font size dropdown must reflect a custom decimal value");
+    assert.match(await fontFamilyControl.inputValue(), /Cambria/i,
+      "font family input must reflect the selected formatting");
+    assert.match(await fontSizeControl.inputValue(), /17\.5/i,
+      "plain size input must reflect the selected custom decimal value");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
 
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
@@ -1461,101 +1457,82 @@ async function main() {
 
     checkpoint("signature version history/restore: complete");
 
-    // Exercise scheduling create/update/delete through the real administrator UI.
-    await page.getByRole("button", { name: "Schedules", exact: true }).click();
-    const schedulePanel = page.locator('[x-data="scheduleManager"]');
-    await schedulePanel.getByRole("button", { name: "+ Add Schedule", exact: true }).click();
-    const scheduleDialog = schedulePanel.locator('[x-show="editing"][role="dialog"]');
-    await assertFloatingDialog(scheduleDialog, "schedule editor");
-    await scheduleDialog.getByLabel("Name").fill("Browser Smoke Schedule");
-    const scheduleTargetType = scheduleDialog.locator('select[x-model="form.target_type"]');
-    await scheduleTargetType.selectOption("GROUP");
-    await scheduleTargetType.selectOption("SIGNATURE");
-    const scheduleSignatureSelect = scheduleDialog.locator('select[x-model="form.signature_id"]');
-    await scheduleSignatureSelect.waitFor({ state: "visible" });
-    await scheduleSignatureSelect.selectOption({ label: "Browser Smoke Signature" });
-    const localInputValue = date => {
+    // A timed rule is configured within Rules and overrides any regular rule while active.
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
+    const timedRulesPanel = page.locator('[x-data="ruleManager"]');
+    await timedRulesPanel.getByRole("button", { name: "+ Add Rule", exact: true }).click();
+    const timedRuleDialog = timedRulesPanel.locator('[x-show="editing"][role="dialog"]');
+    await assertFloatingDialog(timedRuleDialog, "timed rule editor");
+    await timedRuleDialog.getByLabel("Name").fill("Browser Smoke Schedule");
+    await timedRuleDialog.locator('select[x-model="form.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
+    await timedRuleDialog.locator('input[x-model="form.time_limited"]').check();
+    const toLocalTimeValue = date => {
       const shifted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
       return shifted.toISOString().slice(0, 16);
     };
     const scheduleNow = new Date();
-    await scheduleDialog.getByLabel("Start").fill(localInputValue(new Date(scheduleNow.getTime() - 2 * 60 * 1000)));
-    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() - 60 * 60 * 1000)));
-    await scheduleDialog.getByLabel("Priority").fill("10");
-    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
-    assert.equal(await scheduleDialog.isVisible(), true, "invalid time ordering must keep the editor open");
-    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() + 60 * 60 * 1000)));
-    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
-    let scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
-    await scheduleRow.waitFor();
-    const scheduleActionsGap = await scheduleRow.locator(".osw-actions").evaluate(node =>
-      Number.parseFloat(getComputedStyle(node).columnGap));
-    assert.ok(scheduleActionsGap >= 8, "Schedule edit/delete buttons must have a visible gap");
-    let schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    let browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
-    assert.ok(browserSchedule, "schedule created in the UI must be persisted");
-    assert.equal(browserSchedule.target_type, "SIGNATURE");
-    assert.equal(browserSchedule.priority, 10);
-    const originalWindow = { starts_at: browserSchedule.starts_at, ends_at: browserSchedule.ends_at };
-
-    const scheduleSearch = schedulePanel.getByRole("searchbox", { name: "Search schedules" });
-    const scheduleStatusFilter = schedulePanel.getByLabel("Status filter");
-    await scheduleSearch.fill("nonexistent-schedule-search");
-    await schedulePanel.getByText("No matching schedules.", { exact: true }).waitFor({ state: "visible" });
-    await scheduleSearch.fill("Browser Smoke");
-    await scheduleRow.waitFor({ state: "visible" });
-    await scheduleStatusFilter.selectOption("enabled");
-    await scheduleRow.waitFor({ state: "visible" });
-    await scheduleRow.getByRole("button", { name: "Disable", exact: true }).click();
-    await scheduleRow.waitFor({ state: "hidden" });
-    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
-    assert.equal(browserSchedule.is_enabled, false, "quick disable must persist");
-    assert.equal(browserSchedule.starts_at, originalWindow.starts_at, "disabling must preserve the start timestamp");
-    assert.equal(browserSchedule.ends_at, originalWindow.ends_at, "disabling must preserve the end timestamp");
-    await scheduleStatusFilter.selectOption("disabled");
-    await scheduleRow.waitFor({ state: "visible" });
-    await scheduleRow.getByRole("button", { name: "Enable", exact: true }).click();
-    await scheduleRow.waitFor({ state: "hidden" });
-    await scheduleStatusFilter.selectOption("all");
-    await scheduleRow.waitFor({ state: "visible" });
-    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
-    assert.equal(browserSchedule.is_enabled, true, "quick enable must persist");
-    assert.equal(browserSchedule.starts_at, originalWindow.starts_at, "enabling must preserve the start timestamp");
-    assert.equal(browserSchedule.ends_at, originalWindow.ends_at, "enabling must preserve the end timestamp");
-    await scheduleSearch.fill("");
-
-    await scheduleRow.getByRole("button", { name: "Edit", exact: true }).click();
-    await scheduleDialog.getByLabel("Priority").fill("42");
-    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
+    await timedRuleDialog.getByLabel("Start").fill(toLocalTimeValue(new Date(scheduleNow.getTime() - 2 * 60000)));
+    await timedRuleDialog.getByLabel("End").fill(toLocalTimeValue(new Date(scheduleNow.getTime() - 3600000)));
+    await timedRuleDialog.getByLabel("Priority").fill("10");
+    await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    assert.equal(await timedRuleDialog.isVisible(), true, "invalid time ordering must leave rule editor open");
+    await timedRuleDialog.getByLabel("End").fill(toLocalTimeValue(new Date(scheduleNow.getTime() + 3600000)));
+    await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    let timedRuleRow = timedRulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    await timedRuleRow.waitFor();
+    let timedRules = await (await page.request.get(baseURL + "/api/admin/rules")).json();
+    let timedRule = timedRules.find(item => item.name === "Browser Smoke Schedule");
+    assert.ok(timedRule, "a time-limited rule must persist as a regular rule");
+    assert.equal(timedRule.priority, 10);
+    assert.equal(timedRule.conditions.filter(item => item.kind === "time_window").length, 1);
+    const oldWindow = timedRule.conditions.find(item => item.kind === "time_window");
+    await timedRuleRow.getByRole("button", { name: "Edit" }).click();
+    await timedRuleDialog.getByLabel("Priority").fill("42");
+    await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
     await page.waitForFunction(() => {
-      const row = [...document.querySelectorAll('[x-data="scheduleManager"] tbody tr')]
+      const row = [...document.querySelectorAll('[x-data="ruleManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Schedule"));
       return row && row.children[1].textContent.trim() === "42";
     });
-    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
-    assert.equal(browserSchedule.priority, 42, "schedule update must persist");
-
-    // A browser reload must not discard or change any saved schedule fields.
+    timedRules = await (await page.request.get(baseURL + "/api/admin/rules")).json();
+    timedRule = timedRules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(timedRule.priority, 42);
+    assert.deepEqual(timedRule.conditions.find(item => item.kind === "time_window"), oldWindow);
     await page.reload();
-    await page.getByRole("button", { name: "Schedules", exact: true }).click();
-    scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
-    await scheduleRow.waitFor();
-    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
-    assert.equal(browserSchedule.priority, 42, "updated schedule survives page reload");
-    assert.equal(browserSchedule.target_type, "SIGNATURE");
-    assert.equal(browserSchedule.is_enabled, true);
-
-    scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
-    await scheduleRow.getByRole("button", { name: "Delete", exact: true }).click();
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
+    timedRuleRow = timedRulesPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
+    await timedRuleRow.waitFor();
+    await timedRuleRow.getByRole("button", { name: "Delete" }).click();
     await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
-    await scheduleRow.waitFor({ state: "detached" });
-    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
-    assert.equal(schedules.some(item => item.name === "Browser Smoke Schedule"), false,
-      "deleted schedule must be removed from persistence");
+    await timedRuleRow.waitFor({ state: "detached" });
+    timedRules = await (await page.request.get(baseURL + "/api/admin/rules")).json();
+    assert.ok(!timedRules.some(item => item.name === "Browser Smoke Schedule"));
+
+    // Existing schedules must remain visible and convert without creating duplicates.
+    const legacyCreate = await page.request.post(baseURL + "/api/admin/schedules", {
+      data: { name: "Legacy Browser Schedule", target_type: "SIGNATURE",
+        signature_id: (await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+          .find(item => item.name === "Browser Smoke Signature").id,
+        domain_id: null,
+        starts_at: new Date(scheduleNow.getTime() - 120000).toISOString(),
+        ends_at: new Date(scheduleNow.getTime() + 3600000).toISOString(),
+        priority: 17, is_enabled: true }
+    });
+    assert.equal(legacyCreate.status(), 201);
+    await page.reload();
+    await page.getByRole("button", { name: "Rules", exact: true }).click();
+    const legacyRow = timedRulesPanel.locator("tbody tr").filter({ hasText: "Legacy Browser Schedule" });
+    await legacyRow.waitFor();
+    await legacyRow.getByRole("button", { name: "Edit" }).click();
+    await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    await legacyRow.waitFor();
+    assert.equal((await (await page.request.get(baseURL + "/api/admin/schedules")).json())
+      .some(item => item.name === "Legacy Browser Schedule"), false, "legacy schedule must be replaced atomically");
+    assert.equal((await (await page.request.get(baseURL + "/api/admin/rules")).json())
+      .filter(item => item.name === "Legacy Browser Schedule").length, 1);
+    await legacyRow.getByRole("button", { name: "Delete" }).click();
+    await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
+    await legacyRow.waitFor({ state: "detached" });
 
     checkpoint("scheduling lifecycle: complete");
 
@@ -2155,14 +2132,11 @@ async function main() {
     await domainSettings.getByRole("button", { name: "+ Add or Edit User" }).click();
     const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
     await adminEditor.waitFor({ state: "visible" });
-    const adminFontFamily = domainSettings.locator("#admin-rich-editor .osw-signature-family-dropdown .ck-dropdown__button");
-    const adminFontSize = domainSettings.locator("#admin-rich-editor .osw-signature-size-dropdown .ck-dropdown__button");
+    const adminFontFamily = domainSettings.locator("#admin-rich-editor .osw-signature-family-input input");
+    const adminFontSize = domainSettings.locator("#admin-rich-editor .osw-signature-size-input input");
     await adminFontFamily.waitFor({ state: "visible" });
     await adminFontSize.waitFor({ state: "visible" });
-    await adminFontFamily.click();
-    await domainSettings.locator("#admin-rich-editor .osw-signature-family-dropdown")
-      .getByRole("button", { name: "Georgia", exact: true }).waitFor({ state: "visible" });
-    await adminFontFamily.click();
+    assert.equal(await domainSettings.locator('#admin-rich-editor .osw-signature-family-input datalist option[value="Georgia"]').count(), 1);
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
     await adminEditor.press("Control+B");
@@ -2272,7 +2246,6 @@ async function main() {
           ["Signatures", '[x-data="signatureManager"]'],
           ["Signature Groups", '[x-data="signatureGroupManager"]'],
           ["Rules", '[x-data="ruleManager"]'],
-          ["Schedules", '[x-data="scheduleManager"]'],
           ["Branding", '[x-data="brandingManager"]'],
           ["Backup", '[x-data="backupManager"]'],
           ["Import / Export", '[x-show="adminTab === \'import-export\'"]'],
@@ -2310,8 +2283,8 @@ async function main() {
         const signatureSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Signature editor"]';
         await inspect(signatureSelector, "signature-editor");
         const fontToolbar = shell(signatureSelector).locator("#signature-template-editor .ck-toolbar");
-        const familyControl = fontToolbar.locator(".osw-signature-family-dropdown .ck-dropdown__button");
-        const sizeControl = fontToolbar.locator(".osw-signature-size-dropdown .ck-dropdown__button");
+        const familyControl = fontToolbar.locator(".osw-signature-family-input input");
+        const sizeControl = fontToolbar.locator(".osw-signature-size-input input");
         for (const [index, control] of [familyControl, sizeControl].entries()) {
           await control.waitFor({ state: "visible" });
           await control.scrollIntoViewIfNeeded();
@@ -2324,12 +2297,8 @@ async function main() {
             && bounds.top >= -2 && bounds.bottom <= bounds.vh + 2,
             "signature font control " + index + " must fit viewport: " + JSON.stringify(bounds));
         }
-        await sizeControl.click();
-        await fontToolbar.locator(".osw-signature-size-dropdown")
-          .getByRole("button", { name: "18 pt", exact: true }).waitFor({ state: "visible" });
-        await fontToolbar.locator(".osw-signature-size-dropdown")
-          .getByRole("textbox", { name: "Custom font size (pt or px)" }).waitFor({ state: "visible" });
-        await sizeControl.click();
+        assert.equal(await sizeControl.getAttribute("inputmode"), "decimal",
+          "font size must be an editable numeric input without dropdown");
         const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Image from URL" });
         // The toolbar button exists before OpenSigWeaveEditor.create() returns its adapter.
         // Avoid clicking during that initialization window in the visual layout matrix.
@@ -2366,11 +2335,8 @@ async function main() {
         const ruleSelector = '[x-data="ruleManager"] [role="dialog"]';
         await inspect(ruleSelector, "rule");
         await close(ruleSelector);
-        await nav("Schedules");
-        await visualPage.getByRole("button", { name: "+ Add Schedule" }).click();
-        const scheduleSelector = '[x-data="scheduleManager"] [role="dialog"]';
-        await inspect(scheduleSelector, "schedule");
-        await close(scheduleSelector);
+        await shell(ruleSelector).locator('input[x-model="form.time_limited"]').check();
+        await inspect(ruleSelector, "timed-rule");
         await nav("Domains");
         await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
         const addDomainSelector = '[x-data="addDomainModal"] [role="dialog"]';
