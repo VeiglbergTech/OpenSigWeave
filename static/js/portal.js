@@ -190,6 +190,9 @@ window.fetch = (resource, options = {}) => {
                     ? "admin" : "personal";
                 // Replace legacy URLs without creating an extra history entry.
                 this.saveNavigation(false);
+                if (this.tab === "admin" && this.adminTab === "system") {
+                    window.dispatchEvent(new Event("osw-system-tab-active"));
+                }
             });
         },
         setAdminTab(section) {
@@ -197,9 +200,15 @@ window.fetch = (resource, options = {}) => {
             this.adminTab = section;
             this.tab = "admin";
             this.saveNavigation();
+            if (section === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
         },
         openPersonal() { this.tab = "personal"; this.saveNavigation(); },
-        openAdmin() { if (!isAdmin) return; this.tab = "admin"; this.saveNavigation(); },
+        openAdmin() {
+            if (!isAdmin) return;
+            this.tab = "admin";
+            this.saveNavigation();
+            if (this.adminTab === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
+        },
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
@@ -729,12 +738,28 @@ function identityProviderManager() { return {
                     this.form.group_id = '';
                 },
                 addCondition() { this.form.conditions.push({ kind: 'sender_equals', key: '', value: '' }); },
+                requiresConditionKey(kind) {
+                    return kind === 'attribute_equals' || kind === 'attribute_not_equals'
+                        || kind === 'claim_equals' || kind === 'claim_not_equals';
+                },
+                changeConditionKind(condition, event) {
+                    if (event?.target?.value) condition.kind = event.target.value;
+                    // Never submit a stale key from a previously selected attribute condition.
+                    if (!this.requiresConditionKey(condition.kind)) condition.key = '';
+                },
                 async saveRule() {
                     if (!this.form.name.trim()) { notify('Please enter a rule name.', 'error'); return; }
-                    if (this.form.conditions.some(condition => !condition.value.trim())) { notify('Every condition needs a value.', 'error'); return; }
+                    if (this.form.conditions.some(condition => !String(condition.value || '').trim())) { notify('Every condition needs a value.', 'error'); return; }
+                    if (this.form.conditions.some(condition => this.requiresConditionKey(condition.kind) && !String(condition.key || '').trim())) {
+                        notify('Attribute and claim conditions require a key.', 'error');
+                        return;
+                    }
                     if (this.form.action_mode === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
                     if (this.form.action_mode === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
                     const payload = { ...this.form,
+                        conditions: this.form.conditions.map(condition => ({
+                            ...condition, key: this.requiresConditionKey(condition.kind) ? String(condition.key).trim() : ''
+                        })),
                         signature_id: this.form.action_mode === 'SIGNATURE' ? (this.form.signature_id || null) : null,
                         group_id: this.form.action_mode === 'GROUP' ? (this.form.group_id || null) : null };
                     const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
@@ -1705,6 +1730,7 @@ function backupManager() {
                 retention_count: 14, retention_days: null };
         },
         openRule(item = null) {
+            this.error = "";
             this.ruleEditingId = item?.id || null;
             this.ruleForm = item ? { ...this.defaultRule(), ...item } : this.defaultRule();
             this.ruleModal = true;
@@ -1852,6 +1878,29 @@ function systemStatusManager() {
         checkedAt: "—", database: "Unknown", storage: "Unknown",
         assets: "Unknown", localAdmin: "Unknown", managementApi: "Unknown",
         records: [],
+        statusPoll: null, activationListener: null, visibilityListener: null,
+        isPanelVisible() {
+            const panel = document.getElementById("osw-system-status-panel");
+            return !!panel && panel.getClientRects().length > 0;
+        },
+        refreshIfVisible() {
+            if (document.visibilityState === "visible" && this.isPanelVisible()) this.refresh();
+        },
+        start() {
+            // The initial x-init runs even when Alpine x-show hides the system tab.
+            // Wait for the first render and only poll while it is actually visible.
+            this.activationListener = () => this.refresh();
+            this.visibilityListener = () => this.refreshIfVisible();
+            window.addEventListener("osw-system-tab-active", this.activationListener);
+            document.addEventListener("visibilitychange", this.visibilityListener);
+            this.statusPoll = window.setInterval(() => this.refreshIfVisible(), 10000);
+            requestAnimationFrame(() => this.refreshIfVisible());
+        },
+        destroy() {
+            if (this.statusPoll !== null) window.clearInterval(this.statusPoll);
+            if (this.activationListener) window.removeEventListener("osw-system-tab-active", this.activationListener);
+            if (this.visibilityListener) document.removeEventListener("visibilitychange", this.visibilityListener);
+        },
         async refresh() {
             if (this.loading) return;
             this.loading = true;
