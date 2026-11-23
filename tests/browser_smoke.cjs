@@ -923,8 +923,8 @@ async function main() {
       "signature preview iframe must receive the requested HTML");
     assert.match(previewLayering.srcdoc, /font-family:\s*Georgia/i,
       "signature preview must retain the configured font family");
-    assert.match(previewLayering.srcdoc, /font-size:\s*17px/i,
-      "signature preview must retain the custom pixel size");
+    assert.match(previewLayering.srcdoc, /font-size:\s*17\.5pt/i,
+      "signature preview must retain the custom point size");
     await page.keyboard.press("Escape");
     await signaturePreviewModal.waitFor({ state: "hidden" });
     await signatureEditEditor.click();
