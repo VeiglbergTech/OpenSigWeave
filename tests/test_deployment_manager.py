@@ -159,14 +159,22 @@ class UpdateTests(unittest.TestCase):
                 self.assertFalse(journal.exists())
 
     def test_failed_backup_has_dedicated_failure_code(self):
-        with tempfile.TemporaryDirectory() as temp:
-            with patch.object(update, "backup_options", return_value=(
-                Path(temp), "age1example", Path(temp) / "key"
-            )), patch.object(update, "current_sha", return_value="a" * 40), \
-                 patch.object(update, "run", side_effect=common.DeploymentError("age failed", 3)):
-                with self.assertRaises(common.DeploymentError) as raised:
-                    update.create_backup()
-                self.assertEqual(raised.exception.code, 7)
+        with patch.object(update, "backup_options"), \
+             patch.object(update, "current_sha", return_value="a" * 40), \
+             patch.object(update, "compose", side_effect=common.DeploymentError("age failed", 3)):
+            with self.assertRaises(common.DeploymentError) as raised:
+                update.create_backup()
+            self.assertEqual(raised.exception.code, 7)
+
+    def test_preupdate_backup_stays_in_compose_volume(self):
+        with patch.object(update, "backup_options"), \
+             patch.object(update, "current_sha", return_value="b" * 40), \
+             patch.object(update, "compose", return_value="success") as compose:
+            path = update.create_backup()
+            self.assertEqual(path.parent, Path("/app/backups"))
+            self.assertEqual(compose.call_count, 2)
+            self.assertIn("create-application", compose.call_args_list[0].args)
+            self.assertIn("verify-application", compose.call_args_list[1].args)
 
     def test_no_update_never_backs_up(self):
         with patch.object(update, "exclusive_lock", return_value=nullcontext()), \
@@ -210,12 +218,15 @@ class UpdateTests(unittest.TestCase):
                                     approve_breaking=False, skip_start=False)
             backup.assert_not_called()
 
-    def test_offline_identity_is_mandatory(self):
-        with tempfile.TemporaryDirectory() as temp:
-            missing = Path(temp) / "missing.env"
-            with patch.object(update, "BACKUP_CONFIG", missing):
-                with self.assertRaises(common.DeploymentError):
-                    update.backup_options()
+    def test_age_recovery_identity_is_mandatory(self):
+        env = {"BACKUP_AGE_RECIPIENT": "age1validplaceholder"}
+        with patch.object(update, "parse_env", return_value=env):
+            with self.assertRaises(common.DeploymentError) as raised:
+                update.backup_options()
+            self.assertEqual(raised.exception.code, 7)
+        env["BACKUP_AGE_IDENTITY"] = "AGE-SECRET-KEY-TEST-ONLY"
+        with patch.object(update, "parse_env", return_value=env):
+            update.backup_options()
 
     def test_port_conflict_detected(self):
         with patch.object(install.socket, "socket") as socket_class:
