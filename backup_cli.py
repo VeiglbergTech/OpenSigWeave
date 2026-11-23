@@ -19,6 +19,7 @@ from backup_encryption import (
 )
 from backup_docker import BackupDockerError, create_docker_backup
 from backup_restore import BackupRestoreError, restore_fresh_deployment
+from backup_engine import BackupEngineError, restore_application_to_new_directory
 from backup_retention import BackupRetentionError, prune_backups
 
 
@@ -43,6 +44,14 @@ def build_parser() -> argparse.ArgumentParser:
     restore.add_argument("--age-binary", default="age")
     restore.add_argument("--health-timeout", type=int, default=180)
     restore.add_argument("--app-port", type=int, default=None, help="Optional isolated host port for a parallel recovery deployment")
+
+    staged_restore = commands.add_parser(
+        "restore-staging",
+        help="Decrypt an application-profile backup into a brand-new private directory; never alters production",
+    )
+    staged_restore.add_argument("backup", type=Path)
+    staged_restore.add_argument("--identity", required=True, type=Path)
+    staged_restore.add_argument("--target-dir", required=True, type=Path)
 
     package = commands.add_parser("package", help="Create and encrypt an archive from a prepared staging directory")
     package.add_argument("--staging", required=True, type=Path)
@@ -100,6 +109,15 @@ def main(argv: list[str] | None = None) -> int:
             print("Review the restored deployment before changing DNS or reverse-proxy routing.")
             return 0
 
+        if args.command == "restore-staging":
+            manifest = restore_application_to_new_directory(
+                args.backup, args.identity, args.target_dir,
+            )
+            print(f"Verified recovery files extracted into a new directory: {args.target_dir}")
+            print("Source code, a fresh Compose project, and securely escrowed environment settings")
+            print("are required to rebuild an isolated instance; production was not changed.")
+            return 0
+
         if args.command == "package":
             staging = args.staging.expanduser().absolute()
             if staging.is_symlink() or not staging.is_dir():
@@ -154,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                 for path in result["would_delete"]:
                     print(f"Would delete: {path}")
             return 0
-    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, BackupRestoreError, BackupRetentionError, OSError) as exc:
+    except (BackupArchiveError, BackupEncryptionError, BackupDockerError, BackupRestoreError, BackupEngineError, BackupRetentionError, OSError) as exc:
         print(f"Backup operation failed: {exc}", file=sys.stderr)
         return 2
     return 2
