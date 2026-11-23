@@ -388,7 +388,7 @@
                         <template x-for="group in groups" :key="group.id">
                             <tr>
                                 <td class="align-top">
-                                    <div class="font-medium" x-text="group.name"></div>
+                                    <h3 class="font-medium" x-text="group.name"></h3>
                                     <div class="mt-1 break-all font-mono text-xs text-gray-400" x-text="group.slug"></div>
                                 </td>
                                 <td class="align-top text-gray-300" x-text="group.domain_ids.length ? group.domain_ids.length + ' assigned domain(s)' : 'All domains'"></td>
