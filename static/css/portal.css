@@ -283,6 +283,9 @@ body :is(input, select, textarea, button):focus-visible { outline-color: var(--o
 
 /* Light surfaces: navigation, content cards, list headers, rows and dialogs.
    Existing bg-gray utility mapping remains the sole surface architecture. */
+/* The body has a legacy bg-gray-900 class: only the light appearance
+   needs to outrank that utility to expose the distinct canvas token. */
+html[data-theme="light"] body { background-color: var(--osw-black) !important; }
 html[data-theme="light"] nav {
   background-color: var(--osw-panel) !important;
   border-color: var(--osw-border) !important;

@@ -32,6 +32,9 @@ async function main() {
   // Assert computed surface hierarchy rather than duplicating CSS tokens in a test.
   // Screenshots are uploaded for review; these assertions protect contrast and theme structure.
   async function assertThemePalette(label) {
+    // The legacy .transition utilities animate colors for ~150ms after
+    // switching themes. Verify settled colors, not intermediate frames.
+    await page.waitForTimeout(300);
     const state = await page.evaluate(() => {
       const root = document.documentElement;
       const tokens = getComputedStyle(root);
@@ -86,6 +89,7 @@ async function main() {
     if (state.card) assert.notEqual(state.card.background, state.body.background, label + " cards must be distinct from canvas");
     if (state.mode === "light") {
       assert.match(state.modeScheme, /light/, label + " should use light native controls");
+      assert.equal(state.body.background, "rgb(242, 245, 249)", label + " must use the light canvas token");
       if (state.navigation) assert.equal(state.navigation.background, "rgb(255, 255, 255)",
         label + " navigation is a light surface");
       if (state.tableHead) assert.notEqual(state.tableHead.background, state.card?.background || state.body.background,

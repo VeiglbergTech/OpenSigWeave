@@ -17,11 +17,11 @@ This page describes the theme unification on the `dev` branch (2026-11-23).
 | Canvas / text | `#f2f5f9` | `#1e293b` | 13.38:1 |
 | Card / text | `#ffffff` | `#1e293b` | 14.63:1 |
 | Card / muted text | `#ffffff` | `#526174` | 6.32:1 |
-| Primary action (default) | `#a63b1b` | `#ffffff` | 6.44:1 |
+| Primary action (unbranded token fallback) | `#a63b1b` | `#ffffff` | 6.44:1 |
 | Error action | `#b91c1c` | `#ffffff` | 6.47:1 |
 | Warning | `#fffbeb` | `#854d0e` | 6.61:1 |
 
-Ratios above are calculated from the default static hex values using the WCAG relative-luminance formula. User-configured branding colors are adjusted at runtime by `branding.js` and must be checked separately.
+Ratios above are calculated from the default static hex values using the WCAG relative-luminance formula. With the shipped default branding color `#ff7043`, `branding.js` selects a darker effective button color (`#c25533`, approximately 4.52:1 against white). User-configured branding colors are adjusted at runtime by `branding.js` and must be checked separately.
 
 ## Test coverage
 
