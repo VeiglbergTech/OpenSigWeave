@@ -1,21 +1,21 @@
 """In-process, Docker-socket-free encrypted application snapshots.
 
-One Uvicorn process is required: its request gate quiesces application writes
-while PostgreSQL and the two persistent file stores are copied. External writers
-must be stopped separately. Legacy host-created full archives remain readable by
-the separate recovery CLI; application backups are a different restore profile.
+A shared, cross-process filesystem lock quiesces application HTTP requests
+while PostgreSQL and the persistent file stores are copied. All application
+replicas must share the same backup volume; external writers must still be
+stopped separately. Legacy full archives retain their separate restore profile.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
 import hashlib
+import fcntl
 import os
 from pathlib import Path
 import shutil
 import stat
 import subprocess
 import tempfile
-import threading
 from typing import Callable, Iterator
 
 from sqlalchemy.engine import make_url
@@ -29,9 +29,42 @@ class BackupEngineError(Exception):
     """Safe, intentionally non-secret failure in the container backup engine."""
 
 
-# Acquired for every web request and held during the database/file snapshot.
-# Multi-process Uvicorn and external writers cannot share this Python lock.
-backup_gate = threading.Lock()
+# One lock inode in the shared persistent volume coordinates all Uvicorn workers
+# and a separate compose-exec backup process. Never expose the lock path to APIs.
+def acquire_backup_gate(*, exclusive: bool = False) -> int:
+    root = _work_root()
+    fd = os.open(
+        root / ".snapshot-gate.lock",
+        os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600,
+    )
+    try:
+        info = os.fstat(fd)
+        if (not stat.S_ISREG(info.st_mode) or
+                (hasattr(os, "geteuid") and info.st_uid != os.geteuid()) or
+                stat.S_IMODE(info.st_mode) & 0o077):
+            raise BackupEngineError("Snapshot coordination lock is unsafe")
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def release_backup_gate(fd: int) -> None:
+    try:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def exclusive_backup_gate() -> Iterator[None]:
+    fd = acquire_backup_gate(exclusive=True)
+    try:
+        yield
+    finally:
+        release_backup_gate(fd)
+
 
 
 def _run_pg(args: list[str], *, password: str, timeout: int = 1800) -> str:
@@ -132,8 +165,6 @@ def create_application_backup(deliver: Callable[[Path, int, str], None]) -> tupl
     recipient = os.environ.get("BACKUP_AGE_RECIPIENT", "").strip()
     if not recipient.startswith("age1") or len(recipient) > 200:
         raise BackupEngineError("Configure BACKUP_AGE_RECIPIENT before starting backups")
-    if os.environ.get("UVICORN_WORKERS", "1") != "1":
-        raise BackupEngineError("Application backups require UVICORN_WORKERS=1 for consistent file snapshots")
     root = _work_root()
     with tempfile.TemporaryDirectory(prefix=".osw-snapshot-", dir=root) as name:
         work = Path(name)
@@ -142,7 +173,7 @@ def create_application_backup(deliver: Callable[[Path, int, str], None]) -> tupl
         with _identity(work) as identity:
             # The gate also blocks writes to the signature/IDP volumes by HTTP
             # handlers. It must span *both* the dump and file copies.
-            with backup_gate:
+            with exclusive_backup_gate():
                 pg_args, password = _pg_commands()
                 revision = _run_pg(["psql", *pg_args, "-At", "-c",
                                     "SELECT version_num FROM alembic_version"], password=password, timeout=60)
