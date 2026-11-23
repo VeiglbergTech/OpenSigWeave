@@ -257,7 +257,10 @@ def _managed_execute(run_id):
     with job_lock:
         current_job.update({"state": "running", "action": "managed-create", "id": run_id})
     _write_private(record, json.dumps({"run_id": run_id, "state": "running"}))
+    run_lock_fd = None
     try:
+        # Use the same flock as the legacy systemd timer and manual operator.
+        run_lock_fd = _try_lock()
         # The caller must receive HTTP 202 before the application is stopped.
         time.sleep(2)
         if not os.environ.get("AGE_RECIPIENT") or not os.environ.get("AGE_IDENTITY"):
@@ -297,6 +300,9 @@ def _managed_execute(run_id):
         }))
         with job_lock:
             current_job.update({"state": "failed", "error": "Managed backup failed"})
+    finally:
+        if run_lock_fd is not None:
+            os.close(run_lock_fd)
 
 
 def _managed_queue(run_id):
