@@ -7,7 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 HTML = (ROOT / "templates/index.html").read_text(encoding="utf-8")
 CSS = (ROOT / "static/css/portal.css").read_text(encoding="utf-8")
-INPUTS = re.findall(r'<input\\b[^>]*\\btype="checkbox"[^>]*>', HTML)
+INPUTS = re.findall(r'<input\b[^>]*\btype="checkbox"[^>]*>', HTML)
 MULTI = ('x-model="selected"', ':checked="form.domain_ids.includes(')
 
 
@@ -16,7 +16,7 @@ class SharedToggleSwitchTests(unittest.TestCase):
         self.assertEqual(len(INPUTS), 21)
         for field in INPUTS:
             with self.subTest(field=field):
-                self.assertRegex(field, r'class="[^"]*\\bosw-switch\\b')
+                self.assertRegex(field, r'class="[^"]*\bosw-switch\b')
                 self.assertNotIn("sr-only", field)
 
     def test_accessibility_roles_distinguish_binary_and_multi_selection(self):
