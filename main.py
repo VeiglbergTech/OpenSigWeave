@@ -70,7 +70,11 @@ from backup_locations import (
     BackupLocationError, apply_location, ensure_local_directory,
     public_location, test_location,
 )
-from models import BackupLocationDB
+from models import BackupLocationDB, BackupRuleDB, BackupRunDB, BackupRuntimeDB
+from backup_rules import (
+    BackupRuleError, apply_rule, public_rule, public_run,
+    reserve_run, dispatch_run, start_scheduler, stop_scheduler,
+)
 from sqlalchemy.exc import IntegrityError
 from request_body_limit import PathAwareRequestBodyLimitMiddleware
 from signature_sanitizer import sanitize_signature_html
@@ -285,6 +289,24 @@ class BackupLocationInput(BaseModel):
     domain: str = ""
 
 
+
+class BackupRuleInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    description: str = Field(default="", max_length=500)
+    enabled: bool = True
+    location_id: str = Field(min_length=32, max_length=32)
+    content: Literal["full"] = "full"
+    schedule_kind: Literal["daily", "weekly", "monthly", "interval"] = "daily"
+    hour: int = Field(default=2, ge=0, le=23)
+    minute: int = Field(default=0, ge=0, le=59)
+    weekday: int = Field(default=0, ge=0, le=6)
+    monthday: int = Field(default=1, ge=1, le=28)
+    interval_minutes: int = Field(default=1440, ge=15, le=43200)
+    timezone: Literal["UTC"] = "UTC"
+    retention_count: Optional[int] = Field(default=14, ge=1, le=10000)
+    retention_days: Optional[int] = Field(default=None, ge=1, le=3650)
+
+
 class BackupActionRequest(BaseModel):
     confirm: str = Field(min_length=1, max_length=64)
 
@@ -361,6 +383,16 @@ def disable_legacy_profile_attribute_fallback():
     """After migration, profile lookups use domain-assigned providers only."""
     global attribute_provider
     attribute_provider = None
+
+@app.on_event("startup")
+def launch_backup_rule_scheduler():
+    start_scheduler()
+
+
+@app.on_event("shutdown")
+def halt_backup_rule_scheduler():
+    stop_scheduler()
+
 
 session_secret = os.environ.get("SECRET_KEY", "")
 if len(session_secret) < 32 or session_secret.lower() in {"changeme", "your_secure_random_string_here", "fallback-secret", "replace_with_random_secret_at_least_32_characters"}:
@@ -1489,6 +1521,21 @@ def update_backup_location(location_id: str, payload: BackupLocationInput, reque
     _require_backup_location_admin(request)
     row = _backup_location_or_404(db, location_id)
     _unique_backup_location_name(db, payload.name, row.id)
+    # Once an archive exists, changing destination details could cause retention
+    # to delete an unrelated remote file. Name/enabled changes remain possible.
+    archived = db.query(BackupRunDB).filter(
+        BackupRunDB.location_id == location_id,
+        BackupRunDB.status == "success", BackupRunDB.is_retained.is_(True)
+    ).first()
+    incoming = payload.model_dump()
+    if archived and (
+        incoming["type"] != row.type or
+        (row.type == "smb" and any(
+            incoming.get(k, "") != (getattr(row, k) or "") for k in
+            ("server", "share", "directory", "username", "domain")
+        )) or (row.type == "smb" and incoming.get("password"))
+    ):
+        raise HTTPException(status_code=409, detail="Destination cannot change while retained archives exist")
     try:
         apply_location(row, payload.model_dump())
         if row.type == "local":
@@ -1507,7 +1554,19 @@ def update_backup_location(location_id: str, payload: BackupLocationInput, reque
 def delete_backup_location(location_id: str, request: Request, db: Session = Depends(get_db)):
     _require_backup_location_admin(request)
     row = _backup_location_or_404(db, location_id)
-    # Deliberately do not erase stored archives or directories.
+    if db.query(BackupRuleDB).filter(BackupRuleDB.location_id == location_id).first():
+        raise HTTPException(status_code=409, detail="Location is referenced by backup rules")
+    if db.query(BackupRunDB).filter(
+        BackupRunDB.location_id == location_id,
+        BackupRunDB.status.in_(["pending", "running", "transferring"])
+    ).first():
+        raise HTTPException(status_code=409, detail="Location has an active backup")
+    if db.query(BackupRunDB).filter(
+        BackupRunDB.location_id == location_id, BackupRunDB.is_retained.is_(True),
+        BackupRunDB.status == "success"
+    ).first():
+        raise HTTPException(status_code=409, detail="Location contains retained backup archives")
+    # Never erase archives or directories through registry deletion.
     db.delete(row)
     db.commit()
     return {"status": "deleted"}
@@ -1521,6 +1580,131 @@ def test_backup_location_connection(location_id: str, request: Request, db: Sess
         return test_location(row)
     except BackupLocationError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+
+
+
+def _backup_rule_or_404(db: Session, rule_id: str) -> BackupRuleDB:
+    if not re.fullmatch(r"[a-f0-9]{32}", rule_id):
+        raise HTTPException(status_code=404, detail="Backup rule not found")
+    rule = db.get(BackupRuleDB, rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="Backup rule not found")
+    return rule
+
+
+def _check_rule_edit(db: Session, rule_id: str = "") -> None:
+    lease = db.get(BackupRuntimeDB, 1)
+    active = db.get(BackupRunDB, lease.active_run_id) if lease and lease.active_run_id else None
+    if active and active.rule_id == rule_id:
+        raise HTTPException(status_code=409, detail="Cannot change a backup rule during its execution")
+
+
+def _check_rule_name(db: Session, name: str, current: str = "") -> None:
+    found = db.query(BackupRuleDB).filter(func.lower(BackupRuleDB.name) == name.strip().lower()).first()
+    if found and found.id != current:
+        raise HTTPException(status_code=409, detail="A backup rule with this name already exists")
+
+
+@app.get("/api/admin/backups/rules")
+def get_backup_rules(request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    rules = db.query(BackupRuleDB).order_by(BackupRuleDB.name).all()
+    return [public_rule(rule, db.get(BackupLocationDB, rule.location_id)) for rule in rules]
+
+
+@app.post("/api/admin/backups/rules", status_code=201)
+def create_backup_rule(payload: BackupRuleInput, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    location = _backup_location_or_404(db, payload.location_id)
+    _check_rule_name(db, payload.name)
+    rule = BackupRuleDB(id=uuid.uuid4().hex)
+    try:
+        apply_rule(rule, payload.model_dump())
+        db.add(rule)
+        db.commit()
+    except BackupRuleError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Backup rule already exists") from None
+    return public_rule(rule, location)
+
+
+@app.put("/api/admin/backups/rules/{rule_id}")
+def update_backup_rule(rule_id: str, payload: BackupRuleInput, request: Request,
+                       db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    rule = _backup_rule_or_404(db, rule_id)
+    _check_rule_edit(db, rule_id)
+    location = _backup_location_or_404(db, payload.location_id)
+    _check_rule_name(db, payload.name, rule_id)
+    try:
+        apply_rule(rule, payload.model_dump())
+        db.commit()
+    except BackupRuleError as exc:
+        db.rollback()
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Backup rule already exists") from None
+    return public_rule(rule, location)
+
+
+@app.delete("/api/admin/backups/rules/{rule_id}")
+def delete_backup_rule(rule_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    rule = _backup_rule_or_404(db, rule_id)
+    _check_rule_edit(db, rule_id)
+    # Keep immutable run history and any encrypted archives for recovery.
+    db.delete(rule)
+    db.commit()
+    return {"status": "deleted"}
+
+
+@app.post("/api/admin/backups/rules/{rule_id}/run", status_code=202)
+def run_backup_rule_now(rule_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    rule = _backup_rule_or_404(db, rule_id)
+    location = _backup_location_or_404(db, rule.location_id)
+    try:
+        run = reserve_run(db, rule, location, "manual")
+    except BackupRuleError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from None
+    dispatch_run(db, run)
+    return public_run(run)
+
+
+@app.get("/api/admin/backups/history")
+def list_backup_history(request: Request, rule_id: Optional[str] = None,
+                        status: Optional[str] = None, limit: int = 100,
+                        db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=422, detail="History limit must be between 1 and 500")
+    if status is not None and status not in {"pending", "running", "success", "failed"}:
+        raise HTTPException(status_code=422, detail="Invalid history status")
+    query = db.query(BackupRunDB)
+    if rule_id is not None:
+        if not re.fullmatch(r"[a-f0-9]{32}", rule_id):
+            raise HTTPException(status_code=422, detail="Invalid backup rule ID")
+        query = query.filter(BackupRunDB.rule_id == rule_id)
+    if status:
+        query = query.filter(BackupRunDB.status.in_(["running", "transferring"] if status == "running" else [status]))
+    return [public_run(row) for row in query.order_by(
+        BackupRunDB.requested_at.desc(), BackupRunDB.id.desc()
+    ).limit(limit).all()]
+
+
+@app.get("/api/admin/backups/history/{run_id}")
+def backup_history_details(run_id: str, request: Request, db: Session = Depends(get_db)):
+    _require_backup_location_admin(request)
+    if not re.fullmatch(r"[a-f0-9]{32}", run_id):
+        raise HTTPException(status_code=404, detail="Backup run not found")
+    run = db.get(BackupRunDB, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="Backup run not found")
+    return public_run(run)
 
 
 @app.get("/api/admin/backups")
