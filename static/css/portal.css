@@ -598,3 +598,11 @@ html[data-theme="light"] .osw-admin-status.text-amber-300 {
 
 /* Long signature markers must wrap inside the shared domain-style table cells. */
 .osw-signature-marker { overflow-wrap: anywhere; word-break: break-word; max-width: 26rem; }
+
+/* On narrow viewports CKEditor's overflowing toolbar can swallow the URL action.
+   Expose the same import workflow as a reachable control underneath the editor. */
+.osw-signature-mobile-import { display: none; }
+@media (max-width: 640px) {
+    #signature-template-editor .osw-editor-import-url-button { display: none !important; }
+    .osw-signature-mobile-import { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; }
+}

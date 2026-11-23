@@ -401,6 +401,9 @@
                 imageImportSelection = null;
                 editor.editing.view.focus();
             },
+            saveImageImportSelection: function () {
+                imageImportSelection = editor.model.document.selection.getFirstRange();
+            },
             clearImageImportSelection: function () { imageImportSelection = null; },
             insertText: function (value) {
                 editor.editing.view.focus();

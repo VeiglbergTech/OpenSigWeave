@@ -9,10 +9,10 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js"></script>
-    <script src="/static/js/rich-editor.js?v=image-url-toolbar-20261122"></script>
+    <script src="/static/js/rich-editor.js?v=signature-mobile-fallback-20261123"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=admin-domain-parity-20261123" rel="stylesheet">
+    <link href="/static/css/portal.css?v=signature-mobile-fallback-20261123" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
@@ -330,7 +330,8 @@
                                 <button type="button" @click="insertGroupTag(selectedGroupSlug, $refs.signatureHtmlTemplate)" :disabled="!selectedGroupSlug || isViewingHistoricalVersion" class="px-3 py-2 rounded text-sm bg-indigo-700 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Insert at cursor</button>
                                 </div>
                             </details>
-                            <div id="signature-template-editor" class="signature-editor mt-2" @click.capture="handleEditorToolbarClick($event)"><div data-editor-target></div></div>
+                            <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
+                            <button type="button" @click="openImageImportDialog()" :disabled="isViewingHistoricalVersion" class="osw-signature-mobile-import mt-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-3 py-2 rounded text-sm font-medium">Import Image from URL</button>
                             <p class="mt-2 text-xs text-gray-500">Paste or drop PNG, JPEG, WebP or GIF images (up to 2 MiB each).</p>
                             <div x-data="htmlEditorToggle" class="mt-3">
                                 <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit Raw HTML</button>
@@ -1282,6 +1283,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=signature-mobile-toolbar-20261123"></script>
+    <script src="/static/js/portal.js?v=signature-mobile-fallback-20261123"></script>
 </body>
 </html>
