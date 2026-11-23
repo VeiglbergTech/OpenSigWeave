@@ -19,13 +19,23 @@ from backup_encryption import (
 )
 from backup_docker import BackupDockerError, create_docker_backup
 from backup_restore import BackupRestoreError, restore_fresh_deployment
-from backup_engine import BackupEngineError, restore_application_to_new_directory
+from backup_engine import (BackupEngineError, restore_application_to_new_directory,
+                           create_preupdate_backup, verify_preupdate_backup)
 from backup_retention import BackupRetentionError, prune_backups
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="opensigweave-backup")
     commands = parser.add_subparsers(dest="command", required=True)
+
+    container_create = commands.add_parser(
+        "create-application", help="Create a verified in-container pre-update age backup"
+    )
+    container_create.add_argument("--filename", required=True)
+    container_verify = commands.add_parser(
+        "verify-application", help="Independently verify a retained pre-update age backup"
+    )
+    container_verify.add_argument("--filename", required=True)
 
     create = commands.add_parser("create", help="Create a complete encrypted backup from a Docker Compose project")
     create.add_argument("--project-dir", required=True, type=Path)
@@ -82,6 +92,16 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "create-application":
+            result = create_preupdate_backup(args.filename)
+            print(f"Encrypted, verified application snapshot: {result}")
+            return 0
+
+        if args.command == "verify-application":
+            manifest = verify_preupdate_backup(args.filename)
+            print(f"Verified application backup: {len(manifest['files'])} files")
+            return 0
+
         if args.command == "create":
             result = create_docker_backup(
                 args.project_dir,
