@@ -736,8 +736,59 @@ function identityProviderManager() { return {
 
         function ruleManager() {
             return {
-                rules: [], signatures: [], groups: [], editing: false,
-                form: { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [] },
+                rules: [], legacySchedules: [], domains: [], signatures: [], groups: [], editing: false,
+                form: { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [], time_limited: false, starts_local: '', ends_local: '', legacy_schedule_id: null },
+                get combinedRules() {
+                    const ordinary = this.rules.map(rule => ({...rule, source: 'rule'}));
+                    const schedules = this.legacySchedules.map(item => {
+                        const domain = this.domains.find(row => Number(row.id) === Number(item.domain_id));
+                        return { id: item.id, source: 'schedule', name: item.name,
+                            priority: item.priority, action_mode: item.target_type,
+                            signature_id: item.signature_id, group_id: item.group_id,
+                            is_enabled: item.is_enabled, starts_at: item.starts_at, ends_at: item.ends_at,
+                            conditions: domain ? [{ kind: 'domain_equals', key: '', value: domain.domain_name }] : [] };
+                    });
+                    return [...ordinary, ...schedules].sort((left, right) =>
+                        Number(this.isActiveTimedRule(right)) - Number(this.isActiveTimedRule(left)) ||
+                        right.priority - left.priority || left.name.localeCompare(right.name));
+                },
+                ruleWindow(rule) {
+                    if (rule.source === 'schedule') return { start: rule.starts_at, end: rule.ends_at };
+                    const condition = (rule.conditions || []).find(item => item.kind === 'time_window');
+                    return condition ? { start: condition.key, end: condition.value } : null;
+                },
+                isActiveTimedRule(rule) {
+                    const window = this.ruleWindow(rule);
+                    return !!window && Date.parse(window.start) <= Date.now() && Date.now() < Date.parse(window.end);
+                },
+                formatLocal(value) {
+                    const d = new Date(value);
+                    return Number.isNaN(d.getTime()) ? 'Invalid date' :
+                        new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(d);
+                },
+                formatWindow(rule) {
+                    const window = this.ruleWindow(rule);
+                    return window ? this.formatLocal(window.start) + ' – ' + this.formatLocal(window.end) : 'Always active';
+                },
+                toInputValue(value) {
+                    const date = value instanceof Date ? value : new Date(value);
+                    return Number.isNaN(date.getTime()) ? '' :
+                        new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                },
+                defaultWindow() {
+                    const now = new Date();
+                    return { starts_local: this.toInputValue(now),
+                        ends_local: this.toInputValue(new Date(now.getTime() + 7 * 86400000)) };
+                },
+                validScheduleLocalTime(value) {
+                    if (!/^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}$/.test(value || '')) return false;
+                    const date = new Date(value);
+                    if (Number.isNaN(date.getTime()) || this.toInputValue(date) !== value) return false;
+                    for (const minutes of [-180,-120,-90,-60,-30,30,60,90,120,180]) {
+                        if (this.toInputValue(new Date(date.getTime() + minutes * 60000)) === value) return false;
+                    }
+                    return true;
+                },
                 formatConditions(rule) {
                     const names = {
                         sender_equals: 'Sender equals', sender_not_equals: 'Sender not equal to',
@@ -746,8 +797,9 @@ function identityProviderManager() { return {
                         attribute_equals: 'Attribute equals', attribute_not_equals: 'Attribute not equal to',
                         claim_equals: 'Claim equals', claim_not_equals: 'Claim not equal to'
                     };
-                    return rule.conditions.length
-                        ? rule.conditions.map(condition => (names[condition.kind] || condition.kind)
+                    const conditions = (rule.conditions || []).filter(item => item.kind !== 'time_window');
+                    return conditions.length
+                        ? conditions.map(condition => (names[condition.kind] || condition.kind)
                             + ': ' + (condition.key ? condition.key + ' = ' : '') + condition.value).join(' AND ')
                         : 'Always matches';
                 },
@@ -765,26 +817,31 @@ function identityProviderManager() { return {
                 async fetchAll() {
                     try {
                         const responses = await Promise.all([
-                            fetch('/api/admin/rules'), fetch('/api/admin/signatures'), fetch('/api/admin/signature-groups')
+                            fetch('/api/admin/rules'), fetch('/api/admin/signatures'), fetch('/api/admin/signature-groups'),
+                            fetch('/api/admin/schedules'), fetch('/domains/')
                         ]);
                         if (responses.some(response => !response.ok)) throw new Error('Could not load rule data');
-                        [this.rules, this.signatures, this.groups] = await Promise.all(responses.map(response => response.json()));
+                        [this.rules, this.signatures, this.groups, this.legacySchedules, this.domains] =
+                            await Promise.all(responses.map(response => response.json()));
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newRule() {
-                    this.form = { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [] };
+                    this.form = { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [], time_limited: false, legacy_schedule_id: null, ...this.defaultWindow() };
                     this.editing = true;
                 },
                 editRule(rule) {
-                    const normalizedAction = rule.action_mode === 'GROUP'
-                        ? 'GROUP'
-                        : (rule.action_mode === 'NONE' ? 'NONE' : 'SIGNATURE');
-                    this.form = JSON.parse(JSON.stringify({
-                        ...rule,
-                        action_mode: normalizedAction,
-                        signature_id: rule.signature_id || '',
-                        group_id: rule.group_id || ''
-                    }));
+                    const window = this.ruleWindow(rule);
+                    this.form = {
+                        id: rule.source === 'schedule' ? null : rule.id,
+                        legacy_schedule_id: rule.source === 'schedule' ? rule.id : null,
+                        name: rule.name, priority: rule.priority,
+                        action_mode: ['GROUP', 'NONE'].includes(rule.action_mode) ? rule.action_mode : 'SIGNATURE',
+                        signature_id: rule.signature_id || '', group_id: rule.group_id || '',
+                        is_enabled: rule.is_enabled,
+                        conditions: (rule.conditions || []).filter(item => item.kind !== 'time_window').map(item => ({...item})),
+                        time_limited: !!window,
+                        ...(window ? {starts_local: this.toInputValue(window.start), ends_local: this.toInputValue(window.end)} : this.defaultWindow())
+                    };
                     this.editing = true;
                 },
                 changeAction(event) {
@@ -815,21 +872,40 @@ function identityProviderManager() { return {
                     }
                     if (this.form.action_mode === 'SIGNATURE' && !this.form.signature_id) { notify('Select a signature.', 'error'); return; }
                     if (this.form.action_mode === 'GROUP' && !this.form.group_id) { notify('Select a signature group.', 'error'); return; }
+                    const conditions = this.form.conditions.map(condition => ({
+                        ...condition, key: this.requiresConditionKey(condition.kind) ? String(condition.key).trim() : ''
+                    }));
+                    if (this.form.time_limited) {
+                        if (!this.validScheduleLocalTime(this.form.starts_local) ||
+                            !this.validScheduleLocalTime(this.form.ends_local)) {
+                            notify('Choose existing and unambiguous local dates (check daylight saving time).', 'error'); return;
+                        }
+                        const start = new Date(this.form.starts_local);
+                        const end = new Date(this.form.ends_local);
+                        if (start >= end) { notify('End must be after start.', 'error'); return; }
+                        conditions.push({kind: 'time_window', key: start.toISOString(), value: end.toISOString()});
+                    }
+                    if (this.form.legacy_schedule_id && !this.form.time_limited) {
+                        notify('A converted schedule must retain its time window.', 'error'); return;
+                    }
                     const payload = { ...this.form,
-                        conditions: this.form.conditions.map(condition => ({
-                            ...condition, key: this.requiresConditionKey(condition.kind) ? String(condition.key).trim() : ''
-                        })),
+                        conditions,
                         signature_id: this.form.action_mode === 'SIGNATURE' ? (this.form.signature_id || null) : null,
                         group_id: this.form.action_mode === 'GROUP' ? (this.form.group_id || null) : null };
-                    const url = this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
-                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST',
+                    const url = this.form.legacy_schedule_id
+                        ? '/api/admin/schedules/' + encodeURIComponent(this.form.legacy_schedule_id) + '/convert-rule'
+                        : this.form.id ? '/api/admin/rules/' + encodeURIComponent(this.form.id) : '/api/admin/rules';
+                    const response = await fetch(url, { method: this.form.legacy_schedule_id ? 'POST' : this.form.id ? 'PUT' : 'POST',
                         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) { notify('Could not save rule: ' + (await response.text()), 'error'); return; }
                     notify('Signature rule saved.'); this.editing = false; await this.fetchAll();
                 },
                 async deleteRule(rule) {
                     if (!await oswAskConfirmation({ title: 'Delete signature rule?', message: 'Delete rule "' + rule.name + '"?' })) return;
-                    const response = await fetch('/api/admin/rules/' + encodeURIComponent(rule.id), { method: 'DELETE' });
+                    const url = rule.source === 'schedule'
+                        ? '/api/admin/schedules/' + encodeURIComponent(rule.id)
+                        : '/api/admin/rules/' + encodeURIComponent(rule.id);
+                    const response = await fetch(url, { method: 'DELETE' });
                     if (!response.ok) { notify('Could not delete rule.', 'error'); return; }
                     notify('Signature rule deleted.'); await this.fetchAll();
                 }
