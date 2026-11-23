@@ -1936,33 +1936,37 @@ async function main() {
     const loginProviderSelect = assignmentDialog.getByLabel("Authentication / SSO Provider", { exact: true });
     await profileProviderSelect.selectOption("browser-smoke-profile-provider");
     await loginProviderSelect.selectOption("browser-smoke-login-provider");
-    const providerAssignmentResponse = page.waitForResponse(response =>
-      response.request().method() === "PUT"
-      && response.url().endsWith("/domains/" + createdDomain.id),
-      { timeout: 8000 }
-    );
-    await assignmentDialog.getByRole("button", { name: "Save Settings", exact: true }).click();
+    const saveProviderSettingsButton = assignmentDialog.getByRole("button", { name: "Save Settings", exact: true });
+    const inspectProviderState = () => page.evaluate(() => {
+      const modal = document.querySelector('[x-data="domainSettingsModal"]');
+      const data = window.Alpine?.$data(modal);
+      const selects = [...modal.querySelectorAll('select')].slice(0, 2);
+      return {
+        show: data?.show, saving: data?.saving, providerLoading: data?.providerLoading,
+        providerError: data?.providerError, identityProviderId: data?.identityProviderId,
+        authenticationProviderId: data?.authenticationProviderId,
+        selectedProfileUnavailable: data?.selectedProfileUnavailable(),
+        selectedLoginUnavailable: data?.selectedLoginUnavailable(),
+        saveDisabled: [...modal.querySelectorAll('button')].find(b => b.textContent.trim() === 'Save Settings')?.disabled,
+        selectedOptions: selects.map(el => ({ value: el.value, disabled: el.disabled })),
+        providers: data?.providers.map(item => ({
+          id: item.id, type: item.provider_type, enabled: item.is_enabled, configured: item.configured
+        }))
+      };
+    });
+    checkpoint("domain provider assignment pre-save: " + JSON.stringify(await inspectProviderState()));
     let providerAssignment;
     try {
-      providerAssignment = await providerAssignmentResponse;
+      [, providerAssignment] = await Promise.all([
+        saveProviderSettingsButton.click({ timeout: 8000 }),
+        page.waitForResponse(response =>
+          response.request().method() === "PUT"
+          && response.url().endsWith("/domains/" + createdDomain.id),
+          { timeout: 9000 })
+      ]);
     } catch (error) {
-      const dialogState = await page.evaluate(() => {
-        const modal = document.querySelector('[x-data="domainSettingsModal"]');
-        const data = window.Alpine?.$data(modal);
-        return {
-          show: data?.show, saving: data?.saving, providerLoading: data?.providerLoading,
-          providerError: data?.providerError, identityProviderId: data?.identityProviderId,
-          authenticationProviderId: data?.authenticationProviderId,
-          selectedProfileUnavailable: data?.selectedProfileUnavailable(),
-          selectedLoginUnavailable: data?.selectedLoginUnavailable(),
-          selectedOptions: [...modal.querySelectorAll('select')].slice(0, 2)
-            .map(el => ({ value: el.value, disabled: el.disabled })),
-          providers: data?.providers.map(item => ({
-            id: item.id, type: item.provider_type, enabled: item.is_enabled, configured: item.configured
-          }))
-        };
-      });
-      throw new Error("Domain provider Save Settings did not send PUT: " + JSON.stringify(dialogState), { cause: error });
+      throw new Error("Domain provider Save Settings failed: "
+        + JSON.stringify(await inspectProviderState()), { cause: error });
     }
     assert.equal(providerAssignment.status(), 200, "domain provider settings must save together");
 
