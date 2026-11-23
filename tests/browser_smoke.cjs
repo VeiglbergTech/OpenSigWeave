@@ -1524,16 +1524,21 @@ async function main() {
     assert.ok(!timedRules.some(item => item.name === "Browser Smoke Schedule"));
 
     // Existing schedules must remain visible and convert without creating duplicates.
-    const legacyCreate = await page.request.post(baseURL + "/api/admin/schedules", {
-      data: { name: "Legacy Browser Schedule", target_type: "SIGNATURE",
-        signature_id: (await (await page.request.get(baseURL + "/api/admin/signatures")).json())
-          .find(item => item.name === "Browser Smoke Signature").id,
-        domain_id: null,
-        starts_at: new Date(scheduleNow.getTime() - 120000).toISOString(),
-        ends_at: new Date(scheduleNow.getTime() + 3600000).toISOString(),
-        priority: 17, is_enabled: true }
-    });
-    assert.equal(legacyCreate.status(), 201);
+    const legacyPayload = { name: "Legacy Browser Schedule", target_type: "SIGNATURE",
+      signature_id: (await (await page.request.get(baseURL + "/api/admin/signatures")).json())
+        .find(item => item.name === "Browser Smoke Signature").id,
+      domain_id: null,
+      starts_at: new Date(scheduleNow.getTime() - 120000).toISOString(),
+      ends_at: new Date(scheduleNow.getTime() + 3600000).toISOString(),
+      priority: 17, is_enabled: true };
+    const legacyCreate = await page.evaluate(async payload => {
+      const response = await fetch("/api/admin/schedules", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      return { status: response.status, body: await response.text() };
+    }, legacyPayload);
+    assert.equal(legacyCreate.status, 201, legacyCreate.body);
     await page.reload();
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     const legacyRow = timedRulesPanel.locator("tbody tr").filter({ hasText: "Legacy Browser Schedule" });
