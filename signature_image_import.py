@@ -8,7 +8,7 @@ import ssl
 import time
 from urllib.parse import quote, urlsplit
 
-from signature_storage import MAX_SIGNATURE_IMAGE_BYTES, SignatureStorageError
+from signature_storage import DEFAULT_SIGNATURE_IMAGE_BYTES, SignatureStorageError
 
 
 class SignatureImageImportError(ValueError):
@@ -67,7 +67,7 @@ def _resolve_public_address(host: str) -> str:
     return candidates[0]
 
 
-def import_image_from_url(file_store, url: str) -> str:
+def import_image_from_url(file_store, url: str, *, max_bytes: int = DEFAULT_SIGNATURE_IMAGE_BYTES) -> str:
     """Pin validated public DNS results to the TLS socket. Never follow redirects.
 
     No proxy is used. HTTPS verifies the original hostname, not the pinned IP.
@@ -97,7 +97,7 @@ def import_image_from_url(file_store, url: str) -> str:
                 if media_type not in _ALLOWED_TYPES:
                     raise SignatureImageImportError("Unsupported remote image type")
                 length = response.getheader("Content-Length")
-                if length is not None and (not length.isdecimal() or int(length) > MAX_SIGNATURE_IMAGE_BYTES):
+                if length is not None and (not length.isdecimal() or int(length) > max_bytes):
                     raise SignatureImageImportError("Remote image exceeds size limit")
                 chunks, size = [], 0
                 while True:
@@ -105,11 +105,11 @@ def import_image_from_url(file_store, url: str) -> str:
                     if remaining <= 0:
                         raise SignatureImageImportError("Image download timed out")
                     tls.settimeout(max(0.1, remaining))
-                    block = response.read(min(65536, MAX_SIGNATURE_IMAGE_BYTES + 1 - size))
+                    block = response.read(min(65536, max_bytes + 1 - size))
                     if not block:
                         break
                     size += len(block)
-                    if size > MAX_SIGNATURE_IMAGE_BYTES:
+                    if size > max_bytes:
                         raise SignatureImageImportError("Remote image exceeds size limit")
                     chunks.append(block)
     except SignatureImageImportError:
@@ -117,6 +117,6 @@ def import_image_from_url(file_store, url: str) -> str:
     except (OSError, ssl.SSLError, http.client.HTTPException, TimeoutError) as exc:
         raise SignatureImageImportError("Image download failed") from exc
     try:
-        return file_store.write_image(b"".join(chunks), media_type)
+        return file_store.write_image(b"".join(chunks), media_type, max_bytes=max_bytes)
     except (SignatureStorageError, TypeError) as exc:
         raise SignatureImageImportError("Downloaded image failed validation") from exc

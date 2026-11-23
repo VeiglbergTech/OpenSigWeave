@@ -15,7 +15,8 @@ class SignatureStorageError(Exception):
 
 
 MAX_SIGNATURE_BYTES = 65536
-MAX_SIGNATURE_IMAGE_BYTES = 2 * 1024 * 1024
+MAX_SIGNATURE_IMAGE_BYTES = 12 * 1024 * 1024  # Hard ceiling for existing asset retrieval
+DEFAULT_SIGNATURE_IMAGE_BYTES = 6 * 1024 * 1024
 _SIGNATURE_IMAGE_TYPES = {
     "image/png": (".png", b"\x89PNG\r\n\x1a\n"),
     "image/jpeg": (".jpg", b"\xff\xd8\xff"),
@@ -198,14 +199,16 @@ class SignatureFileStore:
         except OSError as exc:
             raise SignatureStorageError("Unable to delete signature version") from exc
 
-    def write_image(self, payload: bytes, content_type: str) -> str:
+    def write_image(self, payload: bytes, content_type: str, *, max_bytes: int = DEFAULT_SIGNATURE_IMAGE_BYTES) -> str:
         """Persist a bounded immutable PNG/JPEG/GIF asset and return its hash filename."""
         if not isinstance(payload, (bytes, bytearray)):
             raise TypeError("image payload must be bytes")
         payload = bytes(payload)
         if not payload:
             raise SignatureStorageError("Signature image is empty")
-        if len(payload) > MAX_SIGNATURE_IMAGE_BYTES:
+        if max_bytes not in (DEFAULT_SIGNATURE_IMAGE_BYTES, MAX_SIGNATURE_IMAGE_BYTES):
+            raise ValueError("Invalid image upload size limit")
+        if len(payload) > max_bytes:
             raise SignatureStorageError("Signature image exceeds the maximum allowed size")
 
         normalized_type = (content_type or "").split(";", 1)[0].strip().lower()

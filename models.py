@@ -233,6 +233,7 @@ class BrandingSettingsDB(Base):
     id = Column(Integer, primary_key=True)
     app_name = Column(String(120), nullable=False, default="OpenSigWeave")
     app_color = Column(String(7), nullable=False, default="#ff7043")
+    large_image_uploads = Column(Boolean, nullable=False, default=False)
     logo_png = Column(LargeBinary, nullable=True)
     dark_logo_png = Column(LargeBinary, nullable=True)
     favicon_data = Column(LargeBinary, nullable=True)

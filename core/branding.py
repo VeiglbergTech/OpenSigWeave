@@ -36,6 +36,8 @@ def branding_context(db: Session) -> dict:
         "app_color": (settings.app_color if settings is not None else DEFAULT_APP_COLOR) or DEFAULT_APP_COLOR,
         "has_logo": custom_logo or custom_dark_logo or has_builtin_logo,
         "has_favicon": custom_favicon or BUILTIN_FAVICON_PATH.is_file() or has_builtin_logo,
+        "large_image_uploads": bool(settings.large_image_uploads) if settings is not None else False,
+        "image_upload_limit_mib": 12 if settings is not None and settings.large_image_uploads else 6,
         "has_custom_logo": custom_logo,
         "has_custom_dark_logo": custom_dark_logo,
         "has_custom_favicon": custom_favicon,

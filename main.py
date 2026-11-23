@@ -61,7 +61,7 @@ from core.branding import (
     BUILTIN_FAVICON_PATH,
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
-from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES
+from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES, DEFAULT_SIGNATURE_IMAGE_BYTES
 from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
@@ -310,9 +310,10 @@ class BackupActionRequest(BaseModel):
 class BrandingUpdateRequest(BaseModel):
     app_name: str = Field(min_length=1, max_length=120)
     app_color: str = Field(min_length=7, max_length=7)
-    logo_data_url: Optional[str] = Field(default=None, max_length=900000)
-    dark_logo_data_url: Optional[str] = Field(default=None, max_length=900000)
-    favicon_data_url: Optional[str] = Field(default=None, max_length=500000)
+    logo_data_url: Optional[str] = Field(default=None, max_length=17_000_000)
+    dark_logo_data_url: Optional[str] = Field(default=None, max_length=17_000_000)
+    favicon_data_url: Optional[str] = Field(default=None, max_length=17_000_000)
+    large_image_uploads: Optional[bool] = None
     reset_logo: bool = False
     reset_dark_logo: bool = False
     reset_favicon: bool = False
@@ -482,7 +483,7 @@ app.add_middleware(
         "/api/admin/imports/apply": MAX_EXPORT_BYTES,
         # Branding uploads are base64-encoded in JSON; keep a bounded budget
         # above the combined validated binary logo/favicon limits.
-        "/api/admin/branding": 2 * 1024 * 1024,
+        "/api/admin/branding": 51 * 1024 * 1024,
         "/api/admin/signature-assets": MAX_SIGNATURE_IMAGE_BYTES,
         # MTA hooks carry the complete message, including MIME attachments.
         "/api/v1/adapters/stalwart/mta-hook": 20 * 1024 * 1024,
@@ -1814,6 +1815,8 @@ def update_admin_branding(
         db.add(settings)
     settings.app_name = payload.app_name.strip()
     settings.app_color = payload.app_color.lower()
+    allow_large = settings.large_image_uploads if payload.large_image_uploads is None else payload.large_image_uploads
+    image_limit = MAX_SIGNATURE_IMAGE_BYTES if allow_large else DEFAULT_SIGNATURE_IMAGE_BYTES
 
     try:
         if payload.reset_logo:
@@ -1822,7 +1825,7 @@ def update_admin_branding(
             logo, _mime = decode_branding_data_url(
                 payload.logo_data_url,
                 allowed_mimes={"image/png"},
-                max_bytes=512 * 1024,
+                max_bytes=image_limit,
             )
             settings.logo_png = logo
 
@@ -1832,7 +1835,7 @@ def update_admin_branding(
             dark_logo, _mime = decode_branding_data_url(
                 payload.dark_logo_data_url,
                 allowed_mimes={"image/png"},
-                max_bytes=512 * 1024,
+                max_bytes=image_limit,
             )
             settings.dark_logo_png = dark_logo
 
@@ -1843,10 +1846,11 @@ def update_admin_branding(
             favicon, favicon_mime = decode_branding_data_url(
                 payload.favicon_data_url,
                 allowed_mimes={"image/png", "image/x-icon", "image/vnd.microsoft.icon"},
-                max_bytes=256 * 1024,
+                max_bytes=image_limit,
             )
             settings.favicon_data = favicon
             settings.favicon_mime = "image/x-icon" if favicon_mime in {"image/x-icon", "image/vnd.microsoft.icon"} else "image/png"
+        settings.large_image_uploads = allow_large
         db.commit()
     except ValueError as exc:
         db.rollback()
@@ -1874,6 +1878,7 @@ def reset_admin_branding(request: Request, db: Session = Depends(get_db)):
         db.add(settings)
     settings.app_name = DEFAULT_APP_NAME
     settings.app_color = DEFAULT_APP_COLOR
+    settings.large_image_uploads = False
     settings.logo_png = None
     settings.dark_logo_png = None
     settings.favicon_data = None
@@ -1942,12 +1947,13 @@ async def apply_admin_import_endpoint(request: Request, db: Session = Depends(ge
 
 
 @app.post("/api/admin/signature-assets", status_code=201)
-async def upload_signature_asset(request: Request):
+async def upload_signature_asset(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     content_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+    image_limit = MAX_SIGNATURE_IMAGE_BYTES if branding_context(db)["large_image_uploads"] else DEFAULT_SIGNATURE_IMAGE_BYTES
     try:
-        filename = signature_file_store.write_image(await request.body(), content_type)
+        filename = signature_file_store.write_image(await request.body(), content_type, max_bytes=image_limit)
     except (SignatureStorageError, TypeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"url": f"/signature-assets/{filename}"}
@@ -1958,11 +1964,12 @@ class ImageUrlImportRequest(BaseModel):
 
 
 @app.post("/api/admin/signature-assets/import-url", status_code=201)
-def import_signature_asset_url(request: Request, payload: ImageUrlImportRequest):
+def import_signature_asset_url(request: Request, payload: ImageUrlImportRequest, db: Session = Depends(get_db)):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
     try:
-        filename = import_image_from_url(signature_file_store, payload.url)
+        image_limit = MAX_SIGNATURE_IMAGE_BYTES if branding_context(db)["large_image_uploads"] else DEFAULT_SIGNATURE_IMAGE_BYTES
+        filename = import_image_from_url(signature_file_store, payload.url, max_bytes=image_limit)
     except SignatureImageImportError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return {"url": f"/signature-assets/{filename}"}
