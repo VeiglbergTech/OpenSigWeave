@@ -488,7 +488,7 @@ async function main() {
     // Without an installed root-side operator, the backup tab must fail closed.
     await page.getByRole("button", { name: "Backups", exact: true }).click();
     const backupPanel = page.locator('[x-data="backupManager"]');
-    await backupPanel.getByText(/host backup service|requires the protected host backup operator/i).first().waitFor();
+    await backupPanel.getByText(/Backup Rules cannot run|protected host backup operator is unavailable/i).first().waitFor();
     await expectBackupActionsDisabled();
     async function expectBackupActionsDisabled() {
       assert.equal(await backupPanel.getByRole("button", { name: "Create backup" }).isDisabled(), true);
