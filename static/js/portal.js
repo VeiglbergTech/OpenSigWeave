@@ -49,7 +49,7 @@ window.fetch = (resource, options = {}) => {
                 insertImage(url) {
                     const asset = new URL(url, window.location.origin);
                     if (asset.origin !== window.location.origin ||
-                        !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
+                        !/^\/signature-assets\/[a-f0-9]{64}\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
                         asset.search || asset.hash) throw new Error("Only managed signature images are allowed.");
                     this.insertText('<img src="' + asset.pathname + '" alt="">');
                 },
