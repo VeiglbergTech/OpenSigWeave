@@ -1,8 +1,7 @@
-"""Durable backup rules, UTC scheduling and encrypted destination publication.
+"""Durable backup rules, UTC scheduling, in-container snapshots and publication.
 
-The web process cannot access Docker, the age private identity, or unencrypted
-archives. The restricted host operator performs the consistent full snapshot;
-this process transfers its verified ciphertext only after the app restarts.
+No host backup operator, privileged container, Docker socket or host SMB mount
+is needed for manual or scheduled rule-managed backups.
 """
 from __future__ import annotations
 
@@ -17,7 +16,7 @@ import uuid
 
 from sqlalchemy import update
 
-from backup_control_client import BackupControlError, backup_request, backup_managed_download
+from backup_engine import BackupEngineError, create_application_backup
 from backup_locations import BackupLocationError, ensure_local_directory, decrypt_password, _smb_unc
 from database import SessionLocal
 from models import BackupLocationDB, BackupRuleDB, BackupRunDB, BackupRuntimeDB
@@ -181,16 +180,12 @@ def reserve_run(db, rule: BackupRuleDB, location: BackupLocationDB, trigger: str
 
 
 def dispatch_run(db, run: BackupRunDB):
-    try:
-        response = backup_request("managed-create", run_id=run.id)
-        state = response.get("job", {}).get("state")
-        if state not in {"pending", "running", "success"}:
-            raise BackupControlError("Host backup operator rejected the run")
-        run.status = "running"
-        run.started_at = utc()
-        db.commit()
-    except BackupControlError:
-        _failed(db, run, "The protected host backup operator is unavailable or busy")
+    """Queue a durable run for the application scheduler.
+
+    No host socket call is made. The pending state survives a web restart.
+    """
+    run.status = "pending"
+    db.commit()
 
 
 def _archive_key(run: BackupRunDB) -> str:
@@ -308,28 +303,25 @@ def _smb_publish(location, key, blocks, size, sha):
         raise BackupRuleError("SMB destination is unavailable or refused the encrypted backup") from None
 
 
-def publish_run(run: BackupRunDB, location: BackupLocationDB, status: dict):
-    expected_size, expected_sha = status.get("size"), status.get("sha256")
-    if (type(expected_size) is not int or expected_size <= 0 or
-            not isinstance(expected_sha, str) or not re.fullmatch(r"[0-9a-f]{64}", expected_sha)):
-        raise BackupRuleError("Host returned invalid encrypted archive metadata")
-    size, blocks = backup_managed_download(run.id)
-    if size != expected_size:
-        raise BackupRuleError("Host archive size changed during transfer")
+def publish_run(run: BackupRunDB, location: BackupLocationDB):
+    """Build and cryptographically verify ciphertext before atomic publication."""
     key = _archive_key(run)
-    try:
-        if location.type == "local":
-            _local_publish(location, key, blocks, size, expected_sha)
-        elif location.type == "smb":
-            _smb_publish(location, key, blocks, size, expected_sha)
-        else:
-            raise BackupRuleError("Unsupported backup location type")
-    finally:
-        # The socket stream must always be closed, even for an already
-        # transferred and verified destination archive.
-        blocks.close()
-    return key, size, expected_sha
 
+    def deliver(encrypted, size, digest):
+        def stream():
+            with encrypted.open("rb") as source:
+                for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                    yield chunk
+
+        if location.type == "local":
+            _local_publish(location, key, stream(), size, digest)
+        elif location.type == "smb":
+            _smb_publish(location, key, stream(), size, digest)
+        else:
+            raise BackupRuleError("Unsupported backup destination type")
+
+    size, digest = create_application_backup(deliver)
+    return key, size, digest
 
 
 
@@ -431,6 +423,7 @@ def prune_rule(db, rule: BackupRuleDB, now: datetime | None = None):
 
 
 def reconcile_active(db, now: datetime | None = None):
+    """Execute one durable pending run and fail closed after interrupted work."""
     now = utc(now)
     lease = db.get(BackupRuntimeDB, 1)
     if lease is None or not lease.active_run_id:
@@ -442,39 +435,14 @@ def reconcile_active(db, now: datetime | None = None):
         return
     if run.status == "transferring":
         if run.transfer_started_at and utc(run.transfer_started_at) + TRANSFER_LEASE < now:
-            run.status = "running"
-            run.transfer_started_at = None
-            db.commit()
-        else:
-            return
-    try:
-        status = backup_request("managed-status", run_id=run.id).get("job", {})
-    except BackupControlError:
-        # Do not mislabel a host-side job as failed because Docker networking
-        # or the Unix socket is temporarily unavailable.
+            _failed(db, run, "Interrupted container backup; verify recovery before starting another")
         return
-    state = status.get("state")
-    if state == "missing":
-        if utc(run.requested_at) + PENDING_GRACE < now:
-            _failed(db, run, "Host backup job was never accepted")
-        return
-    if state == "failed":
-        _failed(db, run, status.get("error") if status.get("error") in {
-            "Host backup job was interrupted",
-            "Host could not create and verify the encrypted backup",
-        } else "Host backup job failed")
-        return
-    if state in {"pending", "running"}:
-        if run.status == "pending":
-            run.status = "running"
-            run.started_at = now
-            db.commit()
-        return
-    if state != "success":
+    if run.status != "pending":
+        _failed(db, run, "Unsupported or interrupted backup execution state")
         return
     claimed = db.execute(update(BackupRunDB).where(
-        BackupRunDB.id == run.id, BackupRunDB.status.in_(["pending", "running"])
-    ).values(status="transferring", started_at=run.started_at or now, transfer_started_at=now))
+        BackupRunDB.id == run.id, BackupRunDB.status == "pending"
+    ).values(status="transferring", started_at=now, transfer_started_at=now))
     if claimed.rowcount != 1:
         db.rollback()
         return
@@ -484,24 +452,25 @@ def reconcile_active(db, now: datetime | None = None):
         _failed(db, run, "Backup location was removed")
         return
     try:
-        key, size, sha = publish_run(run, location, status)
-        run.file_key, run.size_bytes, run.archive_sha256 = key, size, sha
+        key, size, digest = publish_run(run, location)
+        run.file_key, run.size_bytes, run.archive_sha256 = key, size, digest
         run.status, run.finished_at, run.error_detail = "success", utc(), None
         _release(db, run.id)
         db.commit()
-        try:
-            backup_request("managed-ack", run_id=run.id)
-        except BackupControlError:
-            LOG.warning("Host spool acknowledgement could not be completed for %s", run.id)
         rule = db.get(BackupRuleDB, run.rule_id) if run.rule_id else None
         if rule:
             try:
                 prune_rule(db, rule)
             except (OSError, BackupRuleError, BackupLocationError):
                 LOG.warning("Retention failed for backup rule %s", rule.id)
-    except (BackupControlError, BackupRuleError, BackupLocationError, OSError):
+    except (BackupEngineError, BackupRuleError, BackupLocationError, OSError):
         db.rollback()
-        _failed(db, run, "Encrypted backup transfer or destination verification failed")
+        _failed(db, run, "Container backup, encryption or destination verification failed")
+    except Exception:
+        # Never log raw library exceptions: SMB and crypto errors may contain secrets.
+        db.rollback()
+        _failed(db, run, "Container backup failed unexpectedly")
+
 
 
 def run_scheduler_tick(now: datetime | None = None):
@@ -538,8 +507,6 @@ _worker_thread: threading.Thread | None = None
 def start_scheduler():
     global _worker_thread
     if os.environ.get("BACKUP_RULE_SCHEDULER_ENABLED", "true").lower() != "true":
-        return
-    if not os.environ.get("BACKUP_CONTROL_SOCKET"):
         return
     if _worker_thread is not None and _worker_thread.is_alive():
         return
