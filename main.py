@@ -244,6 +244,7 @@ class SignatureRuleConditionRequest(BaseModel):
         "group_contains",
         "claim_equals", "claim_not_equals",
         "attribute_equals", "attribute_not_equals",
+        "time_window",
     ]
     key: str = Field(default="", max_length=255)
     value: str = Field(min_length=1, max_length=4096)
@@ -2482,6 +2483,51 @@ def delete_signature_schedule(schedule_id: str, request: Request, db: Session = 
     return {"status": "deleted"}
 
 
+@app.post("/api/admin/schedules/{schedule_id}/convert-rule", status_code=201)
+def convert_legacy_schedule_to_rule(
+    schedule_id: str, payload: SignatureRuleCreateRequest,
+    request: Request, db: Session = Depends(get_db),
+):
+    """Replace a legacy schedule and insert a timed rule in one transaction."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    old = db.get(SignatureScheduleDB, schedule_id)
+    if old is None:
+        raise HTTPException(status_code=404, detail="Schedule not found")
+    _validate_rule_time_windows(payload.conditions)
+    if not any(item.kind == "time_window" for item in payload.conditions):
+        raise HTTPException(status_code=422, detail="A time window is required")
+    if payload.action_mode == "GROUP":
+        target = db.get(SignatureGroupDB, payload.group_id) if payload.group_id and not payload.signature_id else None
+        if target is None or not target.is_active:
+            raise HTTPException(status_code=422, detail="Active target group not found")
+    elif payload.action_mode == "SIGNATURE":
+        target = db.get(SignatureDB, payload.signature_id) if payload.signature_id and not payload.group_id else None
+        if target is None or not target.is_active:
+            raise HTTPException(status_code=422, detail="Active target signature not found")
+    elif payload.signature_id or payload.group_id:
+        raise HTTPException(status_code=422, detail="NONE rules cannot target a signature or group")
+    rule = SignatureRuleDB(
+        id=uuid.uuid4().hex, name=payload.name.strip(),
+        priority=payload.priority, action_mode=payload.action_mode,
+        signature_id=payload.signature_id, group_id=payload.group_id,
+        is_enabled=payload.is_enabled,
+    )
+    try:
+        db.add(rule)
+        db.flush()
+        db.add_all([
+            SignatureRuleConditionDB(rule_id=rule.id, kind=c.kind, key=c.key, value=c.value)
+            for c in payload.conditions
+        ])
+        db.delete(old)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {"id": rule.id, "status": "converted"}
+
+
 @app.get("/api/admin/rules")
 def list_signature_rules(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request):
@@ -2512,6 +2558,21 @@ def list_signature_rules(request: Request, db: Session = Depends(get_db)):
     ]
 
 
+def _validate_rule_time_windows(conditions: List[SignatureRuleConditionRequest]) -> None:
+    windows = [condition for condition in conditions if condition.kind == "time_window"]
+    if len(windows) > 1:
+        raise HTTPException(status_code=422, detail="Only one time window is allowed")
+    for condition in windows:
+        try:
+            start = datetime.fromisoformat(condition.key.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(condition.value.replace("Z", "+00:00"))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=422, detail="Invalid time window")
+        if (start.tzinfo is None or start.utcoffset() is None or
+                end.tzinfo is None or end.utcoffset() is None or start >= end):
+            raise HTTPException(status_code=422, detail="Time window must use ordered timezone-aware dates")
+
+
 @app.post("/api/admin/rules", status_code=201)
 def create_signature_rule(
     payload: SignatureRuleCreateRequest,
@@ -2520,6 +2581,7 @@ def create_signature_rule(
 ):
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
+    _validate_rule_time_windows(payload.conditions)
     if payload.action_mode == "GROUP":
         if not payload.group_id or payload.signature_id:
             raise HTTPException(status_code=422, detail="GROUP rules require group_id only")
@@ -2576,6 +2638,7 @@ def update_signature_rule(
     rule = db.get(SignatureRuleDB, rule_id)
     if rule is None:
         raise HTTPException(status_code=404, detail="Rule not found")
+    _validate_rule_time_windows(payload.conditions)
     if payload.action_mode == "GROUP":
         if not payload.group_id or payload.signature_id:
             raise HTTPException(status_code=422, detail="GROUP rules require group_id only")

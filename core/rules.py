@@ -1,5 +1,6 @@
 """Deterministic rule evaluation for sender and identity attributes."""
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
 
@@ -10,6 +11,7 @@ class RuleContext:
     groups: frozenset[str] = frozenset()
     claims: Mapping[str, Any] = field(default_factory=dict)
     attributes: Mapping[str, Any] = field(default_factory=dict)
+    now: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,16 @@ def _not_matches_value(actual: Any, expected: str) -> bool:
 
 
 def condition_matches(condition: RuleCondition, context: RuleContext) -> bool:
+    if condition.kind == "time_window":
+        try:
+            start = datetime.fromisoformat(condition.key.replace("Z", "+00:00"))
+            end = datetime.fromisoformat(condition.value.replace("Z", "+00:00"))
+            now = context.now or datetime.now(timezone.utc)
+            if any(value.tzinfo is None or value.utcoffset() is None for value in (start, end, now)):
+                return False
+            return start <= now < end
+        except (ValueError, TypeError, AttributeError):
+            return False
     if condition.kind in ("sender_equals", "sender_not_equals"):
         equal = context.sender.casefold() == condition.value.casefold()
         return equal if condition.kind == "sender_equals" else not equal
@@ -71,5 +83,9 @@ def rule_matches(rule: SignatureRule, context: RuleContext) -> bool:
 
 def evaluate_rules(rules: Sequence[SignatureRule], context: RuleContext) -> SignatureRule | None:
     """Return the first matching rule by priority, with a stable ID tie-breaker."""
-    ordered = sorted(rules, key=lambda rule: (-rule.priority, rule.id))
+    ordered = sorted(rules, key=lambda rule: (
+        -int(any(item.kind == "time_window" and condition_matches(item, context)
+                 for item in rule.conditions)),
+        -rule.priority, rule.id
+    ))
     return next((rule for rule in ordered if rule_matches(rule, context)), None)
