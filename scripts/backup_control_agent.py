@@ -313,6 +313,8 @@ def _managed_queue(run_id):
             return {"job": existing}
         if current_job["state"] in {"pending", "running"}:
             raise OperatorError("A backup operation is already running")
+        if not _managed_readiness()["managed_available"]:
+            raise OperatorError("Protected host backup configuration is incomplete")
         # Serialize managed and legacy backup jobs with the same host lock.
         current_job.update({"state": "pending", "action": "managed-create", "id": run_id, "error": None})
         _write_private(record, json.dumps({"run_id": run_id, "state": "pending"}))
@@ -455,6 +457,28 @@ def _queue(action, name=None, confirm=None):
         return {"job": dict(current_job)}
 
 
+def _managed_readiness():
+    """Report mandatory host prerequisites without exposing credential values."""
+    recipient = os.environ.get("AGE_RECIPIENT", "")
+    identity_value = os.environ.get("AGE_IDENTITY", "")
+    if not recipient or recipient.startswith("REPLACE_") or not identity_value:
+        return {"managed_available": False, "managed_error": "Host age encryption settings are incomplete"}
+    identity = Path(identity_value)
+    try:
+        info = identity.lstat()
+        if not stat.S_ISREG(info.st_mode) or stat.S_IMODE(info.st_mode) & 0o077:
+            return {"managed_available": False, "managed_error": "Protected age identity is missing or has unsafe permissions"}
+    except OSError:
+        return {"managed_available": False, "managed_error": "Protected age identity is missing or has unsafe permissions"}
+    if not (PROJECT_DIR / "backup_cli.py").is_file():
+        return {"managed_available": False, "managed_error": "Host backup command is missing"}
+    try:
+        _managed_dir()
+    except OperatorError:
+        return {"managed_available": False, "managed_error": "Protected host backup spool is unavailable"}
+    return {"managed_available": True, "managed_error": None}
+
+
 def _dispatch(request):
     action = request.get("action")
     if action == "status":
@@ -464,14 +488,14 @@ def _dispatch(request):
             settings = _settings()
         except OperatorError as exc:
             return {"available": False, "mount_ready": False, "settings": _default_settings(),
-                    "backups": [], "job": state, "error": str(exc)}
+                    "backups": [], "job": state, "error": str(exc), **_managed_readiness()}
         try:
             directory = _validated_directory(settings["directory"])
             return {"available": True, "mount_ready": True, "settings": settings,
-                    "backups": _entries(directory), "job": state}
+                    "backups": _entries(directory), "job": state, **_managed_readiness()}
         except OperatorError as exc:
             return {"available": True, "mount_ready": False, "settings": settings,
-                    "backups": [], "job": state, "error": str(exc)}
+                    "backups": [], "job": state, "error": str(exc), **_managed_readiness()}
     if action == "managed-create":
         return _managed_queue(request.get("run_id"))
     if action == "managed-status":
