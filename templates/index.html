@@ -655,7 +655,7 @@
             </div>
         </section>
         </div>
-        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="fetchAll(); startPolling()" class="osw-admin-section space-y-5">
+        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="init()" class="osw-admin-section space-y-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <h2 class="text-xl font-semibold">Backup management</h2>
                 <button type="button" @click="fetchAll()" :disabled="loading || busy" class="rounded bg-gray-700 px-4 py-2 text-sm disabled:opacity-50" x-text="loading ? 'Loading…' : 'Refresh'"></button>
@@ -745,7 +745,7 @@
             <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
                     <h3 class="text-lg font-semibold">Backup Rules</h3>
-                    <button type="button" @click="openRule()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500" :disabled="!locations.some(item => item.enabled)">+ Add Backup Rule</button>
+                    <button type="button" @click="openRule()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500" :disabled="!hasEnabledLocations">+ Add Backup Rule</button>
                 </div>
                 <div class="flex flex-wrap gap-3">
                     <input type="search" aria-label="Search backup rules" x-model="ruleFilter" placeholder="Search rules…" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm min-w-[14rem]">
@@ -905,19 +905,19 @@
                                 <button type="button" class="osw-modal-dismiss" @click="historyDetail = null" aria-label="Close dialog">&times;</button>
                             </div>
                             <div class="osw-modal-body text-sm space-y-3" x-show="historyDetail">
-                                <div><strong>Rule:</strong> <span x-text="historyDetail?.rule_name"></span></div>
-                                <div><strong>Location:</strong> <span x-text="historyDetail?.location_name"></span></div>
-                                <div><strong>Trigger:</strong> <span class="capitalize" x-text="historyDetail?.trigger"></span></div>
+                                <div><strong>Rule:</strong> <span x-text="detailValue('rule_name')"></span></div>
+                                <div><strong>Location:</strong> <span x-text="detailValue('location_name')"></span></div>
+                                <div><strong>Trigger:</strong> <span class="capitalize" x-text="detailValue('trigger')"></span></div>
                                 <div><strong>Content:</strong> Full encrypted backup</div>
-                                <div><strong>Status:</strong> <span class="capitalize" x-text="historyDetail?.status"></span></div>
-                                <div><strong>Started:</strong> <span x-text="historyDetail?.started_at ? formatDate(historyDetail.started_at) : '—'"></span></div>
-                                <div><strong>Finished:</strong> <span x-text="historyDetail?.finished_at ? formatDate(historyDetail.finished_at) : '—'"></span></div>
-                                <div><strong>Duration:</strong> <span x-text="historyDetail?.duration_seconds === null ? '—' : historyDetail?.duration_seconds + ' s'"></span></div>
-                                <div><strong>Size:</strong> <span x-text="formatSize(historyDetail?.size_bytes)"></span></div>
-                                <div><strong>Archive:</strong> <code class="break-all" x-text="historyDetail?.file_key || '—'"></code></div>
-                                <div x-show="historyDetail?.status === 'success' && historyDetail?.is_retained"><a :href="'/api/admin/backups/history/' + encodeURIComponent(historyDetail.id) + '/download'" download class="text-blue-400 hover:text-blue-300">Download encrypted archive</a></div>
-                                <div><strong>Retained:</strong> <span x-text="historyDetail?.is_retained ? 'Yes' : 'No'"></span></div>
-                                <p x-show="historyDetail?.error_detail" class="text-red-300 break-words" x-text="historyDetail?.error_detail"></p>
+                                <div><strong>Status:</strong> <span class="capitalize" x-text="detailValue('status')"></span></div>
+                                <div><strong>Started:</strong> <span x-text="detailDate('started_at')"></span></div>
+                                <div><strong>Finished:</strong> <span x-text="detailDate('finished_at')"></span></div>
+                                <div><strong>Duration:</strong> <span x-text="detailDuration()"></span></div>
+                                <div><strong>Size:</strong> <span x-text="detailSize()"></span></div>
+                                <div><strong>Archive:</strong> <code class="break-all" x-text="detailValue('file_key')"></code></div>
+                                <div x-show="canDownloadHistory"><a :href="historyDownloadUrl" download class="text-blue-400 hover:text-blue-300">Download encrypted archive</a></div>
+                                <div><strong>Retained:</strong> <span x-text="detailRetained()"></span></div>
+                                <p x-show="hasHistoryError" class="text-red-300 break-words" x-text="detailValue('error_detail')"></p>
                             </div>
                             <div class="osw-modal-footer">
                                 <button type="button" @click="historyDetail = null" class="rounded bg-gray-700 px-4 py-2 text-sm">Close</button>
