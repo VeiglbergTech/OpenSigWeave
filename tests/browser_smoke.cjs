@@ -788,6 +788,27 @@ async function main() {
     assert.equal(await importPreviewButton.isDisabled(), true, "no archive selected must disable validation");
     await importPanel.getByText("No file selected", { exact: true }).waitFor({ state: "visible" });
     checkpoint("import preview: complete");
+    const formattingSample = await page.evaluate(async () => {
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      let instance;
+      try {
+        instance = await window.OpenSigWeaveEditor.create(host, {
+          initialData: '<p><span style="font-size: 14px; font-family: Arial, Helvetica, sans-serif;">' +
+            'Pixel font</span> <span style="font-size: 17px; font-family: Georgia, serif;">Custom</span></p>'
+        });
+        return instance.getData();
+      } finally {
+        if (instance) await instance.destroy();
+        host.remove();
+      }
+    });
+    assert.match(formattingSample, /font-size:\s*14px/i,
+      "font size must be serialized as an inline px style");
+    assert.match(formattingSample, /font-size:\s*17px/i,
+      "custom px sizes from existing signatures must survive editor loading");
+    assert.match(formattingSample, /font-family:\s*Arial/i,
+      "email-safe font family must survive editor loading");
     const signaturePanel = page.locator('[x-data="signatureManager"]');
     await page.getByRole("button", { name: "Signatures", exact: true }).click();
     await signaturePanel.getByRole("button", { name: "+ Add Signature" }).click();
@@ -822,6 +843,10 @@ async function main() {
     const darkFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
     await fontFamilyControl.press("Escape");
     assert.equal(await signatureDialog.isVisible(), true, "Escape must dismiss only the font list, not the dialog");
+    await fontFamilyControl.click();
+    assert.equal(await fontToolbar.locator(".osw-font-listbox").isVisible(), true,
+      "clicking a focused font input must reopen the menu after Escape");
+    await fontFamilyControl.press("Escape");
     assert.notEqual(lightFontMenuBg, darkFontMenuBg,
       "font list must use different theme surfaces in light and dark appearance");
     await captureTheme("signature-editor-dark");
@@ -863,27 +888,7 @@ async function main() {
       }, theme);
       assert.ok(contrast >= 4.5, "font size toolbar contrast in " + theme);
     }
-    const formattingSample = await page.evaluate(async () => {
-      const host = document.createElement("div");
-      document.body.appendChild(host);
-      let instance;
-      try {
-        instance = await window.OpenSigWeaveEditor.create(host, {
-          initialData: '<p><span style="font-size: 14px; font-family: Arial, Helvetica, sans-serif;">' +
-            'Pixel font</span> <span style="font-size: 17px; font-family: Georgia, serif;">Custom</span></p>'
-        });
-        return instance.getData();
-      } finally {
-        if (instance) await instance.destroy();
-        host.remove();
-      }
-    });
-    assert.match(formattingSample, /font-size:\s*14px/i,
-      "font size must be serialized as an inline px style");
-    assert.match(formattingSample, /font-size:\s*17px/i,
-      "custom px sizes from existing signatures must survive editor loading");
-    assert.match(formattingSample, /font-family:\s*Arial/i,
-      "email-safe font family must survive editor loading");
+    assert.equal(await signatureDialog.isVisible(), true, "signature dialog must remain open throughout font interactions");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
     await signatureCreateEditor.fill("Browser smoke version 1");
