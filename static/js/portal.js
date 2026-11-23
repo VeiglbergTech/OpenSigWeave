@@ -1486,11 +1486,146 @@ function backupManager() {
             }
         },
 
+
+        rules: [], history: [], ruleModal: false, ruleEditingId: null, ruleSaving: false,
+        ruleFilter: "", historyStatus: "", historyRule: "", historyDetail: null,
+        ruleForm: { name: "", description: "", enabled: true, location_id: "", content: "full",
+            schedule_kind: "daily", hour: 2, minute: 0, weekday: 0, monthday: 1,
+            interval_minutes: 1440, timezone: "UTC", retention_count: 14, retention_days: null },
+        get filteredRules() {
+            const text = this.ruleFilter.trim().toLowerCase();
+            return this.rules.filter(item => !text || (item.name + " " + item.location_name).toLowerCase().includes(text));
+        },
+        get filteredHistory() {
+            return this.history.filter(item => (!this.historyStatus || item.status === this.historyStatus)
+                && (!this.historyRule || item.rule_id === this.historyRule));
+        },
+        async fetchRules() {
+            try {
+                const response = await fetch(endpoint + "/rules", { credentials: "same-origin", cache: "no-store" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Could not load backup rules");
+                this.rules = Array.isArray(data) ? data : [];
+            } catch (error) {
+                this.error = error.message || "Could not load backup rules";
+            }
+        },
+        async fetchHistory() {
+            try {
+                const response = await fetch(endpoint + "/history?limit=200", { credentials: "same-origin", cache: "no-store" });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Could not load backup history");
+                this.history = Array.isArray(data) ? data : [];
+            } catch (error) {
+                this.error = error.message || "Could not load backup history";
+            }
+        },
+        defaultRule() {
+            return { name: "", description: "", enabled: true,
+                location_id: this.locations.find(item => item.enabled)?.id || "",
+                content: "full", schedule_kind: "daily", hour: 2, minute: 0, weekday: 0,
+                monthday: 1, interval_minutes: 1440, timezone: "UTC",
+                retention_count: 14, retention_days: null };
+        },
+        openRule(item = null) {
+            this.ruleEditingId = item?.id || null;
+            this.ruleForm = item ? { ...this.defaultRule(), ...item } : this.defaultRule();
+            this.ruleModal = true;
+        },
+        closeRule() {
+            if (!this.ruleSaving) this.ruleModal = false;
+        },
+        rulePayload(item) {
+            return {
+                name: item.name, description: item.description || "", enabled: !!item.enabled,
+                location_id: item.location_id, content: "full", schedule_kind: item.schedule_kind,
+                hour: Number(item.hour), minute: Number(item.minute), weekday: Number(item.weekday),
+                monthday: Number(item.monthday), interval_minutes: Number(item.interval_minutes),
+                timezone: "UTC",
+                retention_count: item.retention_count === null || item.retention_count === "" ? null : Number(item.retention_count),
+                retention_days: item.retention_days === null || item.retention_days === "" ? null : Number(item.retention_days)
+            };
+        },
+        async saveRule() {
+            if (this.ruleSaving) return;
+            this.ruleSaving = true;
+            this.error = "";
+            try {
+                const path = this.ruleEditingId ? "/rules/" + encodeURIComponent(this.ruleEditingId) : "/rules";
+                const response = await fetch(endpoint + path, {
+                    method: this.ruleEditingId ? "PUT" : "POST", credentials: "same-origin",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(this.rulePayload(this.ruleForm))
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Could not save backup rule");
+                this.ruleModal = false;
+                await this.fetchRules();
+                notify("Backup rule saved.");
+            } catch (error) {
+                this.error = error.message || "Could not save backup rule";
+            } finally {
+                this.ruleSaving = false;
+            }
+        },
+        async toggleRule(item) {
+            const response = await fetch(endpoint + "/rules/" + encodeURIComponent(item.id), {
+                method: "PUT", credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(this.rulePayload({ ...item, enabled: !item.enabled }))
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) { this.error = data.detail || "Could not change backup rule"; return; }
+            await this.fetchRules();
+        },
+        async deleteRule(item) {
+            if (!await oswAskConfirmation({
+                title: "Delete backup rule?",
+                message: "Delete " + item.name + "? Run history and existing encrypted backups are preserved."
+            })) return;
+            const response = await fetch(endpoint + "/rules/" + encodeURIComponent(item.id), {
+                method: "DELETE", credentials: "same-origin"
+            });
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) { this.error = data.detail || "Could not delete backup rule"; return; }
+            await this.fetchRules();
+            await this.fetchHistory();
+            notify("Backup rule deleted.");
+        },
+        async runRule(item) {
+            const result = await this.action("/rules/" + encodeURIComponent(item.id) + "/run");
+            await this.fetchHistory();
+            if (result) {
+                if (result.status === "failed") {
+                    this.error = result.error_detail || "Backup could not start";
+                    notify(this.error, "error");
+                } else {
+                    notify("Backup queued. The application may briefly disconnect during the snapshot.");
+                }
+            }
+        },
+        openHistoryDetails(item) {
+            this.historyDetail = item;
+        },
+        startPolling() {
+            this.backupPoll = setInterval(() => {
+                if (!this.loading && !this.busy && !this.ruleModal && !this.locationModal) {
+                    this.fetchRules();
+                    this.fetchHistory();
+                }
+            }, 20000);
+        },
+        destroy() {
+            if (this.backupPoll) clearInterval(this.backupPoll);
+        },
+
         async fetchAll() {
             if (this.loading) return;
             this.loading = true;
             this.error = "";
             await this.fetchLocations();
+            await this.fetchRules();
+            await this.fetchHistory();
             try {
                 const response = await fetch(endpoint, { credentials: "same-origin", cache: "no-store" });
                 const result = await response.json().catch(() => ({}));
