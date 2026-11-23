@@ -1741,15 +1741,15 @@ async function main() {
     const ssoProviderPanel = page.locator('[x-data="identityProviderManager"]');
     await ssoProviderPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
     const ssoProviderDialog = ssoProviderPanel.locator('[x-show="editing"][role="dialog"]');
-    await ssoProviderDialog.getByLabel("Folder name / ID").fill("browser-smoke-login-provider");
-    await ssoProviderDialog.getByLabel("Display name").fill("Browser Smoke Login Provider");
-    await ssoProviderDialog.getByLabel("Provider type").selectOption("oidc");
+    await ssoProviderDialog.getByLabel("Provider ID").fill("browser-smoke-login-provider");
+    await ssoProviderDialog.getByLabel("Display Name").fill("Browser Smoke Login Provider");
+    await ssoProviderDialog.getByLabel("Provider Type").selectOption("oidc");
     const oidcFields = ssoProviderDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
-    await oidcFields.getByLabel("OIDC discovery URL").fill("https://idp.example.org/.well-known/openid-configuration");
-    await oidcFields.getByLabel("OIDC client ID").fill("browser-smoke-client");
-    await oidcFields.getByLabel("OIDC client secret").fill("browser-smoke-secret");
-    await oidcFields.getByLabel("OIDC scopes").fill("openid email profile groups");
-    await oidcFields.getByLabel("OIDC callback / redirect URI").fill("https://signatures.example.org/auth/browser-smoke-login-provider");
+    await oidcFields.getByLabel("OIDC Discovery URL").fill("https://idp.example.org/.well-known/openid-configuration");
+    await oidcFields.getByLabel("OIDC Client ID").fill("browser-smoke-client");
+    await oidcFields.getByLabel("OIDC Client Secret").fill("browser-smoke-secret");
+    await oidcFields.getByLabel("OIDC Scopes").fill("openid email profile groups");
+    await oidcFields.getByLabel("OIDC Callback / Redirect URI").fill("https://signatures.example.org/auth/browser-smoke-login-provider");
     const createSsoProvider = page.waitForResponse(response =>
       response.request().method() === "POST"
       && response.url().endsWith("/api/admin/identity-providers")
@@ -1798,18 +1798,18 @@ async function main() {
     await reloadedSsoDialog.waitFor({ state: "visible" });
     const reloadedOidcFields = reloadedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
     await reloadedOidcFields.waitFor({ state: "visible" });
-    assert.equal(await reloadedOidcFields.getByLabel("OIDC discovery URL").inputValue(),
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC Discovery URL").inputValue(),
       "https://idp.example.org/.well-known/openid-configuration");
-    assert.equal(await reloadedOidcFields.getByLabel("OIDC client ID").inputValue(), "browser-smoke-client");
-    assert.equal(await reloadedOidcFields.getByLabel("OIDC callback / redirect URI").inputValue(),
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC Client ID").inputValue(), "browser-smoke-client");
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC Callback / Redirect URI").inputValue(),
       "https://signatures.example.org/auth/browser-smoke-login-provider");
-    assert.equal(await reloadedOidcFields.getByLabel("OIDC client secret").inputValue(), "",
+    assert.equal(await reloadedOidcFields.getByLabel("OIDC Client Secret").inputValue(), "",
       "saved OIDC secrets must remain write-only in the browser");
 
     // Updating an existing OIDC provider intentionally leaves the write-only
     // client-secret input blank. The existing credential must be retained before
     // validation while changed non-secret settings persist across another reload.
-    await reloadedOidcFields.getByLabel("OIDC scopes").fill("openid email profile groups offline_access");
+    await reloadedOidcFields.getByLabel("OIDC Scopes").fill("openid email profile groups offline_access");
     const scopeUpdateRequest = page.waitForRequest(request =>
       request.method() === "PUT"
       && request.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
@@ -1839,9 +1839,9 @@ async function main() {
     await updatedSsoDialog.waitFor({ state: "visible" });
     const updatedOidcFields = updatedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
     await updatedOidcFields.waitFor({ state: "visible" });
-    assert.equal(await updatedOidcFields.getByLabel("OIDC scopes").inputValue(),
+    assert.equal(await updatedOidcFields.getByLabel("OIDC Scopes").inputValue(),
       "openid email profile groups offline_access");
-    assert.equal(await updatedOidcFields.getByLabel("OIDC client secret").inputValue(), "",
+    assert.equal(await updatedOidcFields.getByLabel("OIDC Client Secret").inputValue(), "",
       "OIDC client secret must remain write-only after update and reload");
     await updatedSsoDialog.press("Escape");
     await updatedSsoDialog.waitFor({ state: "hidden" });
@@ -1943,7 +1943,7 @@ async function main() {
     checkpoint("domain status lifecycle: complete");
     // Save domain policy settings, reload the UI, and verify persistence.
     domainRow = domainPanel.locator("tbody tr").filter({ hasText: "browser-smoke-domain.test" });
-    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     const domainSettings = page.locator('[x-data="domainSettingsModal"]');
     // The retired domain master editor is gone. Policy changes must preserve old data.
     assert.equal(await domainSettings.locator("#domain-rich-editor").count(), 0);
@@ -1961,7 +1961,7 @@ async function main() {
       "saving domain policy must not erase existing retired master-template data");
 
     // Exercise the administrator's per-user override editor and save workflow.
-    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     await domainSettings.getByRole("button", { name: "Users & Overrides", exact: true }).click();
     await domainSettings.getByRole("heading", { name: "Domain users" }).waitFor({ state: "visible" });
     const usersApi = await page.request.get(baseURL + "/api/admin/domains/" + createdDomain.id + "/users");
@@ -1969,7 +1969,7 @@ async function main() {
     assert.equal((await usersApi.json()).items.some(u => u.email === "nonexistent@browser-smoke-domain.test"), false,
       "domain users must not be invented");
     await domainSettings.getByPlaceholder("user@domain.com").fill("editor-smoke@browser-smoke-domain.test");
-    await domainSettings.getByRole("button", { name: "+ Add / Edit" }).click();
+    await domainSettings.getByRole("button", { name: "+ Add or Edit User" }).click();
     const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
     await adminEditor.waitFor({ state: "visible" });
     await adminEditor.fill("Administrator user override");
@@ -1985,7 +1985,7 @@ async function main() {
       && response.url().endsWith("/api/admin/overrides")
       && response.status() === 200
     );
-    await domainSettings.getByRole("button", { name: "Save User", exact: true }).click();
+    await domainSettings.getByRole("button", { name: "Save Changes", exact: true }).click();
     await saveAdminOverride;
     await domainSettings.getByText("editor-smoke@browser-smoke-domain.test", { exact: true }).first().waitFor();
     const refreshedUsers = await (await page.request.get(baseURL + "/api/admin/domains/" + createdDomain.id + "/users")).json();
@@ -1996,11 +1996,11 @@ async function main() {
     assert.ok(editorOverride, "administrator override must be persisted and returned by the domain API");
     assert.match(editorOverride.html_content, /<strong>Administrator user override<\/strong>/,
       "administrator override API must return the formatted HTML");
-    await domainSettings.getByRole("button", { name: "Close Manager", exact: true }).click();
-    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" });
     await allowOverridesLabel.click();
-    const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Enable Experimental Reply Injection" });
+    const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" });
     await replyInjectionLabel.click();
     const saveDomainSettingsResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
@@ -2025,13 +2025,13 @@ async function main() {
     assert.equal(await domainRow.locator("select").nth(0).inputValue(), "browser-smoke-profile-provider");
     assert.equal(await domainRow.locator("select").nth(1).inputValue(), "browser-smoke-login-provider",
       "login provider must remain selected after page reload");
-    await domainRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     const reloadedSettings = page.locator('[x-data="domainSettingsModal"]');
     await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
       .locator('input[type="checkbox"]').waitFor();
     assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Allow Users to Override Signature" })
       .locator('input[type="checkbox"]').isChecked(), false);
-    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Enable Experimental Reply Injection" })
+    assert.equal(await reloadedSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" })
       .locator('input[type="checkbox"]').isChecked(), true);
     await reloadedSettings.getByRole("button", { name: "Close", exact: true }).click();
 
@@ -2083,7 +2083,7 @@ async function main() {
         const providerSelector = '[x-data="identityProviderManager"] [role="dialog"]';
         await inspect(providerSelector, "identity-provider");
         if (width === 1440 && mode === "dark") {
-          await shell(providerSelector).getByLabel("Display name").fill("Unsaved");
+          await shell(providerSelector).getByLabel("Display Name").fill("Unsaved");
           await shell(providerSelector).getByRole("button", { name: "Cancel", exact: true }).click();
           const confirmation = visualPage.locator('[x-data="confirmModal"]');
           await confirmation.waitFor({ state: "visible" });
@@ -2093,7 +2093,7 @@ async function main() {
           await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
           await shell(providerSelector).waitFor({ state: "hidden" });
           await visualPage.getByRole("button", { name: "+ Add Identity Provider" }).click();
-          assert.equal(await shell(providerSelector).getByLabel("Display name").inputValue(), "", "reopening must reset draft");
+          assert.equal(await shell(providerSelector).getByLabel("Display Name").inputValue(), "", "reopening must reset draft");
         }
         await close(providerSelector);
         await nav("Signatures");
@@ -2156,7 +2156,7 @@ async function main() {
         await close(addDomainSelector);
         const row = visualPage.locator('[x-data="domainManager"] tbody tr')
           .filter({ hasText: "browser-smoke-domain.test" });
-        await row.getByRole("button", { name: "Settings & Users" }).click();
+        await row.getByRole("button", { name: "Manage Domain" }).click();
         const domainSelector = '[x-data="domainSettingsModal"] [role="dialog"]';
         await inspect(domainSelector, "domain-settings");
         await shell(domainSelector).getByRole("button", { name: "Users & Overrides" }).click();
@@ -2195,7 +2195,7 @@ async function main() {
     assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
       "mobile administrative view must not scroll horizontally: " + JSON.stringify(mobileLayout));
     const mobileRow = mobilePage.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
-    await mobileRow.getByRole("button", { name: "Settings & Users", exact: true }).click();
+    await mobileRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Users & Overrides", exact: true }).click();
     await mobilePage.getByRole("heading", { name: "Domain users" }).waitFor({ state: "visible" });
     const mobileOverlayOverflow = await mobilePage.evaluate(() => {
@@ -2206,7 +2206,7 @@ async function main() {
       "domain dialog overlay must not overflow horizontally: " + JSON.stringify(mobileOverlayOverflow));
     assert.equal(await mobilePage.evaluate(() => document.body.classList.contains("osw-overlay-open")), true,
       "opening a dialog must lock background scrolling");
-    await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Close Manager", exact: true }).click();
+    await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Close", exact: true }).click();
     await mobilePage.waitForFunction(() => !document.body.classList.contains("osw-overlay-open"));
     await mobileContext.close();
 
