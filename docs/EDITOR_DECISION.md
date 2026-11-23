@@ -6,8 +6,14 @@
 
 All active rich-text surfaces (personal signature, administrator override, versioned
 signature catalog) use `OpenSigWeaveEditor.create` from `static/js/rich-editor.js`.
-The wrapper owns one shared plugin list, toolbar layout, pixel font-size policy,
-font family list, native font controls, theme styles and HTML support configuration.
+The wrapper owns one shared plugin list, toolbar layout, font command policy,
+font family list, CKEditor-native font dropdowns, theme styles and HTML support configuration.
+The font family dropdown and combined font-size dropdown are CKEditor component-factory
+views in the editor toolbar, not an additional DOM toolbar. Font sizes offer
+8/9/10/11/12/14/16/18/20/24/28/32/36 pt presets plus a validated entry for
+6–96 pt (or explicit legacy px) including decimal values such as 17,5 pt.
+Unmodified legacy px and arbitrary supported inline sizes are preserved; newly
+selected sizes serialize to inline CSS in pt. Both dropdowns track the selection.
 `portal.js` only binds each editor to its authorized source textarea and workflow;
 it must not assemble independent CKEditor configurations.
 

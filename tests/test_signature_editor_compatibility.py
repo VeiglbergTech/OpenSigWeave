@@ -57,6 +57,20 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         self.assertRegex(rendered, r"font-size:\s*17px\b")
         self.assertIn("font-family", sanitize_signature_html(rendered))
 
+    def test_pt_and_fractional_font_sizes_survive_sanitization(self):
+        source = (
+            '<p><span style="font-size: 13pt;">Standard point size</span>'
+            '<span style="font-size: 17.5pt; font-family: Georgia, serif;">'
+            'Custom decimal</span><span style="font-size: 17px;">Legacy pixel</span></p>'
+        )
+        sanitized = sanitize_signature_html(source)
+        rendered = render_signature_template(sanitized, {})
+        for size in ("13pt", "17.5pt", "17px"):
+            with self.subTest(size=size):
+                self.assertIn(size, sanitized)
+                self.assertIn(size, rendered)
+        self.assertIn("font-family", sanitized)
+
     def test_links_have_non_underlined_inline_style_for_email_clients(self):
         source = (
             '<a href="https://example.org">Default link</a>'

@@ -430,57 +430,30 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 .ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
 .ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
 
-/* Shared CKEditor font controls, immediately above the CKEditor toolbar.
-   Native selectors remain usable in scrolling dialogs in either appearance. */
-.osw-editor-font-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: .5rem .75rem;
-    padding: .65rem .75rem;
-    background: var(--osw-panel);
-    border: 1px solid var(--osw-border);
-    border-bottom: 0;
-    border-radius: .3rem .3rem 0 0;
-    color: var(--osw-text);
+/* CKEditor component-factory font dropdowns; no external toolbar.
+   Keep sizes usable on narrow screens and in both themes. */
+.osw-rich-editor .osw-signature-family-dropdown .ck-dropdown__button {
+    min-width: 7rem;
+    max-width: 12rem;
 }
-.osw-editor-font-field {
-    display: flex;
-    flex: 1 1 9rem;
-    flex-direction: column;
-    gap: .3rem;
-    min-width: 0;
-    max-width: 100%;
-    font-size: .75rem;
-    font-weight: 600;
-    color: var(--osw-text);
+.osw-rich-editor .osw-signature-size-dropdown .ck-dropdown__button {
+    min-width: 6.5rem;
 }
-.osw-editor-font-field:first-child { flex-basis: 15rem; }
-.osw-editor-font-field.osw-editor-font-custom { flex: 0 1 8rem; }
-.osw-editor-font-toolbar :is(select, input) {
-    box-sizing: border-box;
-    width: 100%;
-    min-height: 2.25rem;
-    margin: 0 !important;
-    padding: .3rem .55rem;
-    background: var(--osw-input) !important;
-    border: 1px solid var(--osw-border) !important;
-    border-radius: .375rem;
-    color: var(--osw-text) !important;
-    font-size: .875rem;
-    font-weight: 400;
+.osw-rich-editor :is(.osw-signature-family-dropdown, .osw-signature-size-dropdown) .ck-button__label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
-.osw-editor-font-toolbar :is(select, input):focus-visible {
+.osw-rich-editor .osw-signature-size-dropdown .ck-dropdown__panel {
+    min-width: 12rem;
+    max-width: min(18rem, 90vw);
+}
+.osw-rich-editor .osw-signature-size-dropdown .ck-labeled-field-view {
+    margin: .55rem .65rem;
+}
+.osw-rich-editor .osw-signature-size-dropdown .ck-input-text:focus-visible {
     outline: 2px solid var(--osw-action-accent);
     outline-offset: 1px;
-}
-.osw-editor-font-toolbar :is(select, input):disabled {
-    cursor: not-allowed;
-    opacity: .55;
-}
-@media (max-width: 460px) {
-    .osw-editor-font-field, .osw-editor-font-field:first-child { flex: 1 1 100%; }
-    .osw-editor-font-field.osw-editor-font-custom { flex: 1 1 100%; }
 }
 
 /* Allow every CKEditor toolbar to wrap instead of cutting off controls. */

@@ -21,7 +21,13 @@ import {
     ImageBlock,
     ImageToolbar,
     ImageResize,
-    ImageUpload
+    ImageUpload,
+    Collection,
+    UIModel,
+    createDropdown,
+    addListToDropdown,
+    LabeledFieldView,
+    createLabeledInputText
 } from "ckeditor5";
 
 import "ckeditor5/ckeditor5.css";
@@ -49,5 +55,11 @@ window.CKEDITOR = {
     ImageBlock,
     ImageToolbar,
     ImageResize,
-    ImageUpload
+    ImageUpload,
+    Collection,
+    UIModel,
+    createDropdown,
+    addListToDropdown,
+    LabeledFieldView,
+    createLabeledInputText
 };

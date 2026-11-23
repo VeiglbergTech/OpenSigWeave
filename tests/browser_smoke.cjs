@@ -339,22 +339,26 @@ async function main() {
       return ratio(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor);
     });
     assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
-    const personalFontSelect = page.locator("#user-rich-editor .osw-editor-font-toolbar")
-      .getByRole("combobox", { name: "Signature font family" });
-    await personalFontSelect.waitFor({ state: "visible" });
-    const personalFontOptions = await personalFontSelect.locator("option").allTextContents();
-    assert.ok(personalFontOptions.includes("Georgia"),
-      "the shared font family control must be available on personal signatures");
-    const menuContrast = await personalFontSelect.evaluate(select => {
+    const personalFontFamily = page.locator("#user-rich-editor .osw-signature-family-dropdown .ck-dropdown__button");
+    const personalFontSize = page.locator("#user-rich-editor .osw-signature-size-dropdown .ck-dropdown__button");
+    await personalFontFamily.waitFor({ state: "visible" });
+    await personalFontSize.waitFor({ state: "visible" });
+    assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
+      "font controls must not render above CKEditor");
+    await personalFontFamily.click();
+    await page.locator("#user-rich-editor .osw-signature-family-dropdown")
+      .getByRole("button", { name: "Georgia", exact: true }).waitFor({ state: "visible" });
+    await personalFontFamily.click();
+    const menuContrast = await personalFontFamily.evaluate(button => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
       const lum = value => channels(value).reduce((sum, v, i) => {
         const s = v / 255, linear = s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4;
         return sum + linear * [.2126, .7152, .0722][i];
       }, 0);
       const ratio = (a, b) => (Math.max(lum(a), lum(b)) + .05) / (Math.min(lum(a), lum(b)) + .05);
-      return ratio(getComputedStyle(select).color, getComputedStyle(select).backgroundColor);
+      return ratio(getComputedStyle(button).color, getComputedStyle(button).backgroundColor);
     });
-    assert.ok(menuContrast >= 4.5, "shared font controls must meet WCAG AA contrast");
+    assert.ok(menuContrast >= 4.5, "CKEditor font controls must meet WCAG AA contrast");
     assert.equal(await personalEditor.evaluate(el => getComputedStyle(el).backgroundColor),
       "rgb(255, 255, 255)", "email composition canvas stays white in light mode");
     await page.reload();
@@ -712,15 +716,15 @@ async function main() {
     }).count(), 0, "signature editor must not list retired mode values");
     assert.equal(await signatureDialog.locator('[name="mode"], [name="pool_name"], [name="variants"]').count(), 0,
       "signature editor must not submit retired selector fields");
-    const fontToolbar = signatureDialog.locator("#signature-template-editor .osw-editor-font-toolbar");
-    const fontFamilyControl = fontToolbar.getByRole("combobox", { name: "Signature font family" });
-    const fontSizeControl = fontToolbar.getByRole("combobox", { name: "Signature font size" });
-    const customFontSizeControl = fontToolbar.getByRole("spinbutton", {
-      name: "Custom signature font size in pixels"
-    });
+    const fontToolbar = signatureDialog.locator("#signature-template-editor .ck-toolbar");
+    const fontFamilyDropdown = fontToolbar.locator(".osw-signature-family-dropdown");
+    const fontSizeDropdown = fontToolbar.locator(".osw-signature-size-dropdown");
+    const fontFamilyControl = fontFamilyDropdown.locator(".ck-dropdown__button");
+    const fontSizeControl = fontSizeDropdown.locator(".ck-dropdown__button");
     await fontFamilyControl.waitFor({ state: "visible" });
     await fontSizeControl.waitFor({ state: "visible" });
-    await customFontSizeControl.waitFor({ state: "visible" });
+    assert.equal(await signatureDialog.locator(".osw-editor-font-toolbar").count(), 0,
+      "no external font toolbar may remain");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
     await captureTheme("signature-editor-light");
@@ -730,26 +734,25 @@ async function main() {
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
     for (const theme of ["dark", "light"]) {
-      const contrast = await fontToolbar.evaluate((toolbar, themeName) => {
+      const contrast = await fontSizeControl.evaluate((button, themeName) => {
         const root = document.documentElement;
         const previous = root.dataset.theme;
         root.dataset.theme = themeName;
         try {
-          const select = toolbar.querySelector("select");
-          const style = getComputedStyle(select);
-          const channels = color => (color.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
-          const lum = color => channels(color).reduce((sum, channel, index) => {
-            const value = channel / 255;
-            const linear = value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
-            return sum + linear * [.2126, .7152, .0722][index];
-          }, 0);
+          const style = getComputedStyle(button);
+          const lum = color => (color.match(/[\d.]+/g) || []).slice(0, 3).map(Number)
+            .reduce((sum, channel, i) => {
+              const s = channel / 255;
+              return sum + (s <= .04045 ? s / 12.92 : ((s + .055) / 1.055) ** 2.4)
+                * [.2126, .7152, .0722][i];
+            }, 0);
           return (Math.max(lum(style.color), lum(style.backgroundColor)) + .05)
             / (Math.min(lum(style.color), lum(style.backgroundColor)) + .05);
         } finally {
           root.dataset.theme = previous;
         }
       }, theme);
-      assert.ok(contrast >= 4.5, "signature font controls need sufficient contrast in " + theme);
+      assert.ok(contrast >= 4.5, "font size toolbar contrast in " + theme);
     }
     const formattingSample = await page.evaluate(async () => {
       const host = document.createElement("div");
@@ -774,39 +777,34 @@ async function main() {
       "email-safe font family must survive editor loading");
     await signaturePanel.getByLabel("Name").fill("Browser Smoke Signature");
     const signatureCreateEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
-    const fontDebug = async (stage) => {
-      const snapshot = await page.evaluate(() => ({
-        html: document.querySelector("#signature-html-source")?.value,
-        visibleHtml: document.querySelector("#signature-template-editor .ck-editor__editable")?.innerHTML,
-        family: document.querySelector("#signature-template-editor .osw-font-family-select")?.value,
-        size: document.querySelector("#signature-template-editor .osw-font-size-select")?.value,
-        customSize: document.querySelector("#signature-template-editor .osw-font-px-input")?.value,
-        selection: String(window.getSelection() || ""),
-        activeElement: document.activeElement?.outerHTML.slice(0, 180)
-      }));
-      console.log("[browser-smoke] font-format " + stage + ": " + JSON.stringify(snapshot));
-      return snapshot;
-    };
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
-    await fontDebug("selected");
-    await fontFamilyControl.selectOption("Georgia");
-    await fontDebug("family");
+    await fontFamilyControl.click();
+    await fontFamilyDropdown.getByRole("button", { name: "Georgia", exact: true }).click();
     await signatureCreateEditor.press("Control+A");
-    await fontSizeControl.selectOption("18");
-    await fontDebug("size");
+    await fontSizeControl.click();
+    await fontSizeDropdown.getByRole("button", { name: "18 pt", exact: true }).click();
+    await page.waitForFunction(() => /font-size:\s*18pt/i.test(
+      document.querySelector("#signature-html-source")?.value || ""
+    ));
     await signatureCreateEditor.press("Control+A");
-    await customFontSizeControl.fill("17");
-    await customFontSizeControl.press("Enter");
-    const completedFontFormatting = await fontDebug("custom");
-    assert.match(completedFontFormatting.html || "", /font-family:\s*Georgia/i,
+    await fontSizeControl.click();
+    const customFontInput = fontSizeDropdown.getByRole("textbox", { name: "Custom font size (pt or px)" });
+    await customFontInput.fill("0");
+    await customFontInput.press("Enter");
+    assert.notEqual(await customFontInput.evaluate(input => input.validationMessage), "",
+      "invalid custom size must be rejected");
+    await customFontInput.fill("17,5");
+    await customFontInput.press("Enter");
+    const completedFontFormatting = await signaturePanel.locator("#signature-html-source").inputValue();
+    assert.match(completedFontFormatting, /font-family:\s*Georgia/i,
       "font family must appear in synchronized HTML");
-    assert.match(completedFontFormatting.html || "", /font-size:\s*17px/i,
-      "custom pixel size must appear in synchronized HTML");
-    assert.equal(await fontFamilyControl.inputValue(), "Georgia",
-      "font selector must reflect the current CKEditor selection");
-    assert.equal(await fontSizeControl.inputValue(), "17",
-      "non-preset pixel size must appear when reopening existing formatting");
+    assert.match(completedFontFormatting, /font-size:\s*17\.5pt/i,
+      "custom decimal point sizes must become email-compatible inline styles");
+    assert.match(await fontFamilyControl.innerText(), /Georgia/i,
+      "family toolbar dropdown must reflect the selected formatting");
+    assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
+      "combined font size dropdown must reflect a custom decimal value");
     await signaturePanel.getByRole("button", { name: "Save Signature", exact: true }).click();
 
     const signatureRow = signaturePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Signature" });
@@ -852,21 +850,21 @@ async function main() {
     // previous instance's HTML for the asynchronously retrieved saved version.
     await page.waitForFunction(() => {
       const html = document.querySelector("#signature-html-source")?.value || "";
-      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17px/i.test(html);
+      return /font-family:\s*Georgia/i.test(html) && /font-size:\s*17\.5pt/i.test(html);
     });
     assert.match(await signatureEditEditor.innerHTML(), /Browser smoke version 1/,
       "editing an existing signature must load the latest stored HTML version");
     const reloadedHtml = await signaturePanel.locator("#signature-html-source").inputValue();
     assert.match(reloadedHtml, /font-family:\s*Georgia/i,
       "the stored font family must survive closing and reopening the signature editor");
-    assert.match(reloadedHtml, /font-size:\s*17px/i,
-      "the stored non-preset px size must survive closing and reopening");
+    assert.match(reloadedHtml, /font-size:\s*17\.5pt/i,
+      "stored decimal pt size must survive closing and reopening");
     await signatureEditEditor.click();
     await signatureEditEditor.press("Control+A");
-    assert.equal(await fontFamilyControl.inputValue(), "Georgia",
-      "the family dropdown must track a previously stored selection");
-    assert.equal(await fontSizeControl.inputValue(), "17",
-      "the size dropdown must track a previously stored custom pixel value");
+    assert.match(await fontFamilyControl.innerText(), /Georgia/i,
+      "family dropdown must reflect a previously stored selection");
+    assert.match(await fontSizeControl.innerText(), /17\.5 pt/i,
+      "size dropdown must reflect a previously stored custom value");
     const versionSelector = signaturePanel.locator('select[x-model="selectedVersionId"]');
     // Versions load from a separate asynchronous API request. The editor
     // could still display data from its previous instance; wait for the
@@ -882,7 +880,7 @@ async function main() {
     });
     assert.equal(storedVersion.status, 200, "saved signature HTML must be retrievable from the backend");
     assert.match(storedVersion.version.html_content, /font-family:\s*Georgia/i);
-    assert.match(storedVersion.version.html_content, /font-size:\s*17px/i);
+    assert.match(storedVersion.version.html_content, /font-size:\s*17\.5pt/i);
 
     // Clicking the editor must focus the editable surface. A surrounding label used
     // to redirect clicks to the version selector, making typing possible only after tabbing.
@@ -2093,12 +2091,14 @@ async function main() {
     await domainSettings.getByRole("button", { name: "+ Add or Edit User" }).click();
     const adminEditor = domainSettings.locator("#admin-rich-editor .ck-editor__editable");
     await adminEditor.waitFor({ state: "visible" });
-    const adminFontSelect = domainSettings.locator("#admin-rich-editor .osw-editor-font-toolbar")
-      .getByRole("combobox", { name: "Signature font family" });
-    await adminFontSelect.waitFor({ state: "visible" });
-    assert.deepEqual(await adminFontSelect.locator("option").allTextContents(),
-      personalFontOptions,
-      "personal and administrator editors must expose the same font families");
+    const adminFontFamily = domainSettings.locator("#admin-rich-editor .osw-signature-family-dropdown .ck-dropdown__button");
+    const adminFontSize = domainSettings.locator("#admin-rich-editor .osw-signature-size-dropdown .ck-dropdown__button");
+    await adminFontFamily.waitFor({ state: "visible" });
+    await adminFontSize.waitFor({ state: "visible" });
+    await adminFontFamily.click();
+    await domainSettings.locator("#admin-rich-editor .osw-signature-family-dropdown")
+      .getByRole("button", { name: "Georgia", exact: true }).waitFor({ state: "visible" });
+    await adminFontFamily.click();
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
     await adminEditor.press("Control+B");
@@ -2245,14 +2245,10 @@ async function main() {
         await visualPage.getByRole("button", { name: "+ Add Signature" }).click();
         const signatureSelector = '[x-data="signatureManager"] [role="dialog"][aria-label="Signature editor"]';
         await inspect(signatureSelector, "signature-editor");
-        const fontToolbar = shell(signatureSelector).locator(".osw-editor-font-toolbar");
-        await fontToolbar.waitFor({ state: "visible" });
-        const fontControls = [
-          fontToolbar.getByRole("combobox", { name: "Signature font family" }),
-          fontToolbar.getByRole("combobox", { name: "Signature font size" }),
-          fontToolbar.getByRole("spinbutton", { name: "Custom signature font size in pixels" })
-        ];
-        for (const [index, control] of fontControls.entries()) {
+        const fontToolbar = shell(signatureSelector).locator("#signature-template-editor .ck-toolbar");
+        const familyControl = fontToolbar.locator(".osw-signature-family-dropdown .ck-dropdown__button");
+        const sizeControl = fontToolbar.locator(".osw-signature-size-dropdown .ck-dropdown__button");
+        for (const [index, control] of [familyControl, sizeControl].entries()) {
           await control.waitFor({ state: "visible" });
           await control.scrollIntoViewIfNeeded();
           const bounds = await control.evaluate(element => {
@@ -2264,10 +2260,12 @@ async function main() {
             && bounds.top >= -2 && bounds.bottom <= bounds.vh + 2,
             "signature font control " + index + " must fit viewport: " + JSON.stringify(bounds));
         }
-        assert.ok(await fontControls[0].locator('option[value="Georgia"]').count() === 1,
-          "signature font dropdown must offer Georgia on every viewport and theme");
-        assert.equal(await fontControls[1].locator('option[value="18"]').count(), 1,
-          "signature font size dropdown must offer exact pixel presets");
+        await sizeControl.click();
+        await fontToolbar.locator(".osw-signature-size-dropdown")
+          .getByRole("button", { name: "18 pt", exact: true }).waitFor({ state: "visible" });
+        await fontToolbar.locator(".osw-signature-size-dropdown")
+          .getByRole("textbox", { name: "Custom font size (pt or px)" }).waitFor({ state: "visible" });
+        await sizeControl.click();
         const urlButton = shell(signatureSelector).getByRole("button", { name: "Import Image from URL" });
         // The toolbar button exists before OpenSigWeaveEditor.create() returns its adapter.
         // Avoid clicking during that initialization window in the visual layout matrix.
