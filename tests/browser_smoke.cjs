@@ -29,6 +29,73 @@ async function main() {
       + (failure ? " (" + failure.errorText + ")" : "") + "\n");
   });
   const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
+  // Assert computed surface hierarchy rather than duplicating CSS tokens in a test.
+  // Screenshots are uploaded for review; these assertions protect contrast and theme structure.
+  async function assertThemePalette(label) {
+    const state = await page.evaluate(() => {
+      const root = document.documentElement;
+      const tokens = getComputedStyle(root);
+      const style = selector => {
+        const element = [...document.querySelectorAll(selector)].find(node => node.getClientRects().length > 0);
+        if (!element) return null;
+        const s = getComputedStyle(element);
+        return { background: s.backgroundColor, color: s.color, border: s.borderTopColor };
+      };
+      const rgb = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const luminance = value => rgb(value).reduce((total, channel, index) => {
+        const value = channel / 255;
+        const linear = value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
+        return total + linear * [.2126, .7152, .0722][index];
+      }, 0);
+      const contrast = (foreground, background) => {
+        const a = luminance(foreground), b = luminance(background);
+        return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
+      };
+      return {
+        mode: root.dataset.theme,
+        hasDarkClass: root.classList.contains("dark"),
+        body: style("body"),
+        navigation: style("nav"),
+        card: style(".bg-gray-800.rounded-lg, .bg-gray-800.rounded-xl"),
+        field: style("input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=file]), select"),
+        primary: style("button.bg-blue-600"),
+        tableHead: style(".osw-table-scroll thead"),
+        editor: style("#user-rich-editor .ck-editor__editable"),
+        toolbar: style("#user-rich-editor .ck-toolbar"),
+        panelToken: tokens.getPropertyValue("--osw-panel").trim(),
+        modeScheme: tokens.colorScheme,
+        bodyRatio: contrast(getComputedStyle(document.body).color, getComputedStyle(document.body).backgroundColor),
+        fieldRatio: (() => {
+          const field = [...document.querySelectorAll("input,select")].find(node =>
+            node.getClientRects().length && node.type !== "checkbox" && node.type !== "hidden");
+          return field ? contrast(getComputedStyle(field).color, getComputedStyle(field).backgroundColor) : null;
+        })(),
+        primaryRatio: (() => {
+          const button = [...document.querySelectorAll("button.bg-blue-600")].find(node =>
+            node.getClientRects().length && !node.disabled);
+          return button ? contrast(getComputedStyle(button).color, getComputedStyle(button).backgroundColor) : null;
+        })(),
+      };
+    });
+    assert.equal(state.hasDarkClass, state.mode === "dark", label + " dark class must match appearance");
+    assert.ok(state.bodyRatio >= 4.5, label + " body contrast: " + JSON.stringify(state));
+    if (state.fieldRatio !== null) assert.ok(state.fieldRatio >= 4.5, label + " input contrast: " + JSON.stringify(state));
+    if (state.primaryRatio !== null) assert.ok(state.primaryRatio >= 4.5, label + " primary button contrast: " + JSON.stringify(state));
+    assert.notEqual(state.body.background, state.navigation.background, label + " navigation must be distinct from canvas");
+    if (state.card) assert.notEqual(state.card.background, state.body.background, label + " cards must be distinct from canvas");
+    if (state.mode === "light") {
+      assert.match(state.modeScheme, /light/, label + " should use light native controls");
+      assert.equal(state.navigation.background, "rgb(255, 255, 255)", label + " navigation is a light surface");
+      if (state.tableHead) assert.notEqual(state.tableHead.background, state.card?.background || state.body.background,
+        label + " table header should be distinguished from the card");
+    }
+    return state;
+  }
+  async function captureTheme(name) {
+    fs.mkdirSync("test-artifacts/themes", { recursive: true });
+    await page.screenshot({ path: "test-artifacts/themes/" + name + ".png", fullPage: false });
+  }
+
   async function assertFloatingDialog(dialog, label) {
     await dialog.waitFor({ state: "visible" });
     const layout = await dialog.evaluate(element => {
@@ -229,6 +296,13 @@ async function main() {
     checkpoint("login: open");
     const loginResponse = await page.goto(baseURL + "/login");
     assert.equal(loginResponse.status(), 200, "login page must load");
+    await page.locator("#theme-toggle").click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await assertThemePalette("login light");
+    await captureTheme("login-light");
+    await page.locator("#theme-toggle").click();
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await captureTheme("login-dark");
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
@@ -246,6 +320,8 @@ async function main() {
     await themeToggle.click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
     assert.equal(await page.evaluate(() => localStorage.getItem("opensigweave.theme.v1")), "light");
+    await assertThemePalette("personal light");
+    await captureTheme("personal-light");
     const lightContrast = await page.evaluate(() => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
       const lum = value => channels(value).reduce((sum, v, i) => {
@@ -281,7 +357,8 @@ async function main() {
       "appearance must be retained across reloads");
     await page.locator("#theme-toggle").click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
-
+    await assertThemePalette("personal dark");
+    await captureTheme("personal-dark");
 
     await personalEditor.fill("CSP editor smoke");
     await personalEditor.press("Control+A");
@@ -370,9 +447,17 @@ async function main() {
       { tab: "Backups", heading: "Backup management" },
       { tab: "System", heading: "System status" },
     ];
-    for (const section of sections) {
-      await page.getByRole("button", { name: section.tab, exact: true }).click();
-      await page.getByRole("heading", { name: section.heading }).waitFor();
+    // Test every administrator tab in each appearance. Capture comparable
+    // reference images; CI stores them alongside the dialog snapshots.
+    for (const appearance of ["light", "dark"]) {
+      await page.locator("#theme-toggle").click();
+      await page.waitForFunction(mode => document.documentElement.dataset.theme === mode, appearance);
+      for (const section of sections) {
+        await page.getByRole("button", { name: section.tab, exact: true }).click();
+        await page.getByRole("heading", { name: section.heading }).waitFor();
+        await assertThemePalette(appearance + " / " + section.tab);
+        await captureTheme(appearance + "-" + section.tab.toLowerCase().replaceAll(" ", "-"));
+      }
     }
 
     // Without an installed root-side operator, the backup tab must fail closed.
@@ -445,6 +530,13 @@ async function main() {
     await providerPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
     const providerDialog = providerPanel.locator('[x-show="editing"][role="dialog"]');
     await assertFloatingDialog(providerDialog, "identity provider editor");
+    await page.evaluate(() => document.getElementById("theme-toggle").click());
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await assertThemePalette("identity provider modal light");
+    await captureTheme("modal-provider-light");
+    await page.evaluate(() => document.getElementById("theme-toggle").click());
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await captureTheme("modal-provider-dark");
     // All admin create/edit dialogs use the same Domains-style header, scrollable body and footer.
     const unifiedDialogs = await page.evaluate(() => [...document.querySelectorAll(".form-dialog")].map(dialog => ({
       header: !!dialog.querySelector(":scope > .osw-modal-header"),
@@ -533,6 +625,12 @@ async function main() {
     await fontFamilyControl.waitFor({ state: "visible" });
     await fontSizeControl.waitFor({ state: "visible" });
     await customFontSizeControl.waitFor({ state: "visible" });
+    await page.evaluate(() => document.getElementById("theme-toggle").click());
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
+    await captureTheme("signature-editor-light");
+    await page.evaluate(() => document.getElementById("theme-toggle").click());
+    await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+    await captureTheme("signature-editor-dark");
     assert.equal(await fontFamilyControl.isEnabled(), true);
     assert.equal(await fontSizeControl.isEnabled(), true);
     for (const theme of ["dark", "light"]) {

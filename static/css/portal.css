@@ -15,19 +15,7 @@ body.osw-overlay-open { overflow: hidden; }
 html, body { max-width: 100%; }
 main, section { min-width: 0; }
 
-/* CKEditor 5: light email canvas inside the dark administration interface. */
-.ck.ck-toolbar {
-    background: #374151 !important;
-    border-color: #4b5563 !important;
-}
-.ck.ck-toolbar .ck-button,
-.ck.ck-toolbar .ck-dropdown__button {
-    color: #e5e7eb !important;
-}
-.ck.ck-toolbar .ck-button:hover,
-.ck.ck-toolbar .ck-button.ck-on {
-    background: #1f2937 !important;
-}
+/* CKEditor email canvas sizing is shared; toolbar colors use theme tokens below. */
 .ck.ck-editor__main > .ck-editor__editable {
     min-height: 240px;
     max-height: 520px;
@@ -62,9 +50,15 @@ main, section { min-width: 0; }
     --osw-red: #e04436;
     --osw-orange: #f07832;
     --osw-accent: #ff7043;
+    --osw-text: #f4f4f5;
+    --osw-heading: #fff;
+    --osw-input: #121215;
+    --osw-link: #ffad87;
+    --osw-readable-accent: #ffad87;
+    --osw-action-accent: #a63b1b;
+    --osw-action-hover: #8f3016;
 }
 body { background: var(--osw-black) !important; color: #f4f4f5; }
-.bg-gray-950 { background-color: var(--osw-black) !important; }
 .bg-gray-900 { background-color: var(--osw-charcoal) !important; }
 .bg-gray-800 { background-color: var(--osw-panel) !important; }
 .bg-gray-700 { background-color: var(--osw-panel-raised) !important; }
@@ -74,17 +68,8 @@ body { background: var(--osw-black) !important; color: #f4f4f5; }
 .text-gray-500 { color: #92929c !important; }
 .text-gray-400 { color: #b0b0b8 !important; }
 .text-gray-300 { color: #d4d4d8 !important; }
-.text-blue-300, .text-blue-400, .text-blue-500 { color: #ff8752 !important; }
-.hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: #ffab78 !important; }
-.bg-blue-600, .bg-blue-700 { background-color: var(--osw-accent) !important; }
-.hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-orange) !important; }
 .bg-green-700, .bg-green-600 { background-color: #bd3d2d !important; }
 .hover\:bg-green-600:hover { background-color: var(--osw-orange) !important; }
-.border-blue-500, .border-blue-600, .border-green-600 { border-color: var(--osw-accent) !important; }
-.focus\:border-blue-500:focus, .focus\:ring-blue-500:focus { --tw-ring-color: var(--osw-accent) !important; border-color: var(--osw-accent) !important; }
-.app-brand { color: var(--osw-accent); }
-.ck.ck-toolbar { background: #242428 !important; border-color: var(--osw-border) !important; }
-.ck.ck-toolbar .ck-button:hover, .ck.ck-toolbar .ck-button.ck-on { background: #3a2524 !important; color: #ff9566 !important; }
 .ck.ck-toolbar .ck-button:focus, .ck.ck-toolbar .ck-dropdown__button:focus { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 2px rgba(240, 120, 50, .25) !important; }
 .ck.ck-editor__main > .ck-editor__editable { border-color: var(--osw-border) !important; }
 .ck.ck-editor__main > .ck-editor__editable.ck-focused { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 1px var(--osw-orange) !important; }
@@ -247,20 +232,29 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
 }
 
 
-/* Accessible light/dark portal surface. Email composition remains white. */
-:root {
-  --osw-text: #f4f4f5; --osw-heading: #fff; --osw-input: #121215;
-  --osw-link: #ffad87; --osw-readable-accent: #ffad87;
-  --osw-action-accent: #a63b1b; --osw-action-hover: #8f3016;
-}
+/* A single token hierarchy for both appearances. The default tokens above
+   remain the established dark palette; only the light scope changes surfaces. */
 :root[data-theme="light"] {
   color-scheme: light;
-  --osw-black: #f5f7fa; --osw-charcoal: #fff; --osw-panel: #fff;
-  --osw-panel-raised: #e9edf2; --osw-border: #bdc7d4;
-  --osw-muted: #536173; --osw-text: #182332; --osw-heading: #101827;
-  --osw-input: #fff; --osw-link: #963718; --osw-readable-accent: #963718;
-  --osw-action-accent: #a63b1b; --osw-action-hover: #852d14;
+  --osw-black: #f2f5f9;
+  --osw-charcoal: #f6f8fb;
+  --osw-panel: #ffffff;
+  --osw-panel-raised: #e9eef5;
+  --osw-border: #cbd5e1;
+  --osw-muted: #516174;
+  --osw-text: #1e293b;
+  --osw-heading: #111827;
+  --osw-input: #ffffff;
+  --osw-link: #923b1d;
+  --osw-readable-accent: #923b1d;
+  --osw-action-accent: #a63b1b;
+  --osw-action-hover: #852d14;
+  --osw-hover: #e4eaf2;
+  --osw-subtle: #f8fafc;
+  --osw-card-shadow: 0 6px 22px rgba(15, 23, 42, .055);
 }
+/* Shared semantic colors: branding.js can override the accent without
+   changing either palette's structural surfaces. */
 body { color: var(--osw-text) !important; }
 .bg-gray-950 { background-color: var(--osw-input) !important; }
 .bg-blue-600, .bg-blue-700 { background-color: var(--osw-action-accent) !important; }
@@ -274,7 +268,7 @@ body { color: var(--osw-text) !important; }
 }
 .app-brand { color: var(--osw-readable-accent) !important; }
 
-/* Native select menus (including their option popup) and form inputs. */
+/* Native inputs/select popups and custom font controls share the theme. */
 body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
 body select, body textarea {
   background-color: var(--osw-input) !important;
@@ -285,31 +279,101 @@ body select, body textarea {
 body select option, body select optgroup { background-color: var(--osw-input); color: var(--osw-text); }
 body input::placeholder, body textarea::placeholder { color: var(--osw-muted); opacity: 1; }
 body :is(input, select, textarea, button):focus-visible { outline-color: var(--osw-action-accent); }
+#theme-toggle { white-space: nowrap; }
+
+/* Light surfaces: navigation, content cards, list headers, rows and dialogs.
+   Existing bg-gray utility mapping remains the sole surface architecture. */
+html[data-theme="light"] nav {
+  background-color: var(--osw-panel) !important;
+  border-color: var(--osw-border) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+}
+html[data-theme="light"] :is(.bg-gray-800.rounded-lg, .bg-gray-800.rounded-xl) {
+  box-shadow: var(--osw-card-shadow);
+}
+html[data-theme="light"] :is(.osw-table-scroll thead, .osw-modal-header, .osw-modal-footer) {
+  background-color: var(--osw-charcoal) !important;
+}
+html[data-theme="light"] .osw-table-scroll tbody tr:hover { background-color: var(--osw-subtle); }
+html[data-theme="light"] .osw-table-scroll tbody tr { border-color: var(--osw-border); }
+html[data-theme="light"] [class~="bg-gray-900/60"] { background-color: rgba(233, 238, 245, .65) !important; }
+html[data-theme="light"] .bg-gray-600 { background-color: var(--osw-panel-raised) !important; }
 html[data-theme="light"] .hover\:bg-gray-800:hover,
 html[data-theme="light"] .hover\:bg-gray-700:hover,
-html[data-theme="light"] .osw-file-button:hover,
-html[data-theme="light"] .osw-file-button:focus-within { background-color: #dfe5ed !important; }
+html[data-theme="light"] .hover\:bg-gray-600:hover,
+html[data-theme="light"] .hover\:bg-gray-750:hover,
+html[data-theme="light"] .osw-file-button:is(:hover, :focus-within) {
+  background-color: var(--osw-hover) !important;
+}
+html[data-theme="light"] :is(button.bg-gray-700, button.bg-gray-900):active {
+  background-color: var(--osw-panel-raised) !important;
+}
+/* The dark utility text classes are used throughout legacy markup. Light
+   foregrounds are explicit rather than relying on inherited dark grays. */
 html[data-theme="light"] .text-white,
 html[data-theme="light"] .text-gray-100,
 html[data-theme="light"] .text-gray-200,
 html[data-theme="light"] .text-gray-300 { color: var(--osw-text) !important; }
 html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
-html[data-theme="light"] .text-gray-500 { color: #526071 !important; }
+html[data-theme="light"] .text-gray-500 { color: #526174 !important; }
 html[data-theme="light"] .hover\:text-white:hover { color: var(--osw-heading) !important; }
-html[data-theme="light"] .text-red-400,
-html[data-theme="light"] .text-red-500 { color: #a51f2f !important; }
-html[data-theme="light"] .text-green-400 { color: #166534 !important; }
-html[data-theme="light"] .osw-modal-dismiss:hover,
-html[data-theme="light"] .osw-modal-dismiss:focus-visible { color: var(--osw-heading); }
+html[data-theme="light"] .text-blue-200 { color: var(--osw-readable-accent) !important; }
+html[data-theme="light"] :is(.text-red-200, .text-red-300, .text-red-400, .text-red-500),
+html[data-theme="light"] :is(.hover\:text-red-200:hover, .hover\:text-red-300:hover) { color: #9f1239 !important; }
+html[data-theme="light"] :is(.text-green-200, .text-green-300, .text-green-400, .text-emerald-300, .text-emerald-400) { color: #166534 !important; }
+html[data-theme="light"] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-yellow-400),
+html[data-theme="light"] .hover\:text-amber-200:hover { color: #854d0e !important; }
+html[data-theme="light"] :is(.bg-green-700, .bg-green-600) { background-color: #166534 !important; }
+html[data-theme="light"] .hover\:bg-green-600:hover { background-color: #15803d !important; }
+html[data-theme="light"] :is(.bg-red-600, .bg-red-500, .bg-red-700) { background-color: #b91c1c !important; }
+html[data-theme="light"] :is(.hover\:bg-red-500:hover, .hover\:bg-red-600:hover, .hover\:bg-red-700:hover) { background-color: #991b1b !important; }
+html[data-theme="light"] .bg-yellow-600 { background-color: #92400e !important; }
+html[data-theme="light"] .hover\:bg-yellow-700:hover { background-color: #78350f !important; }
+/* Solid action buttons and status chips retain white on an accessible
+   saturated background; secondary actions inherit the dark-on-light text. */
 html[data-theme="light"] :is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
-  .bg-red-600, .bg-red-500, .bg-yellow-600).text-white,
-html[data-theme="light"] .bg-gray-900\/95 .text-white,
-html[data-theme="light"] .bg-gray-900\/80 .text-white { color: #fff !important; }
-html[data-theme="light"] .bg-gray-900\/95 .text-gray-300,
-html[data-theme="light"] .bg-gray-900\/80 .text-gray-300 { color: #e5e7eb !important; }
-html[data-theme="light"] .form-dialog,
-html[data-theme="light"] .osw-modal-shell { box-shadow: 0 20px 60px rgba(19, 31, 48, .18); }
-#theme-toggle { white-space: nowrap; }
+  .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700, .bg-green-500).text-white,
+html[data-theme="light"] :is(button, a):is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
+  .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700),
+html[data-theme="light"] :is(.bg-blue-600, .bg-green-700, .bg-red-600, .bg-yellow-600) .text-white,
+html[data-theme="light"] :is(.bg-gray-900\/95, .bg-gray-900\/80) .text-white { color: #fff !important; }
+html[data-theme="light"] :is(.bg-gray-900\/95, .bg-gray-900\/80) .text-gray-300 { color: #e5e7eb !important; }
+/* Warning, error and success panels must not retain dark translucent fills. */
+html[data-theme="light"] :is(.bg-amber-950\/30, .bg-amber-950\/40, .bg-yellow-900) { background-color: #fffbeb !important; }
+html[data-theme="light"] :is(.bg-red-900, .bg-red-900\/40) { background-color: #fff1f2 !important; }
+html[data-theme="light"] :is(.bg-green-900, .bg-green-950\/30) { background-color: #f0fdf4 !important; }
+html[data-theme="light"] .bg-blue-900\/30 { background-color: #eff6ff !important; }
+html[data-theme="light"] .border-amber-700 { border-color: #d7ac59 !important; }
+html[data-theme="light"] .border-green-700 { border-color: #86b89b !important; }
+html[data-theme="light"] :is(.border-blue-800, .border-blue-900) { border-color: #c5d7ec !important; }
+html[data-theme="light"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--osw-action-accent); }
+html[data-theme="light"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--osw-action-accent);
+  outline-offset: 2px;
+}
+html[data-theme="light"] :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: var(--osw-action-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--osw-action-accent) 18%, transparent);
+}
+html[data-theme="light"] :is(button, input, textarea, select):disabled {
+  cursor: not-allowed;
+}
+html[data-theme="light"] .osw-modal-dismiss:is(:hover, :focus-visible) { color: var(--osw-heading); }
+html[data-theme="light"] :is(.form-dialog, .osw-modal-shell) {
+  box-shadow: 0 20px 60px rgba(19, 31, 48, .15);
+}
+/* CKEditor chrome follows light tokens; the email editing canvas itself is
+   intentionally kept white in both modes (see shared rule below). */
+html[data-theme="light"] .ck {
+  --ck-color-focus-border: var(--osw-action-accent);
+  --ck-color-button-default-disabled-background: var(--osw-charcoal);
+  --ck-color-toolbar-background: var(--osw-panel);
+  --ck-color-toolbar-border: var(--osw-border);
+  --ck-color-list-background: var(--osw-panel);
+}
+html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-balloon-panel) {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, .035);
+}
 
 /* CKEditor 5: all menus/dialogs are themed; avoid overwriting font-color swatches. */
 .ck {
