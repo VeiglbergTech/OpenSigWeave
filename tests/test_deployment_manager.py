@@ -101,6 +101,21 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(first, path.read_bytes())
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_migrate_replaces_empty_backup_key_without_duplicate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / ".env"
+            initial = sample_env()
+            initial["BACKUP_LOCATIONS_KEY"] = ""
+            path.write_text(env_text(initial))
+            os.chmod(path, 0o600)
+            with patch.object(cfg, "ENV", path):
+                cfg.migrate_config()
+                parsed = common.parse_env(path)
+                self.assertTrue(parsed["BACKUP_LOCATIONS_KEY"])
+                self.assertEqual(path.read_text().count("BACKUP_LOCATIONS_KEY="), 1)
+                cfg.migrate_config()
+                self.assertEqual(common.parse_env(path), parsed)
+
     def test_check_does_not_modify_or_generate_missing_backup_key(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"

@@ -7,6 +7,7 @@ from getpass import getpass
 import os
 from pathlib import Path
 import re
+import re
 import secrets
 import socket
 import sys
@@ -206,9 +207,21 @@ def migrate_config(*, yes: bool = True, preview: bool = False) -> None:
             print(f"  + {key}=" + ("<generated securely>" if key in GENERATED_KEYS else dotenv_quote(value)))
         return
     content = ENV.read_text(encoding="utf-8")
-    content += "\n# Idempotent safe additions from generate_config.sh\n"
+    appended = []
     for key, value in sorted(additions.items()):
-        content += f"{key}={dotenv_quote(value)}\n"
+        if key in existing:
+            # A legacy .env.example often contained BACKUP_LOCATIONS_KEY="".
+            # Replace the empty assignment in place, never append a duplicate
+            # dotenv key (which Compose/parse_env would reject).
+            pattern = r"(?m)^[ \\t]*(?:export[ \\t]+)?" + re.escape(key) + r"[ \\t]*=.*$"
+            content, count = re.subn(pattern, f"{key}={dotenv_quote(value)}", content)
+            if count != 1:
+                raise DeploymentError("Cannot safely replace empty setting: " + key, 4)
+        else:
+            appended.append(f"{key}={dotenv_quote(value)}\n")
+    if appended:
+        content += "\n# Idempotent safe additions from generate_config.sh\n"
+        content += "".join(appended)
     descriptor, temp = tempfile.mkstemp(prefix=".env.pending-", dir=ENV.parent)
     try:
         os.fchmod(descriptor, 0o600)
