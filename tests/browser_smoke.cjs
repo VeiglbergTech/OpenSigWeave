@@ -1544,7 +1544,11 @@ async function main() {
     const legacyRow = timedRulesPanel.locator("tbody tr").filter({ hasText: "Legacy Browser Schedule" });
     await legacyRow.waitFor();
     await legacyRow.getByRole("button", { name: "Edit" }).click();
+    const convertedResponse = page.waitForResponse(response =>
+      response.request().method() === "POST" && /\/api\/admin\/schedules\/[^/]+\/convert-rule$/.test(new URL(response.url()).pathname));
     await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    assert.equal((await convertedResponse).status(), 201, "legacy conversion must succeed before persistence checks");
+    await timedRuleDialog.waitFor({ state: "hidden" });
     await legacyRow.waitFor();
     assert.equal((await (await page.request.get(baseURL + "/api/admin/schedules")).json())
       .some(item => item.name === "Legacy Browser Schedule"), false, "legacy schedule must be replaced atomically");
