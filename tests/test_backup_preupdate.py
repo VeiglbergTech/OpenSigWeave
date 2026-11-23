@@ -55,6 +55,31 @@ class RuleSelectionTests(unittest.TestCase):
         with self.assertRaises(pre.PreupdateBackupError):
             pre.select_rule(db, "missing")
 
+    def test_automatic_selection_skips_unusable_rules(self):
+        db = FakeDb([
+            rule("Alpha broken", "a", "missing"),
+            rule("Bravo usable", "b", "local"),
+        ], [location("local")])
+        selected, destination = pre.select_rule(db)
+        self.assertEqual(selected.id, "b")
+        self.assertEqual(destination.id, "local")
+
+    def test_preferred_invalid_rule_fails_even_when_alternative_exists(self):
+        db = FakeDb([
+            rule("Alpha broken", "a", "missing"),
+            rule("Bravo usable", "b", "local"),
+        ], [location("local")])
+        with self.assertRaises(pre.PreupdateBackupError):
+            pre.select_rule(db, "a")
+
+    def test_only_unusable_enabled_rules_fail_closed(self):
+        db = FakeDb([
+            rule("Alpha broken", "a", "missing"),
+            rule("Bravo incomplete", "b", "local", content="selective"),
+        ], [location("local")])
+        with self.assertRaises(pre.PreupdateBackupError):
+            pre.select_rule(db)
+
     def test_broken_rule_is_failure_not_missing_backup(self):
         for loc in (None, location("l", enabled=False),
                     location("l", kind="smb", password=None)):
