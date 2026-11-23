@@ -11,6 +11,7 @@ from contextlib import contextmanager
 import hashlib
 import fcntl
 import os
+import re
 from pathlib import Path
 import shutil
 import stat
@@ -242,3 +243,71 @@ def restore_application_to_new_directory(
         if not required.issubset({file["path"] for file in metadata["files"]}):
             raise BackupEngineError("Application backup is missing the PostgreSQL dump")
         return extract_archive(plain, target)
+
+
+PREUPDATE_NAME = re.compile(r"opensigweave-before-update-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{12}\.age\Z")
+
+
+def _preupdate_file(filename: str) -> tuple[Path, Path]:
+    if not isinstance(filename, str) or not PREUPDATE_NAME.fullmatch(filename):
+        raise BackupEngineError("Invalid pre-update backup filename")
+    root = _work_root()
+    return root, root / filename
+
+
+def create_preupdate_backup(filename: str) -> Path:
+    """Make an independent, encrypted and verified pre-update snapshot.
+
+    Runs as an ordinary compose-exec process with exactly the same named
+    volumes and advisory filesystem gate as the serving application.
+    """
+    root, target = _preupdate_file(filename)
+    if target.exists() or target.is_symlink():
+        raise BackupEngineError("Refusing to overwrite an existing backup")
+
+    def deliver(encrypted: Path, size: int, digest: str):
+        fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_NOFOLLOW", 0))
+        tmp = "." + filename + "." + os.urandom(8).hex() + ".tmp"
+        try:
+            handle = os.open(
+                tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600, dir_fd=fd,
+            )
+            actual = hashlib.sha256()
+            try:
+                with os.fdopen(handle, "wb") as writer, encrypted.open("rb") as reader:
+                    for block in iter(lambda: reader.read(1024 * 1024), b""):
+                        writer.write(block)
+                        actual.update(block)
+                    writer.flush()
+                    os.fsync(writer.fileno())
+                if actual.hexdigest() != digest or os.stat(tmp, dir_fd=fd).st_size != size:
+                    raise BackupEngineError("Encrypted backup changed during publication")
+                # link() refuses to replace an existing target; unlike rename,
+                # this protects against concurrent or unexpected writers.
+                os.link(tmp, filename, src_dir_fd=fd, dst_dir_fd=fd)
+                os.fsync(fd)
+            finally:
+                os.unlink(tmp, dir_fd=fd)
+        finally:
+            os.close(fd)
+
+    create_application_backup(deliver)
+    return target
+
+
+def verify_preupdate_backup(filename: str) -> dict:
+    """Decrypt and verify all hashes of a persisted container backup."""
+    _, path = _preupdate_file(filename)
+    if path.is_symlink() or not path.is_file():
+        raise BackupEngineError("Pre-update backup is missing or unsafe")
+    with tempfile.TemporaryDirectory(prefix=".osw-verify-", dir=_work_root()) as name:
+        work = Path(name)
+        with _identity(work) as identity:
+            archive = work / "verified.tar.gz"
+            decrypt_archive(path, identity, archive)
+            from backup_archive import verify_archive
+            manifest = verify_archive(archive)
+            if manifest.get("metadata", {}).get("backup_kind") != "application":
+                raise BackupEngineError("Unexpected pre-update backup profile")
+            return manifest
