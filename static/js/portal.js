@@ -685,6 +685,16 @@ function identityProviderManager() { return {
         function scheduleManager() {
             return {
                 schedules: [], signatures: [], groups: [], domains: [], editing: false,
+                search: '', statusFilter: 'all', togglingId: null,
+                get filteredSchedules() {
+                    const query = this.search.trim().toLowerCase();
+                    return this.schedules.filter(schedule => {
+                        if (this.statusFilter === 'enabled' && !schedule.is_enabled) return false;
+                        if (this.statusFilter === 'disabled' && schedule.is_enabled) return false;
+                        return !query || [schedule.name, this.targetLabel(schedule), this.domainLabel(schedule.domain_id)]
+                            .some(value => String(value || '').toLowerCase().includes(query));
+                    });
+                },
                 form: { id: null, name: '', target_type: 'SIGNATURE', signature_id: '', group_id: '', domain_id: '', starts_local: '', ends_local: '', priority: 0, is_enabled: true },
                 init() {
                     window.addEventListener('signature-catalog-updated', () => this.fetchAll());
@@ -744,7 +754,9 @@ function identityProviderManager() { return {
                         priority: schedule.priority, is_enabled: schedule.is_enabled };
                     this.editing = true;
                 },
-                changeTargetType() {
+                changeTargetType(event) {
+                    // Keep the selected target in sync even when Alpine processes change before x-model.
+                    if (event && event.target && event.target.value) this.form.target_type = event.target.value;
                     if (this.form.target_type === 'GROUP') this.form.signature_id = '';
                     else this.form.group_id = '';
                 },
@@ -769,7 +781,10 @@ function identityProviderManager() { return {
                     const start = new Date(this.form.starts_local);
                     const end = new Date(this.form.ends_local);
                     if (start >= end) {
-                        notify('Enter a valid start and end time.', 'error'); return;
+                        notify('End time must be after start time.', 'error'); return;
+                    }
+                    if (!Number.isInteger(Number(this.form.priority)) || Number(this.form.priority) < -100000 || Number(this.form.priority) > 100000) {
+                        notify('Priority must be a whole number between -100000 and 100000.', 'error'); return;
                     }
                     const payload = {
                         name: this.form.name.trim(), target_type: this.form.target_type,
@@ -779,16 +794,46 @@ function identityProviderManager() { return {
                         starts_at: start.toISOString(), ends_at: end.toISOString(),
                         priority: Number(this.form.priority), is_enabled: this.form.is_enabled
                     };
-                    const url = this.form.id ? '/api/admin/schedules/' + encodeURIComponent(this.form.id) : '/api/admin/schedules';
-                    const response = await fetch(url, { method: this.form.id ? 'PUT' : 'POST',
-                        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-                    if (!response.ok) {
-                        const problem = await response.json().catch(() => ({}));
-                        notify('Could not save schedule: ' + (problem.detail || response.statusText), 'error'); return;
-                    }
+                    if (!await this.persistSchedule(this.form.id, payload)) return;
                     notify('Schedule saved.');
                     this.editing = false;
                     await this.fetchAll();
+                },
+                async persistSchedule(id, payload) {
+                    const url = id ? '/api/admin/schedules/' + encodeURIComponent(id) : '/api/admin/schedules';
+                    try {
+                        const response = await fetch(url, { method: id ? 'PUT' : 'POST',
+                            headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        if (!response.ok) {
+                            const problem = await response.json().catch(() => ({}));
+                            notify('Could not save schedule: ' + (problem.detail || response.statusText), 'error');
+                            return false;
+                        }
+                        return true;
+                    } catch (error) {
+                        notify('Could not save schedule: ' + error.message, 'error');
+                        return false;
+                    }
+                },
+                async toggleSchedule(schedule) {
+                    if (this.togglingId !== null) return;
+                    this.togglingId = schedule.id;
+                    try {
+                        // Preserve raw UTC window and target values: a status change must not
+                        // reinterpret a saved time window through the browser time zone.
+                        const payload = {
+                            name: schedule.name, target_type: schedule.target_type,
+                            signature_id: schedule.signature_id, group_id: schedule.group_id,
+                            domain_id: schedule.domain_id, starts_at: schedule.starts_at,
+                            ends_at: schedule.ends_at, priority: schedule.priority,
+                            is_enabled: !schedule.is_enabled
+                        };
+                        if (!await this.persistSchedule(schedule.id, payload)) return;
+                        notify(payload.is_enabled ? 'Schedule enabled.' : 'Schedule disabled.');
+                        await this.fetchAll();
+                    } finally {
+                        this.togglingId = null;
+                    }
                 },
                 async deleteSchedule(schedule) {
                     if (!await oswAskConfirmation({ title: 'Delete schedule?', message: 'Delete schedule "' + schedule.name + '"?' })) return;

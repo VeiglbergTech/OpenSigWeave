@@ -1294,8 +1294,11 @@ async function main() {
     };
     const scheduleNow = new Date();
     await scheduleDialog.getByLabel("Start").fill(localInputValue(new Date(scheduleNow.getTime() - 2 * 60 * 1000)));
-    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() + 60 * 60 * 1000)));
+    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() - 60 * 60 * 1000)));
     await scheduleDialog.getByLabel("Priority").fill("10");
+    await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
+    assert.equal(await scheduleDialog.isVisible(), true, "invalid time ordering must keep the editor open");
+    await scheduleDialog.getByLabel("End").fill(localInputValue(new Date(scheduleNow.getTime() + 60 * 60 * 1000)));
     await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
     let scheduleRow = schedulePanel.locator("tbody tr").filter({ hasText: "Browser Smoke Schedule" });
     await scheduleRow.waitFor();
@@ -1308,13 +1311,39 @@ async function main() {
     assert.equal(browserSchedule.target_type, "SIGNATURE");
     assert.equal(browserSchedule.priority, 10);
 
+    const scheduleSearch = schedulePanel.getByRole("searchbox", { name: "Search schedules" });
+    const scheduleStatusFilter = schedulePanel.getByLabel("Status filter");
+    await scheduleSearch.fill("nonexistent-schedule-search");
+    await schedulePanel.getByText("No matching schedules.", { exact: true }).waitFor({ state: "visible" });
+    await scheduleSearch.fill("Browser Smoke");
+    await scheduleRow.waitFor({ state: "visible" });
+    await scheduleStatusFilter.selectOption("enabled");
+    await scheduleRow.waitFor({ state: "visible" });
+    await scheduleRow.getByRole("button", { name: "Disable", exact: true }).click();
+    await scheduleRow.waitFor({ state: "hidden" });
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(browserSchedule.is_enabled, false, "quick disable must persist");
+    assert.equal(browserSchedule.starts_at, new Date(new Date(browserSchedule.starts_at)).toISOString(),
+      "quick status changes preserve the original UTC window representation");
+    await scheduleStatusFilter.selectOption("disabled");
+    await scheduleRow.waitFor({ state: "visible" });
+    await scheduleRow.getByRole("button", { name: "Enable", exact: true }).click();
+    await scheduleRow.waitFor({ state: "hidden" });
+    await scheduleStatusFilter.selectOption("all");
+    await scheduleRow.waitFor({ state: "visible" });
+    schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
+    browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(browserSchedule.is_enabled, true, "quick enable must persist");
+    await scheduleSearch.fill("");
+
     await scheduleRow.getByRole("button", { name: "Edit", exact: true }).click();
     await scheduleDialog.getByLabel("Priority").fill("42");
     await scheduleDialog.getByRole("button", { name: "Save Schedule", exact: true }).click();
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="scheduleManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Schedule"));
-      return row && row.children[4].textContent.trim() === "42";
+      return row && row.children[1].textContent.trim() === "42";
     });
     schedules = await (await page.request.get(baseURL + "/api/admin/schedules")).json();
     browserSchedule = schedules.find(item => item.name === "Browser Smoke Schedule");

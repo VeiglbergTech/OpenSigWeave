@@ -487,38 +487,82 @@
         <div x-show="adminTab === 'scheduling'" x-cloak x-data="scheduleManager" x-init="init()" class="osw-admin-section">
             <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Scheduling</h2>
-                <button @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
+                <button type="button" @click="newSchedule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Schedule</button>
             </div>
             <details class="rounded border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300"><summary class="cursor-pointer">Scheduling priority</summary><p class="mt-2 text-xs text-gray-400">Explicit per-message selection wins. Otherwise, schedules take priority over personal overrides and rules. Higher priority wins; domain-specific schedules win ties. Start is inclusive; end is exclusive.</p></details>
-            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll osw-table-scroll--wide">
-                <table class="w-full text-left"><thead class="bg-gray-900 text-gray-400 text-xs uppercase"><tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
-                    <tbody class="divide-y divide-gray-700"><template x-for="schedule in schedules" :key="schedule.id"><tr>
-                        <td class="px-4 py-3 font-medium" x-text="schedule.name"></td><td class="px-4 py-3 text-sm" x-text="targetLabel(schedule)"></td><td class="px-4 py-3 text-sm" x-text="domainLabel(schedule.domain_id)"></td>
-                        <td class="px-4 py-3 text-xs text-gray-300"><div x-text="formatLocal(schedule.starts_at)"></div><div class="text-gray-500">to <span x-text="formatLocal(schedule.ends_at)"></span></div></td>
-                        <td class="px-4 py-3 tabular-nums" x-text="schedule.priority"></td><td class="px-4 py-3"><span class="text-xs" :class="schedule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="schedule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
-                        <td class="px-4 py-3"><div class="osw-actions justify-end"><button @click="editSchedule(schedule)" class="text-blue-400 hover:text-blue-300 text-sm">Edit</button><button @click="deleteSchedule(schedule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button></div></td>
-                    </tr></template><tr x-show="schedules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No scheduled signature windows configured.</td></tr></tbody>
-                </table>
+            <div class="bg-gray-800 rounded-lg border border-gray-700">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border-b border-gray-700">
+                    <label class="text-sm text-gray-300">Search schedules
+                        <input type="search" x-model="search" placeholder="Search name, target or domain" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                    </label>
+                    <label class="text-sm text-gray-300">Status filter
+                        <select x-model="statusFilter" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                            <option value="all">All schedules</option><option value="enabled">Enabled</option><option value="disabled">Disabled</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="osw-table-scroll osw-table-scroll--wide">
+                    <table class="w-full text-left">
+                        <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                            <tr><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Target</th><th class="px-4 py-3">Domain</th><th class="px-4 py-3">Window</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="schedule in filteredSchedules" :key="schedule.id">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium" x-text="schedule.name"></td>
+                                    <td class="px-4 py-3 tabular-nums" x-text="schedule.priority"></td>
+                                    <td class="px-4 py-3 text-sm" x-text="targetLabel(schedule)"></td>
+                                    <td class="px-4 py-3 text-sm" x-text="domainLabel(schedule.domain_id)"></td>
+                                    <td class="px-4 py-3 text-xs text-gray-300 whitespace-nowrap">
+                                        <div x-text="formatLocal(schedule.starts_at)"></div>
+                                        <div class="text-gray-500">to <span x-text="formatLocal(schedule.ends_at)"></span></div>
+                                    </td>
+                                    <td class="px-4 py-3"><span class="text-xs" :class="schedule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="schedule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                                    <td class="px-4 py-3 text-right whitespace-nowrap">
+                                        <div class="osw-actions justify-end">
+                                            <button type="button" @click="editSchedule(schedule)" class="text-blue-400 hover:text-blue-300 text-sm">Edit</button>
+                                            <button type="button" @click="toggleSchedule(schedule)" :disabled="togglingId === schedule.id" class="text-blue-400 hover:text-blue-300 text-sm disabled:opacity-40" x-text="schedule.is_enabled ? 'Disable' : 'Enable'"></button>
+                                            <button type="button" @click="deleteSchedule(schedule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </template>
+                            <tr x-show="schedules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No scheduled signature windows configured.</td></tr>
+                            <tr x-show="schedules.length > 0 && filteredSchedules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No matching schedules.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
             <div class="osw-modal-root">
                 <div class="osw-modal-placement">
                     <div x-show="editing" x-cloak role="dialog" aria-label="Schedule editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-medium">
                         <div class="osw-modal-header"><h3 class="text-lg font-bold" x-text="form.id ? 'Edit Schedule' : 'Create Schedule'"></h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
                         <div class="osw-modal-body">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white" placeholder="Christmas 2026"></label>
-                            <label class="text-sm text-gray-300">Domain<select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">All domains</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select></label>
-                            <label class="text-sm text-gray-300">Target type<select x-model="form.target_type" @change="changeTargetType()" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="SIGNATURE">Signature</option><option value="GROUP">Signature Group</option></select></label>
-                            <label class="text-sm text-gray-300">Signature target <span class="text-xs text-gray-500">(used for Signature)</span><select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select signature</option><template x-for="signature in activeSignatures()" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select></label>
-                            <label class="text-sm text-gray-300">Group target <span class="text-xs text-gray-500">(used for Signature Group)</span><select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select group</option><template x-for="group in activeGroups()" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select></label>
-                            <label class="text-sm text-gray-300">Start<input type="datetime-local" x-model="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                            <label class="text-sm text-gray-300">End<input type="datetime-local" x-model="form.ends_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                            <label class="text-sm text-gray-300">Priority<input type="number" min="-100000" max="100000" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                            <label class="flex items-center gap-2 text-sm text-gray-300 mt-6"><input type="checkbox" x-model="form.is_enabled"> Schedule enabled</label>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white" placeholder="Christmas 2026"></label>
+                                <label class="text-sm text-gray-300">Priority<input type="number" min="-100000" max="100000" step="1" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                                <label class="text-sm text-gray-300">Target type
+                                    <select x-model="form.target_type" @change="changeTargetType" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="SIGNATURE">Signature</option><option value="GROUP">Signature Group</option></select>
+                                </label>
+                                <label x-show="form.target_type === 'SIGNATURE'" class="text-sm text-gray-300">Signature
+                                    <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select signature</option><template x-for="signature in activeSignatures()" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select>
+                                </label>
+                                <label x-show="form.target_type === 'GROUP'" class="text-sm text-gray-300">Signature Group
+                                    <select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">Select group</option><template x-for="group in activeGroups()" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select>
+                                </label>
+                                <label class="text-sm text-gray-300">Domain
+                                    <select x-model="form.domain_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"><option value="">All domains</option><template x-for="domain in domains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template></select>
+                                </label>
+                                <label class="text-sm text-gray-300">Start<input type="datetime-local" x-model="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                                <label class="text-sm text-gray-300">End<input type="datetime-local" x-model="form.ends_local" :min="form.starts_local" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                            </div>
+                            <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled"> Schedule enabled</label>
+                            <p class="text-xs text-gray-500">Times use your browser's local time zone. Start is included, end is excluded.</p>
                         </div>
-                        <p class="text-xs text-gray-500">Times use your browser's local time zone.</p>
+                        <div class="osw-modal-footer">
+                            <button type="button" data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button>
+                            <button type="button" @click="saveSchedule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Schedule</button>
                         </div>
-                        <div class="osw-modal-footer"><button data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveSchedule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Schedule</button></div>
                     </div>
                 </div>
             </div>
