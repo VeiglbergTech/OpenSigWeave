@@ -169,7 +169,7 @@ def reserve_run(db, rule: BackupRuleDB, location: BackupLocationDB, trigger: str
     run = BackupRunDB(
         id=run_id, rule_id=rule.id, rule_name=rule.name,
         location_id=location.id, location_name=location.name,
-        content="full", trigger=trigger, status="pending",
+        content=rule.content, trigger=trigger, status="pending",
         requested_at=now,
     )
     db.add(run)
@@ -473,12 +473,14 @@ def reconcile_active(db, now: datetime | None = None):
 
 
 
-def run_scheduler_tick(now: datetime | None = None):
+def run_scheduler_tick(now: datetime | None = None, *, allow_scheduled: bool = True):
     now = utc(now)
     with SessionLocal() as db:
         reconcile_active(db, now)
         lease = db.get(BackupRuntimeDB, 1)
-        if lease is None or lease.active_run_id:
+        # Manual queued runs are always processed; disabling automatic dispatch
+        # for a maintenance window must not strand a requested backup.
+        if lease is None or lease.active_run_id or not allow_scheduled:
             return
         due = db.query(BackupRuleDB).join(
             BackupLocationDB, BackupRuleDB.location_id == BackupLocationDB.id
@@ -506,8 +508,6 @@ _worker_thread: threading.Thread | None = None
 
 def start_scheduler():
     global _worker_thread
-    if os.environ.get("BACKUP_RULE_SCHEDULER_ENABLED", "true").lower() != "true":
-        return
     if _worker_thread is not None and _worker_thread.is_alive():
         return
     _worker_stop.clear()
@@ -515,7 +515,9 @@ def start_scheduler():
     def loop():
         while not _worker_stop.is_set():
             try:
-                run_scheduler_tick()
+                run_scheduler_tick(
+                    allow_scheduled=os.environ.get("BACKUP_RULE_SCHEDULER_ENABLED", "true").lower() == "true"
+                )
             except Exception:
                 LOG.exception("Backup rule scheduler tick failed")
             _worker_stop.wait(20)

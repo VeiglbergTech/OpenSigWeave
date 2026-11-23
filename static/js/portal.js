@@ -1588,6 +1588,16 @@ function backupManager() {
             const text = this.ruleFilter.trim().toLowerCase();
             return this.rules.filter(item => !text || (item.name + " " + item.location_name).toLowerCase().includes(text));
         },
+        ruleRetentionText(item) {
+            const limits = [];
+            if (item.retention_count !== null && item.retention_count !== undefined) {
+                limits.push("Keep " + item.retention_count);
+            }
+            if (item.retention_days !== null && item.retention_days !== undefined) {
+                limits.push("Max " + item.retention_days + " days");
+            }
+            return limits.join(" · ") || "—";
+        },
         get filteredHistory() {
             return this.history.filter(item => (!this.historyStatus || item.status === this.historyStatus)
                 && (!this.historyRule || item.rule_id === this.historyRule));
@@ -1630,7 +1640,7 @@ function backupManager() {
         rulePayload(item) {
             return {
                 name: item.name, description: item.description || "", enabled: !!item.enabled,
-                location_id: item.location_id, content: "full", schedule_kind: item.schedule_kind,
+                location_id: item.location_id, content: item.content, schedule_kind: item.schedule_kind,
                 hour: Number(item.hour), minute: Number(item.minute), weekday: Number(item.weekday),
                 monthday: Number(item.monthday), interval_minutes: Number(item.interval_minutes),
                 timezone: "UTC",

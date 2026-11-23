@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError, TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import List, Optional, Literal
 
 from dotenv import load_dotenv
@@ -270,13 +270,6 @@ class SignatureRuleCreateRequest(NoLegacySignatureSelectionRequest):
     is_enabled: bool = True
     conditions: List[SignatureRuleConditionRequest] = Field(default_factory=list, max_length=64)
 
-class BackupSettingsUpdate(BaseModel):
-    directory: str = Field(min_length=1, max_length=255)
-    automatic: bool = False
-    interval_hours: int = Field(ge=1, le=720)
-    keep: int = Field(ge=1, le=365)
-
-
 class BackupLocationInput(BaseModel):
     name: str
     type: Literal["local", "smb"]
@@ -291,6 +284,9 @@ class BackupLocationInput(BaseModel):
 
 
 class BackupRuleInput(BaseModel):
+    # Legacy global directory/automatic/keep fields must never silently be ignored.
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=120)
     description: str = Field(default="", max_length=500)
     enabled: bool = True
@@ -1756,7 +1752,7 @@ def get_admin_backups(request: Request):
 
 
 @app.put("/api/admin/backups/settings")
-def save_admin_backup_settings(payload: BackupSettingsUpdate, request: Request):
+def save_admin_backup_settings(request: Request):
     return _retired_backup_api(request)
 
 

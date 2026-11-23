@@ -80,8 +80,19 @@ Each rule selects one enabled Local/SMB Location, full application content,
 UTC schedule and retention (by count, age, or both). Daily, weekly, monthly
 (day 1–28) and interval (15–43,200 minutes) schedules are supported.
 `Run Now` is asynchronous and returns a pending run; **Backup History**
-shows the result. The scheduler must remain enabled for both automatic
-execution and pending manual jobs.
+shows the result. The application worker processes pending manual jobs even when
+`BACKUP_RULE_SCHEDULER_ENABLED=false`. This environment variable is an
+operator-level safety pause for **automatic dispatch** (for example while
+retiring a legacy host timer), not a global Backup Settings policy. Normal
+automatic execution is controlled by each rule's Enabled state and schedule.
+The deprecated `/api/admin/backups/settings` endpoint remains a read-only
+HTTP 410 compatibility tombstone; it cannot change rule configuration.
+The former global directory, automatic and retention fields are not persisted
+in the application database. Migration 0017 already creates the complete
+per-rule schedule, content and retention columns; no destructive schema
+change or implicit import of host `backup.env` settings is safe or required.
+Transfer any former host-only schedule manually into a named Backup Rule
+before retiring the legacy timer.
 
 Local files are stored at `/app/backups/<location-id>/` and published
 atomically with private permissions. SMB uploads use a temporary filename,

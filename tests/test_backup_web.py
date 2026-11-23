@@ -2,6 +2,7 @@
 import base64
 import json
 import os
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 
@@ -44,6 +45,22 @@ class BackupAdminApiTests(unittest.TestCase):
              {"confirm": "RESTORE TO NEW DEPLOYMENT"}),
             ("GET", "/api/admin/backups/opensigweave-20261122T190000Z.age/download", None),
         ]
+
+    def test_backup_settings_removed_from_ui_and_rules_are_grouped(self):
+        markup = (Path(__file__).resolve().parents[1] / "templates" / "index.html").read_text(encoding="utf-8")
+        self.assertNotIn("Backup Settings", markup)
+        self.assertNotIn("Backup directory", markup)
+        self.assertNotIn('x-model="backupSettings.', markup)
+        start = markup.index('id="backup-rule-modal-title"')
+        end = markup.index('id="backup-history-modal-title"', start)
+        rule_dialog = markup[start:end]
+        for label in ('backup-rule-general', 'backup-rule-content', 'backup-rule-schedule',
+                      'backup-rule-retention'):
+            with self.subTest(section=label):
+                self.assertIn('aria-labelledby="' + label + '"', rule_dialog)
+        self.assertIn('x-model="ruleForm.location_id"', rule_dialog)
+        self.assertIn('x-model.number="ruleForm.retention_count"', rule_dialog)
+        self.assertIn('x-model="ruleForm.content"', rule_dialog)
 
     def test_legacy_routes_require_admin_and_never_contact_host(self):
         for groups in ([], ["signature-users"]):

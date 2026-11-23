@@ -782,9 +782,9 @@
                     <input type="search" aria-label="Search backup rules" x-model="ruleFilter" placeholder="Search rules…" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm min-w-[14rem]">
                 </div>
                 <div class="osw-table-scroll rounded border border-gray-700">
-                    <table class="w-full min-w-[52rem] text-left text-sm">
+                    <table class="w-full min-w-[60rem] text-left text-sm">
                         <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
-                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Next Run (Local Time)</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Retention</th><th class="px-4 py-3">Next Run (Local Time)</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
                         </thead>
                         <tbody class="divide-y divide-gray-700">
                             <template x-for="item in filteredRules" :key="item.id">
@@ -792,6 +792,7 @@
                                     <td class="px-4 py-3 font-medium" x-text="item.name"></td>
                                     <td class="px-4 py-3" x-text="item.location_name"></td>
                                     <td class="px-4 py-3 capitalize" x-text="item.schedule_kind === 'interval' ? 'Every ' + item.interval_minutes + ' min' : item.schedule_kind + ' (UTC)'"></td>
+                                    <td class="px-4 py-3 text-gray-300" x-text="ruleRetentionText(item)"></td>
                                     <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'"></td>
                                     <td class="px-4 py-3"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'"></button></td>
                                     <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-3">
@@ -801,7 +802,7 @@
                                     </div></td>
                                 </tr>
                             </template>
-                            <tr x-show="filteredRules.length === 0"><td colspan="6" class="px-4 py-6 text-center text-gray-400">No matching backup rules.</td></tr>
+                            <tr x-show="filteredRules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-400">No matching backup rules.</td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -809,76 +810,90 @@
             <template x-teleport="body">
                 <div x-show="ruleModal" x-cloak class="osw-modal-root">
                     <div class="osw-modal-placement">
-                        <div x-show="ruleModal" role="dialog" aria-modal="true" aria-labelledby="backup-rule-modal-title" class="osw-modal-shell osw-modal-width-small">
-                            <div class="osw-modal-header">
+                        <div x-show="ruleModal" role="dialog" aria-modal="true" aria-labelledby="backup-rule-modal-title" class="osw-modal-shell osw-modal-width-large">
+                            <div class="osw-modal-header osw-domain-modal-header">
                                 <h3 id="backup-rule-modal-title" class="text-lg font-bold" x-text="ruleEditingId ? 'Edit Backup Rule' : 'Add Backup Rule'"></h3>
                                 <button type="button" class="osw-modal-dismiss" @click="closeRule()" aria-label="Close dialog">&times;</button>
                             </div>
                             <form @submit.prevent="saveRule()">
                                 <div class="osw-modal-body space-y-4">
-                                    <label class="block text-sm">Rule Name
-                                        <input type="text" x-model="ruleForm.name" required maxlength="120" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                    </label>
-                                    <label class="block text-sm">Backup Location
-                                        <select x-model="ruleForm.location_id" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                            <option value="" disabled>Select location</option>
-                                            <template x-for="item in locations" :key="item.id">
-                                                <option :value="item.id" x-text="item.name + (item.enabled ? '' : ' (disabled)')"></option>
-                                            </template>
-                                        </select>
-                                    </label>
-                                    <label class="block text-sm">Backup Content
-                                        <select x-model="ruleForm.content" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                            <option value="full">Full Backup</option>
-                                        </select>
-                                    </label>
-                                    <label class="flex gap-2 items-center text-sm">
-                                        <input type="checkbox" x-model="ruleForm.enabled" class="osw-switch" role="switch"> Enabled
-                                    </label>
-                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                        <label class="block text-sm">Schedule
-                                            <select x-model="ruleForm.schedule_kind" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                                <option value="daily">Daily</option><option value="weekly">Weekly</option>
-                                                <option value="monthly">Monthly</option><option value="interval">Custom Interval</option>
-                                            </select>
-                                        </label>
-                                        <label x-show="ruleForm.schedule_kind === 'weekly'" class="block text-sm">Weekday
-                                            <select x-model.number="ruleForm.weekday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                                <option :value="0">Monday</option><option :value="1">Tuesday</option><option :value="2">Wednesday</option>
-                                                <option :value="3">Thursday</option><option :value="4">Friday</option><option :value="5">Saturday</option><option :value="6">Sunday</option>
-                                            </select>
-                                        </label>
-                                        <label x-show="ruleForm.schedule_kind === 'monthly'" class="block text-sm">Day of month (1–28)
-                                            <input type="number" min="1" max="28" x-model.number="ruleForm.monthday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                        </label>
-                                        <label x-show="ruleForm.schedule_kind === 'interval'" class="block text-sm">Interval (minutes)
-                                            <input type="number" min="15" max="43200" x-model.number="ruleForm.interval_minutes" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                        </label>
-                                        <template x-if="ruleForm.schedule_kind !== 'interval'">
-                                            <div class="grid grid-cols-2 gap-3 sm:col-span-2">
-                                                <label class="block text-sm">Hour (UTC)
-                                                    <input type="number" min="0" max="23" x-model.number="ruleForm.hour" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                                </label>
-                                                <label class="block text-sm">Minute (UTC)
-                                                    <input type="number" min="0" max="59" x-model.number="ruleForm.minute" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
-                                                </label>
-                                            </div>
-                                        </template>
-                                    </div>
-                                    <div class="rounded border border-gray-700 p-3 space-y-3">
-                                        <h4 class="text-sm font-semibold">Retention</h4>
-                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                            <label class="block text-sm">Maximum Backups
-                                                <input type="number" min="1" max="10000" placeholder="Unlimited" x-model.number="ruleForm.retention_count" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="backup-rule-general">
+                                        <h4 id="backup-rule-general" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">General</h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Rule Name
+                                                <input type="text" x-model="ruleForm.name" required maxlength="120" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
                                             </label>
-                                            <label class="block text-sm">Maximum Age (Days)
-                                                <input type="number" min="1" max="3650" placeholder="Unlimited" x-model.number="ruleForm.retention_days" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            <label class="block text-sm">Backup Location
+                                                <select x-model="ruleForm.location_id" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option value="" disabled>Select location</option>
+                                                    <template x-for="item in locations" :key="item.id">
+                                                        <option :value="item.id" x-text="item.name + (item.enabled ? '' : ' (disabled)')"></option>
+                                                    </template>
+                                                </select>
+                                            </label>
+                                            <label class="flex gap-2 items-center text-sm md:col-span-2">
+                                                <input type="checkbox" x-model="ruleForm.enabled" class="osw-switch" role="switch"> Enabled
+                                            </label>
+                                            <label class="block text-sm md:col-span-2">Description (optional)
+                                                <textarea x-model="ruleForm.description" rows="2" maxlength="500" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></textarea>
                                             </label>
                                         </div>
-                                    </div>
-                                    <label class="block text-sm">Description (optional)
-                                        <textarea x-model="ruleForm.description" rows="2" maxlength="500" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></textarea>
-                                    </label>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-3" aria-labelledby="backup-rule-content">
+                                        <h4 id="backup-rule-content" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Content</h4>
+                                        <label class="block text-sm">Backup Content
+                                            <select x-model="ruleForm.content" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                <option value="full">Full Application Backup</option>
+                                            </select>
+                                        </label>
+                                        <p class="text-xs text-gray-400">Includes PostgreSQL, signatures and identity-provider configuration. Partial backups are not supported by the verified restore format.</p>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="backup-rule-schedule">
+                                        <h4 id="backup-rule-schedule" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Schedule</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Schedule Type
+                                                <select x-model="ruleForm.schedule_kind" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option value="daily">Daily</option><option value="weekly">Weekly</option>
+                                                    <option value="monthly">Monthly</option><option value="interval">Custom Interval</option>
+                                                </select>
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'weekly'" class="block text-sm">Weekday
+                                                <select x-model.number="ruleForm.weekday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option :value="0">Monday</option><option :value="1">Tuesday</option><option :value="2">Wednesday</option>
+                                                    <option :value="3">Thursday</option><option :value="4">Friday</option><option :value="5">Saturday</option><option :value="6">Sunday</option>
+                                                </select>
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'monthly'" class="block text-sm">Day of Month (1–28)
+                                                <input type="number" min="1" max="28" x-model.number="ruleForm.monthday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'interval'" class="block text-sm">Interval (Minutes)
+                                                <input type="number" min="15" max="43200" x-model.number="ruleForm.interval_minutes" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <template x-if="ruleForm.schedule_kind !== 'interval'">
+                                                <div class="grid grid-cols-2 gap-3 sm:col-span-2">
+                                                    <label class="block text-sm">Hour (UTC)
+                                                        <input type="number" min="0" max="23" x-model.number="ruleForm.hour" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    </label>
+                                                    <label class="block text-sm">Minute (UTC)
+                                                        <input type="number" min="0" max="59" x-model.number="ruleForm.minute" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    </label>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <p class="text-xs text-gray-400">Execution times are configured in UTC; the rule list displays the next run in your local time.</p>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-3" aria-labelledby="backup-rule-retention">
+                                        <h4 id="backup-rule-retention" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Retention</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Maximum Backups to Keep
+                                                <input type="number" min="1" max="10000" placeholder="No count limit" x-model.number="ruleForm.retention_count" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label class="block text-sm">Maximum Age (Days)
+                                                <input type="number" min="1" max="3650" placeholder="No age limit" x-model.number="ruleForm.retention_days" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                        </div>
+                                        <p class="text-xs text-gray-400">At least one limit is required. The newest successful backup is always retained.</p>
+                                    </section>
                                 </div>
                                 <div class="osw-modal-footer">
                                     <button type="button" @click="closeRule()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>

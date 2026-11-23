@@ -133,6 +133,80 @@ class BackupRuleTests(unittest.TestCase):
                 r = self.send("POST", "/api/admin/backups/rules", self.rule(loc["id"], **change))
                 self.assertEqual(r.status_code, 422, r.text)
 
+    def test_rule_settings_are_independent_and_legacy_globals_rejected(self):
+        self.auth(["signature-admins"])
+        primary = self.location("Local Primary")
+        secondary = self.location("Local Secondary")
+        first = self.create_rule(
+            primary["id"], name="Daily", schedule_kind="daily",
+            hour=3, minute=15, retention_count=2, retention_days=None,
+            description="Primary location",
+        )
+        second = self.create_rule(
+            secondary["id"], name="Interval", schedule_kind="interval",
+            interval_minutes=45, retention_count=8, retention_days=60,
+            description="Secondary location",
+        )
+        self.assertNotEqual(first["next_run_at"], second["next_run_at"])
+        self.assertEqual(first["retention_count"], 2)
+        self.assertEqual(second["retention_count"], 8)
+        self.assertEqual(second["retention_days"], 60)
+        self.assertEqual(second["location_id"], secondary["id"])
+        self.assertEqual(second["interval_minutes"], 45)
+        response = self.send("PUT", "/api/admin/backups/rules/" + first["id"], self.rule(
+            primary["id"], name="Daily", enabled=False,
+            hour=3, minute=15, retention_count=2, retention_days=None,
+        ))
+        self.assertEqual(response.status_code, 200, response.text)
+        rules = {row["id"]: row for row in self.send("GET", "/api/admin/backups/rules").json()}
+        self.assertFalse(rules[first["id"]]["enabled"])
+        self.assertTrue(rules[second["id"]]["enabled"])
+        self.assertEqual(rules[second["id"]]["retention_count"], 8)
+        self.assertEqual(self.send("POST", "/api/admin/backups/rules/" + first["id"] + "/run").status_code, 409)
+        manual = self.send("POST", "/api/admin/backups/rules/" + second["id"] + "/run")
+        self.assertEqual(manual.status_code, 202, manual.text)
+        self.assertEqual(manual.json()["location_id"], secondary["id"])
+        self.assertEqual(manual.json()["content"], "full")
+        self.assertEqual(manual.json()["trigger"], "manual")
+        # Deprecated global options must not silently mutate individual rules.
+        for field, value in (("directory", "/mnt/backups"), ("automatic", True), ("keep", 1)):
+            with self.subTest(field=field):
+                data = self.rule(primary["id"], name="Legacy", **{field: value})
+                result = self.send("POST", "/api/admin/backups/rules", data)
+                self.assertEqual(result.status_code, 422, result.text)
+
+    def test_manual_queue_executes_when_automatic_dispatch_is_paused(self):
+        self.auth(["signature-admins"])
+        location = self.location()
+        manual_rule = self.create_rule(location["id"], name="Manual")
+        scheduled_rule = self.create_rule(location["id"], name="Scheduled")
+        now = datetime.now(timezone.utc)
+        with self.Session() as db:
+            due = db.get(BackupRuleDB, scheduled_rule["id"])
+            due.next_run_at = now - timedelta(minutes=1)
+            db.commit()
+        response = self.send("POST", "/api/admin/backups/rules/" + manual_rule["id"] + "/run")
+        self.assertEqual(response.status_code, 202, response.text)
+        data = b"encrypted manual ciphertext"
+        digest = hashlib.sha256(data).hexdigest()
+
+        def deliver_local(deliver):
+            archive = Path(self.tmp.name) / "manual.age"
+            archive.write_bytes(data)
+            deliver(archive, len(data), digest)
+            return len(data), digest
+
+        with patch.object(backup_rules, "SessionLocal", self.Session), \
+             patch.object(backup_rules, "create_application_backup", side_effect=deliver_local):
+            backup_rules.run_scheduler_tick(now, allow_scheduled=False)
+            backup_rules.run_scheduler_tick(now, allow_scheduled=False)
+        with self.Session() as db:
+            runs = db.query(BackupRunDB).all()
+            self.assertEqual(len(runs), 1)
+            self.assertEqual(runs[0].trigger, "manual")
+            self.assertEqual(runs[0].status, "success")
+            self.assertLess(backup_rules.utc(db.get(BackupRuleDB, scheduled_rule["id"]).next_run_at), now)
+
     def test_utc_schedule_boundaries(self):
         instant = datetime(2026, 11, 23, 2, 0, tzinfo=timezone.utc)  # Monday
         class Rule: pass
