@@ -14,8 +14,11 @@ class AdminDomainParityTests(unittest.TestCase):
     def test_backup_directory_is_not_an_editable_control(self):
         self.assertNotIn("Backup directory", HTML)
         self.assertNotIn('x-model="settings.directory"', HTML)
-        # The protected legacy backup operator still receives its saved directory.
-        self.assertIn("...this.settings,", JS)
+        # Native backup destinations are selected through Backup Locations / Rules.
+        self.assertIn('x-data="backupManager"', HTML)
+        self.assertIn("Backup Locations", HTML)
+        self.assertIn("Backup Rules", HTML)
+        self.assertNotIn("...this.settings,", JS)
 
     def test_versions_not_displayed_in_system_overview(self):
         system = HTML.split('x-show="adminTab === \'system\'"')[1].split("x-data=\"domainSettingsModal\"")[0]
