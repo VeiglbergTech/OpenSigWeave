@@ -1069,7 +1069,7 @@
                             <p x-show="providerError" x-text="providerError" role="alert" class="text-sm text-red-300"></p>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <label class="block text-sm text-gray-300">Identity Provider
-                                    <select x-model="identityProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    <select aria-label="Identity Provider" x-model="identityProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
                                         <option value="">No identity provider</option>
                                         <template x-for="provider in profileProviders()" :key="provider.id">
                                             <option :value="provider.id" x-text="provider.display_name"></option>
@@ -1081,7 +1081,7 @@
                                     <span class="mt-1 block text-xs text-gray-400">LDAP / Active Directory or an Authentik attribute source for signature fields.</span>
                                 </label>
                                 <label class="block text-sm text-gray-300">Authentication / SSO Provider
-                                    <select x-model="authenticationProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    <select aria-label="Authentication / SSO Provider" x-model="authenticationProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
                                         <option value="">Local Sign-in (No SSO)</option>
                                         <template x-for="provider in loginProviders()" :key="provider.id">
                                             <option :value="provider.id" x-text="provider.display_name"></option>
