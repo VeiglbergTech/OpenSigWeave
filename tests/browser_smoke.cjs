@@ -1869,20 +1869,19 @@ async function main() {
     // client-secret input blank. The existing credential must be retained before
     // validation while changed non-secret settings persist across another reload.
     await reloadedOidcFields.getByLabel("OIDC Scopes").fill("openid email profile groups offline_access");
-    const scopeUpdateRequest = page.waitForRequest(request =>
-      request.method() === "PUT"
-      && request.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
-    );
-    const updateSsoProvider = page.waitForResponse(response =>
-      response.request().method() === "PUT"
-      && response.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
-      && response.status() === 200
-    );
-    await reloadedSsoDialog.getByRole("button", { name: "Save", exact: true }).click();
-    const scopePut = await scopeUpdateRequest;
-    assert.equal(JSON.parse(scopePut.postData()).settings.OIDC_SCOPES, "openid email profile groups offline_access",
+    // Attach the response waiter and click together. If the click fails,
+    // no orphaned waitForRequest/Response promise can hide the real error.
+    const [scopeResponse] = await Promise.all([
+      page.waitForResponse(response =>
+        response.request().method() === "PUT"
+        && response.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
+      ),
+      reloadedSsoDialog.getByRole("button", { name: "Save", exact: true }).click(),
+    ]);
+    const scopePayload = JSON.parse(scopeResponse.request().postData() || "{}");
+    assert.equal(scopePayload.settings?.OIDC_SCOPES, "openid email profile groups offline_access",
       "OIDC form must send the current scope value instead of an earlier x-model snapshot");
-    await updateSsoProvider;
+    assert.equal(scopeResponse.status(), 200, "OIDC provider update must succeed; response: " + await scopeResponse.text());
     await page.reload();
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
 
