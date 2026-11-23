@@ -363,11 +363,18 @@ function identityProviderManager() { return {
                     this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
                     if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
                 },
+                handleEditorToolbarClick(event) {
+                    // CKEditor can intercept its custom toolbar action after mobile
+                    // scroll/focus changes. Handle the native click at the editor host
+                    // capture phase, while leaving CKEditor's selection tracking intact.
+                    if (event.target.closest('.osw-editor-import-url-button')) {
+                        this.openImageImportDialog();
+                    }
+                },
                 openImageImportDialog() {
-                    // CKEditor mounts its URL toolbar button before the asynchronous adapter
-                    // is assigned to signatureRichEditor. Permit the dialog to open during
-                    // that short interval; importImageFromUrl still validates editor readiness.
                     if (!this.editing || this.isViewingHistoricalVersion) return;
+                    // A concurrent toolbar handler may call this twice for one click.
+                    if (this.imageImportOpen) return;
                     this.imageImportUrl = '';
                     this.imageImportOpen = true;
                 },
