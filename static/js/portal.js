@@ -14,11 +14,65 @@ window.fetch = (resource, options = {}) => {
         var userRichEditor, adminRichEditor, signatureRichEditor;
         const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
 
+        // The HTML source must remain editable if a CKEditor asset or plugin
+        // fails. A dead editor with no toolbar must never cause data loss.
+        function mountHtmlEditorFallback(host, raw, options, error) {
+            console.error("OpenSigWeave: CKEditor unavailable; using HTML source editor.", error);
+            const warning = document.createElement("p");
+            warning.setAttribute("role", "alert");
+            warning.className = "mb-2 text-sm text-amber-300";
+            warning.textContent = "Visual editor unavailable. You can still edit the HTML source below.";
+            const textarea = document.createElement("textarea");
+            textarea.className = "osw-editor-fallback w-full min-h-[180px] rounded border border-amber-700 bg-gray-950 p-3 font-mono text-sm text-green-300";
+            textarea.setAttribute("aria-label", "HTML signature source");
+            textarea.value = raw.value;
+            let onChange = typeof options.onChange === "function" ? options.onChange : null;
+            const changed = () => {
+                raw.value = textarea.value;
+                if (onChange) onChange(textarea.value);
+                checkAllLocks();
+            };
+            textarea.addEventListener("input", changed);
+            const adapter = {
+                getData: () => textarea.value,
+                setData(html) { textarea.value = typeof html === "string" ? html : ""; raw.value = textarea.value; },
+                setOnChange(callback) { onChange = typeof callback === "function" ? callback : null; },
+                setReadOnly(value) { textarea.readOnly = !!value; },
+                focus() { textarea.focus(); },
+                saveImageImportSelection() {},
+                clearImageImportSelection() {},
+                insertText(value) {
+                    if (textarea.readOnly) return;
+                    textarea.setRangeText(String(value || ""), textarea.selectionStart, textarea.selectionEnd, "end");
+                    changed();
+                },
+                insertImage(url) {
+                    const asset = new URL(url, window.location.origin);
+                    if (asset.origin !== window.location.origin ||
+                        !/^\\/signature-assets\\/[a-f0-9]{64}\\.(?:png|jpg|webp|gif)$/.test(asset.pathname) ||
+                        asset.search || asset.hash) throw new Error("Only managed signature images are allowed.");
+                    this.insertText('<img src="' + asset.pathname + '" alt="">');
+                },
+                destroy() { host.replaceChildren(); }
+            };
+            adapter.setReadOnly(options.readOnly);
+            host.replaceChildren(warning, textarea);
+            host.__openSigWeaveEditor = adapter;
+            if (!raw.dataset.richEditorSyncBound) {
+                raw.addEventListener("input", () => adapter.setData(raw.value));
+                raw.dataset.richEditorSyncBound = "true";
+            }
+            return adapter;
+        }
+
         async function mountRichEditor(hostId, rawId, options = {}) {
             const host = document.getElementById(hostId);
             const raw = document.getElementById(rawId);
-            if (!host || !raw || !window.OpenSigWeaveEditor) return null;
+            if (!host || !raw) return null;
             host.classList.add("osw-rich-editor");
+            if (!window.OpenSigWeaveEditor) {
+                return mountHtmlEditorFallback(host, raw, options, new Error("CKEditor script not loaded."));
+            }
             if (host.__openSigWeaveEditor) {
                 host.__openSigWeaveEditor.setOnChange(html => {
                     raw.value = html;
@@ -30,7 +84,9 @@ window.fetch = (resource, options = {}) => {
                 return host.__openSigWeaveEditor;
             }
             const target = host.querySelector("[data-editor-target]") || host;
-            const adapter = await window.OpenSigWeaveEditor.create(target, {
+            let adapter;
+            try {
+                adapter = await window.OpenSigWeaveEditor.create(target, {
                 initialData: raw.value,
                 readOnly: !!options.readOnly,
                 imageUpload: !!options.imageUpload,
@@ -42,7 +98,10 @@ window.fetch = (resource, options = {}) => {
                     if (typeof options.onChange === "function") options.onChange(html);
                     checkAllLocks();
                 }
-            });
+                });
+            } catch (error) {
+                return mountHtmlEditorFallback(host, raw, options, error);
+            }
             host.__openSigWeaveEditor = adapter;
             if (!raw.dataset.richEditorSyncBound) {
                 raw.addEventListener("input", () => {
