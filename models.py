@@ -20,6 +20,56 @@ class BackupLocationDB(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+
+class BackupRuleDB(Base):
+    """Scheduled complete encrypted backups using a named destination."""
+    __tablename__ = "backup_rules"
+    id = Column(String(32), primary_key=True)
+    name = Column(String(120), nullable=False, unique=True)
+    description = Column(String(500), nullable=False, default="")
+    location_id = Column(String(32), ForeignKey("backup_locations.id", ondelete="RESTRICT"), nullable=False, index=True)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    content = Column(String(16), nullable=False, default="full")
+    schedule_kind = Column(String(16), nullable=False)
+    hour = Column(Integer, nullable=False, default=2)
+    minute = Column(Integer, nullable=False, default=0)
+    weekday = Column(Integer, nullable=False, default=0)
+    monthday = Column(Integer, nullable=False, default=1)
+    interval_minutes = Column(Integer, nullable=False, default=1440)
+    timezone = Column(String(16), nullable=False, default="UTC")
+    retention_count = Column(Integer, nullable=True)
+    retention_days = Column(Integer, nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class BackupRunDB(Base):
+    """Append-only run history; records survive deletion of the parent rule."""
+    __tablename__ = "backup_runs"
+    id = Column(String(32), primary_key=True)
+    rule_id = Column(String(32), ForeignKey("backup_rules.id", ondelete="SET NULL"), nullable=True, index=True)
+    rule_name = Column(String(120), nullable=False)
+    location_id = Column(String(32), nullable=False, index=True)
+    location_name = Column(String(120), nullable=False)
+    trigger = Column(String(16), nullable=False)
+    status = Column(String(16), nullable=False, default="pending")
+    content = Column(String(16), nullable=False, default="full")
+    requested_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    size_bytes = Column(Integer, nullable=True)
+    archive_sha256 = Column(String(64), nullable=True)
+    file_key = Column(String(100), nullable=True)
+    is_retained = Column(Boolean, nullable=False, default=True)
+    error_detail = Column(String(300), nullable=True)
+
+
+class BackupRuntimeDB(Base):
+    """A singleton atomic lease; at most one backup can be dispatched globally."""
+    __tablename__ = "backup_runtime"
+    id = Column(Integer, primary_key=True)
+    active_run_id = Column(String(32), nullable=True)
+
 class DomainDB(Base):
     __tablename__ = "domains"
     id = Column(Integer, primary_key=True, index=True)
