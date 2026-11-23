@@ -662,11 +662,12 @@
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
             <p x-show="message" x-text="message" role="status" class="text-sm text-green-300"></p>
-            <div x-show="!available" class="rounded border border-amber-700 bg-amber-950/30 p-4 text-sm text-amber-100">
-                Full backup management requires the protected host backup operator and a mounted remote backup destination.
-                Configuration import and export remain available under Import / Export.
+            <div x-show="!managedAvailable" role="status" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">
+                Backup Rules cannot run: <span x-text="managedError || 'Protected host backup operator is unavailable'"></span>.
             </div>
-            <div x-show="available && !mountReady" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">The configured remote backup storage is not mounted or is not permitted. Save a valid remote mount to re-enable backup operations.</div>
+            <div x-show="!mountReady" class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-100">
+                Legacy mount-based backup operations are unavailable. Local and SMB Backup Rules use their own destinations.
+            </div>
 
             <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
@@ -763,7 +764,7 @@
                                     <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'"></td>
                                     <td class="px-4 py-3"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'"></button></td>
                                     <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-3">
-                                        <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !item.enabled" @click="runRule(item)">Run Now</button>
+                                        <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !managedAvailable || !item.enabled" @click="runRule(item)">Run Now</button>
                                         <button type="button" class="text-blue-400 hover:text-blue-300" @click="openRule(item)">Edit</button>
                                         <button type="button" class="text-red-400 hover:text-red-300" @click="deleteRule(item)">Delete</button>
                                     </div></td>
