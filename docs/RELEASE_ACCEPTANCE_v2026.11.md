@@ -1,6 +1,6 @@
-# v2026.11 / v1.0 release acceptance record
+# 2026.11-alpha early-access acceptance record
 
-**Status:** NOT APPROVED FOR `main` / tag / GitHub Release. Update this document with **actual**, timestamped evidence from the final candidate and target environment before requesting release approval. No checkboxes below are pre-approved by CI alone.
+**Status:** NOT YET APPROVED FOR `main`, version tag or GHCR publication. This is an **alpha pre-release**, not 1.0 Stable. Record the tested features and known omissions from the [mail usage acceptance matrix](MAIL_USAGE_ACCEPTANCE_MATRIX.md); explicit maintainer sign-off on remaining alpha limitations is required. No checkbox is auto-approved by CI.
 
 ## Automated gates — require final candidate SHA
 
@@ -10,9 +10,9 @@
 - [ ] Postfix Milter Compatibility CI succeeds for the candidate if triggered; it is not evidence of real Mailcow/Rspamd success.
 - [ ] Confirm no secrets, real accounts, private hostnames, `.env`, private keys, archives, logs or debug artifacts were committed.
 - [ ] Record the exact tested `beta` SHA. Use only a `dev -> beta` promotion after fully green source CI and required PR checks.
-- [ ] Verify `main` remains unchanged and **no** tag or GitHub Release was created.
+- [ ] Verify main remains untouched until explicit approval. After approval, create `YYYY.MM-alpha[N]` from the exact approved main SHA and verify the [self-hosted GHCR workflow](RELEASE_PROCESS.md) published only the version tag and `alpha` alias.
 
-## Mandatory environment acceptance
+## Environment acceptance (record alpha limitations)
 
 - [ ] Deploy the exact candidate to an isolated host with HTTPS/reverse proxy and explicit allowlist; verify `docker compose ps`, migration state and System diagnostics.
 - [ ] Test emergency local administrator, Authentik/generic OIDC as used, and LDAPS login/logout, verified-email and group mapping; verify least privilege and negative tests.
@@ -26,7 +26,7 @@
 - [ ] Verify HTTP security headers and browser behavior (CSP remains Report-Only) with actual supported clients.
 - [ ] Test sustained realistic load and adapter downtime/recovery; record CPU/memory and whether failure is fail-open/fail-closed.
 
-## Mailcow/Rspamd SMTP gate — do not skip for Mailcow production
+## Mailcow/Rspamd SMTP gate — alpha evidence is not production certification
 
 Use the full [Mailcow acceptance matrix](MAILCOW_RSPAMD_INTEGRATION.md#manual-acceptance-checklist-mailcow-beta). Record raw `.eml` evidence, client/version and SHA-256 of every test attachment.
 

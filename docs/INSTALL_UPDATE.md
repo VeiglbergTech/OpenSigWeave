@@ -1,6 +1,6 @@
 # Installation, configuration and safe channel-bound updates
 
-> Release candidate on `dev`; no statement of production acceptance.
+> Published alpha installations use a manually approved `main` version tag and pull a prebuilt GitHub Container Registry image. `dev`/`beta` remain source-testing channels; this does not certify production use.
 
 ## Host requirements
 
@@ -12,7 +12,7 @@ The checkout must be a clean, non-shallow clone from the approved Git origin.
 ## First installation: no manual key creation
 
 ```bash
-git clone --branch dev https://github.com/VeiglbergTech/OpenSigWeave.git
+git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
 cd OpenSigWeave
 ./install.sh
 ```
@@ -35,7 +35,7 @@ copy. It is ignored by Git.
 Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
 `ENGINE_API_KEY` and Fernet-compatible `BACKUP_LOCATIONS_KEY`. It writes
 a protected `.env` with atomic create, validates Compose, starts and checks
-PostgreSQL, builds/starts the app, applies Alembic on startup and performs a
+PostgreSQL, **pulls and SHA-verifies the GHCR app image on `main`**, starts it with no local build, applies Alembic on startup and performs a
 final healthcheck. Docker creates the persistent PostgreSQL, signature,
 identity-provider and backup named volumes. No backup location, encryption
 identity, OIDC, LDAP, Stalwart or other optional integration is required.
@@ -131,16 +131,18 @@ update checks Git fast-forward ancestry, existing Docker/Compose health,
 PostgreSQL and Alembic, persistent named volumes, and critical paths (which
 require independent `--approve-breaking`). It does not auto-switch branches.
 
+On `main`, the updater first pulls the GHCR image and verifies its `org.opencontainers.image.revision` label against the **exact Git target commit**. If the package is not published or the tag points to the wrong SHA, the update stops **before changing source, volumes or schema**. `OSW_IMAGE_TAG` defaults to `alpha`, or can be pinned to an immutable version such as `2026.11-alpha1` (update a pin intentionally before upgrading). Only dev/beta staging uses a local build overlay. See [release process](RELEASE_PROCESS.md).
+
 After the backup decision, the updater writes a protected 0600 journal under
 `.git/opensigweave-update-state.json` with structured `backup.status`:
 `not_configured`, `verified`, or `failed_and_overridden`. Successful
 records include Backup Rule, Location, run ID and stored archive filename.
 No imaginary backup path is printed. Only then does it fast-forward the
-source, migrate safe `.env` settings, validate Compose, build the app image,
+source, migrate safe `.env` settings, validate Compose, **use the pre-pulled GHCR image on `main` (no Docker build)**,
 stop the application for a one-off Alembic migration, restart it and perform
 health checks. Named volumes are never removed.
 
-On an interrupted build, migration or restart, the journal remains and
+On an interrupted image update, migration or restart, the journal remains and
 blocks further update checks until the operator reconciles actual state.
 **A failed migration never initiates a code-only or database rollback.**
 Without a verified backup, no automatic restoration point exists. Even with
@@ -178,5 +180,4 @@ Manifest checks, ciphertext readback and `pg_restore --list` validate
 artifact structure, but are **not proof** of a full cross-host production
 restore. Real SMB/NAS failure testing, cold restore and live mail-server
 integration remain separate release acceptance steps. `dev` is development,
-`beta` is tested code and `main` is manually approved; no new release
-branch or publishing workflow is introduced.
+`beta` is tested code and `main` is manually approved. The [self-hosted GHCR publishing workflow](RELEASE_PROCESS.md) runs only after a valid explicitly approved version tag is pushed on main; no additional Git branches are introduced.

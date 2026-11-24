@@ -1,6 +1,6 @@
-# OpenSigWeave v2026.11 / v1.0 — prepared release notes
+# OpenSigWeave 2026.11-alpha — prepared early-access notes
 
-> **NOT RELEASED.** Candidate notes for review, not a published GitHub Release or tagged production version. Feature statements describe the `dev` candidate reviewed in November 2026. The final released commit must be recorded only after release approval and corresponding tests.
+> **NOT RELEASED YET.** Planned: `2026.11-alpha`, then `2026.11-alpha1`, `2026.11-alpha2`, etc. This is **early access**, not v1.0 Stable. An approved main version tag triggers GHCR publishing only after exact-main CI gates pass. See [release process](RELEASE_PROCESS.md).
 
 ## Highlights
 
@@ -26,7 +26,7 @@
 
 1. Read [UPGRADE.md](UPGRADE.md) and record the current commit and deployment topology.
 2. Create and **verify** an encrypted full backup before changing code or applying migrations. Backups contain secrets. A browser ZIP export is **not** a full backup.
-3. Move only to a fully tested and promoted `beta` commit with `git pull --ff-only`. Validate Compose, build, migrations, health and the administrator System tab.
+3. After a manually approved `main` version tag publishes the prebuilt image, use `./update.sh` to pull the source-matched GHCR image (no local Docker build), validate migrations, health and the administrator System tab.
 4. Check identity-provider/group mappings, migrated rules/groups, signature-version restore, editor images, schedules, branding and external asset GET.
 5. Enable any MTA integration only after real SMTP, MIME, sender-authorization and final DKIM acceptance. If migration fails, prefer a fresh-target restore from the verified backup; checking out old code alone is not a database rollback.
 
@@ -40,11 +40,11 @@
 
 ## Known limitations / release gates
 
-- No adapter is yet production-certified. Live Mailcow/Rspamd SMTP/DKIM chain and authenticated sender/alias authorization are still unverified; the dedicated Postfix integration CI uses a mock engine, not live production credentials.
+- Isolated Mailcow/SOGo tests confirmed signed mail, CID, nested replies, rules, schedules, rotation, Authentik, domain fallbacks and selected outage/recovery paths. Local `dkimpy` validation passed. These observations do not certify all aliases, SMTP pathways or external mail clients.
 - Signature insertion is not guaranteed exactly once across independent SMTP resubmissions, changed/rotated signatures or other competing mail rewriters.
-- S/MIME/PGP signed/encrypted and unsupported/malformed MIME inputs are deliberately skipped. Rspamd currently fails open on signature-engine errors: delivery can proceed without a signature.
-- Reply/forward placement is heuristic; real SOGo, Outlook and Thunderbird versions, inline CIDs, attachments, charsets and final DKIM must be tested.
-- No live Authentik/LDAPS acceptance, cross-host disaster-recovery drill, real NFS/SMB outage test, dynamic penetration test, sustained load test or all-browser CSP enforcement has been certified.
+- Protected S/MIME/PGP inputs need separate acceptance. The Rspamd adapter retains backward-compatible `fail_open`, but optional `failure_policy=tempfail` rejected tested engine and Milter outages. The separate opt-in guard catches a missing injector **only when the guard itself is loaded**. Fully independent signing enforcement remains unverified.
+- SOGo replies, MIME/CID and attachments worked in live testing. Outlook 2016 was deferred after TLS/transport issues in the temporary isolated environment. Thunderbird, external DKIM and unusual MIME cases remain unverified.
+- Authentik was tested; LDAP/LDAPS was not. Cross-host disaster recovery, SMB outage, penetration tests, sustained load and full Content Security Policy enforcement are not certified.
 - No recurring schedules, nested LDAP group expansion, SCIM provisioning, full CLI/Web parity, or Outlook VML delivery support.
 
-**Release authority:** These notes may be prepared or edited on `dev`. Promotion to `main`, creation of a `v1.0` tag or publication of a GitHub Release requires an explicit, separate maintainer approval after the [release acceptance checklist](RELEASE_ACCEPTANCE_v2026.11.md) has been completed. No approval is implied by green GitHub Actions.
+**Release authority:** Documentation stays on `dev` until CI promotes it to `beta`; explicit maintainer approval is required for `main` and creation of any `YYYY.MM-alpha[N]`, beta or stable tag. The GHCR workflow reacts to approved tags but does not create them. Green CI alone is not authorization.

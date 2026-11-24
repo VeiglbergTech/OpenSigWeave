@@ -1,8 +1,8 @@
-# Upgrade and recovery guide (v2026.11 / v1.0 candidate)
+# Upgrade and recovery guide (2026.11-alpha early access)
 
 > **Deployment automation:** The new `./install.sh`, `./generate_config.sh` and `./update.sh` workflows are described in [INSTALL_UPDATE.md](INSTALL_UPDATE.md) and in [OpenSigWeave-Docs](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev/src/content/docs/installation). This older candidate checklist remains for manual verification and recovery.
 
-**Status:** Candidate procedure, not a production acceptance certificate. Supported documented deployment path: standalone Docker Compose stack on `beta`. Never upgrade directly from `dev` or make changes in `main` as part of the candidate audit. Keep Mailcow/Rspamd integration disabled in production until the [adapter acceptance matrix](MAILCOW_RSPAMD_INTEGRATION.md) has passed.
+**Status:** Candidate procedure, not a production acceptance certificate. Published release deployment path: standalone Docker Compose stack on manually approved `main`, with prebuilt GHCR application image. Unreleased `beta` remains the staging checkout. Do not promote into main during the candidate audit. Keep Mailcow/Rspamd integration disabled in production until the [adapter acceptance matrix](MAILCOW_RSPAMD_INTEGRATION.md) has passed.
 
 ## 1. Preflight and backup
 
@@ -53,11 +53,13 @@ After `beta` has received a completely green, approved commit, stop outbound sig
 ```bash
 cd /opt/opensigweave
 git status --short
-git fetch origin beta
-git checkout beta
-git pull --ff-only origin beta
-docker compose config --quiet
-docker compose up -d --build --wait --wait-timeout 180
+git fetch origin main
+git checkout main
+git pull --ff-only origin main
+./update.sh --check
+./update.sh --prefetch
+./update.sh --dry-run
+./update.sh
 docker compose ps
 docker compose logs --tail=100 opensigweave
 docker compose exec -T opensigweave alembic current
@@ -79,4 +81,4 @@ Only enable the staged Mailcow/Rspamd, Postfix or Stalwart adapter after its doc
 4. Keep the original deployment untouched for investigation. Restore instructions and a two-host drill are in [CROSS_HOST_RESTORE_DRILL.md](CROSS_HOST_RESTORE_DRILL.md). A same-host CI restore is not cross-host evidence.
 5. Roll back a disposable Mailcow adapter independently using the removal/configuration procedure in [MAILCOW_RSPAMD_INTEGRATION.md](MAILCOW_RSPAMD_INTEGRATION.md), then recheck normal mail delivery and DKIM.
 
-Do not promote to `main`, create a tag or publish a GitHub Release until a maintainer has reviewed the [manual acceptance record](RELEASE_ACCEPTANCE_v2026.11.md) and explicitly authorized it.
+Do not promote to `main` or create a version tag until a maintainer has reviewed the [manual acceptance record](RELEASE_ACCEPTANCE_v2026.11.md) and explicitly authorized it. The [GHCR workflow](RELEASE_PROCESS.md) builds a precompiled image on an existing self-hosted runner after approval; published hosts pull the package and do not build it.
