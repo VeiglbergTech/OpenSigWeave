@@ -133,41 +133,14 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   };
   vm.runInNewContext(portalJs, signatureContext, { filename: "portal.js" });
   const signatureEditor = vm.runInNewContext("signatureManager()", signatureContext);
-  signatureEditor.form.html_content = "<p>Hello selected world!</p>";
-  const editor = {
-    value: signatureEditor.form.html_content,
-    selectionStart: 9,
-    selectionEnd: 17,
-    focused: false,
-    cursor: null,
-    focus() { this.focused = true; },
-    setSelectionRange(start, end) { this.cursor = [start, end]; },
-  };
-  signatureEditor.$nextTick = callback => callback();
-  signatureEditor.insertGroupTag("sales", editor);
-  const groupToken = "{{ group:sales }}";
-  assert.equal(
-    signatureEditor.form.html_content,
-    "<p>Hello " + groupToken + " world!</p>",
-    "Selecting text must replace it with the group token",
-  );
-  assert.equal(editor.focused, true, "The editor must regain focus after insertion");
-  assert.deepEqual(
-    editor.cursor,
-    [9 + groupToken.length, 9 + groupToken.length],
-    "The cursor must be placed immediately after the inserted token",
-  );
-
-  signatureEditor.form.html_content = "<p>Footer</p>";
-  signatureEditor.insertGroupTag("legal", null);
-  assert.equal(
-    signatureEditor.form.html_content,
-    "<p>Footer</p>{{ group:legal }}",
-    "Insertion without an editor reference must append the token",
-  );
-  signatureEditor.insertGroupTag("", editor);
-  assert.equal(notifications.at(-1).msg, "Select a signature group first.", "An empty group selection must be rejected");
-  assert.equal(notifications.at(-1).type, "error");
+  assert.equal(typeof signatureEditor.insertGroupTag, "undefined",
+    "the discontinued tag-insertion UI helper must be removed");
+  assert.equal(template.includes("Advanced: Insert signature group tag"), false,
+    "the signatures editor must not expose the removed tag picker");
+  assert.equal(template.includes('id="group-preview-domain"'), false,
+    "the group overview must not expose a permanent preview domain selector");
+  assert.equal(template.includes('id="group-advanced-preview-domain"'), true,
+    "domain selection must remain available inside Advanced Preview");
 
   const groupManager = vm.runInNewContext("signatureGroupManager()", signatureContext);
   const groupRequests = [];
@@ -178,13 +151,15 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
     return response;
   };
   groupResponses = [
-    { ok: true, json: async () => [{ id: "g1", name: "Sales", slug: "sales", domain_ids: [2], is_active: true }] },
-    { ok: true, json: async () => [{ id: "s1", name: "Corporate" }] },
-    { ok: true, json: async () => [{ id: 2, name: "example.test" }] },
+    { ok: true, json: async () => [{ id: "g1", name: "Sales", slug: "sales", domain_ids: [2], is_active: true,
+      members: [{ signature_id: "s1", weight: 1, is_enabled: true }] }] },
+    { ok: true, json: async () => [{ id: "s1", name: "Corporate", is_active: true, domain_ids: [] }] },
+    { ok: true, json: async () => [{ id: 2, domain_name: "example.test", is_active: true }] },
   ];
   await groupManager.fetchAll();
   assert.equal(groupManager.groups[0].slug, "sales");
-  assert.equal(groupManager.previewDomainId, "2");
+  assert.deepEqual([...groupManager.previewDomainsForGroup(groupManager.groups[0])].map(item => item.id), [2],
+    "eligible domains must consider both group and member scopes");
   assert.equal(groupManager.signatureName("missing"), "Missing signature");
   groupManager.editGroup(groupManager.groups[0]);
   groupManager.toggleDomain("3", true);
@@ -206,14 +181,35 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   });
   assert.equal(groupManager.editing, false);
 
-  groupManager.previewDomainId = "2";
+  const previewGroup = { id: "g/1", name: "Preview", is_active: true, domain_ids: [2],
+    members: [{ signature_id: "s1", weight: 1, is_enabled: true }] };
+  groupManager.domains = [{ id: 2, domain_name: "example.test", is_active: true }];
+  groupManager.signatures = [{ id: "s1", name: "Corporate", is_active: true, domain_ids: [] }];
   let previewHtml = "";
-  window.addEventListener("open-preview", event => { previewHtml = event.detail.html; }, { once: true });
-  groupResponses = [{ ok: true, json: async () => ({ html: "<p>Preview</p>" }) }];
-  await groupManager.previewGroup({ id: "g/1" });
+  window.addEventListener("open-preview", event => { previewHtml = event.detail.html; });
+  groupResponses = [{ ok: true, json: async () => ({
+    html: "<p>Preview</p>", rotation_state_changed: false
+  }) }];
+  await groupManager.previewGroup(previewGroup);
   assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=2");
   assert.equal(previewHtml, "<p>Preview</p>");
   assert.match(notifications.at(-1).msg, /does not change rotation history/);
+  assert.equal(groupManager.previewDomainsForGroup({ ...previewGroup, domain_ids: [99] }).length, 0,
+    "group domain restrictions must not be bypassed");
+  assert.equal(groupManager.previewDomainsForGroup({ ...previewGroup,
+    members: [{ signature_id: "s1", weight: 1, is_enabled: false }] }).length, 0,
+    "disabled group members must not qualify for a preview");
+
+  groupManager.openAdvancedPreview(previewGroup);
+  assert.equal(groupManager.advancedPreviewOpen, true);
+  assert.equal(groupManager.advancedPreviewDomainId, "2");
+  groupResponses = [{ ok: true, json: async () => ({
+    html: "<p>Advanced Preview</p>", rotation_state_changed: false
+  }) }];
+  await groupManager.previewAdvancedGroup();
+  assert.equal(groupManager.advancedPreviewOpen, false);
+  assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=2");
+  assert.equal(previewHtml, "<p>Advanced Preview</p>");
 
   groupManager.memberForm = { group_id: "g1", signature_id: "s1", weight: "4" };
   groupResponses = [{ ok: true, json: async () => ({}) }, ...[
