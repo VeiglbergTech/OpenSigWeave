@@ -73,24 +73,38 @@ function M.wrap(task, message, assets)
     local unique = {}
     for _, asset in ipairs(assets) do
         if not safe_asset(asset) then return nil, "invalid managed CID image" end
-        if unique[asset.content_id] then return nil, "duplicate content ID" end
-        unique[asset.content_id] = true
+        if unique[asset.content_id:lower()] then return nil, "duplicate content ID" end
+        unique[asset.content_id:lower()] = true
         size = size + #asset.base64
         if size > MAX_ENCODED_BYTES then return nil, "inline assets exceed limit" end
     end
-    -- Do not reuse a Content-ID already present in the original MIME tree.
-    -- Rspamd exposes the parsed headers of individual MIME parts.
+    -- Real Rspamd mimepart:get_headers() returns opaque rspamd_text, NOT
+    -- an array of header fields. Query Content-ID directly through the
+    -- documented mimepart:get_header_raw() API instead.
     for _, part in ipairs(parts) do
-        if type(part.get_headers) == "function" then
+        if type(part.get_header_raw) == "function" then
+            local count = type(part.get_header_count) == "function"
+                and part:get_header_count("Content-ID") or 0
+            if count and count > 1 then return nil, "duplicate existing content ID headers" end
+            local raw = part:get_header_raw("Content-ID")
+            if raw ~= nil then
+                local value = tostring(raw):gsub("^%s+", ""):gsub("%s+$", "")
+                local id = value:match("^<([^<>]+)>$") or value:match("^(%S+)$")
+                if not id then return nil, "invalid existing content ID" end
+                if unique[id:lower()] then return nil, "existing content ID collision" end
+            end
+        elseif type(part.get_headers) == "function" then
+            -- Standalone Lua tests or older mocks may expose a parsed table;
+            -- never assume a real Rspamd MIME part has that representation.
             local headers = part:get_headers()
-            if type(headers) ~= "table" then return nil, "invalid existing MIME part headers" end
+            if type(headers) ~= "table" then return nil, "parsed MIME headers unavailable" end
             for _, header in ipairs(headers) do
                 if type(header) == "table" and type(header.name) == "string"
                     and header.name:lower() == "content-id" then
-                    local value = header.value or header.decoded or header.raw
+                    local value = header.value or header.decoded
                     if type(value) ~= "string" then return nil, "invalid existing content ID" end
                     local id = value:match("<([^>]+)>") or value:match("^%s*(%S+)%s*$")
-                    if id and unique[id] then return nil, "existing content ID collision" end
+                    if id and unique[id:lower()] then return nil, "existing content ID collision" end
                 end
             end
         end
