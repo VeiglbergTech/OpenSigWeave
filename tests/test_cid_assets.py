@@ -68,7 +68,7 @@ class CIDAssetsTests(unittest.TestCase):
         self.assertIn('src="cid:osw-', rendered)
 
     def test_cid_limit_rejects_a_single_image_larger_than_two_mib(self):
-        content = b"\\x89PNG\\r\\n\\x1a\\n" + b"x" * (2 * 1024 * 1024)
+        content = bytes.fromhex("89504e470d0a1a0a") + b"x" * (2 * 1024 * 1024)
         filename = self.store.write_image(content, "image/png")
         with self.assertRaises(SignatureEngineError) as error:
             build_cid_payload(f'<img src="https://assets.example.org/signature-assets/{filename}">', self.store)
