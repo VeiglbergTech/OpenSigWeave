@@ -34,7 +34,7 @@ def parse_release_tag(tag: str) -> tuple[str, str]:
 def github_get(token: str, path: str) -> dict:
     """Use a fixed HTTPS origin; never accept another scheme or host."""
     if not path.startswith("repos/" + REPOSITORY + "/") or any(
-        character in path for character in ("\\r", "\\n", "#")
+        character in path for character in (chr(13), chr(10), "#")
     ):
         raise RuntimeError("Invalid GitHub API path")
     connection = HTTPSConnection("api.github.com", timeout=20)
