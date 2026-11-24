@@ -30,6 +30,14 @@ command -v age-keygen >/dev/null
 
 mkdir -p "$SOURCE"
 git -C "$ROOT" archive HEAD | tar -x -C "$SOURCE"
+# CI deliberately builds the checked-out source. The release image does not
+# exist until the first manually authorized main tag is published.
+# Keep the overlay in the archive so the full backup records this image and
+# the fresh restore loads the same saved image, never an unrelated GHCR tag.
+[[ -f "$SOURCE/compose.build.yaml" ]] || {
+  echo "Source-only CI build overlay is missing from archive" >&2
+  exit 1
+}
 cp "$ROOT/.env" "$SOURCE/.env"
 chmod 600 "$SOURCE/.env"
 
@@ -37,9 +45,9 @@ age-keygen -o "$IDENTITY" >/dev/null 2>&1
 chmod 600 "$IDENTITY"
 RECIPIENT="$(age-keygen -y "$IDENTITY")"
 
-docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" up -d --build --wait --wait-timeout 180
+docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" --file "$SOURCE/compose.build.yaml" up -d --build --wait --wait-timeout 180
 
-docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T postgres sh -c \
+docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" --file "$SOURCE/compose.build.yaml" exec -T postgres sh -c \
   'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' <<'SQL'
 CREATE TABLE backup_restore_probe (
   id integer PRIMARY KEY,
@@ -48,7 +56,7 @@ CREATE TABLE backup_restore_probe (
 INSERT INTO backup_restore_probe (id, payload) VALUES (1, 'roundtrip-ok');
 SQL
 
-docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" exec -T opensigweave sh -c \
+docker compose --project-name "$SOURCE_PROJECT" --file "$SOURCE/compose.yaml" --file "$SOURCE/compose.build.yaml" exec -T opensigweave sh -c \
   'mkdir -p /data/signatures /app/.idp/ci-ldap && umask 077 && printf "%s" "<p>restore-e2e</p>" > /data/signatures/restore-probe.html && printf "%s" "idp-volume-roundtrip" > /app/.idp/restore-probe.txt && printf "%s\n" "IDP_TYPE=ldap" "IDP_DISPLAY_NAME=CI LDAP" "IDP_ENABLED=true" "LDAP_URL=ldaps://directory.example.test" "LDAP_BIND_DN=cn=opensigweave,ou=svc,dc=example,dc=test" "LDAP_BIND_PASSWORD=restore-secret-probe" "LDAP_BASE_DN=dc=example,dc=test" > /app/.idp/ci-ldap/.env'
 
 python "$SOURCE/backup_cli.py" create \
