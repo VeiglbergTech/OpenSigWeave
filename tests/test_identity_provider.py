@@ -169,6 +169,9 @@ class LDAPAttributeProviderTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.groups, frozenset({"signature-users"}))
         self.assertIn(r"alice\2a\29\28example.org", connection.search_args["search_filter"])
         self.assertEqual(connection.search_args["search_base"], "DC=example,DC=org")
+        self.assertIn("objectGUID", connection.search_args["attributes"])
+        for field in ("company", "department", "physicalDeliveryOfficeName", "mobile"):
+            self.assertIn(field, connection.search_args["attributes"])
 
     async def test_no_matching_account_and_disabled_ad_account_clear_attributes(self):
         from identity.providers.ldap import LDAPAttributeProvider
