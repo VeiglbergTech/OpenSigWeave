@@ -42,6 +42,7 @@ class DomainIdentitySettingsTests(unittest.TestCase):
         controller = JS.split("function domainSettingsModal()")[1].split("window.addEventListener('submit-new-domain'")[0]
         self.assertIn("<details", modal)
         self.assertIn("Fallback Values", modal)
+        self.assertIn('x-show="modalTab === \'users\'" x-cloak', HTML)
         for field in ("first_name", "last_name", "title", "phone", "company",
                       "department", "location", "mobile", "website"):
             self.assertIn(f'x-model="fallbackValues.{field}"', modal)
