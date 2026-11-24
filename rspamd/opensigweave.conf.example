@@ -4,9 +4,11 @@ opensigweave {
     api_url = "https://signature.example.org/api/v1/engine/signatures/";
     engine_api_key = "REPLACE_WITH_THE_SAME_RANDOM_ENGINE_API_KEY_AS_BACKEND";
     timeout = 5.0;
-    max_response_size = 65536;
+    # CID engine responses include base64 inline images; 64 KiB is insufficient.
+    max_response_size = 6291456;
     # Backwards compatible default; experimental strict rejection is opt-in.
     failure_policy = "fail_open";
-    # Default external links. Experimental CID images require matching MIME helper.
-    inline_images = "external";
+    # Enable CID for managed signature images; install opensigweave_cid.lua.
+    # Existing deployments without this setting still use external links.
+    inline_images = "cid";
 }

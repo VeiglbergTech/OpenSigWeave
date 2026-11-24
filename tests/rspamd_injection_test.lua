@@ -2,6 +2,7 @@
 package.path = 'rspamd/?.lua;' .. package.path
 local callback, status = nil, 200
 local failure_policy = 'fail_open'
+local inline_images_mode = 'external'
 local request_error, request_scheduled = nil, true
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
@@ -61,6 +62,7 @@ rspamd_config = {
     api_url='https://signature.example.test/api/v1/engine/signatures/',
     engine_api_key=string.rep('x',40),
     failure_policy=failure_policy,
+    inline_images=inline_images_mode,
   } end,
   register_symbol=function(_,sym) callback=sym.callback end,
 }
@@ -236,6 +238,73 @@ assert(multipart_result.modified, 'multipart SOGo reply was not rewritten')
 local multipart_fixture=assert(io.open(dir..'/multipart_sogo_nested_reply.eml','wb'))
 multipart_fixture:write(multipart_result.modified)
 multipart_fixture:close()
+
+
+-- Regression: the real SOGo 5.12.x plain reply is converted to two MIME
+-- alternatives. Its current signature must precede the 19:46 attribution in
+-- *both* alternatives, even when earlier signatures remain in quote history.
+local sogo_real_plain = 'und noch ein test\r\n\r\n'
+  .. 'Am Dienstag, November 24, 2026 19:46 CET, schrieb "Martin" <martin@dev.veiglbergtech.com>:\r\n'
+  .. '\r\n> and test 56\r\n> Am Dienstag, November 24, 2026 19:45 CET, schrieb "Martin":\r\n'
+  .. '> Frohe Weihnachten\r\n> OpenSigWeave Footer'
+local converted_sogo = run_and_save(dir..'/flat_plain_sogo_reply.eml',
+  'text/plain; charset=utf-8', 'quoted-printable',
+  sogo_real_plain, sogo_real_plain, false, '', true)
+assert(converted_sogo.modified:find('multipart/alternative', 1, true))
+
+-- Also cover SOGo HTML with attribution following <br> rather than a div/p.
+local sogo_br_html = '<html><body><div>und noch ein test</div><br><br>'
+  .. 'Am Dienstag, November 24, 2026 19:46 CET, schrieb "Martin" &lt;martin@dev.veiglbergtech.com&gt;:'
+  .. '<br><blockquote><p>and test 56</p><p>' .. response.html .. '</p></blockquote></body></html>'
+local br_task, br_result = task_case(
+  'multipart/alternative; boundary="' .. boundary .. '"', '7bit', '', '', false, '', true)
+local br_plain_part = mock_mime_part('text', 'plain', plain_headers, sogo_real_plain)
+local br_html_part = mock_mime_part('text', 'html', html_headers, sogo_br_html)
+br_task.get_parts=function() return {root_part, br_plain_part, br_html_part} end
+br_task.get_text_parts=function() return {br_plain_part:get_text(), br_html_part:get_text()} end
+br_task.get_rawbody=function()
+  return '--' .. boundary .. '\r\n' .. plain_headers .. '\r\n' .. sogo_real_plain
+    .. '\r\n--' .. boundary .. '\r\n' .. html_headers .. '\r\n' .. sogo_br_html
+    .. '\r\n--' .. boundary .. '--\r\n'
+end
+status=200
+assert(callback(br_task))
+assert(br_result.modified, 'multipart SOGo br reply was not signed')
+local br_fixture=assert(io.open(dir..'/multipart_sogo_br_reply.eml', 'wb'))
+br_fixture:write(br_result.modified)
+br_fixture:close()
+
+-- Full CID adapter callback, not just a direct test of the MIME wrapper:
+-- assert both the related MIME envelope and its outgoing Milter Content-Type.
+local prior_signature_html = response.html
+local digest = '7428e98493880d020400580e2ce7e49cb21b3c55d4dd09d6c401c54e1d7d0817'
+local cid_id = 'osw-' .. digest .. '@assets.opensigweave.invalid'
+response.html = '<b>OpenSigWeave Footer</b><img src="cid:' .. cid_id .. '">'
+response.inline_assets = {{
+  filename=digest..'.png', content_id=cid_id,
+  content_type='image/png', base64='iVBORw0KGgp0ZXN0',
+}}
+inline_images_mode = 'cid'
+dofile('rspamd/opensigweave.lua')
+local cid_task, cid_result = task_case(
+  'multipart/alternative; boundary="' .. boundary .. '"', '7bit', '', '', false, '', true)
+cid_task.get_parts=br_task.get_parts
+cid_task.get_text_parts=br_task.get_text_parts
+cid_task.get_rawbody=br_task.get_rawbody
+status=200
+assert(callback(cid_task))
+assert(cid_result.modified and cid_result.modified:find('multipart/related', 1, true),
+  'CID mode must wrap SOGo multipart response in related MIME')
+assert(cid_result.mime_actions
+    and cid_result.mime_actions.add_headers['Content-Type'].value:find('multipart/related', 1, true),
+  'Milter must advertise multipart/related instead of stale multipart/alternative')
+local cid_fixture=assert(io.open(dir..'/multipart_sogo_cid_reply.eml', 'wb'))
+cid_fixture:write(cid_result.modified)
+cid_fixture:close()
+response.html = prior_signature_html
+response.inline_assets = nil
+inline_images_mode = 'external'
+dofile('rspamd/opensigweave.lua')
 
 local forward_content = '<html><body>Here is the requested message'
   .. '<div class="gmail_quote">----- Original Message -----</div></body></html>'

@@ -217,3 +217,26 @@ Install `opensigweave_cid.lua` alongside `opensigweave_mime.lua`. Only images al
 Stalwart's in-process hook can enable `STALWART_INLINE_IMAGES=cid`.
 Both validate the CID payload and preserve plain-only messages without orphan attachments.
 Issue #8 remains open until live SMTP/DKIM and recipient-client acceptance passes.
+
+
+### CID and SOGo reply regression checks (24 November 2026)
+
+The repository's Rspamd configuration example enables CID and sets
+`max_response_size = 6291456`. **Existing Rspamd deployments retain their own
+configuration**: an omitted `inline_images` option still means `external`.
+To use CID in Mailcow, explicitly configure `inline_images = "cid"`, install
+`opensigweave_cid.lua` next to the adapter and reload/restart Rspamd.
+Merely selecting or uploading an image in the web UI does not enable CID.
+Verify the *received raw email*: its outer MIME type should be
+`multipart/related`, the new HTML image reference must start with `cid:`,
+and the corresponding MIME part needs matching `Content-ID` and
+`Content-Disposition: inline`. The public asset URL may remain in old quoted
+messages and is not evidence that the *new* signature failed to use CID.
+
+SOGo may send a flat text reply that OpenSigWeave upgrades to
+`multipart/alternative`, or an existing alternative with an attribution after
+HTML `<br>` elements. In both representations the new signature is inserted
+before the first `Am … schrieb` attribution, leaving older quoted signatures
+in their original context. The fixture uses a nested German SOGo conversation.
+Check a live SOGo submission as well: CI's MIME parser cannot validate Mailcow's
+Milter application or the recipient's actual rendering.

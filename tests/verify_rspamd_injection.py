@@ -66,6 +66,37 @@ for part in sogo_alternatives:
     )
     assert "hi martin" in body
 
+
+# Reproduce the 2026-11-24 SOGo 5.12.13 plain/HTML reply chain.
+real_attribution = 'Am Dienstag, November 24, 2026 19:46 CET, schrieb'
+for name in ("flat_plain_sogo_reply.eml", "multipart_sogo_br_reply.eml"):
+    real_reply = read(name)
+    assert real_reply.get_content_type() == "multipart/alternative", name
+    alternatives = list(real_reply.iter_parts())
+    assert [part.get_content_type() for part in alternatives] == ["text/plain", "text/html"], name
+    for part in alternatives:
+        body = part.get_content()
+        assert body.count("OpenSigWeave Footer") == 2, (name, part.get_content_type())
+        assert body.index("und noch ein test") < body.index("OpenSigWeave Footer") < body.index(real_attribution), (
+            name, part.get_content_type(), "signature moved into quoted history"
+        )
+        assert body.index(real_attribution) < body.rindex("OpenSigWeave Footer"), (
+            name, part.get_content_type(), "older quoted signature missing"
+        )
+
+cid_reply = read("multipart_sogo_cid_reply.eml")
+assert cid_reply.get_content_type() == "multipart/related"
+cid_root, cid_image = list(cid_reply.iter_parts())
+assert cid_root.get_content_type() == "multipart/alternative"
+assert cid_image.get_content_type() == "image/png"
+assert cid_image.get_content_disposition() == "inline"
+cid_value = cid_image["Content-ID"].strip("<>")
+assert cid_image.get_payload(decode=True) == b"\\x89PNG\\r\\n\\x1a\\ntest"
+cid_alternatives = list(cid_root.iter_parts())
+assert [part.get_content_type() for part in cid_alternatives] == ["text/plain", "text/html"]
+assert "cid:" + cid_value in cid_alternatives[1].get_content()
+assert cid_alternatives[1].get_content().index("OpenSigWeave Footer") < cid_alternatives[1].get_content().index(real_attribution)
+
 forward = read("flat_forward.eml")
 assert forward.get_content().index("OpenSigWeave Footer") < forward.get_content().index("gmail_quote")
 assert forward.get_content().count("OpenSigWeave Footer") == 1

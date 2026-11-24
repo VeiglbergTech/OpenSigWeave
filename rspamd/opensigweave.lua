@@ -67,6 +67,11 @@ local html_splitters = {
     '<br[^>]*>[%s\r\n]*<br[^>]*>[^<]*On .- wrote:',
     '<br[^>]*>[%s\r\n]*[^<]*On .- wrote:',
     '<p[^>]*>&nbsp;</p>[%s\r\n]*On .- wrote:',
+    -- SOGo also emits reply attribution after <br> or a non-breaking space.
+    '<[bB][rR][^>]*>%s*Am%s+[^<]-schrieb%s+',
+    '<[bB][rR][^>]*>%s*&nbsp;%s*Am%s+[^<]-schrieb%s+',
+    '<[dD][iI][vV][^>]*>%s*&nbsp;%s*Am%s+[^<]-schrieb%s+',
+    '<[pP][^>]*>%s*&nbsp;%s*Am%s+[^<]-schrieb%s+',
     -- SOGo places German reply attribution in its own element before the
     -- quoted blockquote. Inserting at blockquote would put our signature
     -- after "Am ... schrieb ..." and break reply chronology.
@@ -92,7 +97,7 @@ local html_splitters = {
 local plain_splitters = {
     '\r?\n%-+ Original Message %-+',
     '\r?\nOn .- wrote:',
-    '\r?\nAm[^\r\n]-schrieb%s+[^\r\n]-:',
+    '\r?\n[ \t]*Am[^\r\n]-schrieb%s+[^\r\n]-:',
     '\r?\nLe .- a écrit%s*:',
     '\r?\nEl .- escribió:',
     '\r?\n_+?\r?\nFrom: .-\r?\nTo: ',
@@ -419,7 +424,16 @@ local function inject_signature(task)
             return plain
         end
 
-        local function splice_body_logic(decoded_payload, splitters, signature, is_html)
+        local function first_quote_boundary(payload, splitters)
+            local earliest = nil
+            for _, pattern in ipairs(splitters) do
+                local position = string.find(payload, pattern)
+                if position and (not earliest or position < earliest) then earliest = position end
+            end
+            return earliest
+        end
+
+        local function splice_body_logic(decoded_payload, splitters, signature, is_html, quote_hint)
             local spliced = decoded_payload
             local success = false
 
@@ -428,11 +442,7 @@ local function inject_signature(task)
             -- identical copy. Quoted history alone never suppresses insertion.
             local probe = signature:gsub("^%s+", ""):gsub("%s+$", "")
             if #probe >= 12 then
-                local authored_end = #spliced + 1
-                for _, pattern in ipairs(splitters) do
-                    local start_pos = spliced:find(pattern)
-                    if start_pos and start_pos < authored_end then authored_end = start_pos end
-                end
+                local authored_end = quote_hint or first_quote_boundary(spliced, splitters) or (#spliced + 1)
                 if spliced:sub(1, authored_end - 1):find(probe, 1, true) then
                     rspamd_logger.infox(task, "OpenSigWeave: selected signature already present in authored content")
                     return decoded_payload, false
@@ -501,11 +511,7 @@ local function inject_signature(task)
             local html_spacer_bottom = '\n</div>\n<br>\n'
 
             if has_quoted_history then
-                local best_s = nil
-                for _, pattern in ipairs(splitters) do
-                    local s, e = string.find(spliced, pattern)
-                    if s and (not best_s or s < best_s) then best_s = s end
-                end
+                local best_s = quote_hint or first_quote_boundary(spliced, splitters)
 
                 if best_s then
                     local before = string.sub(spliced, 1, best_s - 1)
@@ -584,11 +590,24 @@ local function inject_signature(task)
 
             local spliced_plain, _ = splice_body_logic(decoded, plain_splitters, plain_sig, false)
 
-            local html_body = "<!DOCTYPE html>\n<html>\n<body>\n"
-            local escaped_body = decoded:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub("\r?\n", "<br>\n")
-            html_body = html_body .. escaped_body .. "\n</body>\n</html>"
-            
-            local spliced_html, _ = splice_body_logic(html_body, html_splitters, html_sig, true)
+            local html_prefix = "<!DOCTYPE html>\n<html>\n<body>\n"
+            local function escape_plain_as_html(text)
+                return text:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"):gsub("\r?\n", "<br>\n")
+            end
+            -- Keep both alternatives aligned. Detect the quote in the *original*
+            -- plain reply before HTML escaping changes its structure.
+            local plain_quote = first_quote_boundary(decoded, plain_splitters)
+            local html_quote = nil
+            local escaped_body
+            if plain_quote then
+                local authored_html = escape_plain_as_html(decoded:sub(1, plain_quote - 1))
+                escaped_body = authored_html .. escape_plain_as_html(decoded:sub(plain_quote))
+                html_quote = #html_prefix + #authored_html + 1
+            else
+                escaped_body = escape_plain_as_html(decoded)
+            end
+            local html_body = html_prefix .. escaped_body .. "\n</body>\n</html>"
+            local spliced_html, _ = splice_body_logic(html_body, html_splitters, html_sig, true, html_quote)
 
             local boundary = "----OpenSigWeaveAlt" .. rspamd_util.random_hex(12)
             
@@ -707,6 +726,21 @@ local function inject_signature(task)
                 technical_failure(task, "MULTIPART_REWRITE_EXCEPTION")
             elseif message then
                 if not set_checked_message(message) then return end
+                -- The Rspamd Milter replaces the message body separately from
+                -- envelope headers. When CID wraps an existing multipart root,
+                -- the outer Content-Type must follow that new MIME structure.
+                if cid_related_type then
+                    local reply_ok, applied = pcall(task.set_milter_reply, task, {
+                        remove_headers = { ['Content-Type'] = 0 },
+                        add_headers = {
+                            ['Content-Type'] = { value = cid_related_type, order = 1 }
+                        }
+                    })
+                    if not reply_ok or applied == false then
+                        technical_failure(task, "CID_MILTER_HEADER_UPDATE_FAILED")
+                        return
+                    end
+                end
                 rspamd_logger.infox(task, "OpenSigWeave: rewritten %s multipart MIME text parts", changed_or_reason)
             elseif changed_or_reason ~= "no editable text was changed" or not already_present then
                 technical_failure(task, "MULTIPART_REWRITE_FAILED")
