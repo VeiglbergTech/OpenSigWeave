@@ -10,8 +10,13 @@ local response = {
   trim_whitespace = true,
   strip_device_signatures = false,
 }
+local diagnostic_logs = {}
 package.preload['rspamd_logger'] = function()
-  return {errx=function() end, warnx=function() end, infox=function() end}
+  return {errx=function(_, fmt, ...)
+    if type(fmt) == 'string' and fmt:find('engine HTTP failure', 1, true) then
+      diagnostic_logs[#diagnostic_logs + 1] = string.format(fmt, ...)
+    end
+  end, warnx=function() end, infox=function() end}
 end
 package.preload['rspamd_http'] = function()
   return { request=function(opts)
@@ -319,6 +324,18 @@ local errtask, err = task_case('text/html; charset=utf-8','7bit','hello','hello'
 status=503
 assert(callback(errtask))
 assert(err.modified==nil, 'API error must not trigger body rewrite')
+assert(diagnostic_logs[#diagnostic_logs]:find('status=503 transport_error=false',1,true),
+  'HTTP response failures must log the safe HTTP status')
+request_error = 'sensitive error details must never be logged'
+local network_probe, network_probe_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+status=0
+assert(callback(network_probe))
+assert(not network_probe_result.modified)
+assert(diagnostic_logs[#diagnostic_logs]:find('status=unknown transport_error=true',1,true),
+  'transport failures must be distinguishable without logging raw exceptions')
+assert(not diagnostic_logs[#diagnostic_logs]:find('sensitive',1,true),
+  'transport error details must not leak')
+request_error = nil
 
 local signed, signed_res = task_case('multipart/signed; boundary="sig"','7bit','','',true)
 signed.get_parts=function() return {{
