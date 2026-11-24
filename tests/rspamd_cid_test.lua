@@ -31,6 +31,31 @@ assert(result:find('Content-Disposition: inline',1,true))
 local f=assert(io.open(assert(arg[1]),'wb'))
 f:write(result)
 f:close()
+-- Rspamd's MIME rewrite returns a mixed array of strings and rspamd_text
+-- userdata. The old table.concat(message) crashes on this input.
+-- newproxy supplies genuine Lua 5.1 userdata with the same __tostring behavior.
+local function fake_rspamd_text(bytes)
+  local value = newproxy(true)
+  getmetatable(value).__tostring = function() return bytes end
+  return value
+end
+local split_at = assert(original:find('\r\n\r\n', 1, true))
+local mixed = {
+  original:sub(1, split_at - 1),
+  fake_rspamd_text('\r\n\r\n'),
+  fake_rspamd_text(original:sub(split_at + 4)),
+}
+local realistic_result, realistic_type = cid.wrap(task, mixed, {asset})
+assert(realistic_result == result and realistic_type == kind,
+  'CID wrapper must accept mixed string/rspamd_text MIME chunks without altering bytes')
+local invalid_chunk, invalid_reason = cid.wrap(task, {original, {}}, {asset})
+assert(invalid_chunk == nil and invalid_reason == 'invalid outgoing MIME chunk',
+  'unknown MIME chunk types must fail safely, never stringify a table')
+local invalid_boolean, invalid_boolean_reason = cid.wrap(task, {original, true}, {asset})
+assert(invalid_boolean == nil and invalid_boolean_reason == 'invalid outgoing MIME chunk')
+local too_large, too_large_reason = cid.wrap(task,
+  {fake_rspamd_text(string.rep('x', 20 * 1024 * 1024 + 1))}, {asset})
+assert(not too_large and too_large_reason == 'outgoing message exceeds MIME limit')
 local duplicate, reason=cid.wrap(task,original,{asset,asset})
 assert(not duplicate and reason=='duplicate content ID')
 local bad = {filename='../bad',content_id=asset.content_id,content_type='image/png',base64='AAAA'}

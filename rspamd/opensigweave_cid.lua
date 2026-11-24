@@ -37,7 +37,32 @@ function M.wrap(task, message, assets)
     if type(assets) ~= "table" or #assets == 0 or #assets > MAX_IMAGES then
         return nil, "invalid number of inline assets"
     end
-    if type(message) == "table" then message = table.concat(message) end
+    if type(message) == "table" then
+        -- Rspamd's multipart rewriter returns mixed Lua strings and
+        -- rspamd_text userdata (raw headers, encoded bodies, attachments).
+        -- table.concat() rejects userdata even though tostring() preserves
+        -- the exact binary-safe bytes of rspamd_text.
+        local chunks, total = {}, 0
+        for _, chunk in ipairs(message) do
+            local kind = type(chunk)
+            if kind ~= "string" and kind ~= "userdata" then
+                return nil, "invalid outgoing MIME chunk"
+            end
+            if kind == "userdata" then
+                local ok, raw = pcall(tostring, chunk)
+                if not ok or type(raw) ~= "string" then
+                    return nil, "invalid outgoing MIME chunk"
+                end
+                chunk = raw
+            end
+            total = total + #chunk
+            if total > MAX_MESSAGE_BYTES then
+                return nil, "outgoing message exceeds MIME limit"
+            end
+            chunks[#chunks + 1] = chunk
+        end
+        message = table.concat(chunks)
+    end
     if type(message) ~= "string" then return nil, "missing outgoing message" end
     local nl = newline(task)
     local split = message:find(nl .. nl, 1, true)
