@@ -2111,6 +2111,8 @@ function systemStatusManager() {
         loading: false, error: "", state: "Not checked",
         checkedAt: "—", database: "Unknown", storage: "Unknown",
         assets: "Unknown", localAdmin: "Unknown", managementApi: "Unknown",
+        alertStatus: "Not configured", alertPending: 0, alertActive: 0,
+        alertLastUpdate: "—", alertIncidents: [],
         records: [],
         statusPoll: null, activationListener: null, visibilityListener: null,
         isPanelVisible() {
@@ -2153,6 +2155,16 @@ function systemStatusManager() {
                 this.assets = data.storage?.image_assets === true ? "Accessible" : "Unavailable";
                 this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
                 this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
+                const alerts = data.support_alerts || {};
+                this.alertStatus = ({
+                    ok: "Healthy", active: "Active failures", stale: "Status outdated",
+                    unavailable: "Status unavailable", not_configured: "Not configured"
+                })[alerts.status] || "Unknown";
+                this.alertPending = Number.isInteger(alerts.pending_count) ? alerts.pending_count : 0;
+                this.alertActive = Number.isInteger(alerts.active_count) ? alerts.active_count : 0;
+                this.alertLastUpdate = Number.isInteger(alerts.generated_at)
+                    ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
+                this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
                 this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
                     key, label: labels[key] || key, count
                 }));
@@ -2165,6 +2177,11 @@ function systemStatusManager() {
                 this.assets = "Unknown";
                 this.localAdmin = "Unknown";
                 this.managementApi = "Unknown";
+                this.alertStatus = "Unavailable";
+                this.alertPending = 0;
+                this.alertActive = 0;
+                this.alertIncidents = [];
+                this.alertLastUpdate = "—";
                 this.records = [];
             } finally {
                 this.loading = false;
