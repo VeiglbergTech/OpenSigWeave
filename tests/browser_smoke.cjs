@@ -914,12 +914,27 @@ async function main() {
       "opening a field with an existing family must show all choices");
     await fontFamilyControl.press("Escape");
     await signatureCreateEditor.press("Control+A");
-    checkpoint("signature editor: before 18pt application");
+    checkpoint("signature editor: applying 18pt to selected text");
+    // Match real user input: pointerdown saves the editor selection before
+    // focus moves from CKEditor to the font size field.
+    await fontSizeControl.click();
     await fontSizeControl.fill("18");
     await fontSizeControl.press("Enter");
-    await page.waitForFunction(() => /font-size:\s*18pt/i.test(
-      document.querySelector("#signature-html-source")?.value || ""
-    ));
+    try {
+      await page.waitForFunction(() => /font-size:\s*18pt/i.test(
+        document.querySelector("#signature-html-source")?.value || ""
+      ), null, { timeout: 5000 });
+    } catch (error) {
+      const diagnostics = await page.evaluate(() => ({
+        sourceHtml: document.querySelector("#signature-html-source")?.value,
+        editorHtml: document.querySelector("#signature-template-editor .ck-editor__editable")?.innerHTML,
+        fontSizeInput: document.querySelector("#signature-template-editor .osw-signature-size-input input")?.value,
+        selectedText: window.getSelection()?.toString(),
+        focusedElement: document.activeElement?.outerHTML.slice(0, 240)
+      }));
+      throw new Error("CKEditor font size did not apply to selected signature text: "
+        + JSON.stringify(diagnostics) + " — " + error.message);
+    }
     await signatureCreateEditor.press("Control+A");
     const customFontInput = fontSizeControl;
     await customFontInput.fill("0");
