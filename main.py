@@ -18,7 +18,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, text
 from sqlalchemy.exc import SQLAlchemyError, TimeoutError as DatabasePoolTimeout
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 from typing import List, Optional, Literal
 
 from dotenv import load_dotenv
@@ -40,6 +40,7 @@ from signature_renderer import render_signature_template
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
+from core.domain_fallbacks import validate_fallback_values
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB
 from core.group_selection_repository import get_group_preview_signature
@@ -88,6 +89,8 @@ logger = logging.getLogger(__name__)
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 LOCAL_ADMIN_CONFIGURED = bool(LOCAL_ADMIN_EMAIL or LOCAL_ADMIN_PASSWORD_HASH)
+# Fail-closed is opt-in for legacy compatibility; only actual provider faults trigger it.
+IDENTITY_LOOKUP_FAIL_CLOSED = os.environ.get("IDENTITY_LOOKUP_FAIL_CLOSED", "false").strip().casefold() in {"1", "true", "yes", "on"}
 
 identity_provider_registry = IdentityProviderRegistry(os.environ.get("IDP_CONFIG_DIR", ".idp"))
 
@@ -102,6 +105,8 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
     if provider_id:
         meta = db.get(IdentityProviderDB, provider_id)
         if meta is None or not meta.is_enabled:
+            if IDENTITY_LOOKUP_FAIL_CLOSED:
+                raise SignatureEngineError("IDENTITY_PROVIDER_UNAVAILABLE", "Identity provider unavailable")
             return IdentityAttributes()
         cache_key = f"{provider_id}:{normalized_email}"
         if meta.provider_type == "oidc":
@@ -163,7 +168,9 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         return fresh
     except Exception as exc:
         db.rollback()
-        logger.warning("Identity provider %s unavailable; using provider-specific cache (%s)", provider_id or "legacy-profile", type(exc).__name__)
+        logger.warning("Identity provider %s lookup failed (%s)", provider_id or "legacy-profile", type(exc).__name__)
+        if provider_id and IDENTITY_LOOKUP_FAIL_CLOSED:
+            raise SignatureEngineError("IDENTITY_PROVIDER_UNAVAILABLE", "Identity provider unavailable") from exc
         cached = db.get(IdentityCacheDB, cache_key)
         if cached is None:
             return IdentityAttributes()
@@ -184,13 +191,23 @@ signature_file_store = SignatureFileStore(
 
 
 # Pydantic Models
-class DomainCreate(BaseModel):
+class DomainFallbackSettings(BaseModel):
+    # Omitted on PUT means keep the stored values; explicit {} clears them.
+    fallback_values: Optional[dict[str, str]] = None
+
+    @field_validator("fallback_values")
+    @classmethod
+    def validate_domain_fallbacks(cls, values):
+        return validate_fallback_values(values) if values is not None else None
+
+
+class DomainCreate(DomainFallbackSettings):
     domain_name: str = Field(min_length=3, max_length=253)
     is_active: bool = True
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
     authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
-class DomainUpdate(BaseModel):
+class DomainUpdate(DomainFallbackSettings):
     is_active: bool
     allow_overrides: bool
     inject_on_replies: bool
@@ -1090,6 +1107,7 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
             "strip_device_signatures": item.strip_device_signatures,
             "identity_provider_id": item.identity_provider_id,
             "authentication_provider_id": item.authentication_provider_id,
+            "fallback_values": item.fallback_values or {},
             "template_html": item.template_html_source if item.template_html_source is not None else (item.template_html or ""),
         }
         for item in domains
@@ -1103,7 +1121,7 @@ def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(
     for provider_id in (domain.identity_provider_id, domain.authentication_provider_id):
         if provider_id and db.get(IdentityProviderDB, provider_id) is None:
             raise HTTPException(status_code=422, detail="Identity provider not found")
-    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id, authentication_provider_id=domain.authentication_provider_id)
+    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id, authentication_provider_id=domain.authentication_provider_id, fallback_values=domain.fallback_values or {})
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
@@ -1120,6 +1138,8 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
+    if "fallback_values" in domain_update.model_fields_set:
+        db_domain.fallback_values = domain_update.fallback_values or {}
     # Legacy master-template data is retained for rollback, but no longer edited by the UI.
     if domain_update.template_html is not None:
         db_domain.template_html_source = domain_update.template_html
@@ -2766,6 +2786,7 @@ _ENGINE_ERROR_HTTP_STATUS = {
     "GROUP_SIGNATURE_VERSION_METADATA_MISSING": 503,
     "GROUP_SIGNATURE_ASSET_UNAVAILABLE": 503,
     "INVALID_TEMPLATE": 422,
+    "IDENTITY_PROVIDER_UNAVAILABLE": 503,
     "ROTATION_CONTENTION": 503,
     "DATABASE_POOL_EXHAUSTED": 503,
     "INLINE_IMAGE_ASSET_UNAVAILABLE": 503,
