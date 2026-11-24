@@ -226,6 +226,15 @@ def validate_config(env: dict[str, str]) -> None:
     hosts = env["APP_ALLOWED_HOSTS"].split(",")
     if not hosts or any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", x) for x in hosts):
         raise DeploymentError("APP_ALLOWED_HOSTS must contain explicit hostnames", 4)
+    proxies = env.get("TRUSTED_PROXY_CIDRS", "")
+    if proxies:
+        for item in proxies.split(","):
+            try:
+                network = ipaddress.ip_network(item.strip(), strict=False)
+            except ValueError as exc:
+                raise DeploymentError("TRUSTED_PROXY_CIDRS must contain only IP addresses/CIDRs", 4) from exc
+            if network.prefixlen == 0:
+                raise DeploymentError("TRUSTED_PROXY_CIDRS must not trust every address (/0)", 4)
     bind = env.get("APP_BIND_ADDRESS", "127.0.0.1")
     try:
         ipaddress.ip_address(bind)

@@ -65,7 +65,7 @@ class ConfigTests(unittest.TestCase):
     def test_new_install_auto_generates_independent_secrets_and_scrypt(self):
         from auth_config import verify_local_admin_password
         with patch.object(cfg.sys, "stdin", Terminal(True)), \
-             patch.object(cfg, "prompt", side_effect=["signature.example.test", "admin@example.test"]), \
+             patch.object(cfg, "prompt", side_effect=["signature.example.test", "admin@example.test", "signature.example.test, localhost", "10.35.32.5,2001:db8::/64"]), \
              patch.object(cfg, "getpass", side_effect=["correct horse battery staple"] * 2), \
              patch.object(cfg, "_free_port", return_value=8085):
             values = cfg.create_values()
@@ -79,6 +79,8 @@ class ConfigTests(unittest.TestCase):
             "correct horse battery staple", values["LOCAL_ADMIN_PASSWORD_HASH"]
         ))
         self.assertNotIn("BACKUP_AGE_RECIPIENT", values)
+        self.assertEqual(values["APP_ALLOWED_HOSTS"], "signature.example.test,localhost")
+        self.assertEqual(values["TRUSTED_PROXY_CIDRS"], "10.35.32.5/32,2001:db8::/64")
 
     def test_local_defaults_and_headless_generated_admin_password(self):
         with patch.object(cfg.sys, "stdin", Terminal(False)), \
@@ -86,8 +88,52 @@ class ConfigTests(unittest.TestCase):
              patch.object(cfg, "_free_port", return_value=8085):
             values = cfg.create_values(generate_admin_password=True)
         self.assertEqual(values["APP_ALLOWED_HOSTS"], "localhost")
+        self.assertEqual(values["TRUSTED_PROXY_CIDRS"], "")
         self.assertEqual(values["LOCAL_ADMIN_EMAIL"], "admin@localhost.localdomain")
         self.assertIn("_GENERATED_ADMIN_PASSWORD", values)
+
+    def test_unattended_proxy_and_hosts_are_explicit_and_persisted(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / ".env"
+            with patch.object(cfg, "ENV", path), patch.object(cfg, "_free_port", return_value=8085):
+                cfg.create_config(
+                    hostname="portal.example.test", admin_email="admin@example.test",
+                    allowed_hosts="portal.example.test, localhost",
+                    trusted_proxy_cidrs="10.35.32.8, 2001:db8::/64",
+                    generate_admin_password=True,
+                )
+                saved = common.parse_env(path)
+                self.assertEqual(saved["APP_ALLOWED_HOSTS"], "portal.example.test,localhost")
+                self.assertEqual(saved["TRUSTED_PROXY_CIDRS"], "10.35.32.8/32,2001:db8::/64")
+                common.validate_config(saved)
+                before = path.read_bytes()
+                cfg.migrate_config()
+                self.assertEqual(path.read_bytes(), before)
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    def test_proxy_and_host_input_validation(self):
+        with patch.object(cfg, "_free_port", return_value=8085), patch.object(
+            cfg.sys, "stdin", Terminal(False)
+        ):
+            for invalid in ("*", "https://portal.example.test", "portal.example.test:443",
+                            "portal.example.test,", "portal.example.test, ,localhost"):
+                with self.subTest(allowed_hosts=invalid), self.assertRaises(common.DeploymentError):
+                    cfg.create_values(
+                        hostname="portal.example.test", admin_email="admin@example.test",
+                        allowed_hosts=invalid, generate_admin_password=True
+                    )
+            for invalid in ("*", "evil.invalid", "10.0.0.0/0", "::/0", "192.168.1.999"):
+                with self.subTest(proxies=invalid), self.assertRaises(common.DeploymentError):
+                    cfg.create_values(
+                        hostname="portal.example.test", admin_email="admin@example.test",
+                        trusted_proxy_cidrs=invalid, generate_admin_password=True
+                    )
+        valid = sample_env()
+        valid["TRUSTED_PROXY_CIDRS"] = "10.35.32.8/32,2001:db8::/64"
+        common.validate_config(valid)
+        for invalid in ("not-an-ip", "0.0.0.0/0", "10.1.2.3,"):
+            with self.subTest(existing_config=invalid), self.assertRaises(common.DeploymentError):
+                common.validate_config(valid | {"TRUSTED_PROXY_CIDRS": invalid})
 
     def test_create_never_overwrites_and_permissions(self):
         with tempfile.TemporaryDirectory() as temp:

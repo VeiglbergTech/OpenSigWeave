@@ -18,8 +18,14 @@ cd OpenSigWeave
 ```
 
 The wizard proposes the host FQDN (or `localhost`), a local administrator
-email and the first free loopback port from 8085–8105. It asks for a hidden
-administrator password and confirmation; the saved value is a salted scrypt
+email, **allowed portal hostnames** (`APP_ALLOWED_HOSTS`) and
+**trusted reverse proxy IPs/CIDRs** (`TRUSTED_PROXY_CIDRS`). Hosts are a
+comma-separated allowlist without `https://`, ports, or wildcards.
+Trusted proxies are optional and default to none; configure **only the
+immediately connected reverse proxy IP(s) or narrow networks**, never `0.0.0.0/0`
+or `::/0`. The installer also selects the first free loopback port from
+8085–8105. It asks for a hidden administrator password and confirmation;
+the saved value is a salted scrypt
 hash, not plaintext. Non-interactive installation requires an explicit
 `--generate-admin-password` option; this creates a **0600** local file
 `.admin-recovery-credentials` with the one-time initial password. Move this
@@ -29,7 +35,9 @@ copy. It is ignored by Git.
 ```bash
 ./install.sh --hostname signatures.example.com --admin-email admin@example.com
 # Headless first install (explicit opt-in to generated admin password):
-./install.sh --generate-admin-password --hostname signatures.example.com
+./install.sh --generate-admin-password --hostname signatures.example.com \
+  --allowed-hosts "signatures.example.com,localhost" \
+  --trusted-proxy-cidrs "10.35.32.8/32"
 ```
 
 Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
@@ -43,8 +51,13 @@ identity, OIDC, LDAP, Stalwart or other optional integration is required.
 The application binds to loopback by default. For a reverse proxy on
 another host, change `APP_BIND_ADDRESS` in the protected `.env` to the
 server's private-interface IP and restrict the host firewall to the proxy's
-source IP. TLS must terminate at a trusted reverse proxy; do not expose
-plaintext management endpoints to the internet.
+source IP. `TRUSTED_PROXY_CIDRS` controls which immediate peers Uvicorn
+trusts for forwarded headers; it does **not** change the listening address,
+open a firewall, or authorize arbitrary `Host` headers. The allowed hostname
+list is enforced by the application. TLS must terminate at a trusted reverse
+proxy; do not expose plaintext management endpoints to the internet.
+Existing `.env` proxy/allowlist values are preserved on reinstall and update;
+edit the protected file deliberately to change them, then restart the app.
 
 ## Existing deployments and configuration
 

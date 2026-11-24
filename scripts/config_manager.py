@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ipaddress
 from getpass import getpass
 import os
 from pathlib import Path
@@ -50,6 +51,39 @@ def prompt(label: str, default: str = "") -> str:
     return answer or default
 
 
+def _allowed_hosts(raw: str) -> str:
+    """Normalize a comma-separated allowlist; never accept empty/wildcard hosts."""
+    hosts = [host.strip().lower() for host in raw.split(",")]
+    if any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", host) for host in hosts):
+        raise DeploymentError(
+            "Allowed hosts must be comma-separated hostnames/IPs without schemes, ports or wildcards", 4
+        )
+    return ",".join(dict.fromkeys(hosts))
+
+
+def _trusted_proxies(raw: str) -> str:
+    """Accept only IP addresses or CIDRs, not hostnames or trust-everyone ranges."""
+    if not raw.strip():
+        return ""
+    normalized = []
+    for item in raw.split(","):
+        candidate = item.strip()
+        try:
+            network = ipaddress.ip_network(candidate, strict=False)
+        except ValueError as exc:
+            raise DeploymentError(
+                "Trusted proxies must be comma-separated IP addresses/CIDRs (not DNS names)", 4
+            ) from exc
+        if network.prefixlen == 0:
+            raise DeploymentError(
+                "Refusing to trust every IP address as a reverse proxy (no /0 networks)", 4
+            )
+        value = str(network)
+        if value not in normalized:
+            normalized.append(value)
+    return ",".join(normalized)
+
+
 def _hostname_default() -> str:
     value = socket.getfqdn().lower().strip(".")
     if (value and "." in value and
@@ -81,6 +115,7 @@ def _fernet_key() -> str:
 
 
 def create_values(*, hostname: str | None = None, admin_email: str | None = None,
+                  allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
                   generate_admin_password: bool = False) -> dict[str, str]:
     from auth_config import hash_local_admin_password, is_valid_email
 
@@ -92,6 +127,14 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
     email = admin_email or prompt("Administrator email", email_default)
     if not is_valid_email(email):
         raise DeploymentError("Invalid administrator email", 4)
+    allowlist = _allowed_hosts(
+        allowed_hosts if allowed_hosts is not None else
+        prompt("Allowed portal hostnames (comma-separated, no https://)", host)
+    )
+    proxies = _trusted_proxies(
+        trusted_proxy_cidrs if trusted_proxy_cidrs is not None else
+        prompt("Trusted proxy IPs/CIDRs (comma-separated; blank if none)", "")
+    )
     if generate_admin_password:
         password = secrets.token_urlsafe(32)
     else:
@@ -115,7 +158,8 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
         "SECRET_KEY": secrets.token_urlsafe(48),
         "ENGINE_API_KEY": secrets.token_urlsafe(48),
         "BACKUP_LOCATIONS_KEY": _fernet_key(),
-        "APP_ALLOWED_HOSTS": host,
+        "APP_ALLOWED_HOSTS": allowlist,
+        "TRUSTED_PROXY_CIDRS": proxies,
         "APP_PORT": str(_free_port(values["APP_BIND_ADDRESS"])),
         "LOCAL_ADMIN_EMAIL": email,
         "LOCAL_ADMIN_PASSWORD_HASH": local_hash,
@@ -160,14 +204,17 @@ def _save_generated_password(password: str) -> None:
 
 
 def create_config(*, hostname: str | None = None, admin_email: str | None = None,
+                  allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
                   generate_admin_password: bool = False) -> None:
     values = create_values(hostname=hostname, admin_email=admin_email,
+                           allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
                            generate_admin_password=generate_admin_password)
     content = "# OpenSigWeave protected local configuration (never commit)\n"
     for key in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
                 "DATABASE_URL", "SIGNATURE_STORAGE_PATH", "APP_BIND_ADDRESS",
                 "APP_PORT", "SECRET_KEY", "ENGINE_API_KEY", "BACKUP_LOCATIONS_KEY",
-                "APP_ALLOWED_HOSTS", "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
+                "APP_ALLOWED_HOSTS", "TRUSTED_PROXY_CIDRS",
+                "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
         # Compose interpolates $ in double quotes; preserve the literal scrypt separators.
         value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
         content += f"{key}={value}\n"
@@ -252,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--yes", action="store_true", help="Compatibility option; safe migration is automatic")
     parser.add_argument("--hostname", help="Use an explicit public hostname on first install")
     parser.add_argument("--admin-email", help="Use an explicit administrator email on first install")
+    parser.add_argument("--allowed-hosts", help="Comma-separated portal hostnames (no wildcards or URL schemes)")
+    parser.add_argument("--trusted-proxy-cidrs", help="Comma-separated trusted reverse proxy IPs or CIDRs; blank means none")
     parser.add_argument("--generate-admin-password", action="store_true",
                         help="Create a protected 0600 initial password file instead of prompting")
     args = parser.parse_args(argv)
@@ -261,6 +310,8 @@ def main(argv: list[str] | None = None) -> int:
                 if args.check or args.preview or args.migrate:
                     raise DeploymentError(".env does not exist; run ./generate_config.sh", 4)
                 create_config(hostname=args.hostname, admin_email=args.admin_email,
+                              allowed_hosts=args.allowed_hosts,
+                              trusted_proxy_cidrs=args.trusted_proxy_cidrs,
                               generate_admin_password=args.generate_admin_password)
             elif args.check:
                 env = parse_env(ENV)
