@@ -34,6 +34,7 @@ from models import (
     SignatureVersionDB,
 )
 from signature_sanitizer import sanitize_signature_html
+from core.domain_fallbacks import validate_fallback_values
 from signature_storage import MAX_SIGNATURE_BYTES, SignatureFileStore, SignatureStorageError
 
 
@@ -195,7 +196,15 @@ def _domain_signature(domain: DomainDB) -> tuple:
         domain.is_active, domain.allow_overrides, domain.inject_on_replies,
         domain.trim_whitespace, domain.strip_device_signatures, source,
         domain.identity_provider_id, domain.authentication_provider_id,
+        domain.fallback_values or {},
     )
+
+
+def _domain_fallback_values(row: dict) -> dict[str, str]:
+    try:
+        return validate_fallback_values(row.get("fallback_values", {}))
+    except ValueError as exc:
+        raise AdminImportError("Domain fallback values are invalid") from exc
 
 
 def _provider_signature(provider: IdentityProviderDB) -> tuple:
@@ -291,6 +300,7 @@ def inspect_admin_import(
                 _boolean(row.get("strip_device_signatures"), "domain device-signature policy"),
                 _string(row.get("template_html"), "domain template", 65536, empty=True),
                 row.get("identity_provider_id"), row.get("authentication_provider_id"),
+                _domain_fallback_values(row),
             )
             existing = db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == name).first()
             if existing:
@@ -584,6 +594,7 @@ def apply_admin_import(
                     template_html_source=template,
                     identity_provider_id=row["identity_provider_id"],
                     authentication_provider_id=row["authentication_provider_id"],
+                    fallback_values=_domain_fallback_values(row),
                 )
                 db.add(domain)
                 db.flush()
