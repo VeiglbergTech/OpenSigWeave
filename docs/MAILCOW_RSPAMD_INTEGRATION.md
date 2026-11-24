@@ -4,6 +4,38 @@
 
 OpenSigWeave runs in its own Compose stack. The adapter runs inside Mailcow's Rspamd. Do not merge or replace Mailcow's bundled `rspamd.local.lua`.
 
+## Independent missing-plugin guard (experimental, opt-in; isolated Mailcow only)
+
+**Reproduced fail-closed gap, 24 November 2026:** with `rspamd-mailcow` running but `plugins.d/opensigweave.lua` disabled, Postfix SOGo submission accepted an email **without a signature**. The previous `milter_default_action=tempfail` did not protect this case because the Milter itself remained reachable. Issue #14 remains open.
+
+A separate Rspamd postfilter in `rspamd/opensigweave_guard.lua` can reject **authenticated** messages if `OPENSIGWEAVE_INJECT` is not registered (or symbol registration cannot be inspected). This deliberately checks **plugin presence**, not successful delivery or all possible plugin malfunction. A legitimate `NONE` rule and signed/encrypted skip are unaffected when the injector itself is registered. Unauthenticated inbound SMTP is excluded.
+
+In an **isolated environment**, install and enable the guard independently of the signature-injection module:
+
+```bash
+cd /opt/mailcow-dockerized
+install -m 0644 /opt/OpenSigWeave/rspamd/opensigweave_guard.lua \
+  data/conf/rspamd/plugins.d/opensigweave_guard.lua
+```
+
+Add once to the existing `data/conf/rspamd/rspamd.conf.local`:
+
+```ucl
+opensigweave_guard {
+    enabled = true;
+}
+```
+
+Validate before restart:
+
+```bash
+docker compose exec -T rspamd-mailcow rspamadm configtest
+docker compose restart rspamd-mailcow
+docker compose logs --tail=80 rspamd-mailcow
+```
+
+**Live acceptance:** (1) check normal authenticated SOGo delivery with a signature, (2) disable *only* `opensigweave.lua`, restart Rspamd, and verify SOGo's SMTP DATA returns a 4xx with `SIGNATURE_PLUGIN_NOT_LOADED` and **no accepted/queued message**, (3) verify unauthenticated inbound remains unchanged, (4) restore the module and retest a successful signed message. If the guard fails to load or is disabled too, this protection disappears: Postfix cannot detect a successfully responding but semantically incomplete Rspamd Milter. This is **not a production-certified independent Postfix enforcement gate**. Real fail-closed against arbitrary missing Rspamd checks requires a separate, fail-closed mechanism at the submission boundary.
+
 ## Install in a disposable Mailcow instance
 
 Run from the Mailcow checkout directory; substitute `/path/to/OpenSigWeave` for the checkout of the *same tested OpenSigWeave commit*.
