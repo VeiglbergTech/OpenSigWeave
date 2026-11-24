@@ -948,6 +948,23 @@
                     <p>Image storage: <span x-text="assets">Not checked</span></p>
                 </div>
             </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3 text-sm">
+                <h3 class="font-semibold">Support Alerts</h3>
+                <p>Independent notifier: <span x-text="alertStatus">Not checked</span></p>
+                <p>Active incidents: <span x-text="alertActive">0</span>.
+                    Pending notifications: <span x-text="alertPending">0</span>.</p>
+                <p>Last notifier update: <span x-text="alertLastUpdate">—</span></p>
+                <ul class="space-y-1" x-show="alertIncidents.length">
+                    <template x-for="incident in alertIncidents" :key="incident.reason">
+                        <li class="text-gray-300">
+                            <span x-text="incident.reason"></span>:
+                            <span x-text="incident.failures"></span> occurrences
+                            <span x-text="incident.active ? '(active)' : '(recovery observed)'"></span>
+                        </li>
+                    </template>
+                </ul>
+                <p class="text-xs text-gray-400">Read-only aggregate status. No mail contents or SMTP credentials are exposed.</p>
+            </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
                 <h3 class="font-semibold">Configuration Records</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -1246,6 +1263,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=session-guard-20261124"></script>
+    <script src="/static/js/portal.js?v=alert-status-20261124"></script>
 </body>
 </html>
