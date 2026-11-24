@@ -15,6 +15,7 @@ from core.engine_contract import (
     SignatureEngineResult,
 )
 from core.group_selection_repository import select_and_record_group_signature
+from core.domain_fallbacks import signature_profile_values
 from core.rule_repository import load_signature_rules
 from core.rules import RuleContext, evaluate_rules
 from core.schedule_repository import load_active_schedule
@@ -68,6 +69,13 @@ class SignatureEngineService:
         )
         if not domain_obj or not domain_obj.is_active:
             return empty_result
+
+        # Unknown senders may rotate if this domain has fallbacks, using a
+        # sender-scoped key that is never saved as a provider identity.
+        fallback_rotation_principal = (
+            'fallback:' + hashlib.sha256(normalized_email.encode('utf-8')).hexdigest()
+            if domain_obj.fallback_values else ''
+        )
 
         override = db.query(UserOverrideDB).filter(
             func.lower(UserOverrideDB.user_email) == normalized_email
@@ -172,11 +180,11 @@ class SignatureEngineService:
                 db, normalized_email, domain_obj.identity_provider_id
             )
             if active_schedule.target_type == "GROUP":
-                if not active_schedule.group_id or not identity_attributes.principal_id:
+                if not active_schedule.group_id or not (identity_attributes.principal_id or fallback_rotation_principal):
                     return empty_result
                 selected_signature = select_and_record_group_signature(
                     db,
-                    principal_id=identity_attributes.principal_id,
+                    principal_id=identity_attributes.principal_id or fallback_rotation_principal,
                     group_id=active_schedule.group_id,
                     domain_id=domain_obj.id,
                 )
@@ -245,11 +253,11 @@ class SignatureEngineService:
             if override and domain_obj.allow_overrides and not timed_rule_active:
                 raw_template = override.html_content
             elif matched_rule and matched_rule.action == "GROUP":
-                if not matched_rule.group_id or not identity_attributes.principal_id:
+                if not matched_rule.group_id or not (identity_attributes.principal_id or fallback_rotation_principal):
                     return empty_result
                 selected_signature = select_and_record_group_signature(
                     db,
-                    principal_id=identity_attributes.principal_id,
+                    principal_id=identity_attributes.principal_id or fallback_rotation_principal,
                     group_id=matched_rule.group_id,
                     domain_id=domain_obj.id,
                 )
@@ -329,18 +337,9 @@ class SignatureEngineService:
         if not raw_template:
             return empty_result
 
-        first_name = (
-            identity_attributes.first_name
-            or normalized_email.split("@")[0].capitalize()
+        profile_values = signature_profile_values(
+            identity_attributes, normalized_email, domain_part, domain_obj.fallback_values
         )
-        profile_values = {
-            "first_name": first_name,
-            "last_name": identity_attributes.last_name,
-            "title": identity_attributes.title,
-            "phone": identity_attributes.phone,
-            "email": normalized_email,
-            "domain_name": domain_part,
-        }
         try:
             raw_template = sanitize_signature_html(raw_template)
             raw_template, group_slots = prepare_group_placeholders(raw_template)
@@ -351,13 +350,13 @@ class SignatureEngineService:
                     SignatureGroupDB.is_active.is_(True),
                 ).first()
                 selected = None
-                if group is not None and identity_attributes.principal_id:
+                if group is not None and (identity_attributes.principal_id or fallback_rotation_principal):
                     if group.id == selected_group_id:
                         selected = selected_group_signature
                     else:
                         selected = select_and_record_group_signature(
                             db,
-                            principal_id=identity_attributes.principal_id,
+                            principal_id=identity_attributes.principal_id or fallback_rotation_principal,
                             group_id=group.id,
                             domain_id=domain_obj.id,
                         )
