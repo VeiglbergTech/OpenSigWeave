@@ -2208,13 +2208,14 @@ def preview_signature_group(
         )
     except (SignatureStorageError, ValueError, TypeError):
         raise HTTPException(status_code=503, detail="Signature asset unavailable")
+    domain = db.get(DomainDB, domain_id)
     preview_values = {
         "first_name": "Alex",
         "last_name": "Example",
         "title": "Position (Preview)",
         "phone": "+49 123 456789",
-        "email": "alex@example.org",
-        "domain_name": "example.org",
+        "email": f"alex@{domain.domain_name}",
+        "domain_name": domain.domain_name,
     }
     try:
         html = render_signature_template(sanitize_signature_html(raw_html), preview_values)

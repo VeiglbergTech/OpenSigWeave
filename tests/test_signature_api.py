@@ -1249,6 +1249,35 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertFalse(first["rotation_state_changed"])
         self.assertEqual(self.db.query(main.GroupSelectionStateDB).count(), 0)
 
+    def test_group_preview_uses_selected_domain_template_values(self):
+        domains = [
+            main.DomainDB(domain_name="first-preview.example", is_active=True),
+            main.DomainDB(domain_name="second-preview.example", is_active=True),
+        ]
+        self.db.add_all(domains)
+        self.db.commit()
+        signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="Domain Values Preview",
+                html_content="<p>{{ domain_name }} / {{ email }}</p>",
+            ),
+            self.admin_request, self.db,
+        )
+        group = main.create_signature_group(
+            main.SignatureGroupCreateRequest(name="Domain Values Group"),
+            self.admin_request, self.db,
+        )
+        main.add_signature_group_member(
+            group["id"],
+            main.SignatureGroupMemberRequest(signature_id=signature["id"]),
+            self.admin_request, self.db,
+        )
+        for domain in domains:
+            result = main.preview_signature_group(group["id"], domain.id, self.admin_request, self.db)
+            self.assertEqual(result["html"], f"<p>{domain.domain_name} / alex@{domain.domain_name}</p>")
+            self.assertFalse(result["rotation_state_changed"])
+        self.assertEqual(self.db.query(main.GroupSelectionStateDB).count(), 0)
+
     def test_non_admin_cannot_preview_signature_group(self):
         with self.assertRaises(main.HTTPException) as raised:
             main.preview_signature_group(

@@ -361,9 +361,8 @@ function identityProviderManager() { return {
 } }
         function signatureManager() {
             return {
-                signatures: [], domains: [], groups: [], searchQuery: '', statusFilter: 'all', domainFilter: 'all', selectedGroupSlug: '', imageImportUrl: '', imageImportOpen: false, imageImportBusy: false, imageImportController: null, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
+                signatures: [], domains: [], searchQuery: '', statusFilter: 'all', domainFilter: 'all', imageImportUrl: '', imageImportOpen: false, imageImportBusy: false, imageImportController: null, versions: [], selectedVersionId: '', loadedVersionHtml: '', loadedEditorHtml: '', versionRequestToken: 0, editing: false,
                 form: { id: null, name: '', domain_ids: [], is_active: true, html_content: '' },
-                get availableGroups() { return this.groups.filter(group => group.is_active && group.slug); },
                 get currentVersion() { return this.versions.find(version => version.is_current) || this.versions[0] || null; },
                 get selectedVersion() { return this.versions.find(version => version.id === this.selectedVersionId) || null; },
                 get isViewingHistoricalVersion() {
@@ -425,19 +424,6 @@ function identityProviderManager() { return {
                     } catch (error) {
                         notify('Could not preview signature: ' + error.message, 'error');
                     }
-                },
-                insertGroupTag(slug, editor) {
-                    if (!slug) { notify('Select a signature group first.', 'error'); return; }
-                    const token = '{{ group:' + slug + ' }}';
-                    if (signatureRichEditor) {
-                        signatureRichEditor.insertText(token);
-                        this.form.html_content = signatureRichEditor.getData();
-                        return;
-                    }
-                    const start = editor ? editor.selectionStart : this.form.html_content.length;
-                    const end = editor ? editor.selectionEnd : start;
-                    this.form.html_content = this.form.html_content.slice(0, start) + token + this.form.html_content.slice(end);
-                    if (editor) this.$nextTick(() => { editor.focus(); editor.setSelectionRange(start + token.length, start + token.length); });
                 },
                 openImageImportDialog() {
                     if (!this.editing || this.isViewingHistoricalVersion || this.imageImportOpen) return;
@@ -519,16 +505,13 @@ function identityProviderManager() { return {
                 },
                 async fetchAll() {
                     try {
-                        const [signaturesResponse, domainsResponse, groupsResponse] = await Promise.all([
-                            fetch('/api/admin/signatures'), fetch('/domains/'), fetch('/api/admin/signature-groups')
+                        const [signaturesResponse, domainsResponse] = await Promise.all([
+                            fetch('/api/admin/signatures'), fetch('/domains/')
                         ]);
-                        if (!signaturesResponse.ok || !domainsResponse.ok || !groupsResponse.ok) throw new Error('Could not load signature catalog');
-                        [this.signatures, this.domains, this.groups] = await Promise.all([
-                            signaturesResponse.json(), domainsResponse.json(), groupsResponse.json()
+                        if (!signaturesResponse.ok || !domainsResponse.ok) throw new Error('Could not load signature catalog');
+                        [this.signatures, this.domains] = await Promise.all([
+                            signaturesResponse.json(), domainsResponse.json()
                         ]);
-                        if (!this.availableGroups.some(group => group.slug === this.selectedGroupSlug)) {
-                            this.selectedGroupSlug = this.availableGroups[0]?.slug || '';
-                        }
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 newSignature() {
@@ -639,7 +622,7 @@ function identityProviderManager() { return {
 
         function signatureGroupManager() {
             return {
-                groups: [], signatures: [], domains: [], editing: false, memberEditor: false, previewDomainId: '',
+                groups: [], signatures: [], domains: [], editing: false, memberEditor: false, advancedPreviewOpen: false, advancedPreviewGroup: null, advancedPreviewDomainId: '',
                 form: { id: null, name: '', slug: '', domain_ids: [], is_active: true },
                 memberForm: { group_id: '', signature_id: '', weight: 1 },
                 async fetchAll() {
@@ -649,7 +632,6 @@ function identityProviderManager() { return {
                         ]);
                         if (responses.some(response => !response.ok)) throw new Error('Could not load signature group data');
                         [this.groups, this.signatures, this.domains] = await Promise.all(responses.map(response => response.json()));
-                        if (!this.previewDomainId && this.domains.length) this.previewDomainId = this.domains[0].id.toString();
                     } catch (error) { notify(error.message, 'error'); }
                 },
                 signatureName(id) {
@@ -714,15 +696,54 @@ function identityProviderManager() { return {
                     if (!response.ok) { notify('Could not remove group member.', 'error'); return; }
                     await this.fetchAll();
                 },
-                async previewGroup(group) {
-                    if (!this.previewDomainId) { notify('Create or select a domain before previewing.', 'error'); return; }
+                previewDomainsForGroup(group) {
+                    if (!group || !group.is_active) return [];
+                    const groupDomainIds = (group.domain_ids || []).map(Number);
+                    const enabledMemberIds = new Set((group.members || []).filter(member =>
+                        member.is_enabled && Number(member.weight) > 0).map(member => member.signature_id));
+                    const activeMembers = this.signatures.filter(signature =>
+                        signature.is_active && enabledMemberIds.has(signature.id));
+                    return this.domains.filter(domain => {
+                        if (!domain.is_active) return false;
+                        const id = Number(domain.id);
+                        if (groupDomainIds.length && !groupDomainIds.includes(id)) return false;
+                        return activeMembers.some(signature => {
+                            const ids = signature.domain_ids ||
+                                (signature.domain_id == null ? [] : [signature.domain_id]);
+                            return !ids.length || ids.map(Number).includes(id);
+                        });
+                    });
+                },
+                get advancedPreviewDomains() { return this.previewDomainsForGroup(this.advancedPreviewGroup); },
+                openAdvancedPreview(group) {
+                    this.advancedPreviewGroup = group;
+                    this.advancedPreviewDomainId = String(this.advancedPreviewDomains[0]?.id || '');
+                    this.advancedPreviewOpen = true;
+                },
+                async previewAdvancedGroup() {
+                    if (this.advancedPreviewGroup) await this.previewGroup(this.advancedPreviewGroup, this.advancedPreviewDomainId);
+                },
+                async previewGroup(group, domainId = null) {
+                    const eligible = this.previewDomainsForGroup(group);
+                    const domain = domainId === null ? eligible[0] :
+                        eligible.find(item => Number(item.id) === Number(domainId));
+                    if (!domain) {
+                        notify('No active domain has an eligible signature for this group.', 'error');
+                        return false;
+                    }
                     const url = '/api/admin/signature-groups/' + encodeURIComponent(group.id)
-                        + '/preview?domain_id=' + encodeURIComponent(this.previewDomainId);
+                        + '/preview?domain_id=' + encodeURIComponent(domain.id);
                     const response = await fetch(url, { headers: { 'Accept': 'application/json' } });
-                    if (!response.ok) { notify('Could not render group preview: ' + (await response.text()), 'error'); return; }
+                    if (!response.ok) { notify('Could not render group preview: ' + (await response.text()), 'error'); return false; }
                     const result = await response.json();
+                    if (result.rotation_state_changed !== false) {
+                        notify('Group preview did not confirm rotation safety.', 'error');
+                        return false;
+                    }
+                    this.advancedPreviewOpen = false;
                     window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: result.html } }));
-                    notify('Preview uses a deterministic member and does not change rotation history.');
+                    notify('Preview for ' + domain.domain_name + ' does not change rotation history.');
+                    return true;
                 },
                 async deleteGroup(group) {
                     if (!await oswAskConfirmation({ title: 'Delete signature group?', message: 'Delete signature group "' + group.name + '"?' })) return;
@@ -2161,12 +2182,13 @@ function initOswDialogs() {
         if (dialog.closest('[x-data="confirmModal"]')) data.close();
         else if (dialog.getAttribute('x-show') === 'imageImportOpen') data.closeImageImportDialog();
         else if (dialog.getAttribute('x-show') === 'memberEditor') data.memberEditor = false;
+        else if (dialog.getAttribute('x-show') === 'advancedPreviewOpen') data.advancedPreviewOpen = false;
         else if (dialog.classList.contains('form-dialog')) data.editing = false;
         else data.show = false;
     };
     const requestClose = dialog => {
         const record = states.get(dialog);
-        if (record?.dirty && !dialog.closest('[x-data="confirmModal"]')) {
+        if (record?.dirty && !dialog.closest('[x-data="confirmModal"]') && !dialog.classList.contains('osw-group-preview-dialog')) {
             oswAskConfirmation({
                 title: 'Discard unsaved changes?',
                 message: 'This dialog contains unsaved changes. Discard them and close?'
@@ -2181,7 +2203,7 @@ function initOswDialogs() {
         document.addEventListener(type, event => {
             if (!event.isTrusted) return;
             if (type === 'change' && event.target.matches &&
-                event.target.matches('[x-model="selectedVersionId"], [x-model="selectedGroupSlug"]')) return;
+                event.target.matches('[x-model="selectedVersionId"]')) return;
             const dialog = event.target.closest && event.target.closest(selector);
             if (states.has(dialog)) states.get(dialog).dirty = true;
         }, true);

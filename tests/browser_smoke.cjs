@@ -1863,6 +1863,55 @@ async function main() {
     await groupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" }).waitFor();
 
     checkpoint("group create/membership: complete");
+
+    await page.getByRole("button", { name: "Signatures", exact: true }).click();
+    await signaturePanel.getByRole("button", { name: "+ Add Signature", exact: true }).click();
+    const previewCleanupEditor = signaturePanel.locator('[aria-label="Signature editor"][role="dialog"]');
+    await previewCleanupEditor.waitFor({ state: "visible" });
+    assert.equal(await previewCleanupEditor.getByText("Advanced: Insert signature group tag").count(), 0);
+    await dismissAndDiscard(previewCleanupEditor);
+
+    await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
+    assert.equal(await groupPanel.locator("#group-preview-domain").count(), 0);
+    let activePreviewDomains = (await (await page.request.get(baseURL + "/domains/")).json())
+      .filter(domain => domain.is_active);
+    if (!activePreviewDomains.length) {
+      const created = await page.request.post(baseURL + "/domains/", {
+        data: { domain_name: "group-preview-smoke.test", is_active: true }
+      });
+      assert.equal(created.status(), 200);
+      await groupPanel.evaluate(el => window.Alpine.$data(el).fetchAll());
+      activePreviewDomains = (await (await page.request.get(baseURL + "/domains/")).json())
+        .filter(domain => domain.is_active);
+    }
+    const [basicPreviewResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
+        && response.url().includes("/preview?domain_id=")),
+      groupCard.getByRole("button", { name: "Preview", exact: true }).click()
+    ]);
+    assert.equal(basicPreviewResponse.status(), 200, "simple group preview needs no domain picker");
+    const groupLivePreview = page.locator('[x-data="previewModal"]');
+    await groupLivePreview.waitFor({ state: "visible" });
+    await groupLivePreview.getByRole("button", { name: "Close", exact: true }).click();
+    await groupLivePreview.waitFor({ state: "hidden" });
+
+    await groupCard.getByRole("button", { name: "Advanced Preview", exact: true }).click();
+    const advancedGroupDialog = groupPanel.getByRole("dialog", { name: "Advanced Group Preview" });
+    await advancedGroupDialog.waitFor({ state: "visible" });
+    await advancedGroupDialog.getByLabel("Preview domain")
+      .selectOption(String(activePreviewDomains[0].id));
+    const [advancedPreviewResponse] = await Promise.all([
+      page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
+        && response.url().includes("/preview?domain_id=")),
+      advancedGroupDialog.getByRole("button", { name: "Preview", exact: true }).click()
+    ]);
+    assert.equal(advancedPreviewResponse.status(), 200, "domain-scoped group preview must work");
+    await advancedGroupDialog.waitFor({ state: "hidden" });
+    await groupLivePreview.waitFor({ state: "visible" });
+    await groupLivePreview.getByRole("button", { name: "Close", exact: true }).click();
+    await groupLivePreview.waitFor({ state: "hidden" });
+    checkpoint("group preview modes: complete");
+
     const rulesPanel = page.locator('[x-data="ruleManager"]');
     await page.getByRole("button", { name: "Rules", exact: true }).click();
     await rulesPanel.getByRole("button", { name: "+ Add Rule" }).click();

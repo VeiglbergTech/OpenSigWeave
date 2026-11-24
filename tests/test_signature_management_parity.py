@@ -39,13 +39,26 @@ class SignatureManagementParityTests(unittest.TestCase):
         for binding in ('formatSignatureMarker(signature)', 'x-text="signature.versions"',
                         'x-model="selectedVersionId"', 'restoreSelectedVersion()',
                         'id="signature-template-editor"', 'id="signature-html-source"',
-                        'toggleDomain(domain.id', 'insertGroupTag(selectedGroupSlug',
+                        'toggleDomain(domain.id',
                         'saveSignature()', 'x-model="form.is_active"'):
             with self.subTest(binding=binding):
                 self.assertIn(binding, SIGNATURES)
         self.assertIn('async previewSignature(signature)', JS)
         self.assertIn('async toggleSignatureStatus(signature)', JS)
         self.assertIn('signature-catalog-updated', JS)
+
+    def test_legacy_group_picker_removed_and_advanced_preview_scoped(self):
+        self.assertNotIn("Advanced: Insert signature group tag", SIGNATURES)
+        self.assertNotIn("insertGroupTag(", JS)
+        self.assertNotIn("selectedGroupSlug", JS)
+        self.assertNotIn('id="group-preview-domain"', HTML)
+        groups = HTML.split('x-show="adminTab === \'signature-groups\'"')[1].split(
+            'x-show="adminTab === \'rules\'"')[0]
+        for required in ('openAdvancedPreview(group)', 'id="group-advanced-preview-domain"',
+                         'x-show="advancedPreviewOpen"', 'previewGroup(group)'):
+            self.assertIn(required, groups)
+        self.assertIn("previewDomainsForGroup(group)", JS)
+        self.assertIn("result.rotation_state_changed !== false", JS)
 
     def test_modal_uses_shared_dialog_layout_and_sections(self):
         for markup in ('aria-label="Signature editor"', 'osw-modal-header osw-domain-modal-header',

@@ -73,7 +73,7 @@ The renderer must not interpret arbitrary unknown group names as profile attribu
 
 The administrator preview endpoint is `GET /api/admin/signature-groups/{group_id}/preview?domain_id={id}`. It renders a deterministic eligible member and returns `rotation_state_changed: false`; it does not require or create a user principal.
 
-The signature catalog editor now provides a group-tag picker. It loads active groups from the administrator API and inserts `{{ group:slug }}` at the current HTML textarea cursor (or replaces the selected text). The picker changes only the editor buffer; existing HTML and group membership are not modified until the signature version is saved. Manual entry remains supported. The administrator API also exposes a deterministic group-member preview using the first eligible signature ID; it does not read or mutate production rotation state.
+Group tags remain supported in existing HTML templates and can be entered manually in raw HTML. The legacy group-tag picker has been removed from the signature catalog editor. The administrator API exposes a deterministic group-member preview using the first eligible signature ID; it does not read or mutate production rotation state. The group overview offers one-click preview with an automatically chosen eligible domain; manual domain selection is available only inside Advanced Preview.
 
 ## 6. Preview behavior
 
