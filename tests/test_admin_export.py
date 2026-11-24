@@ -44,6 +44,7 @@ class AdminExportTests(unittest.TestCase):
     def _populate(self):
         domain = DomainDB(
             domain_name="example.org",
+            fallback_values={"company": "Example Corp", "location": "Berlin"},
             template_html="<p>Sanitized fallback</p>",
             template_html_source="<!--[if mso]><p>Original source</p><![endif]-->",
         )
@@ -128,6 +129,7 @@ class AdminExportTests(unittest.TestCase):
                 manifest["data"]["domains"][0]["template_html"],
                 domain.template_html_source,
             )
+            self.assertEqual(manifest["data"]["domains"][0]["fallback_values"], {"company": "Example Corp", "location": "Berlin"})
             self.assertEqual(manifest["data"]["groups"][0]["id"], group.id)
             self.assertEqual(manifest["data"]["rules"][0]["id"], rule.id)
             provider_item = manifest["data"]["identity_providers"][0]

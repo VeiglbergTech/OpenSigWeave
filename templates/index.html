@@ -1050,6 +1050,43 @@
                             <p x-show="selectedProfileUnavailable() || selectedLoginUnavailable()" role="status" class="text-xs text-amber-300">A previously assigned provider is unavailable or unsuitable. The existing assignment is preserved unless you explicitly change it.</p>
                         </section>
 
+                        <details class="bg-gray-900 p-4 rounded-lg border border-gray-700" aria-label="Fallback Values">
+                            <summary class="cursor-pointer text-sm font-semibold text-gray-300 uppercase tracking-wider">Fallback Values</summary>
+                            <div class="mt-4 space-y-4">
+                                <p class="text-xs text-gray-400">Optional domain-specific values used only when an identity attribute is missing or blank. Directory attributes always win. Sender email and domain cannot be overridden.</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label class="block text-sm text-gray-300">First name
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.first_name" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Last name
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.last_name" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Position / Title
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.title" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Telephone
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.phone" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Company
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.company" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Department
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.department" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Location
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.location" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Mobile
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.mobile" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Website
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.website" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-400">Available placeholders: first_name, last_name, title, phone, company, department, location, mobile and website. Empty values remain blank.</p>
+                            </div>
+                        </details>
+
                     </div>
 
                     <div x-show="modalTab === 'users'" x-cloak class="space-y-4">

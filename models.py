@@ -84,6 +84,7 @@ class DomainDB(Base):
     template_html_source = Column(Text, nullable=True)
     identity_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
     authentication_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)
+    fallback_values = Column(JSON, nullable=False, default=dict, server_default="{}")
 
 class UserOverrideDB(Base):
     __tablename__ = "user_overrides"

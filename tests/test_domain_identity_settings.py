@@ -37,6 +37,19 @@ class DomainIdentitySettingsTests(unittest.TestCase):
         self.assertNotIn("save-domain-settings", JS)
         self.assertIn("providerLoading || providerError || saving", HTML)
 
+    def test_domain_fallback_editor_has_all_optional_fields_and_round_trips(self):
+        modal = HTML.split('x-data="domainSettingsModal"')[1].split('x-data="sanitizerModal"')[0]
+        controller = JS.split("function domainSettingsModal()")[1].split("window.addEventListener('submit-new-domain'")[0]
+        self.assertIn("<details", modal)
+        self.assertIn("Fallback Values", modal)
+        self.assertIn('x-show="modalTab === \'users\'" x-cloak', HTML)
+        for field in ("first_name", "last_name", "title", "phone", "company",
+                      "department", "location", "mobile", "website"):
+            self.assertIn(f'x-model="fallbackValues.{field}"', modal)
+        self.assertIn("domainData.fallback_values || {}", controller)
+        self.assertIn("fallback_values: { ...this.fallbackValues }", controller)
+        self.assertNotIn('x-model="fallbackValues.email"', modal)
+
     def test_available_provider_types_are_separated(self):
         self.assertIn("provider.provider_type === 'ldap' || provider.provider_type === 'authentik'", JS)
         self.assertIn("provider.provider_type === 'authentik' || provider.provider_type === 'oidc'", JS)

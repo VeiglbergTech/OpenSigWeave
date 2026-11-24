@@ -155,6 +155,7 @@ def build_admin_export(
                 "template_html": item.template_html_source if item.template_html_source is not None else item.template_html,
                 "identity_provider_id": item.identity_provider_id,
                 "authentication_provider_id": item.authentication_provider_id,
+                "fallback_values": item.fallback_values or {},
             } for item in domains]
 
         if "groups" in selected:

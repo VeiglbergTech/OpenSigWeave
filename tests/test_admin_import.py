@@ -89,6 +89,29 @@ class AdminImportTests(unittest.TestCase):
             target_engine.dispose()
             target_dir.cleanup()
 
+    def test_domain_fallback_values_survive_component_export_import(self):
+        self.make_export()
+        source = self.db.query(DomainDB).filter_by(domain_name="source.example.test").one()
+        source.fallback_values = {"first_name": "Fallback", "company": "Example"}
+        self.db.commit()
+        archive = build_admin_export(self.db, self.store, ["domains"])[0]
+
+        with tempfile.TemporaryDirectory() as directory:
+            target_engine = create_engine("sqlite:///:memory:")
+            Base.metadata.create_all(target_engine)
+            TargetSession = sessionmaker(bind=target_engine, expire_on_commit=False)
+            target = TargetSession()
+            try:
+                store = SignatureFileStore(directory)
+                plan = inspect_admin_import(target, store, archive)
+                self.assertTrue(plan["can_apply"], plan["conflicts"])
+                apply_admin_import(target, store, archive)
+                imported = target.query(DomainDB).one()
+                self.assertEqual(imported.fallback_values, {"first_name": "Fallback", "company": "Example"})
+            finally:
+                target.close()
+                target_engine.dispose()
+
     def test_exact_existing_domain_is_reused_but_not_overwritten(self):
         archive = self.make_export()
         target_dir = tempfile.TemporaryDirectory()
