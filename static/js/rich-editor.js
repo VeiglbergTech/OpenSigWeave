@@ -266,8 +266,11 @@
                     // selection; do not overwrite the pre-blur range.
                     let selectionCapturedByPointer = false;
                     input.addEventListener("pointerdown", () => {
+                        // Clicking an already-focused field will not trigger
+                        // another focus event. Do not leave this flag set for
+                        // a later keyboard focus transition.
+                        selectionCapturedByPointer = document.activeElement !== input;
                         captureSelection();
-                        selectionCapturedByPointer = true;
                     });
                     input.addEventListener("focus", () => {
                         if (!selectionCapturedByPointer) captureSelection();
