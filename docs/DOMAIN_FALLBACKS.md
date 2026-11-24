@@ -63,5 +63,9 @@ Omitting `fallback_values` on PUT preserves existing settings, including
 requests from older clients. Unknown fields, especially `email`, are rejected
 with HTTP 422. Unrelated signature and authentication APIs are unchanged.
 
+Full application backups include the JSON database column. Domain component
+exports/imports also preserve fallback fields; older archives that lack them
+are interpreted as empty, without changing the existing export version.
+
 The original `0018_large_image_uploads` schema remains intact; migration
 `0019_domain_fallback_values` adds the new column and is reversible.
