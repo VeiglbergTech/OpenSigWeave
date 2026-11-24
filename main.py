@@ -140,6 +140,8 @@ async def get_identity_attributes(db: Session, email: str, provider_id: str | No
         if provider_id:
             provider = identity_provider_registry.get(provider_id)
             if provider is None:
+                if IDENTITY_LOOKUP_FAIL_CLOSED:
+                    raise IdentityProviderUnavailable("Identity provider is not available")
                 return IdentityAttributes()
         fresh = await provider.get_attributes(normalized_email)
         if not isinstance(fresh, IdentityAttributes):
