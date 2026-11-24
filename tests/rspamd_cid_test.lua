@@ -35,3 +35,92 @@ local duplicate, reason=cid.wrap(task,original,{asset,asset})
 assert(not duplicate and reason=='duplicate content ID')
 local bad = {filename='../bad',content_id=asset.content_id,content_type='image/png',base64='AAAA'}
 assert(not cid.wrap(task,original,{bad}), 'unsafe file reference should not be accepted')
+local wrong_cid = {
+  filename=asset.filename, content_id='osw-'..string.rep('b',64)..'@assets.opensigweave.invalid',
+  content_type='image/png', base64=asset.base64,
+}
+assert(not cid.wrap(task,original,{wrong_cid}), 'content ID must match filename digest')
+local wrong_type = {
+  filename=asset.filename, content_id=asset.content_id,
+  content_type='image/jpeg', base64=asset.base64,
+}
+assert(not cid.wrap(task,original,{wrong_type}), 'media type must match file extension')
+local collision_task = {
+  get_newlines_type=function() return 'crlf' end,
+  get_parts=function() return {{
+    get_headers=function() return {{name='Content-ID',value='<'..asset.content_id..'>'}} end
+  }} end,
+}
+local collision, collision_reason=cid.wrap(collision_task,original,{asset})
+assert(not collision and collision_reason=='existing content ID collision')
+
+local function write_fixture(path, content)
+  local file=assert(io.open(path,'wb'))
+  file:write(content)
+  file:close()
+end
+
+-- HTML-only messages must remain readable with a CID sibling.
+local html_only = table.concat({
+  'From: alice@example.org',
+  'To: bob@example.org',
+  'Subject: html-only',
+  'MIME-Version: 1.0',
+  'Content-Type: text/html; charset=utf-8',
+  'Content-Transfer-Encoding: 8bit',
+  '',
+  '<p>Hello <img src="cid:'..asset.content_id..'"></p>',
+  '',
+}, '\r\n')
+local html_result, html_type = cid.wrap(task, html_only, {asset})
+assert(html_result, html_type)
+write_fixture(arg[1]..'.html', html_result)
+
+-- Keep pre-existing inline images and unrelated binary attachments intact,
+-- even when the root is a nested multipart/mixed/related structure.
+local mixed_original = table.concat({
+  'From: alice@example.org',
+  'To: bob@example.org',
+  'Subject: mixed and related',
+  'MIME-Version: 1.0',
+  'Content-Type: multipart/mixed; boundary="mixed"',
+  '',
+  '--mixed',
+  'Content-Type: multipart/related; boundary="original-related"',
+  '',
+  '--original-related',
+  'Content-Type: text/html; charset=utf-8',
+  '',
+  '<p>Existing <img src="cid:brand@example.org"> new <img src="cid:'..asset.content_id..'"></p>',
+  '--original-related',
+  'Content-Type: image/png',
+  'Content-Disposition: inline; filename="original.png"',
+  'Content-ID: <brand@example.org>',
+  'Content-Transfer-Encoding: base64',
+  '',
+  'b2xkLXBpY3R1cmU=',
+  '--original-related--',
+  '--mixed',
+  'Content-Type: application/octet-stream',
+  'Content-Disposition: attachment; filename="report.dat"',
+  'Content-Transfer-Encoding: base64',
+  '',
+  'AAECAwQF',
+  '--mixed--',
+  '',
+}, '\r\n')
+local mixed_task = {
+  get_newlines_type=function() return 'crlf' end,
+  get_parts=function() return {{
+    get_headers=function() return {{name='Content-ID', value='<brand@example.org>'}} end,
+  }, {}, {}, {}} end,
+}
+-- >76 base64 characters exercise correct MIME line folding.
+local long_asset = {
+  filename=asset.filename, content_id=asset.content_id,
+  content_type=asset.content_type,
+  base64='iVBORw0KGgp0ZXN0'..string.rep('QUJD',40),
+}
+local mixed_result, mixed_type = cid.wrap(mixed_task, mixed_original, {long_asset})
+assert(mixed_result, mixed_type)
+write_fixture(arg[1]..'.mixed', mixed_result)

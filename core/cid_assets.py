@@ -5,6 +5,8 @@ External URLs are never fetched while preparing an outgoing signature.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
 import os
 import re
 import stat
@@ -52,6 +54,11 @@ def _read_managed_image(file_store, filename: str) -> bytes:
             os.close(fd)
         if not data or len(data) > MAX_SIGNATURE_IMAGE_BYTES:
             raise SignatureStorageError("Managed image file is unavailable")
+        # The filename is content-addressed. Never send substituted or corrupted
+        # bytes under the original CID, even when they still have valid image magic.
+        expected_digest = filename.split(".", 1)[0]
+        if not hmac.compare_digest(hashlib.sha256(data).hexdigest(), expected_digest):
+            raise SignatureStorageError("Managed image integrity check failed")
         return data
     except (OSError, SignatureStorageError) as exc:
         raise SignatureEngineError(

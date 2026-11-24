@@ -21,18 +21,15 @@ local function safe_asset(asset)
     local encoded = asset.base64
     if type(filename) ~= "string" or type(cid) ~= "string"
         or type(media) ~= "string" or type(encoded) ~= "string" then return false end
-    if not filename:match("^[a-f0-9]+%.(png|jpg|gif|webp)$") or #filename < 68 or #filename > 69 then
-        -- Lua patterns do not implement alternation; explicit extensions below.
-        local digest, extension = filename:match("^([a-f0-9]+)%.([a-z]+)$")
-        if not digest or #digest ~= 64
-            or (extension ~= "png" and extension ~= "jpg"
-                and extension ~= "gif" and extension ~= "webp") then return false end
-    end
-    if not cid:match("^osw%-%x+@assets%.opensigweave%.invalid$") or #cid > 110 then return false end
-    if media ~= "image/png" and media ~= "image/jpeg"
-        and media ~= "image/webp" and media ~= "image/gif" then return false end
+    local digest, extension = filename:match("^([a-f0-9]+)%.([a-z]+)$")
+    if not digest or #digest ~= 64 then return false end
+    local types = { png = "image/png", jpg = "image/jpeg",
+        gif = "image/gif", webp = "image/webp" }
+    if media ~= types[extension] then return false end
+    -- The engine binds each CID to the actual immutable content-addressed file.
+    if cid ~= ("osw-" .. digest .. "@assets.opensigweave.invalid") then return false end
     if #encoded == 0 or #encoded > 3 * 1024 * 1024
-        or not encoded:match("^[A-Za-z0-9+/=]+$") or #encoded % 4 ~= 0 then return false end
+        or not encoded:match("^[A-Za-z0-9+/]+=?=?$") or #encoded % 4 ~= 0 then return false end
     return true
 end
 
@@ -69,8 +66,8 @@ function M.wrap(task, message, assets)
         end
     end
     if not seen_ct then return nil, "missing top-level MIME content type" end
-    local part_count = type(task.get_parts) == "function" and #(task:get_parts() or {}) or 0
-    if part_count + #assets + 1 > 256 then return nil, "too many MIME parts" end
+    local parts = type(task.get_parts) == "function" and (task:get_parts() or {}) or {}
+    if #parts + #assets + 1 > 256 then return nil, "too many MIME parts" end
 
     local size = 0
     local unique = {}
@@ -80,6 +77,29 @@ function M.wrap(task, message, assets)
         unique[asset.content_id] = true
         size = size + #asset.base64
         if size > MAX_ENCODED_BYTES then return nil, "inline assets exceed limit" end
+    end
+    -- Do not reuse a Content-ID already present in the original MIME tree.
+    -- Rspamd exposes the parsed headers of individual MIME parts.
+    for _, part in ipairs(parts) do
+        if type(part.get_headers) == "function" then
+            local headers = part:get_headers()
+            if type(headers) ~= "table" then return nil, "invalid existing MIME part headers" end
+            for _, header in ipairs(headers) do
+                if type(header) == "table" and type(header.name) == "string"
+                    and header.name:lower() == "content-id" then
+                    local value = header.value or header.decoded or header.raw
+                    if type(value) ~= "string" then return nil, "invalid existing content ID" end
+                    local id = value:match("<([^>]+)>") or value:match("^%s*(%S+)%s*$")
+                    if id and unique[id] then return nil, "existing content ID collision" end
+                end
+            end
+        end
+    end
+    for _, header in ipairs(inner) do
+        if header:lower():match("^content%-id:") then
+            local id = header:match("<([^>]+)>")
+            if id and unique[id] then return nil, "existing content ID collision" end
+        end
     end
     if #message + size + 4096 + #assets * 1024 > MAX_MESSAGE_BYTES then
         return nil, "outgoing message exceeds MIME limit"
@@ -97,7 +117,13 @@ function M.wrap(task, message, assets)
     }
     if body:sub(-#nl) ~= nl then chunks[#chunks + 1] = nl end
     for _, asset in ipairs(assets) do
-        local encoded = asset.base64:gsub("(.{76})", "%1" .. nl)
+        -- Lua patterns do not support {76}; construct RFC 2045 compliant
+        -- base64 lines explicitly (maximum 76 printable characters per line).
+        local lines = {}
+        for offset = 1, #asset.base64, 76 do
+            lines[#lines + 1] = asset.base64:sub(offset, offset + 75)
+        end
+        local encoded = table.concat(lines, nl)
         chunks[#chunks + 1] = "--" .. boundary .. nl
         chunks[#chunks + 1] = "Content-Type: " .. asset.content_type .. nl
         chunks[#chunks + 1] = "Content-Disposition: inline; filename=\"" .. asset.filename .. "\"" .. nl
