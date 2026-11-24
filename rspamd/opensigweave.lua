@@ -291,12 +291,17 @@ local function inject_signature(task)
                         ["invalid managed CID image"] = true,
                         ["duplicate content ID"] = true,
                         ["inline assets exceed limit"] = true,
-                        ["invalid existing MIME part headers"] = true,
+                        ["parsed MIME headers unavailable"] = true,
+                        ["duplicate existing content ID headers"] = true,
                         ["invalid existing content ID"] = true,
                         ["existing content ID collision"] = true,
                         ["outgoing message exceeds MIME limit"] = true,
                     }
                     detail = known[related_type] and related_type or "CID_WRAPPER_REJECTED"
+                end
+                if not ok_cid and type(wrapped) == "string" then
+                    local line = wrapped:match("opensigweave_cid%.lua:(%d+):")
+                    if line then detail = "CID_WRAPPER_EXCEPTION_LINE_" .. line end
                 end
                 rspamd_logger.errx(task, "OpenSigWeave CID wrap failure detail=%s", detail)
                 technical_failure(task, "CID_MIME_REWRITE_FAILED")
