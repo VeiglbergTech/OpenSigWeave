@@ -17,6 +17,8 @@ import re
 import smtplib
 import socket
 import sqlite3
+import json
+import tempfile
 import ssl
 import subprocess
 import sys
@@ -249,6 +251,51 @@ def check_rspamd_health(conn: sqlite3.Connection, container: str, now: int | Non
         record_failure(conn, token, "RSPAMD_UNAVAILABLE", timestamp)
 
 
+def publish_status_snapshot(conn: sqlite3.Connection, path: str | None, now: int | None = None) -> bool:
+    """Atomically export aggregate incidents, never mail contents or credentials."""
+    if not path:
+        return False
+    try:
+        destination = Path(path)
+        parent = destination.parent
+        if (not destination.is_absolute() or destination.is_symlink() or
+                not parent.is_dir() or parent.is_symlink()):
+            raise ValueError("Unsafe alert status location")
+        incidents = conn.execute(
+            "SELECT reason, failures, active FROM incidents ORDER BY last_seen DESC LIMIT 10"
+        ).fetchall()
+        active_count = conn.execute(
+            "SELECT COUNT(*) FROM incidents WHERE active=1"
+        ).fetchone()[0]
+        pending_count = conn.execute(
+            "SELECT COUNT(*) FROM outbox WHERE delivered_at IS NULL"
+        ).fetchone()[0]
+        data = {
+            "generated_at": int(time.time() if now is None else now),
+            "active_count": active_count,
+            "pending_count": pending_count,
+            "incidents": [
+                {"reason": row["reason"], "failures": row["failures"],
+                 "active": bool(row["active"])} for row in incidents
+            ],
+        }
+        fd, temp_path = tempfile.mkstemp(prefix=".osw-status-", dir=str(parent))
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                os.fchmod(stream.fileno(), 0o600)
+                json.dump(data, stream, separators=(",", ":"))
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temp_path, destination)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
+        return True
+    except (OSError, ValueError, sqlite3.Error) as exc:
+        print(f"Support status export failed ({type(exc).__name__})", file=sys.stderr)
+        return False
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Independent OpenSigWeave support alert notifier")
     parser.add_argument("action", choices=("ingest", "flush", "health", "status"))
@@ -256,10 +303,16 @@ def main() -> int:
     parser.add_argument("--container", default="rspamd-mailcow-1")
     args = parser.parse_args()
     conn = connect_database(args.database)
+    snapshot_path = os.environ.get("OSW_ALERT_STATUS_FILE", "")
     try:
         if args.action == "ingest":
+            last_publish = 0.0
             for line in sys.stdin:
                 process_log_line(conn, line)
+                monotonic = time.monotonic()
+                if "OpenSigWeave" in line and monotonic - last_publish >= 5.0:
+                    publish_status_snapshot(conn, snapshot_path)
+                    last_publish = monotonic
         elif args.action == "flush":
             print(f"Delivered {flush_outbox(conn)} support alert(s)")
         elif args.action == "health":
@@ -272,6 +325,7 @@ def main() -> int:
             for row in rows:
                 print(f"{row['reason']}: count={row['failures']} active={bool(row['active'])} last={row['last_seen']}")
             print(f"Pending support alerts: {queued}")
+        publish_status_snapshot(conn, snapshot_path)
     finally:
         conn.close()
     return 0
