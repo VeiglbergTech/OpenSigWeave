@@ -18,9 +18,13 @@ class SignatureFontToolbarTests(unittest.TestCase):
         self.assertNotIn('installSharedFontControls', JS)
         self.assertNotIn('osw-editor-font-toolbar', JS)
         self.assertNotIn('osw-editor-font-toolbar', CSS)
-        for name in ("createDropdown", "addListToDropdown", "Collection",
-                     "UIModel", "LabeledFieldView", "createLabeledInputText"):
-            self.assertIn(name, ENTRY)
+        # The shared fields extend CKEditor's View directly, without the
+        # native labeled input component that painted overlapping labels.
+        self.assertIn("View", ENTRY)
+        self.assertIn("class FontInputView extends ui.View", JS)
+        self.assertIn('class: ["osw-font-text-field"]', JS)
+        self.assertNotIn('class: ["ck", "ck-input", "ck-input-text"]', JS)
+        self.assertIn(".osw-ckeditor-font-input input.osw-font-text-field", CSS)
 
     def test_email_safe_families_and_legacy_fallbacks(self):
         block = JS.split("const SIGNATURE_FONT_FAMILIES = [", 1)[1].split("\n    ];", 1)[0]
@@ -47,7 +51,15 @@ class SignatureFontToolbarTests(unittest.TestCase):
                 self.assertRegex(stack, r", (?:sans-serif|serif|monospace)$")
                 self.assertEqual(stack, legacy_stacks.get(name, stack))
         self.assertIn('createInputControl(locale', JS)
-        self.assertIn('document.createElement("datalist")', JS)
+        # A searchable, scrollable ARIA listbox replaces the unstyleable
+        # native datalist. Options are rendered on demand when opened.
+        self.assertIn('listbox = document.createElement("div")', JS)
+        self.assertIn('listbox.setAttribute("role", "listbox")', JS)
+        self.assertIn('matches = options.filter(name => name.toLowerCase().includes(query))', JS)
+        self.assertIn('input.setAttribute("aria-expanded", "true")', JS)
+        self.assertIn(".osw-font-listbox", CSS)
+        self.assertIn("overflow-y: auto;", CSS)
+        self.assertNotIn('document.createElement("datalist")', JS)
         self.assertIn('editor.execute(commandName, { value: parsed })', JS)
         self.assertIn('supportAllValues: true', JS)
 
