@@ -42,12 +42,12 @@ assert old_image.get_payload(decode=True) == b"old-picture"
 assert original_attachment.get_content_disposition() == "attachment"
 assert original_attachment.get_filename() == "report.dat"
 assert original_attachment.get_payload(decode=True) == bytes(range(6))
-assert new_image.get_payload(decode=True) == b"\\x89PNG\\r\\n\\x1a\\n" + b"test" + b"ABC" * 40
+assert new_image.get_payload(decode=True) == b"\x89PNG\r\n\x1a\n" + b"test" + b"ABC" * 40
 cids = [part.get("Content-ID") for part in mixed.walk() if part.get("Content-ID")]
 assert len(cids) == len(set(cids)), cids
 # RFC 2045: transport base64 lines must not exceed 76 characters.
 new_image_wire = Path(sys.argv[1] + ".mixed").read_bytes().split(
-    b"Content-ID: <" + new_image["Content-ID"].strip("<>").encode() + b">\\r\\n\\r\\n", 1
-)[1].split(b"\\r\\n--", 1)[0]
+    b"Content-ID: <" + new_image["Content-ID"].strip("<>").encode() + b">\r\n\r\n", 1
+)[1].split(b"\r\n--", 1)[0]
 assert all(len(line) <= 76 for line in new_image_wire.splitlines()), "base64 lines exceed 76 characters"
 print("CID wrapping passed: alternative, HTML-only, mixed/related, original CID/attachment preservation and 76-column base64")

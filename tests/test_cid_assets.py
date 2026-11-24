@@ -31,12 +31,12 @@ class CIDAssetsTests(unittest.TestCase):
         self.assertEqual(base64.b64decode(assets[0]["base64"]), png)
 
     def test_tampered_managed_asset_fails_closed(self):
-        original = b"\\x89PNG\\r\\n\\x1a\\n" + b"original"
+        original = b"\x89PNG\r\n\x1a\n" + b"original"
         filename = self.store.write_image(original, "image/png")
         # Preserve a valid PNG magic prefix: only the stored digest proves that
         # these are not the immutable bytes originally imported by the editor.
         self.store.image_path(filename).write_bytes(
-            b"\\x89PNG\\r\\n\\x1a\\n" + b"tampered"
+            b"\x89PNG\r\n\x1a\n" + b"tampered"
         )
         source = f"https://signature.example.org/signature-assets/{filename}"
         with self.assertRaises(SignatureEngineError) as raised:
