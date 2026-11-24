@@ -51,6 +51,33 @@ local collision_task = {
     get_headers=function() return {{name='Content-ID',value='<'..asset.content_id..'>'}} end
   }} end,
 }
+-- Simulate actual Rspamd MIME parts: get_headers() yields opaque
+-- rspamd_text, while get_header_raw() exposes a specific field.
+local rspamd_task = {
+  get_newlines_type=function() return 'crlf' end,
+  get_parts=function() return {{
+    get_headers=function() error('must not parse opaque Rspamd header buffer') end,
+    get_header_raw=function(_, name)
+      assert(name == 'Content-ID')
+      return nil
+    end,
+    get_header_count=function(_, name)
+      assert(name == 'Content-ID')
+      return 0
+    end,
+  }} end,
+}
+local realistic, realistic_type = cid.wrap(rspamd_task, original, {asset})
+assert(realistic and realistic_type, realistic_type)
+local realistic_collision_task = {
+  get_newlines_type=function() return 'crlf' end,
+  get_parts=function() return {{
+    get_header_raw=function() return '<'..asset.content_id..'>' end,
+    get_header_count=function() return 1 end,
+  }} end,
+}
+local collision_real, collision_real_reason = cid.wrap(realistic_collision_task, original, {asset})
+assert(not collision_real and collision_real_reason == 'existing content ID collision')
 local collision, collision_reason=cid.wrap(collision_task,original,{asset})
 assert(not collision and collision_reason=='existing content ID collision')
 
