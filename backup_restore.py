@@ -352,12 +352,15 @@ def restore_fresh_deployment(
             # Every recovery project receives its own immutable image tag,
             # so another restore cannot silently retarget existing deployments.
             restore_image_ref = f"opensigweave:restore-{project_name}"
-            # The restored deployment uses the exact image saved in the backup.
+            # Always use the exact image saved in the encrypted backup.
+            # "build: null" is invalid in recent Docker Compose versions.
+            # A legacy archived compose.yaml may still contain "build: .",
+            # so disable both image pulls and builds explicitly.
             override = (
                 "services:\n"
                 "  opensigweave:\n"
                 f"    image: {restore_image_ref}\n"
-                "    build: null\n"
+                "    pull_policy: never\n"
             )
             (target / "compose.restore.yaml").write_text(override, encoding="utf-8")
             os.chmod(target / "compose.restore.yaml", 0o600)
@@ -454,7 +457,7 @@ def restore_fresh_deployment(
                 manifest["files"], "data/idp-config/",
             )
 
-            _compose(docker_binary, project_name, target, "up", "-d", "opensigweave", timeout=600)
+            _compose(docker_binary, project_name, target, "up", "-d", "--no-build", "opensigweave", timeout=600)
             _wait_healthy(docker_binary, project_name, target, "opensigweave", health_timeout)
 
             return target
