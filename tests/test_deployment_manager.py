@@ -109,8 +109,12 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(saved["APP_ALLOWED_HOSTS"], "portal.example.test,localhost")
                 self.assertEqual(saved["TRUSTED_PROXY_CIDRS"], "10.35.32.8/32,2001:db8::/64")
                 common.validate_config(saved)
+                cfg.migrate_config()  # Other safe defaults may be appended once.
+                migrated = common.parse_env(path)
+                self.assertEqual(migrated["APP_ALLOWED_HOSTS"], saved["APP_ALLOWED_HOSTS"])
+                self.assertEqual(migrated["TRUSTED_PROXY_CIDRS"], saved["TRUSTED_PROXY_CIDRS"])
                 before = path.read_bytes()
-                cfg.migrate_config()
+                cfg.migrate_config()  # A second migration must be a no-op.
                 self.assertEqual(path.read_bytes(), before)
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
                 self.assertEqual(stat.S_IMODE(recovery.stat().st_mode), 0o600)
@@ -199,6 +203,7 @@ class ConfigTests(unittest.TestCase):
             path = Path(temp) / ".env"
             values = sample_env() | {"DATABASE_URL": "postgresql://test",
                                      "SIGNATURE_STORAGE_PATH": "/data/signatures",
+                                     "TRUSTED_PROXY_CIDRS": "",
                                      "BACKUP_LOCATIONS_KEY": cfg._fernet_key()}
             values["LOCAL_ADMIN_EMAIL"] = "admin@example.test"
             values["LOCAL_ADMIN_PASSWORD_HASH"] = "scrypt$16384$8$1$abcdef$123456"
