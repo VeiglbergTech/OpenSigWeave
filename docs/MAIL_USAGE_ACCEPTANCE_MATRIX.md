@@ -12,6 +12,7 @@
 - **Controlled 24 November 2026 live outage tests (operator-reported, Postfix + SOGo logs provided):** Rspamd stopped at 22:18:48; Postfix's `postfix/sogo/smtpd` recorded `host or service rspamd:9900 not found`, then `NOQUEUE: milter-reject: CONNECT ... 451 4.7.1 Service unavailable` and a second `NOQUEUE: milter-reject: EHLO ... 451 4.7.1`, with `auth=0/1`. This **passes E04 for the SOGo / port-588 path only**; SOGo misleadingly displayed `(smtp) authentication failure`. Following Rspamd restoration, a new message with signature was sent successfully. Separately, when the OpenSigWeave backend was stopped (Rspamd online) at 22:17:24, Postfix recorded `milter-reject: END-OF-MESSAGE` with `4.7.1`, failure ID `e25097f2`, and `data=0/1`: the backend-outage failure was not queued. These observations do not prove other submission listener paths, missing-plugin detection, or PostgreSQL outage handling.
 - **Missing-plugin guard LIVE PASS (24 November 2026, 22:39:01, SOGo/588):** prior to enabling the separate guard, Rspamd running without `opensigweave.lua` accepted an unsigned message (Postfix LMTP `status=sent`, queue ID `859C880088`, 22:22:19). After enabling `opensigweave_guard.lua`, disabling only the injector caused `SIGNATURE_PLUGIN_NOT_LOADED` in Rspamd and `milter-reject: END-OF-MESSAGE ... 4.7.1` in Postfix, queue ID `EA05980088`, failure ID `1dababed`. SOGo displayed the expected temporary rejection. This verifies the opt-in guard **only when the guard itself remains active**; removing both plugins or a silently nonfunctional injector can still bypass the safeguard. An independent Postfix-side sign-required gate remains open.
 - **Local DKIM verification observed (operator-reported):** a saved `test.eml` returned `DKIM: PASS` with `dkimpy` after a Mailcow / OpenSigWeave test. This proves the verified DKIM signature matches the saved message and the DKIM public key at verification time; it does not independently establish whether the saved EML contains every desired signature/CID part, or whether an external recipient independently accepted it. Full external-recipient E08 remains open.
+- **Further functional live checks (24 November 2026, operator-reported, SOGo/Mailcow):** general rules, timed rules, CC/BCC, replies with nested quoted conversations (SOGo only), MIME/CID rendering, attachments, per-domain fallback behavior and Authentik-backed identity all worked in manual tests. These are **observed functional passes**, not exhaustive per-edge-case certification. LDAP integration was **not tested**. Outlook 2016 remained inconclusive after SMTP/TLS/transfer issues in the disposable self-signed-certificate environment; the operator chose to defer it.
 - Final external-recipient DKIM validation, attachment integrity and outage handling through other SMTP submission paths remain unverified. The Mailcow test logs also contain an unrelated `Unable to look up MX host` warning for the test recipient's domain; validate DNS separately before interpreting external-delivery tests.
 
 ## Status notation and evidence
@@ -31,8 +32,8 @@
 | A04 | Incoming unauthenticated mail | No outbound signature injection or OpenSigWeave tempfail | CI: `rspamd_injection_test.lua`; LIVE |
 | A05 | Unconfigured sender domain | No signature; intentional skip is not a technical SMTP failure | CI: engine; LIVE |
 | A06 | Configured but inactive sender domain | No signature and no unintended rotation | CI: engine; LIVE |
-| A07 | Known identity with complete LDAP/Authentik attributes | Live values take priority over domain fallbacks | CI: `test_domain_fallbacks.py`; LIVE |
-| A08 | Known identity with incomplete/blank attributes | Fill each missing supported field from *own* domain, never email address | CI: `test_domain_fallbacks.py`; LIVE |
+| A07 | Known identity with complete LDAP/Authentik attributes | Live values take priority over domain fallbacks | **Observed:** Authentik-backed user identity and general fallback processing function; LDAP variant and detailed precedence still LIVE |
+| A08 | Known identity with incomplete/blank attributes | Fill each missing supported field from *own* domain, never email address | **Observed:** domain fallback works in manual test; per-field precedence/address protection not individually evidenced |
 | A09 | Unknown user in configured domain with fallbacks | Signature uses safe per-domain fallbacks; unknown user is not provider outage | CI: `test_domain_fallbacks.py`; LIVE |
 | A10 | Unknown user, no fallbacks | Missing fields stay blank; no fake name from email local part | CI: `test_domain_fallbacks.py`; LIVE |
 | A11 | One user/address across two configured domains | Correct domain rules, fallbacks and template scope; no cross-domain leak | CI: `test_domain_fallbacks.py`; LIVE |
@@ -44,12 +45,12 @@
 | ID | Case / input | Required outcome | Evidence |
 |---|---|---|---|
 | B01 | No matching rule / deliberate NONE action | No signature; deliberate skip must **not** return SMTP 4xx | CI: rules/engine/Rspamd; LIVE |
-| B02 | Default rule versus more specific rule | Priority, multiple AND conditions, negative conditions honored | CI: `test_rule_engine.py`; LIVE |
+| B02 | Default rule versus more specific rule | Priority, multiple AND conditions, negative conditions honored | **Observed:** rule functionality works; exhaustive priority/AND/negative cases still LIVE |
 | B03 | Disabled signature, group, rule or domain scope mismatch | Never select disabled or cross-scoped material | CI: catalog/repository; LIVE |
 | B04 | Personal override enabled / admin-disabled | Override precedence and disabled-user exclusion respected | CI: `test_engine_service.py`, `test_signature_api.py`; LIVE |
 | B05 | Valid named selector + four-character checksum | Exact permitted domain/global signature, marker removed | CI: `rspamd_marker_selector_test.lua`; LIVE |
 | B06 | Invalid/conflicting/repeated selector | Fail safely; do not use attacker-chosen mismatched signature | CI: marker and engine; LIVE |
-| B07 | Timed rule versus always-on rule / personal override | Active timed rule wins; before/after window normal rules resume | CI: `test_rule_engine.py`, `test_engine_service.py`; LIVE |
+| B07 | Timed rule versus always-on rule / personal override | Active timed rule wins; before/after window normal rules resume | **Observed:** timed rules function; exact before/after and override precedence still need targeted proof |
 | B08 | Schedule at start/end, timezone/DST, overlapping domains | Exact half-open window and scoped priority; stable boundaries | CI: `test_scheduling.py`; LIVE with controlled clock |
 | B09 | Group of at least two weighted signatures, sequential mail | Random/weighted selection; never the same as immediately previous selection for that principal/group | CI: `test_weighted_selector.py`; LIVE |
 | B10 | Group containing exactly one active signature | Repeating the sole candidate is allowed | CI: `test_weighted_selector.py`; LIVE |
@@ -63,24 +64,24 @@
 |---|---|---|---|
 | C01 | Fresh plain-text-only message | Readable plain alternative and correctly placed signature, no stray CID parts | CI: `rspamd_injection_test.lua`; LIVE |
 | C02 | Fresh HTML and multipart/alternative | Correct HTML + plain representations, not duplicated in visible output | CI: Lua + Python MIME parser; LIVE |
-| C03 | SOGo 5.12.13 reply with earlier signatures | New signature after new text but before attribution/quoted history, older signatures untouched | CI; **Observed**; LIVE evidence pending |
-| C04 | Forward from SOGo with nested quoted mail | New signature before forwarded history; no corruption | CI: Lua; LIVE |
+| C03 | SOGo 5.12.13 reply with earlier signatures | New signature after new text but before attribution/quoted history, older signatures untouched | **Observed functional pass:** SOGo replies, including nested quoted history, worked; saved raw EML evidence not archived |
+| C04 | Forward from SOGo with nested quoted mail | New signature before forwarded history; no corruption | **Partial observed:** nested quoted conversations worked in SOGo; explicit forward scenario not separately confirmed |
 | C05 | Outlook (classic/new) reply and forward | Correct chronology in both MIME alternatives for each tested version | CI: synthetic patterns; **LIVE** |
 | C06 | Thunderbird reply and forward | Correct chronology, including cite-prefix/blockquote markup | CI: synthetic patterns; **LIVE** |
 | C07 | Quoted-printable and base64 parts with UTF-8 | Valid decoding, umlauts/emoji intact, valid outgoing Content-Transfer-Encoding | CI: Lua/Python MIME fixtures; LIVE |
 | C08 | Long/folded headers and unusual charset | Headers preserved; unsupported charset must not silently corrupt message | CI: MIME matrix; LIVE |
 | C09 | Nested mixed → alternative → related MIME | All MIME boundaries remain parseable, all text leaves coherent | CI: `rspamd_mime_matrix_test.lua`; LIVE |
-| C10 | Attach PDF, JPG and ZIP | Attachment filenames/dispositions and *decoded SHA-256 bytes* unchanged | CI: binary MIME fixture; LIVE hashes |
+| C10 | Attach PDF, JPG and ZIP | Attachment filenames/dispositions and *decoded SHA-256 bytes* unchanged | **Observed:** attachments delivered/functioned; exact PDF/JPG/ZIP coverage and decoded SHA-256 comparison still LIVE |
 | C11 | Already existing inline image/CID in original email | Original CID and bytes preserved, new CID distinct | CI: `rspamd_cid_test.lua`; LIVE |
 | C12 | Sign twice / queue reprocessing / resent message | No duplicate new signature; preserve prior legitimate quoted signature | CI: Lua idempotency; LIVE |
 | C13 | S/MIME / PGP signed or encrypted, message/rfc822 attachment | Atomic protected-message skip; no invalidated signature or rewritten attachment | CI: Rspamd/Stalwart MIME tests; LIVE |
-| C14 | CC, BCC and multiple recipients | Same authorized sender-based signature; no BCC disclosure or recipient-dependent mutation | LIVE |
+| C14 | CC, BCC and multiple recipients | Same authorized sender-based signature; no BCC disclosure or recipient-dependent mutation | **Observed functional pass:** CC and BCC worked; raw-header BCC privacy evidence not archived |
 
 ## D. CID and rendering
 
 | ID | Case / input | Required outcome | Evidence |
 |---|---|---|---|
-| D01 | One managed signature image | `multipart/related`, `src="cid:..."`, matching unique Content-ID, inline payload decodes; visible at recipient | CI: CID fixtures; **Observed**; LIVE evidence pending |
+| D01 | One managed signature image | `multipart/related`, `src="cid:..."`, matching unique Content-ID, inline payload decodes; visible at recipient | **Observed functional pass:** MIME/CID and rendered signature images work in SOGo; raw structural evidence not archived |
 | D02 | Two images, repeated reference to one image | One MIME part per unique asset, all HTML references resolve | CI: `test_cid_assets.py`; LIVE |
 | D03 | Existing CID + new signature CID | No collisions, no missing original CID or attachment | CI: CID wrapper; LIVE |
 | D04 | Hosted image imported once, source URL later unreachable | Delivery uses managed bytes, not original source or public OpenSigWeave asset URL | CI: `test_cid_assets.py`; LIVE with blocked external image loading |
