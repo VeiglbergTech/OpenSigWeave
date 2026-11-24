@@ -2694,6 +2694,22 @@ async function main() {
     const inlineStyleElements = await page.locator("[style]").evaluateAll(elements => elements.map(element => ({ tag: element.tagName, className: element.className, style: element.getAttribute("style") })).slice(0, 30));
     process.stdout.write("CSP report-only browser violations during exercised portal/editor workflows: " + JSON.stringify(cspViolations) + "\\n");
     process.stdout.write("Inline style elements: " + JSON.stringify(inlineStyleElements) + "\\n");
+    checkpoint("session: expired browser session must leave stale admin navigation");
+    const expiredContext = await browser.newContext();
+    await expiredContext.addCookies(await page.context().cookies());
+    try {
+      const expiredPage = await expiredContext.newPage();
+      await expiredPage.goto(baseURL + "/?view=admin&section=domains");
+      await expiredPage.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
+      assert.equal((await expiredPage.request.get(baseURL + "/api/session/status")).status(), 204);
+      // Simulates expiration/logout in another tab while this page stays open.
+      await expiredContext.clearCookies();
+      await expiredPage.getByRole("button", { name: "Signatures", exact: true }).click();
+      await expiredPage.waitForURL("**/login");
+      await expiredPage.getByLabel("Email address").waitFor();
+    } finally {
+      await expiredContext.close();
+    }
     await page.locator("#logout-button").click();
     await page.waitForURL("**/login");
     await page.getByLabel("Email address").waitFor();

@@ -1031,6 +1031,13 @@ async def logout(request: Request):
     return {"logout_url": "/login"}
 
 
+@app.get("/api/session/status", status_code=204)
+def portal_session_status(request: Request):
+    """Lightweight, non-cacheable check for the browser portal session."""
+    require_signature_user(request)
+    return Response(status_code=204, headers={"Cache-Control": "no-store, private"})
+
+
 @app.get("/")
 async def read_root(request: Request, db: Session = Depends(get_db)):
     user = request.session.get('user')

@@ -1,14 +1,46 @@
 const userData = JSON.parse(document.body.dataset.userData || "{}");
 const opensigweaveCsrfToken = document.body.dataset.csrfToken || "";
 const originalFetch = window.fetch.bind(window);
-window.fetch = (resource, options = {}) => {
+let portalSessionRedirecting = false;
+
+function redirectExpiredPortalSession() {
+    if (portalSessionRedirecting) return;
+    portalSessionRedirecting = true;
+    // Replace the stale page in history, so Back cannot reopen it.
+    window.location.replace("/login");
+}
+
+async function checkPortalSession() {
+    if (portalSessionRedirecting) return false;
+    try {
+        const response = await originalFetch("/api/session/status", {
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: { Accept: "application/json" }
+        });
+        if (response.status === 401) redirectExpiredPortalSession();
+        return response.ok;
+    } catch (_error) {
+        // A network outage is not proof of logout. Keep navigation blocked.
+        return false;
+    }
+}
+
+window.fetch = async (resource, options = {}) => {
     const method = (options.method || "GET").toUpperCase();
     if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
         const headers = new Headers(options.headers || {});
         headers.set("X-CSRF-Token", opensigweaveCsrfToken);
         options = { ...options, headers };
     }
-    return originalFetch(resource, options);
+    const response = await originalFetch(resource, options);
+    // Some admin endpoints return 403 for missing sessions, while other
+    // operations return legitimate 401/403 errors. Check the real session
+    // before redirecting; never mistake a permission error for a logout.
+    if (response.status === 401 || response.status === 403) {
+        void checkPortalSession();
+    }
+    return response;
 };
 
         var userRichEditor, adminRichEditor, signatureRichEditor;
@@ -240,7 +272,11 @@ window.fetch = (resource, options = {}) => {
         },
         init() {
             this.saveNavigation(false);
-            window.addEventListener("popstate", () => {
+            window.addEventListener("popstate", async () => {
+                if (!(await checkPortalSession())) {
+                    this.saveNavigation(false);
+                    return;
+                }
                 const url = new URL(window.location.href);
                 const view = url.searchParams.get("view");
                 const section = normalizeAdminTab(url.searchParams.get("section"));
@@ -253,17 +289,30 @@ window.fetch = (resource, options = {}) => {
                     window.dispatchEvent(new Event("osw-system-tab-active"));
                 }
             });
+            // Catch revoked sessions when returning from another tab or bfcache.
+            window.addEventListener("pageshow", event => {
+                if (event.persisted) void checkPortalSession();
+            });
+            document.addEventListener("visibilitychange", () => {
+                if (!document.hidden) void checkPortalSession();
+            });
+            window.addEventListener("focus", () => { void checkPortalSession(); });
         },
-        setAdminTab(section) {
+        async setAdminTab(section) {
             if (!isAdmin || !allowedAdminTabs.has(section)) return;
+            if (!(await checkPortalSession())) return;
             this.adminTab = section;
             this.tab = "admin";
             this.saveNavigation();
             if (section === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
         },
-        openPersonal() { this.tab = "personal"; this.saveNavigation(); },
-        openAdmin() {
-            if (!isAdmin) return;
+        async openPersonal() {
+            if (!(await checkPortalSession())) return;
+            this.tab = "personal";
+            this.saveNavigation();
+        },
+        async openAdmin() {
+            if (!isAdmin || !(await checkPortalSession())) return;
             this.tab = "admin";
             this.saveNavigation();
             if (this.adminTab === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
