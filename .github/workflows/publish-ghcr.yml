@@ -48,6 +48,13 @@ jobs:
           DOCKER_CONFIG="$(mktemp -d)"
           trap 'rm -rf "$DOCKER_CONFIG"' EXIT
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Never intentionally overwrite a published version-specific tag.
+          # After a partial push, repair the moving alias from the existing
+          # version digest instead of rebuilding that version.
+          if docker manifest inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
+            echo "::error::Version tag already exists in GHCR; refusing to overwrite"
+            exit 1
+          fi
           docker build --pull \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$REVISION" \
