@@ -201,6 +201,8 @@ class LDAPAttributeProvider:
                 attributes=[
                     "mail", "givenname", "sn", "displayName", "title",
                     "telephonenumber", "memberof", "samaccountname",
+                    "company", "department", "physicalDeliveryOfficeName",
+                    "l", "mobile", "wWWHomePage",
                     "distinguishedname", "useraccountcontrol", "objectGUID",
                 ],
                 size_limit=3,
@@ -252,7 +254,9 @@ class LDAPAttributeProvider:
         )
         attributes = {
             key: _values(entry_data.get(key))
-            for key in ("title", "telephonenumber", "displayName", "samaccountname")
+            for key in ("title", "telephonenumber", "displayName", "samaccountname",
+                        "company", "department", "physicaldeliveryofficename", "l",
+                        "mobile", "wwwhomepage")
             if entry_data.get(key) is not None
         }
         claims = {
@@ -298,6 +302,8 @@ class LDAPAttributeProvider:
                 attributes=[
                     "mail", "givenname", "sn", "displayName", "title",
                     "telephonenumber", "memberof", "samaccountname",
+                    "company", "department", "physicalDeliveryOfficeName",
+                    "l", "mobile", "wWWHomePage",
                     "distinguishedname", "useraccountcontrol",
                 ],
                 size_limit=3,
@@ -326,7 +332,9 @@ class LDAPAttributeProvider:
             )
             attributes = {
                 key: _values(data.get(key))
-                for key in ("title", "telephonenumber", "displayName", "samaccountname")
+                for key in ("title", "telephonenumber", "displayName", "samaccountname",
+                        "company", "department", "physicaldeliveryofficename", "l",
+                        "mobile", "wwwhomepage")
                 if data.get(key) is not None
             }
             claims = {
