@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import binascii
 import hashlib
 import re
@@ -80,7 +81,18 @@ def attach_inline_images(message: EmailMessage, assets: object) -> bool:
     # should never acquire orphaned CID image attachments.
     if not html:
         return False
-    message.make_related()
+    # make_related() rejects existing multipart/mixed, multipart/related and
+    # multipart/alternative roots. Preserve that complete original tree as
+    # the first related child and retain all non-MIME envelope headers outside.
+    inner = copy.deepcopy(message)
+    for name in list(inner.keys()):
+        if not name.casefold().startswith("content-"):
+            del inner[name]
+    for name in list(message.keys()):
+        if name.casefold().startswith("content-"):
+            del message[name]
+    message.set_payload([inner])
+    message.set_type("multipart/related")
     for data, suffix, filename, cid in prepared:
         message.add_related(data, maintype="image",
                             subtype="jpeg" if suffix == "jpg" else suffix,
