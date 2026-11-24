@@ -95,7 +95,10 @@ class ConfigTests(unittest.TestCase):
     def test_unattended_proxy_and_hosts_are_explicit_and_persisted(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"
-            with patch.object(cfg, "ENV", path), patch.object(cfg, "_free_port", return_value=8085):
+            recovery = Path(temp) / "generated-admin-password"
+            with patch.object(cfg, "ENV", path), patch.object(
+                cfg, "GENERATED_PASSWORD_FILE", recovery
+            ), patch.object(cfg, "_free_port", return_value=8085):
                 cfg.create_config(
                     hostname="portal.example.test", admin_email="admin@example.test",
                     allowed_hosts="portal.example.test, localhost",
@@ -110,6 +113,7 @@ class ConfigTests(unittest.TestCase):
                 cfg.migrate_config()
                 self.assertEqual(path.read_bytes(), before)
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+                self.assertEqual(stat.S_IMODE(recovery.stat().st_mode), 0o600)
 
     def test_proxy_and_host_input_validation(self):
         with patch.object(cfg, "_free_port", return_value=8085), patch.object(
