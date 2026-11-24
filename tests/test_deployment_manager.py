@@ -36,7 +36,7 @@ def sample_env():
         "POSTGRES_DB": "opensigweave", "POSTGRES_USER": "opensigweave",
         "POSTGRES_PASSWORD": "p" * 45, "SECRET_KEY": "s" * 45,
         "ENGINE_API_KEY": "e" * 45, "APP_ALLOWED_HOSTS": "localhost",
-        "APP_BIND_ADDRESS": "127.0.0.1", "APP_PORT": "8085",
+        "APP_BIND_ADDRESS": "0.0.0.0", "APP_PORT": "8085",
         "LOCAL_ADMIN_EMAIL": "", "LOCAL_ADMIN_PASSWORD_HASH": "",
     }
 
@@ -65,7 +65,7 @@ class ConfigTests(unittest.TestCase):
     def test_new_install_auto_generates_independent_secrets_and_scrypt(self):
         from auth_config import verify_local_admin_password
         with patch.object(cfg.sys, "stdin", Terminal(True)), \
-             patch.object(cfg, "prompt", side_effect=["signature.example.test", "admin@example.test", "signature.example.test, localhost", "10.35.32.5,2001:db8::/64"]), \
+             patch.object(cfg, "prompt", side_effect=["signature.example.test", "admin@example.test", "signature.example.test, localhost", "10.35.32.5,2001:db8::/64", "0.0.0.0"]), \
              patch.object(cfg, "getpass", side_effect=["correct horse battery staple"] * 2), \
              patch.object(cfg, "_free_port", return_value=8085):
             values = cfg.create_values()
@@ -81,6 +81,7 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("BACKUP_AGE_RECIPIENT", values)
         self.assertEqual(values["APP_ALLOWED_HOSTS"], "signature.example.test,localhost")
         self.assertEqual(values["TRUSTED_PROXY_CIDRS"], "10.35.32.5/32,2001:db8::/64")
+        self.assertEqual(values["APP_BIND_ADDRESS"], "0.0.0.0")
 
     def test_local_defaults_and_headless_generated_admin_password(self):
         with patch.object(cfg.sys, "stdin", Terminal(False)), \
@@ -89,6 +90,7 @@ class ConfigTests(unittest.TestCase):
             values = cfg.create_values(generate_admin_password=True)
         self.assertEqual(values["APP_ALLOWED_HOSTS"], "localhost")
         self.assertEqual(values["TRUSTED_PROXY_CIDRS"], "")
+        self.assertEqual(values["APP_BIND_ADDRESS"], "0.0.0.0")
         self.assertEqual(values["LOCAL_ADMIN_EMAIL"], "admin@localhost.localdomain")
         self.assertIn("_GENERATED_ADMIN_PASSWORD", values)
 
@@ -103,16 +105,19 @@ class ConfigTests(unittest.TestCase):
                     hostname="portal.example.test", admin_email="admin@example.test",
                     allowed_hosts="portal.example.test, localhost",
                     trusted_proxy_cidrs="10.35.32.8, 2001:db8::/64",
+                    bind_address="192.0.2.45",
                     generate_admin_password=True,
                 )
                 saved = common.parse_env(path)
                 self.assertEqual(saved["APP_ALLOWED_HOSTS"], "portal.example.test,localhost")
                 self.assertEqual(saved["TRUSTED_PROXY_CIDRS"], "10.35.32.8/32,2001:db8::/64")
+                self.assertEqual(saved["APP_BIND_ADDRESS"], "192.0.2.45")
                 common.validate_config(saved)
                 cfg.migrate_config()  # Other safe defaults may be appended once.
                 migrated = common.parse_env(path)
                 self.assertEqual(migrated["APP_ALLOWED_HOSTS"], saved["APP_ALLOWED_HOSTS"])
                 self.assertEqual(migrated["TRUSTED_PROXY_CIDRS"], saved["TRUSTED_PROXY_CIDRS"])
+                self.assertEqual(migrated["APP_BIND_ADDRESS"], saved["APP_BIND_ADDRESS"])
                 before = path.read_bytes()
                 cfg.migrate_config()  # A second migration must be a no-op.
                 self.assertEqual(path.read_bytes(), before)
@@ -142,6 +147,44 @@ class ConfigTests(unittest.TestCase):
         for invalid in ("not-an-ip", "0.0.0.0/0", "10.1.2.3,"):
             with self.subTest(existing_config=invalid), self.assertRaises(common.DeploymentError):
                 common.validate_config(valid | {"TRUSTED_PROXY_CIDRS": invalid})
+
+    def test_bind_address_validation_selects_port_on_configured_interface(self):
+        with patch.object(cfg.sys, "stdin", Terminal(False)), patch.object(
+            cfg, "_free_port", return_value=8090
+        ) as select_port:
+            values = cfg.create_values(
+                hostname="portal.example.test", admin_email="admin@example.test",
+                bind_address="127.0.0.1", generate_admin_password=True,
+            )
+            self.assertEqual(values["APP_BIND_ADDRESS"], "127.0.0.1")
+            self.assertEqual(values["APP_PORT"], "8090")
+            select_port.assert_called_once_with("127.0.0.1")
+            for invalid in ("", "example.com", "127.0.0.1:8085", "not-an-ip"):
+                with self.subTest(bind=invalid), self.assertRaises(common.DeploymentError):
+                    cfg.create_values(
+                        hostname="portal.example.test", admin_email="admin@example.test",
+                        bind_address=invalid, generate_admin_password=True
+                    )
+
+    def test_config_generator_cli_forwards_bind_address(self):
+        with patch.object(cfg, "exclusive_lock", return_value=nullcontext()), patch.object(
+            cfg, "ENV", Mock(**{"exists.return_value": False, "is_symlink.return_value": False})
+        ), patch.object(cfg, "create_config") as create:
+            self.assertEqual(cfg.main(["--bind-address", "127.0.0.1",
+                                       "--generate-admin-password"]), 0)
+            self.assertEqual(create.call_args.kwargs["bind_address"], "127.0.0.1")
+
+    def test_generator_does_not_overwrite_existing_bind_address(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / ".env"
+            path.write_text(env_text(sample_env()), encoding="utf-8")
+            with patch.object(cfg, "ENV", path), patch.object(
+                cfg, "exclusive_lock", return_value=nullcontext()
+            ), patch.object(cfg, "migrate_config") as migrate:
+                previous = path.read_bytes()
+                self.assertEqual(cfg.main(["--bind-address", "127.0.0.1"]), 4)
+                migrate.assert_not_called()
+                self.assertEqual(path.read_bytes(), previous)
 
     def test_create_never_overwrites_and_permissions(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -273,6 +316,11 @@ class InstallTests(unittest.TestCase):
         with patch.object(install.socket, "socket") as sockets:
             sockets.return_value.__enter__.return_value.bind.side_effect = OSError("occupied")
             self.assertFalse(install.port_available("127.0.0.1", 8085))
+
+    def test_install_cli_forwards_bind_address(self):
+        with patch.object(install, "perform_install") as perform:
+            self.assertEqual(install.main(["--bind-address", "192.0.2.35"]), 0)
+            self.assertEqual(perform.call_args.kwargs["bind_address"], "192.0.2.35")
 
     def test_healthy_existing_installation_preserves_all_state(self):
         with patch.object(install, "exclusive_lock", return_value=nullcontext()), \
