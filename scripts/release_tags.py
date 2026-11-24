@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 import time
-from urllib.request import Request, urlopen
+from http.client import HTTPSConnection
 
 REPOSITORY = "VeiglbergTech/OpenSigWeave"
 TAG_RE = re.compile(
@@ -32,17 +32,29 @@ def parse_release_tag(tag: str) -> tuple[str, str]:
 
 
 def github_get(token: str, path: str) -> dict:
-    request = Request(
-        "https://api.github.com/" + path,
-        headers={
-            "Authorization": "Bearer " + token,
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "opensigweave-release-gate",
-        },
-    )
-    with urlopen(request, timeout=20) as response:
-        return json.load(response)
+    """Use a fixed HTTPS origin; never accept another scheme or host."""
+    if not path.startswith("repos/" + REPOSITORY + "/") or any(
+        character in path for character in ("\\r", "\\n", "#")
+    ):
+        raise RuntimeError("Invalid GitHub API path")
+    connection = HTTPSConnection("api.github.com", timeout=20)
+    try:
+        connection.request(
+            "GET", "/" + path,
+            headers={
+                "Authorization": "Bearer " + token,
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "opensigweave-release-gate",
+            },
+        )
+        response = connection.getresponse()
+        if response.status != 200:
+            raise RuntimeError(f"GitHub release gate API returned HTTP {response.status}")
+        body = response.read(2_000_000)
+        return json.loads(body.decode("utf-8"))
+    finally:
+        connection.close()
 
 
 def main_matches_sha(token: str, sha: str) -> bool:
