@@ -914,8 +914,17 @@ async function main() {
       "opening a field with an existing family must show all choices");
     await fontFamilyControl.press("Escape");
     await signatureCreateEditor.press("Control+A");
+    checkpoint("signature editor: before 18pt application");
     await fontSizeControl.fill("18");
     await fontSizeControl.press("Enter");
+    const fontSizeDiagnostics = await page.evaluate(() => ({
+      html: document.querySelector("#signature-html-source")?.value,
+      inputValue: document.querySelector("#signature-template-editor .osw-signature-size-input input")?.value,
+      activeElement: document.activeElement?.outerHTML.slice(0, 200),
+      editorText: document.querySelector("#signature-template-editor .ck-editor__editable")?.innerText,
+      sourcePresent: !!document.querySelector("#signature-html-source")
+    }));
+    console.log("[browser-smoke] font-size 18pt diagnostics: " + JSON.stringify(fontSizeDiagnostics));
     await page.waitForFunction(() => /font-size:\s*18pt/i.test(
       document.querySelector("#signature-html-source")?.value || ""
     ));
