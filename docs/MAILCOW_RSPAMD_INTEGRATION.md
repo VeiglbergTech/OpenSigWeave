@@ -153,6 +153,7 @@ Set up a dedicated service host with Python 3.12+ and Docker CLI access to the M
 
 ```dotenv
 OSW_ALERT_DATABASE=/var/lib/opensigweave-alerts/alerts.sqlite3
+OSW_ALERT_STATUS_FILE=/var/lib/opensigweave-alerts/status/status.json
 OSW_ALERT_SUPPORT_TO=support@example.org
 OSW_ALERT_FROM=alerts@example.org
 OSW_ALERT_SMTP_HOST=smtp.independent-relay.example
@@ -176,6 +177,18 @@ python3 scripts/opensigweave_support_notifier.py status
 ```
 
 Supervise the continuous log reader with a restart-on-failure policy. A Docker CLI credential has host-level privileges and must be protected. If the notifier is remote, access Docker over a separately secured channel rather than exposing its socket unauthenticated. `health` treats inaccessible Docker state as unavailable and records one synthetic event per five-minute bucket; verify the correct container ID on your installation. The SMTP relay only accepts implicit TLS on port 465 or STARTTLS on port 587, with certificate verification. Notifications never contain the original email body, sender header or engine token.
+
+For **System → Support Alerts** in the OpenSigWeave administration portal,
+create the notifier's `status/` directory and mount **only that directory**
+into the application container as read-only. Configure `OSW_ALERT_STATUS_FILE`
+inside the application with the mounted `status.json` path. Ensure the
+application process can read the exported file (the notifier creates it with
+mode 0600, so explicit permissions/ownership or an ACL may be required).
+The notifier writes aggregate counts and error classes atomically every few
+seconds during log ingestion and after its periodic `health` and `flush`.
+Stale or unavailable snapshots are marked degraded; they do not certify that
+Postfix/Rspamd or the alert relay works. Never mount the notifier's SQLite
+state or SMTP secrets into the app. The API remains administrator-only.
 
 Simulate repeated failure events and a relay outage; verify a single grouped pending notification survives a notifier restart and is delivered after the relay returns. After a logged successful signature mutation, validate the explicitly qualified recovery notice. Do not expect this reporter to make SMTP acceptance decisions: only Postfix/Milter and the Rspamd failure policy can do that. Review log retention and notifier outage recovery (the example tail reads the last five minutes) before production use.
 
