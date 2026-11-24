@@ -30,7 +30,7 @@ DEFAULTS = {
     "POSTGRES_DB": "opensigweave",
     "POSTGRES_USER": "opensigweave",
     "SIGNATURE_STORAGE_PATH": "/data/signatures",
-    "APP_BIND_ADDRESS": "127.0.0.1",
+    "APP_BIND_ADDRESS": "0.0.0.0",
     "APP_PORT": "8085",
     "MANAGEMENT_API_KEY": "",
     "STALWART_HOOK_TOKEN": "",
@@ -116,6 +116,7 @@ def _fernet_key() -> str:
 
 def create_values(*, hostname: str | None = None, admin_email: str | None = None,
                   allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
+                  bind_address: str | None = None,
                   generate_admin_password: bool = False) -> dict[str, str]:
     from auth_config import hash_local_admin_password, is_valid_email
 
@@ -135,6 +136,13 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
         trusted_proxy_cidrs if trusted_proxy_cidrs is not None else
         prompt("Trusted proxy IPs/CIDRs (comma-separated; blank if none)", "")
     )
+    bind = (bind_address if bind_address is not None else
+            prompt("Application bind IP (0.0.0.0 = all IPv4 interfaces)",
+                   DEFAULTS["APP_BIND_ADDRESS"])).strip()
+    try:
+        ipaddress.ip_address(bind)
+    except ValueError as exc:
+        raise DeploymentError("Bind address must be one valid IPv4 or IPv6 address", 4) from exc
     if generate_admin_password:
         password = secrets.token_urlsafe(32)
     else:
@@ -160,7 +168,8 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
         "BACKUP_LOCATIONS_KEY": _fernet_key(),
         "APP_ALLOWED_HOSTS": allowlist,
         "TRUSTED_PROXY_CIDRS": proxies,
-        "APP_PORT": str(_free_port(values["APP_BIND_ADDRESS"])),
+        "APP_BIND_ADDRESS": bind,
+        "APP_PORT": str(_free_port(bind)),
         "LOCAL_ADMIN_EMAIL": email,
         "LOCAL_ADMIN_PASSWORD_HASH": local_hash,
     })
@@ -205,9 +214,11 @@ def _save_generated_password(password: str) -> None:
 
 def create_config(*, hostname: str | None = None, admin_email: str | None = None,
                   allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
+                  bind_address: str | None = None,
                   generate_admin_password: bool = False) -> None:
     values = create_values(hostname=hostname, admin_email=admin_email,
                            allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
+                           bind_address=bind_address,
                            generate_admin_password=generate_admin_password)
     content = "# OpenSigWeave protected local configuration (never commit)\n"
     for key in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
@@ -227,6 +238,8 @@ def create_config(*, hostname: str | None = None, admin_email: str | None = None
             GENERATED_PASSWORD_FILE.unlink(missing_ok=True)
         raise
     ok("Created .env with mode 0600 and independent cryptographic secrets")
+    if values["APP_BIND_ADDRESS"] in ("0.0.0.0", "::"):
+        info("WARNING: Application binds on all interfaces; restrict its port with a firewall and use an HTTPS reverse proxy.")
     if generate_admin_password:
         info(f"Initial administrator password stored in {GENERATED_PASSWORD_FILE} (0600); move it offline")
 
@@ -301,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--admin-email", help="Use an explicit administrator email on first install")
     parser.add_argument("--allowed-hosts", help="Comma-separated portal hostnames (no wildcards or URL schemes)")
     parser.add_argument("--trusted-proxy-cidrs", help="Comma-separated trusted reverse proxy IPs or CIDRs; blank means none")
+    parser.add_argument("--bind-address", help="First-install bind IP; default 0.0.0.0 (all IPv4 interfaces), e.g. 127.0.0.1")
     parser.add_argument("--generate-admin-password", action="store_true",
                         help="Create a protected 0600 initial password file instead of prompting")
     args = parser.parse_args(argv)
@@ -312,7 +326,12 @@ def main(argv: list[str] | None = None) -> int:
                 create_config(hostname=args.hostname, admin_email=args.admin_email,
                               allowed_hosts=args.allowed_hosts,
                               trusted_proxy_cidrs=args.trusted_proxy_cidrs,
+                              bind_address=args.bind_address,
                               generate_admin_password=args.generate_admin_password)
+            elif args.bind_address is not None:
+                raise DeploymentError(
+                    "Existing .env is preserved: change APP_BIND_ADDRESS there and recreate the application container", 4
+                )
             elif args.check:
                 env = parse_env(ENV)
                 validate_config(env)
