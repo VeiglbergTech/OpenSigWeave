@@ -10,6 +10,7 @@ import hmac
 import os
 import re
 import stat
+from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from core.engine_contract import SignatureEngineError
@@ -20,9 +21,27 @@ _MAX_INLINE_ASSETS = 6
 _MAX_TOTAL_BYTES = 4 * 1024 * 1024
 _MANAGED_IMAGE = re.compile(r"^/signature-assets/([a-f0-9]{64}\.(?:png|jpg|webp|gif))$")
 _IMG_SRC = re.compile(
-    r"(?P<start><img\b[^>]*?\bsrc\s*=\s*)(?P<quote>[\"'])(?P<src>[^\"']*)(?P=quote)",
+    r"(?P<start><img\b[^>]*?\s+src\s*=\s*)(?P<quote>[\"'])(?P<src>[^\"']*)(?P=quote)",
     re.I,
 )
+
+
+class _RenderedImageAudit(HTMLParser):
+    """Verify that every IMG has exactly one source from the shipped assets."""
+
+    def __init__(self, allowed_sources: set[str]):
+        super().__init__(convert_charrefs=True)
+        self.allowed_sources = allowed_sources
+        self.image_count = 0
+        self.invalid = False
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "img":
+            return
+        self.image_count += 1
+        sources = [value for name, value in attrs if name == "src"]
+        if len(sources) != 1 or sources[0] not in self.allowed_sources:
+            self.invalid = True
 
 
 def _safe_managed_image(source: str) -> str:
@@ -104,7 +123,13 @@ def build_cid_payload(html: str, file_store) -> tuple[str, list[dict[str, str]]]
         )
 
     rendered = _IMG_SRC.sub(substitute, html)
-    # An unrecognized IMG tag must never quietly retain an external source.
-    if len(re.findall(r"<img\b", rendered, re.I)) != len(re.findall(r"\bsrc\s*=\s*cid:|\bsrc\s*=\s*[\"']cid:", rendered, re.I)):
+    # A CID elsewhere in the HTML must never mask an unmanaged IMG source.
+    # Parse each image's actual attributes, including unquoted/duplicate src.
+    audit = _RenderedImageAudit({
+        "cid:" + asset["content_id"] for asset in assets.values()
+    })
+    audit.feed(rendered)
+    audit.close()
+    if audit.invalid or audit.image_count != len(re.findall(r"<img\b", rendered, re.I)):
         raise SignatureEngineError("UNMANAGED_INLINE_IMAGE", "Signature image source cannot be embedded")
     return rendered, list(assets.values())

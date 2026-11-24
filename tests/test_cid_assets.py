@@ -51,6 +51,22 @@ class CIDAssetsTests(unittest.TestCase):
             with self.subTest(source=source), self.assertRaises(SignatureEngineError):
                 build_cid_payload(f'<img src="{source}">', self.store)
 
+    def test_unquoted_remote_image_cannot_be_hidden_by_an_unrelated_cid(self):
+        html = '<img src=https://evil.example/tracker.png><div src="cid:fake"></div>'
+        with self.assertRaises(SignatureEngineError) as raised:
+            build_cid_payload(html, self.store)
+        self.assertEqual(raised.exception.code, "UNMANAGED_INLINE_IMAGE")
+
+    def test_data_src_cannot_override_the_actual_img_src(self):
+        png = b"\x89PNG\r\n\x1a\n" + b"image"
+        filename = self.store.write_image(png, "image/png")
+        html = (f'<img data-src="placeholder.png" '
+                f'src="https://signature.example.org/signature-assets/{filename}">')
+        rendered, assets = build_cid_payload(html, self.store)
+        self.assertEqual(len(assets), 1)
+        self.assertIn('data-src="placeholder.png"', rendered)
+        self.assertIn('src="cid:osw-', rendered)
+
     def test_missing_asset_fails_instead_of_linking_external_site(self):
         html = 'hello <img src="https://example.com/signature-assets/' + "a" * 64 + '.png">'
         with self.assertRaises(SignatureEngineError) as raised:
