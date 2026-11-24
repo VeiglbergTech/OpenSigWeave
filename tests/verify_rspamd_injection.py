@@ -91,7 +91,7 @@ assert cid_root.get_content_type() == "multipart/alternative"
 assert cid_image.get_content_type() == "image/png"
 assert cid_image.get_content_disposition() == "inline"
 cid_value = cid_image["Content-ID"].strip("<>")
-assert cid_image.get_payload(decode=True) == b"\\x89PNG\\r\\n\\x1a\\ntest"
+assert cid_image.get_payload(decode=True) == b"\x89PNG\r\n\x1a\ntest"
 cid_alternatives = list(cid_root.iter_parts())
 assert [part.get_content_type() for part in cid_alternatives] == ["text/plain", "text/html"]
 assert "cid:" + cid_value in cid_alternatives[1].get_content()
