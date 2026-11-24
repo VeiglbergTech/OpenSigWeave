@@ -304,7 +304,7 @@ class LDAPAttributeProvider:
                     "telephonenumber", "memberof", "samaccountname",
                     "company", "department", "physicalDeliveryOfficeName",
                     "l", "mobile", "wWWHomePage",
-                    "distinguishedname", "useraccountcontrol",
+                    "distinguishedname", "useraccountcontrol", "objectGUID",
                 ],
                 size_limit=3,
             )
