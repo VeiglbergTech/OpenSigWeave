@@ -1,6 +1,8 @@
 # Explicit local build overlay only for dev/beta and CI.
+# Uses a distinct local image name so source builds cannot shadow GHCR alpha.
 services:
   opensigweave:
+    image: opensigweave-source-test:local
     build:
       context: .
       dockerfile: Dockerfile
