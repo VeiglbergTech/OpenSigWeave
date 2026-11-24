@@ -1272,6 +1272,7 @@ function identityProviderManager() { return {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
                 providers: [], identityProviderId: '', authenticationProviderId: '', providerLoading: false, providerError: '', providerRequestId: 0, saving: false,
+                fallbackValues: {},
                 users: [], userQuery: '', userSource: 'all', userPage: 1, userTotal: 0,
                 userLoading: false, userError: '', userWarning: '', userRequestId: 0,
                 profileProviders() { return this.providers.filter(eligibleProfileProvider); },
@@ -1310,6 +1311,11 @@ function identityProviderManager() { return {
                     this.stripDeviceSignatures = domainData.strip_device_signatures;
                     this.identityProviderId = domainData.identity_provider_id || '';
                     this.authenticationProviderId = domainData.authentication_provider_id || '';
+                    this.fallbackValues = {
+                        first_name: '', last_name: '', title: '', phone: '',
+                        company: '', department: '', location: '', mobile: '', website: '',
+                        ...(domainData.fallback_values || {})
+                    };
                     this.providers = [];
                     this.saving = false;
                     this.modalTab = 'settings';
@@ -1371,7 +1377,8 @@ function identityProviderManager() { return {
                         allow_overrides: this.allowOverrides,
                         inject_on_replies: this.injectOnReplies,
                         trim_whitespace: this.trimWhitespace,
-                        strip_device_signatures: this.stripDeviceSignatures
+                        strip_device_signatures: this.stripDeviceSignatures,
+                        fallback_values: { ...this.fallbackValues }
                     };
                     if (profileChanged) payload.identity_provider_id = this.identityProviderId || null;
                     if (loginChanged) payload.authentication_provider_id = this.authenticationProviderId || null;
