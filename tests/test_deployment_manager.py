@@ -215,6 +215,13 @@ class ConfigTests(unittest.TestCase):
                 self.assertEqual(first, path.read_bytes())
                 self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
+    def test_legacy_missing_bind_address_preserves_loopback_security(self):
+        existing = sample_env()
+        del existing["APP_BIND_ADDRESS"]
+        additions = cfg.missing_options(existing)
+        self.assertEqual(additions["APP_BIND_ADDRESS"], "127.0.0.1")
+        self.assertEqual(cfg.DEFAULTS["APP_BIND_ADDRESS"], "0.0.0.0")
+
     def test_migrate_replaces_empty_backup_key_without_duplicate(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"
