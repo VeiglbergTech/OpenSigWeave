@@ -44,6 +44,7 @@ class AdminExportTests(unittest.TestCase):
     def _populate(self):
         domain = DomainDB(
             domain_name="example.org",
+            fallback_values={"company": "Example Corp", "location": "Berlin"},
             template_html="<p>Sanitized fallback</p>",
             template_html_source="<!--[if mso]><p>Original source</p><![endif]-->",
         )
