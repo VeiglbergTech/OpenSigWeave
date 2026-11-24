@@ -917,14 +917,6 @@ async function main() {
     checkpoint("signature editor: before 18pt application");
     await fontSizeControl.fill("18");
     await fontSizeControl.press("Enter");
-    const fontSizeDiagnostics = await page.evaluate(() => ({
-      html: document.querySelector("#signature-html-source")?.value,
-      inputValue: document.querySelector("#signature-template-editor .osw-signature-size-input input")?.value,
-      activeElement: document.activeElement?.outerHTML.slice(0, 200),
-      editorText: document.querySelector("#signature-template-editor .ck-editor__editable")?.innerText,
-      sourcePresent: !!document.querySelector("#signature-html-source")
-    }));
-    console.log("[browser-smoke] font-size 18pt diagnostics: " + JSON.stringify(fontSizeDiagnostics));
     await page.waitForFunction(() => /font-size:\s*18pt/i.test(
       document.querySelector("#signature-html-source")?.value || ""
     ));
@@ -2232,7 +2224,19 @@ async function main() {
     const adminFontSize = domainSettings.locator("#admin-rich-editor .osw-signature-size-input input");
     await adminFontFamily.waitFor({ state: "visible" });
     await adminFontSize.waitFor({ state: "visible" });
-    assert.equal(await domainSettings.locator('#admin-rich-editor .osw-signature-family-input [role="option"]').filter({ hasText: "Georgia" }).count(), 1);
+    // Font choices are rendered lazily when the shared combobox opens, not
+    // when CKEditor mounts. Check the real user interaction in this third
+    // editor instance rather than expecting a hidden pre-rendered list.
+    await adminFontFamily.click();
+    const adminFontList = domainSettings.locator("#admin-rich-editor .osw-font-listbox");
+    await adminFontList.waitFor({ state: "visible" });
+    assert.equal(await adminFontList.getByRole("option", { name: "Georgia", exact: true }).count(), 1,
+      "admin CKEditor must share the searchable family list");
+    await adminFontFamily.fill("geo");
+    assert.deepEqual(await adminFontList.locator('[role="option"]').allTextContents(), ["Georgia"]);
+    await adminFontFamily.press("Escape");
+    assert.equal(await adminFontList.isVisible(), false,
+      "Escape must close the font menu without closing domain settings");
     await adminEditor.fill("Administrator user override");
     await adminEditor.press("Control+A");
     await adminEditor.press("Control+B");
