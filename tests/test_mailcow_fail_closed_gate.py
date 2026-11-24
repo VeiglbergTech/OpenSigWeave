@@ -31,30 +31,30 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
 
     def test_mailcow_sogo_listener_588_is_a_required_outbound_path(self):
         # SOGo submits to Postfix's internal listener, not public port 587.
-        services = SERVICES + "588/inet=588 inet n - n - - smtpd\\n"
+        services = SERVICES + "588/inet=588 inet n - n - - smtpd\n"
         findings = audit(BASE, services, STRICT)
         self.assertTrue(any(level == "FAIL" and "588:" in msg for level, msg in findings))
-        strict = STRICT + "588/inet/milter_default_action = tempfail\\n"
+        strict = STRICT + "588/inet/milter_default_action = tempfail\n"
         self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, strict)))
 
     def test_mailcow_haproxy_submission_services_are_required(self):
         services = (SERVICES
-                    + "10465/inet=10465 inet n - n - - smtpd\\n"
-                    + "10587/inet=10587 inet n - n - - smtpd\\n")
+                    + "10465/inet=10465 inet n - n - - smtpd\n"
+                    + "10587/inet=10587 inet n - n - - smtpd\n")
         strict = (STRICT
-                  + "10465/inet/milter_default_action = tempfail\\n"
-                  + "10587/inet/milter_default_action = tempfail\\n")
+                  + "10465/inet/milter_default_action = tempfail\n"
+                  + "10587/inet/milter_default_action = tempfail\n")
         self.assertEqual(
             sum(level == "FAIL" for level, _ in audit(BASE, services, STRICT)), 2
         )
         self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, strict)))
 
     def test_quarantine_bcc_watchdog_are_not_user_submission(self):
-        services = ("590/inet=590 inet n - n - - smtpd\\n"
-                    "591/inet=591 inet n - n - - smtpd\\n"
-                    "589/inet=589 inet n - n - - smtpd\\n"
-                    "588/inet=588 inet n - n - - smtpd\\n")
-        policy = "588/inet/milter_default_action = tempfail\\n"
+        services = ("590/inet=590 inet n - n - - smtpd\n"
+                    "591/inet=591 inet n - n - - smtpd\n"
+                    "589/inet=589 inet n - n - - smtpd\n"
+                    "588/inet=588 inet n - n - - smtpd\n")
+        policy = "588/inet/milter_default_action = tempfail\n"
         findings = audit(BASE, services, policy)
         self.assertFalse(any(level == "FAIL" for level, _ in findings))
         self.assertTrue(any("588:" in msg for _, msg in findings))
@@ -62,7 +62,7 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
                              for _, msg in findings))
 
     def test_nonstandard_service_names_are_still_reported_for_manual_review(self):
-        findings = audit(BASE, "2525/inet=2525 inet n - n - - smtpd\\n", "")
+        findings = audit(BASE, "2525/inet=2525 inet n - n - - smtpd\n", "")
         self.assertTrue(any(level == "FAIL" and "postconf -M" in msg
                             for level, msg in findings))
 
