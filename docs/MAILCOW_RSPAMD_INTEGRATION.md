@@ -115,7 +115,35 @@ docker compose exec postfix-mailcow postconf -n smtpd_milters milter_default_act
 docker compose exec postfix-mailcow postconf -P | grep -E '(^submission/|^smtps/).*(smtpd_milters|milter_default_action)'
 ```
 
+For a **read-only, fail-on-misconfiguration** check of the effective Postfix service overrides, run from the Mailcow Compose directory (the OpenSigWeave checkout is on the host):
+
+```bash
+python3 /path/to/OpenSigWeave/scripts/audit_mailcow_submission.py \\
+  --postconf-command "docker compose exec -T postfix-mailcow postconf" \\
+  --expected-milter rspamd
+```
+
+The check requires every enabled `submission`, `submissions` or `smtps` inet service to reference the expected Rspamd Milter endpoint and to use `milter_default_action=tempfail`. It resolves inherited `$smtpd_milters` references, fails on unknown variable expansions, and warns if port-25 `smtp/inet` also inherits `tempfail`. The expected endpoint hint must match the actual deployment (e.g. supply a literal address if your service doesn't call it `rspamd`). No configuration is changed. **A passing audit does not prove that the Rspamd Lua module is loaded, that Postfix can reach Rspamd, or that 451 reaches the SMTP client.**
+
 If either authenticated submission service has an override such as empty `smtpd_milters`, global settings do not protect it. Test and configure the actual SMTP entrypoint to call Rspamd with temporary failure on Milter unavailability. Do not change the inbound port-25 policy blindly. In an **isolated test mailbox/domain**, induce HTTP 401/422/503, failed TLS, timeouts, invalid JSON, lost OpenSigWeave database, Rspamd shutdown, and Postfix-to-Milter disconnection. Capture the actual SMTP exchange: there must be **no `250 queued`** for signature-required mail after the failure, then a single successful injection after recovery. Test SOGo, Outlook, Thunderbird, DKIM and attachment hashes. Clients may show generic retry errors rather than Rspamd's text.
+
+#### Controlled SMTP DATA acceptance gate (test mailbox only)
+
+After staging the Milter, run this probe **only on an isolated test domain** against the actual authenticated Mailcow port 587/465. Store the test mailbox password in an environment variable (not an argument). The probe sends one small test message and never retries automatically:
+
+```bash
+export OSW_TEST_SMTP_PASSWORD='your-disposable-test-account-password'
+# While OpenSigWeave is deliberately unavailable OR Rspamd is deliberately stopped:
+python3 /path/to/OpenSigWeave/scripts/mailcow_smtp_probe.py \\
+  --host mail.example.test --port 587 \\
+  --username test@mail.example.test --sender test@mail.example.test \\
+  --recipient isolated-test@mail.example.test \\
+  --expect tempfail --confirm-disposable-test
+# Restore the service and repeat with --expect accepted.
+unset OSW_TEST_SMTP_PASSWORD
+```
+
+The probe passes the failure case **only** on an actual 4xx reply at the SMTP DATA stage (not an RCPT failure or network timeout). If the message is accepted, it warns that it may have been queued/delivered. The recovery check confirms SMTP acceptance only: inspect the received raw EML for exactly one signature, valid DKIM, intact attachments and MIME structure. Repeat failure checks separately for engine HTTP/TLS/DB outages, Rspamd shutdown and Milter disconnect; inspect genuine SOGo/Outlook/Thunderbird retry UX. Use unique controlled messages and monitor the test queue. No server outages are induced by the probe itself.
 
 An **independent, opt-in support notifier** now exists at `scripts/opensigweave_support_notifier.py` with persistent SQLite outbox, retry after SMTP failure, rate limiting (one failure summary per error class per 15 minutes), deduplication by random event ID and a Docker-container outage probe. It is not automatically deployed and must send through a **separate authenticated, verified-TLS SMTP relay**. Its recovery event means successful signature mutation was observed, not that the full SMTP chain is certified healthy. Optional user-facing out-of-band notifications, integrated admin UI status and real Mailcow SMTP end-to-end acceptance are still outstanding; leave issue #14 open until these are validated.
 
