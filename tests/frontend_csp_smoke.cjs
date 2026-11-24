@@ -307,6 +307,31 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const deleteRule = ruleRequests.find(request => request.url === "/api/admin/rules/r2" && request.options.method === "DELETE");
   assert.ok(deleteRule, "Deleting a rule must use its identifier in the DELETE endpoint");
 
+  // A stale GET from before a rule update must never overwrite the newer
+  // result after saving the priority. Force the older refresh to finish last.
+  let releaseStaleRules;
+  const staleRulesReady = new Promise(resolve => { releaseStaleRules = resolve; });
+  let ruleFetchIndex = 0;
+  window.fetch = async url => {
+    const isStale = ruleFetchIndex++ < 5;
+    return {
+      ok: true,
+      json: async () => {
+        if (isStale) await staleRulesReady;
+        return url === "/api/admin/rules"
+          ? [{ id: "r1", name: "Timed rule", priority: isStale ? 10 : 42, conditions: [] }]
+          : [];
+      },
+    };
+  };
+  const olderRuleLoad = rulesManager.fetchAll();
+  const newerRuleLoad = rulesManager.fetchAll();
+  await newerRuleLoad;
+  releaseStaleRules();
+  await olderRuleLoad;
+  assert.equal(rulesManager.rules[0].priority, 42,
+    "out-of-order rule responses must preserve the latest saved priority");
+
   // Exercise identity-provider form state without a second network fetch.
   const identityManager = vm.runInNewContext("identityProviderManager()", signatureContext);
   identityManager.changeType({ target: { value: "oidc" } });

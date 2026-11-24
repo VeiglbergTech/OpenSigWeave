@@ -758,6 +758,7 @@ function identityProviderManager() { return {
         function ruleManager() {
             return {
                 rules: [], legacySchedules: [], domains: [], signatures: [], groups: [], editing: false,
+                loadSequence: 0,
                 form: { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [], time_limited: false, starts_local: '', ends_local: '', legacy_schedule_id: null },
                 get combinedRules() {
                     const ordinary = this.rules.map(rule => ({...rule, source: 'rule'}));
@@ -836,15 +837,22 @@ function identityProviderManager() { return {
                     this.fetchAll();
                 },
                 async fetchAll() {
+                    // Several refreshes can overlap when a rule is saved, a section is
+                    // reopened, or a signature group changes. A slow, older GET must not
+                    // overwrite the data loaded by a newer refresh after the save.
+                    const sequence = ++this.loadSequence;
                     try {
                         const responses = await Promise.all([
                             fetch('/api/admin/rules'), fetch('/api/admin/signatures'), fetch('/api/admin/signature-groups'),
                             fetch('/api/admin/schedules'), fetch('/domains/')
                         ]);
                         if (responses.some(response => !response.ok)) throw new Error('Could not load rule data');
-                        [this.rules, this.signatures, this.groups, this.legacySchedules, this.domains] =
-                            await Promise.all(responses.map(response => response.json()));
-                    } catch (error) { notify(error.message, 'error'); }
+                        const data = await Promise.all(responses.map(response => response.json()));
+                        if (sequence !== this.loadSequence) return;
+                        [this.rules, this.signatures, this.groups, this.legacySchedules, this.domains] = data;
+                    } catch (error) {
+                        if (sequence === this.loadSequence) notify(error.message, 'error');
+                    }
                 },
                 newRule() {
                     this.form = { id: null, name: '', priority: 0, action_mode: 'SIGNATURE', signature_id: '', group_id: '', is_enabled: true, conditions: [], time_limited: false, legacy_schedule_id: null, ...this.defaultWindow() };

@@ -1593,7 +1593,15 @@ async function main() {
     const oldWindow = timedRule.conditions.find(item => item.kind === "time_window");
     await timedRuleRow.getByRole("button", { name: "Edit" }).click();
     await timedRuleDialog.getByLabel("Priority").fill("42");
+    const prioritySave = page.waitForResponse(response =>
+      response.request().method() === "PUT" && /\/api\/admin\/rules\/[^/]+$/.test(new URL(response.url()).pathname));
     await timedRuleDialog.getByRole("button", { name: "Save Rule" }).click();
+    assert.equal((await prioritySave).status(), 200, "priority update must succeed");
+    await timedRuleDialog.waitFor({ state: "hidden" });
+    const priorityResponse = await page.request.get(baseURL + "/api/admin/rules");
+    assert.equal(priorityResponse.status(), 200);
+    const persistedPriority = (await priorityResponse.json()).find(item => item.name === "Browser Smoke Schedule");
+    assert.equal(persistedPriority?.priority, 42, "priority must be persisted before checking reactive UI");
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="ruleManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Schedule"));
