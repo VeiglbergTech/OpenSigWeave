@@ -35,8 +35,9 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      # Same-host proxy: keep 127.0.0.1. Remote proxy: set APP_BIND_ADDRESS to the app host private IP.
-      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8085}:8085"
+      # Default 0.0.0.0 listens on all IPv4 interfaces. Restrict access with a
+      # host firewall, or set 127.0.0.1 for same-host reverse proxy only.
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8085}:8085"
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8085), timeout=3).close()"]
       interval: 30s

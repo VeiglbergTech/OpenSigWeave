@@ -23,8 +23,9 @@ email, **allowed portal hostnames** (`APP_ALLOWED_HOSTS`) and
 comma-separated allowlist without `https://`, ports, or wildcards.
 Trusted proxies are optional and default to none; configure **only the
 immediately connected reverse proxy IP(s) or narrow networks**, never `0.0.0.0/0`
-or `::/0`. The installer also selects the first free loopback port from
-8085–8105. It asks for a hidden administrator password and confirmation;
+or `::/0`. The wizard also asks for `APP_BIND_ADDRESS` (default `0.0.0.0`,
+all IPv4 interfaces) and picks the first available port in 8085–8105 on
+that interface. It asks for a hidden administrator password and confirmation;
 the saved value is a salted scrypt
 hash, not plaintext. Non-interactive installation requires an explicit
 `--generate-admin-password` option; this creates a **0600** local file
@@ -37,7 +38,11 @@ copy. It is ignored by Git.
 # Headless first install (explicit opt-in to generated admin password):
 ./install.sh --generate-admin-password --hostname signatures.example.com \
   --allowed-hosts "signatures.example.com,localhost" \
-  --trusted-proxy-cidrs "10.35.32.8/32"
+  --trusted-proxy-cidrs "192.0.2.8/32" \
+  --bind-address "0.0.0.0"
+# First-time configuration without starting the stack:
+./generate_config.sh --hostname signatures.example.com \
+  --bind-address "127.0.0.1"
 ```
 
 Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
@@ -48,16 +53,22 @@ final healthcheck. Docker creates the persistent PostgreSQL, signature,
 identity-provider and backup named volumes. No backup location, encryption
 identity, OIDC, LDAP, Stalwart or other optional integration is required.
 
-The application binds to loopback by default. For a reverse proxy on
-another host, change `APP_BIND_ADDRESS` in the protected `.env` to the
-server's private-interface IP and restrict the host firewall to the proxy's
-source IP. `TRUSTED_PROXY_CIDRS` controls which immediate peers Uvicorn
+**Security:** by default `APP_BIND_ADDRESS=0.0.0.0` listens on **all IPv4
+interfaces**. **Do not publicly expose the management port.** Restrict access
+with a host firewall to your HTTPS reverse proxy, or pass
+`--bind-address 127.0.0.1` for a same-host reverse proxy. If your proxy
+runs on a separate host, binding to a specific private-interface IP is
+safer than binding to every interface; also limit the port to the proxy IP. `TRUSTED_PROXY_CIDRS` controls which immediate peers Uvicorn
 trusts for forwarded headers; it does **not** change the listening address,
 open a firewall, or authorize arbitrary `Host` headers. The allowed hostname
 list is enforced by the application. TLS must terminate at a trusted reverse
 proxy; do not expose plaintext management endpoints to the internet.
-Existing `.env` proxy/allowlist values are preserved on reinstall and update;
-edit the protected file deliberately to change them, then restart the app.
+The `--bind-address` option is supported in **both** `install.sh` and
+`generate_config.sh` on first-time configuration. An existing `.env` is
+never silently overwritten: change `APP_BIND_ADDRESS` in the protected file
+deliberately, then recreate the affected application container for the new
+port binding to take effect. Existing proxy/host allowlists are preserved
+during reinstall and update.
 
 ## Existing deployments and configuration
 
