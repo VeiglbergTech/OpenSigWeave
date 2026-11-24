@@ -3,7 +3,7 @@ import smtplib
 import unittest
 from unittest.mock import patch
 
-from scripts.audit_mailcow_submission import audit, effective_setting, parse_settings
+from scripts.audit_mailcow_submission import audit, effective_setting, parse_services, parse_settings
 from scripts.mailcow_smtp_probe import submit_message
 
 
@@ -12,7 +12,52 @@ SERVICES = "smtp/inet=smtp inet n - y - - smtpd\nsubmission/inet=submission inet
 STRICT = "submission/inet/milter_default_action = tempfail\nsmtps/inet/milter_default_action = tempfail\n"
 
 
+# Real "postconf -M" returns whitespace-separated columns, not '='.
+# Model the observed Mailcow services, including pass/inet plus the
+# dedicated SOGo, HAProxy, quarantine, BCC and watchdog listeners.
+MAILCOW_MASTER_OUTPUT = """smtp       inet  n - n - 1 postscreen
+10025      inet  n - n - 1 postscreen -o postscreen_upstream_proxy_protocol=haproxy
+smtpd      pass  - - n - - smtpd
+smtps      inet  n - n - - smtpd -o smtpd_tls_wrappermode=yes
+10465      inet  n - n - - smtpd -o smtpd_upstream_proxy_protocol=haproxy
+submission inet  n - n - - smtpd -o smtpd_tls_security_level=encrypt
+10587      inet  n - n - - smtpd -o smtpd_upstream_proxy_protocol=haproxy
+588        inet  n - n - - smtpd -o syslog_name=postfix/sogo
+590        inet  n - n - - smtpd -o smtpd_milters=
+591        inet  n - n - - smtpd -o smtpd_milters=
+589        inet  n - n - - smtpd -o smtpd_milters=
+smtp       unix  - - n - - smtp
+"""
+
+
 class PostfixSubmissionAuditTests(unittest.TestCase):
+    def test_real_mailcow_postconf_m_output_is_parsed(self):
+        services = parse_services(MAILCOW_MASTER_OUTPUT)
+        self.assertTrue({"smtps/inet", "submission/inet", "588/inet",
+                         "10465/inet", "10587/inet"}.issubset(services))
+        self.assertIn("smtp/inet", services)
+        self.assertIn("smtpd/pass", services)
+        self.assertIn("smtp/unix", services)
+        main = "smtpd_milters = inet:rspamd:9900\\nmilter_default_action = tempfail\\n"
+        findings = audit(main, MAILCOW_MASTER_OUTPUT, "")
+        self.assertEqual(sum(level == "FAIL" for level, _ in findings), 0)
+        self.assertEqual(sum(level == "PASS" for level, _ in findings), 10)
+        self.assertTrue(any(level == "WARN" and "Port-25" in msg
+                            for level, msg in findings))
+        self.assertFalse(any("590:" in msg or "591:" in msg or "589:" in msg
+                             for _, msg in findings))
+
+    def test_real_mailcow_service_override_still_fails_closed_audit(self):
+        main = "smtpd_milters = inet:rspamd:9900\\nmilter_default_action = tempfail\\n"
+        override = "588/inet/milter_default_action = accept\\n"
+        findings = audit(main, MAILCOW_MASTER_OUTPUT, override)
+        self.assertTrue(any(level == "FAIL" and "588:" in msg for level, msg in findings))
+
+    def test_parse_service_records_ignores_arbitrary_key_value_settings(self):
+        services = parse_services("smtpd_milters=inet:rspamd:9900\\n"
+                                  "submission/inet=submission inet n - n - - smtpd\\n")
+        self.assertEqual(services, {"submission/inet"})
+
     def test_per_service_strict_does_not_block_inbound_default(self):
         findings = audit(BASE, SERVICES, STRICT)
         self.assertEqual(sum(level == "FAIL" for level, _ in findings), 0)

@@ -30,6 +30,29 @@ def parse_settings(output: str) -> dict[str, str]:
     return result
 
 
+def parse_services(output: str) -> set[str]:
+    """Parse both genuine 'postconf -M' table output and its -F key=value form.
+
+    Postfix normally prints "submission inet ... smtpd" (no '='), unlike
+    'postconf -n'/'-P'. Never treat missing parsed listeners as evidence that
+    Mailcow has no active submission service.
+    """
+    services: set[str] = set()
+    for line in output.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            key = line.split("=", 1)[0].strip()
+            if re.fullmatch(r"[^/\\s=]+/(?:inet|pass|unix|fifo)", key):
+                services.add(key)
+            continue
+        fields = line.split()
+        if len(fields) >= 3 and fields[1] in {"inet", "pass", "unix", "fifo"}:
+            services.add(f"{fields[0]}/{fields[1]}")
+    return services
+
+
 def effective_setting(main: dict[str, str], overrides: dict[str, str],
                       service: str, name: str) -> str | None:
     key = f"{service}/inet/{name}"
@@ -50,7 +73,7 @@ def audit(main_text: str, services_text: str, overrides_text: str,
           milter_hint: str = "rspamd") -> list[tuple[str, str]]:
     main = parse_settings(main_text)
     overrides = parse_settings(overrides_text)
-    services = parse_settings(services_text)
+    services = parse_services(services_text)
     results: list[tuple[str, str]] = []
     found = [service for service in SUBMISSION_SERVICES if f"{service}/inet" in services]
     if not found:
