@@ -17,9 +17,8 @@ services:
       start_period: 10s
 
   opensigweave:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    # Release deployments pull a published GHCR image; no host source build.
+    image: ghcr.io/veiglbergtech/opensigweave:${OSW_IMAGE_TAG:-alpha}
     restart: unless-stopped
     init: true
     env_file:

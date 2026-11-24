@@ -71,7 +71,40 @@ def docker(*args: str, timeout: int = 600) -> str:
 
 
 def compose(*args: str, timeout: int = 600) -> str:
+    # A source CI may explicitly set COMPOSE_FILE to include the build overlay.
+    if os.environ.get("COMPOSE_FILE"):
+        return docker("compose", *args, timeout=timeout)
+    # On dev and beta the unreleased source can still be built for staging.
+    # Main releases use ONLY the published image and never build locally.
+    if current_channel() in ("dev", "beta"):
+        return docker("compose", "-f", "compose.yaml", "-f",
+                      "compose.build.yaml", *args, timeout=timeout)
     return docker("compose", *args, timeout=timeout)
+
+
+GHCR_REPO = "ghcr.io/veiglbergtech/opensigweave"
+
+
+def release_image_ref(env: dict[str, str]) -> str:
+    tag = env.get("OSW_IMAGE_TAG", "alpha") or "alpha"
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
+        raise DeploymentError("Invalid OSW_IMAGE_TAG; use a published release tag", 4)
+    return f"{GHCR_REPO}:{tag}"
+
+
+def verify_release_image(env: dict[str, str], revision: str) -> None:
+    """Refuse a GHCR tag pointing at any revision other than the approved main SHA."""
+    image = release_image_ref(env)
+    actual = docker(
+        "image", "inspect", "--format",
+        '{{ index .Config.Labels "org.opencontainers.image.revision" }}',
+        image,
+    )
+    if actual.strip() != revision:
+        raise DeploymentError(
+            f"GHCR image {image} does not match approved source SHA. "
+            "Check the published image/tag before starting or migrating.", 4
+        )
 
 
 def parse_env(path: Path) -> dict[str, str]:

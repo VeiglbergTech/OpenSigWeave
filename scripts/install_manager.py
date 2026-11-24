@@ -9,7 +9,7 @@ import sys
 from deploy_common import (
     ROOT, DeploymentError, CHANNELS, compose, current_channel, current_sha,
     exclusive_lock, healthcheck, info, ok, parse_env, pristine, service_state,
-    system_checks, validate_config, warn,
+    system_checks, validate_config, warn, verify_release_image,
 )
 from config_manager import ENV, create_config, migrate_config
 
@@ -74,9 +74,16 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         info("Starting PostgreSQL and checking database readiness")
         compose("up", "-d", "--wait", "--wait-timeout", "180", "postgres", timeout=360)
         service_state("postgres")
-        info("Building/starting OpenSigWeave; startup serializes Alembic migrations")
-        compose("up", "-d", "--build", "--wait", "--wait-timeout", "240",
-                "opensigweave", timeout=1800)
+        if selected == "main":
+            info("Pulling published GHCR image; no local application build")
+            compose("pull", "opensigweave", timeout=1800)
+            verify_release_image(env, current_sha())
+            compose("up", "-d", "--no-build", "--wait", "--wait-timeout",
+                    "240", "opensigweave", timeout=1800)
+        else:
+            info("Building unreleased dev/beta code with explicit build overlay")
+            compose("up", "-d", "--build", "--wait", "--wait-timeout", "240",
+                    "opensigweave", timeout=1800)
         healthcheck(env)
         ok("Installation successful")
         print(f"Channel: {selected} | Commit: {current_sha()}")

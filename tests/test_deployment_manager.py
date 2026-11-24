@@ -183,6 +183,36 @@ class ConfigTests(unittest.TestCase):
             common.validate_config({"SECRET_KEY": "REPLACE_WITH_ANYTHING"})
 
 
+class ReleaseImageTests(unittest.TestCase):
+    def test_published_image_ref_validation(self):
+        env = sample_env()
+        self.assertEqual(common.release_image_ref(env),
+                         "ghcr.io/veiglbergtech/opensigweave:alpha")
+        env["OSW_IMAGE_TAG"] = "2026.11-alpha1"
+        with patch.object(common, "docker", return_value="a" * 40):
+            common.verify_release_image(env, "a" * 40)
+        with patch.object(common, "docker", return_value="b" * 40):
+            with self.assertRaises(common.DeploymentError):
+                common.verify_release_image(env, "a" * 40)
+        env["OSW_IMAGE_TAG"] = "alpha;bad"
+        with self.assertRaises(common.DeploymentError):
+            common.release_image_ref(env)
+
+    def test_main_uses_no_build_overlay(self):
+        with patch.dict(os.environ, {"COMPOSE_FILE": ""}), patch.object(
+            common, "current_channel", return_value="main"
+        ), patch.object(common, "docker", return_value="") as docker:
+            common.compose("config", "--quiet")
+            self.assertNotIn("compose.build.yaml", docker.call_args.args)
+
+    def test_dev_uses_build_overlay(self):
+        with patch.dict(os.environ, {"COMPOSE_FILE": ""}), patch.object(
+            common, "current_channel", return_value="dev"
+        ), patch.object(common, "docker", return_value="") as docker:
+            common.compose("config", "--quiet")
+            self.assertIn("compose.build.yaml", docker.call_args.args)
+
+
 class InstallTests(unittest.TestCase):
     def test_port_conflict_detected(self):
         with patch.object(install.socket, "socket") as sockets:

@@ -1,0 +1,7 @@
+# Explicit local build overlay only for dev/beta and CI.
+services:
+  opensigweave:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    pull_policy: build

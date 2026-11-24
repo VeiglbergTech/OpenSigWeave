@@ -12,6 +12,7 @@ from deploy_common import (
     ROOT, DeploymentError, check_migration, compose, current_channel,
     current_sha, docker, exclusive_lock, git, healthcheck, info, ok, parse_env,
     pristine, remote_sha, run, service_state, system_checks, validate_config, warn,
+    verify_release_image,
 )
 from config_manager import ENV, migrate_config
 
@@ -267,6 +268,11 @@ def apply_update(channel: str, remote: str, *, yes: bool,
             raise DeploymentError("Critical changes need --approve-breaking after manual review", 4)
         if not yes and input("Update this checkout? [y/N]: ").strip().lower() != "y":
             raise DeploymentError("Update cancelled", 4)
+        if channel == "main":
+            # Download and check the exact next image BEFORE mutating source/DB.
+            info("Pre-pulling and verifying published image before source changes")
+            compose("pull", "opensigweave", timeout=1800)
+            verify_release_image(env, fetched)
         backup = select_backup_for_update(
             yes=yes, continue_without_backup=continue_without_backup,
         )
@@ -282,8 +288,11 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         validate_config(env)
         migrate_config(yes=True)
         compose("config", "--quiet")
-        info("Building the application image locally")
-        compose("build", "--pull", "opensigweave", timeout=3600)
+        if channel == "main":
+            info("Using pre-pulled, SHA-verified GHCR image (no build)")
+        else:
+            info("Building unreleased development image")
+            compose("build", "--pull", "opensigweave", timeout=3600)
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="migration")
         info("Stopping application to serialize Alembic migration")

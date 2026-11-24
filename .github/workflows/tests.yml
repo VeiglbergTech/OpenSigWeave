@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+# Only CI exercises the explicit local-build overlay.
+env:
+  COMPOSE_FILE: compose.yaml:compose.build.yaml
+
 concurrency:
   group: opensigweave-tests-${{ github.ref }}
   cancel-in-progress: true
