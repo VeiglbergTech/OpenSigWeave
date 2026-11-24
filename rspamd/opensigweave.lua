@@ -320,7 +320,19 @@ local function inject_signature(task)
     end
 
     local function http_callback(err, code, body, headers)
-        if err or code ~= 200 then fail_api("ENGINE_HTTP_FAILURE"); return end
+        if err or code ~= 200 then
+            -- The HTTP API may fail at transport, reverse proxy, auth or backend.
+            -- Report only bounded status and presence of a transport error:
+            -- err/body can include sensitive URLs, headers or message contents.
+            local status_code = type(code) == "number" and code or tonumber(code)
+            local safe_status = (status_code and status_code >= 100 and status_code <= 599)
+                and tostring(status_code) or "unknown"
+            local transport_error = err ~= nil and err ~= false and err ~= ""
+            rspamd_logger.errx(task, "OpenSigWeave engine HTTP failure status=%s transport_error=%s",
+                safe_status, tostring(transport_error))
+            fail_api("ENGINE_HTTP_FAILURE")
+            return
+        end
         if type(body) ~= "string" then fail_api("ENGINE_INVALID_RESPONSE"); return end
         local ok_parser, parser = pcall(ucl.parser)
         if not ok_parser or not parser then fail_api("ENGINE_INVALID_RESPONSE"); return end
