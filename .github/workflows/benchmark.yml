@@ -28,6 +28,10 @@ on:
 permissions:
   contents: read
 
+# Benchmark builds from source; production Compose never builds locally.
+env:
+  COMPOSE_FILE: compose.yaml:compose.build.yaml
+
 concurrency:
   group: engine-benchmark-${{ github.ref }}
   cancel-in-progress: true
