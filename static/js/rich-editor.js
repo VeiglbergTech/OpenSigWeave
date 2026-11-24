@@ -261,9 +261,17 @@
                         input.setAttribute("aria-expanded", "true");
                     };
 
-                    input.addEventListener("pointerdown", captureSelection);
-                    input.addEventListener("focus", () => {
+                    // Save the editor selection before a pointer changes focus.
+                    // Focus can run after CKEditor has already collapsed that
+                    // selection; do not overwrite the pre-blur range.
+                    let selectionCapturedByPointer = false;
+                    input.addEventListener("pointerdown", () => {
                         captureSelection();
+                        selectionCapturedByPointer = true;
+                    });
+                    input.addEventListener("focus", () => {
+                        if (!selectionCapturedByPointer) captureSelection();
+                        selectionCapturedByPointer = false;
                         openMenu();
                     });
                     // Escape keeps focus on the input. A second click must still
