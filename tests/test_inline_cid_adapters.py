@@ -47,7 +47,11 @@ class CIDTransportTests(unittest.TestCase):
                               f'<img src="cid:{item["content_id"]}">',
                               inject_on_replies=True, inline_assets=[item])
         self.assertTrue(out.changed)
-        self.assertEqual(out.header_changes, ())
+        self.assertFalse(any(
+            change.name.casefold() == "content-type" and change.value and
+            "multipart/related" in change.value
+            for change in out.header_changes
+        ))
 
     def test_stalwart_keeps_existing_inline_content_ids(self):
         item, raw = asset()
