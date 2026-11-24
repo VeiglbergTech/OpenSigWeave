@@ -8,12 +8,14 @@ from email.parser import BytesParser
 from html.parser import HTMLParser
 from io import BytesIO
 from core.signature_placement import insert_signature
+from core.inline_mime import attach_inline_images
 
 LOGGER = logging.getLogger("opensigweave.postfix")
 MAX_MESSAGE_BYTES = 20 * 1024 * 1024
 MAX_HEADER_BYTES = 1024 * 1024
 MAX_HEADER_COUNT = 2000
 MAX_ENGINE_RESPONSE_BYTES = 1024 * 1024
+MAX_ENGINE_CID_RESPONSE_BYTES = 8 * 1024 * 1024
 BODY_REPLACEMENT_CHUNK = 64 * 1024
 # All OpenSigWeave control/marker headers are untrusted when received from SMTP clients.
 CONTROL_HEADERS = {
@@ -149,7 +151,7 @@ def _strip_device_signatures(content, *, html):
     return re.sub(r"\r?\n[ \t]*(?:Sent from my |Get Outlook for )[^\r\n<]*", "", content, flags=re.I)
 
 
-def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_whitespace=True, strip_device_signatures=False):
+def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_whitespace=True, strip_device_signatures=False, inline_assets=None):
     """Safely rewrite supported MIME text parts while retaining binary attachments."""
     if len(body) > MAX_MESSAGE_BYTES:
         raise ValueError("Message exceeds configured size limit")
@@ -196,15 +198,19 @@ def rewrite_message(headers, body, signature_html, *, inject_on_replies, trim_wh
         changed = True
     if not changed:
         return RewriteResult(body, (), False)
+    if inline_assets:
+        attach_inline_images(parsed, inline_assets)
     output = BytesIO()
     BytesGenerator(output, policy=policy.SMTP).flatten(parsed)
     serialized = output.getvalue()
     _head, found, new_body = serialized.partition(b"\r\n\r\n")
     if not found:
         raise ValueError("MIME serializer returned an invalid message")
+    if len(new_body) > MAX_MESSAGE_BYTES:
+        raise ValueError("Message too large after CID wrapping")
     return RewriteResult(new_body, _header_changes(headers, parsed), True)
 
-def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, signature_code=None, timeout=5.0):
+def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, signature_code=None, timeout=5.0, inline_images="external"):
     """Call the existing versioned engine endpoint; selection remains centralized."""
     if not api_url.startswith("https://"):
         raise EngineRequestError("The engine URL must use HTTPS")
@@ -212,6 +218,10 @@ def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, sig
         raise EngineRequestError("The engine API key is not configured")
     url = api_url.rstrip("/") + "/api/v1/engine/signatures/" + urllib.parse.quote(sender, safe="")
     headers = {"X-Engine-Key": engine_api_key, "Accept": "application/json"}
+    if inline_images not in {"external", "cid"}:
+        raise EngineRequestError("Invalid inline image mode")
+    if inline_images == "cid":
+        headers["X-OpenSigWeave-Inline-Images"] = "cid"
     if isinstance(signature_name, str) and signature_name.strip():
         headers["X-OpenSigWeave-Signature"] = signature_name.strip()
     if isinstance(signature_code, str) and signature_code.strip():
@@ -225,10 +235,11 @@ def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, sig
         with opener.open(request, timeout=timeout) as response:
             if response.status != 200:
                 raise EngineRequestError(f"Engine returned HTTP {response.status}")
-            raw = response.read(MAX_ENGINE_RESPONSE_BYTES + 1)
+            max_response = MAX_ENGINE_CID_RESPONSE_BYTES if inline_images == "cid" else MAX_ENGINE_RESPONSE_BYTES
+            raw = response.read(max_response + 1)
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise EngineRequestError("Signature engine request failed") from exc
-    if len(raw) > MAX_ENGINE_RESPONSE_BYTES:
+    if len(raw) > (MAX_ENGINE_CID_RESPONSE_BYTES if inline_images == "cid" else MAX_ENGINE_RESPONSE_BYTES):
         raise EngineRequestError("Signature engine response exceeded the size limit")
     try:
         result = json.loads(raw)
@@ -239,6 +250,8 @@ def fetch_signature(api_url, engine_api_key, sender, *, signature_name=None, sig
     for field in ("inject_on_replies", "trim_whitespace", "strip_device_signatures"):
         if not isinstance(result.get(field), bool):
             raise EngineRequestError(f"Signature engine response field {field} must be boolean")
+    if inline_images == "cid" and not isinstance(result.get("inline_assets", []), list):
+        raise EngineRequestError("Invalid engine CID asset contract")
     return result
 
 def _sender_address(value):
@@ -262,12 +275,15 @@ def run():
     if not api_url.startswith("https://") or len(api_key) < 32:
         raise RuntimeError("Configure HTTPS OPENSIGWEAVE_ENGINE_URL and ENGINE_API_KEY (32+ characters)")
 
-    Milter.factory = build_milter_class(Milter, api_url, api_key, timeout)
+    inline_images = os.environ.get("OPENSIGWEAVE_INLINE_IMAGES", "external").strip().casefold()
+    if inline_images not in {"external", "cid"}:
+        raise RuntimeError("OPENSIGWEAVE_INLINE_IMAGES must be external or cid")
+    Milter.factory = build_milter_class(Milter, api_url, api_key, timeout, inline_images=inline_images)
     Milter.set_flags(Milter.ADDHDRS | Milter.CHGHDRS | Milter.MODBODY)
     LOGGER.info("Starting OpenSigWeave Postfix Milter on %s", socket_name)
     Milter.runmilter("opensigweave", socket_name, 30)
 
-def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=fetch_signature):
+def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=fetch_signature, *, inline_images="external"):
     """Build the real Milter callback class; injection point supports isolated integration tests."""
     class OpenSigWeaveMilter(Milter.Base):
         @Milter.symlist("{auth_authen}")
@@ -327,11 +343,15 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                 original_body = self.body_file.read(MAX_MESSAGE_BYTES + 1)
                 if len(original_body) > MAX_MESSAGE_BYTES:
                     return Milter.TEMPFAIL
-                result = signature_fetcher(
-                    api_url, api_key, self.sender,
-                    signature_name=signature_name, signature_code=signature_code,
-                    timeout=timeout,
-                )
+                if inline_images not in {"external", "cid"}:
+                    raise ValueError("Invalid inline image configuration")
+                kwargs = {
+                    "signature_name": signature_name, "signature_code": signature_code,
+                    "timeout": timeout,
+                }
+                if inline_images == "cid":
+                    kwargs["inline_images"] = "cid"
+                result = signature_fetcher(api_url, api_key, self.sender, **kwargs)
                 if not result["html"]:
                     return Milter.CONTINUE
                 # Never trust a client-supplied idempotency marker. Remove every
@@ -345,6 +365,7 @@ def build_milter_class(Milter, api_url, api_key, timeout=5.0, signature_fetcher=
                     inject_on_replies=result["inject_on_replies"],
                     trim_whitespace=result["trim_whitespace"],
                     strip_device_signatures=result["strip_device_signatures"],
+                    inline_assets=result.get("inline_assets") if inline_images == "cid" else None,
                 )
                 if not rewritten.changed:
                     return Milter.CONTINUE

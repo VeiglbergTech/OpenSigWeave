@@ -41,6 +41,13 @@ The endpoint returns `Cache-Control: no-store, private` and JSON:
 }
 ```
 
+For CID delivery, request `X-OpenSigWeave-Inline-Images: cid`. The JSON response adds
+`inline_assets`: locally stored, content-addressed images with their validated
+base64 bytes, MIME type and `Content-ID`. The adapter validates the fields
+again, checks duplicates, wraps the modified HTML MIME body as
+`multipart/related`, and never downloads image URLs during message processing.
+A plain-text-only message receives no orphan image attachments.
+
 An empty `html` means do not inject a signature. HTTP 401 means adapter credentials are invalid; 400 means malformed sender input; 422 means a stored template cannot be rendered; 503 means required signature assets are unavailable. Adapters must not interpret API errors as an empty signature: they must apply their explicitly configured fail-open/fail-closed policy and emit an operational log/metric.
 
 The legacy `GET /api/signature/{email}` endpoint remains an alias for existing Rspamd installations. External adapters MUST use the versioned path. An adapter running inside the OpenSigWeave application may call the same engine implementation in-process, but it must preserve the same sender normalization, selection semantics, response fields and error behavior; it must not implement a second selection or rendering path.

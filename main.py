@@ -2934,9 +2934,18 @@ async def stalwart_mta_hook(
         raise _engine_http_exception(exc)
 
     try:
-        hook_response = build_stalwart_hook_response(
-            payload, engine_result.to_payload()
-        )
+        signature_payload = engine_result.to_payload()
+        inline_mode = os.environ.get("STALWART_INLINE_IMAGES", "external").strip().casefold()
+        if inline_mode not in {"external", "cid"}:
+            raise ValueError("Invalid STALWART_INLINE_IMAGES")
+        if inline_mode == "cid" and signature_payload["html"]:
+            signature_payload["html"], signature_payload["inline_assets"] = build_cid_payload(
+                signature_payload["html"], signature_file_store
+            )
+        hook_response = build_stalwart_hook_response(payload, signature_payload)
+    except SignatureEngineError as exc:
+        db.rollback()
+        raise _engine_http_exception(exc)
     except (TypeError, ValueError):
         db.rollback()
         logger.warning("Rejected malformed Stalwart MTA hook message")

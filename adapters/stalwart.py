@@ -14,6 +14,7 @@ from io import BytesIO
 from typing import Any
 
 from core.signature_placement import insert_signature
+from core.inline_mime import attach_inline_images
 
 
 _HEADER_NAME = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
@@ -137,7 +138,9 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     safe_parts = list(_safe_message_parts(parsed))
     if any(part.defects for part in safe_parts):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in safe_parts):
+    if any(part.get_content_maintype().lower() == "message" for part in parsed.walk()):
+        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in parsed.walk()):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     supported_transfer_encodings = {"7bit", "8bit", "binary", "quoted-printable", "base64"}
@@ -214,6 +217,8 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     if not changed:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
+    if signature_data.get("inline_assets"):
+        attach_inline_images(parsed, signature_data["inline_assets"])
     output = BytesIO()
     BytesGenerator(output, policy=policy.SMTP).flatten(parsed)
     serialized = output.getvalue()
@@ -221,6 +226,12 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     _, found, new_body = serialized.partition(separator)
     if not found:
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
+    if len(new_body) > 20 * 1024 * 1024:
+        raise ValueError("MIME content too large after CID embedding")
+    try:
+        final_contents = new_body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Cannot represent MIME message as UTF-8") from exc
 
     modifications.extend(control_header_deletions)
 
@@ -236,7 +247,7 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
             modifications.append({"type": "addHeader", "name": name, "value": value})
 
     modifications.extend([
-        {"type": "replaceContents", "value": new_body.decode("utf-8", errors="replace")},
+        {"type": "replaceContents", "value": final_contents},
         {"type": "addHeader", "name": "X-OpenSigWeave-Injected", "value": "true"},
     ])
     return {"action": "accept", "modifications": modifications}

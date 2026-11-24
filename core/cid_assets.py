@@ -18,6 +18,7 @@ from signature_storage import MAX_SIGNATURE_IMAGE_BYTES, SignatureStorageError
 
 
 _MAX_INLINE_ASSETS = 6
+_MAX_SINGLE_BYTES = 2 * 1024 * 1024
 _MAX_TOTAL_BYTES = 4 * 1024 * 1024
 _MANAGED_IMAGE = re.compile(r"^/signature-assets/([a-f0-9]{64}\.(?:png|jpg|webp|gif))$")
 _IMG_SRC = re.compile(
@@ -102,6 +103,8 @@ def build_cid_payload(html: str, file_store) -> tuple[str, list[dict[str, str]]]
             if len(assets) >= _MAX_INLINE_ASSETS:
                 raise SignatureEngineError("INLINE_IMAGE_LIMIT", "Too many signature images")
             data = _read_managed_image(file_store, filename)
+            if len(data) > _MAX_SINGLE_BYTES:
+                raise SignatureEngineError("INLINE_IMAGE_LIMIT", "Signature image exceeds CID size limit")
             total_bytes += len(data)
             if total_bytes > _MAX_TOTAL_BYTES:
                 raise SignatureEngineError("INLINE_IMAGE_LIMIT", "Signature images exceed total size limit")
