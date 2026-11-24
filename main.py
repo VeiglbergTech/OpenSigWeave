@@ -53,6 +53,7 @@ from core.engine_contract import (
 )
 from core.engine_service import SignatureEngineService
 from core.cid_assets import build_cid_payload
+from core.support_alert_status import read_support_alert_status
 from core.branding import (
     DEFAULT_APP_COLOR,
     DEFAULT_APP_NAME,
@@ -1484,13 +1485,16 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
     signatures = accessible(signature_file_store.signatures_root)
     assets = accessible(signature_file_store.assets_root)
     storage_status = "ok" if signatures and assets else "unavailable"
+    support_alerts = read_support_alert_status(os.environ.get("OSW_ALERT_STATUS_FILE", ""))
     return {
-        "status": "healthy" if database_status == "ok" and storage_status == "ok" else "degraded",
+        "status": "healthy" if (database_status == "ok" and storage_status == "ok"
+            and support_alerts["status"] in {"not_configured", "ok"}) else "degraded",
         "version": app.version,
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "database": {"status": database_status},
         "storage": {"status": storage_status, "signature_files": signatures, "image_assets": assets},
         "counts": counts,
+        "support_alerts": support_alerts,
         "configuration": {
             "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
             "management_api_enabled": bool(MANAGEMENT_API_KEY),
