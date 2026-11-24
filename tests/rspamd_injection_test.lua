@@ -2,6 +2,7 @@
 package.path = 'rspamd/?.lua;' .. package.path
 local callback, status = nil, 200
 local failure_policy = 'fail_open'
+local request_error, request_scheduled = nil, true
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
   inject_on_replies = true,
@@ -12,7 +13,11 @@ package.preload['rspamd_logger'] = function()
   return {errx=function() end, warnx=function() end, infox=function() end}
 end
 package.preload['rspamd_http'] = function()
-  return { request=function(opts) opts.callback(nil, status, '{}', {}); return true end }
+  return { request=function(opts)
+    if not request_scheduled then return false end
+    opts.callback(request_error, status, '{}', {})
+    return true
+  end }
 end
 package.preload['ucl'] = function()
   return { parser=function()
@@ -279,6 +284,54 @@ mut.set_message = function() return false end
 assert(callback(mut))
 assert(mut_result.pre_result and mut_result.pre_result.action == 'soft reject',
   'failed MIME mutation must defer')
+-- Network/TLS errors and failed scheduling must not silently accept unsigned mail.
+request_error = 'TLS handshake or connection timeout'
+local network, network_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(network))
+assert(network_result.pre_result and network_result.pre_result.action == 'soft reject',
+  'network/TLS error must defer')
+request_error = nil
+request_scheduled = false
+local scheduler, scheduler_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(scheduler))
+assert(scheduler_result.pre_result and scheduler_result.pre_result.action == 'soft reject',
+  'failed asynchronous scheduling must defer')
+request_scheduled = true
+
+-- Do not create 4xx responses for unauthenticated inbound mail.
+local incoming, incoming_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+incoming.get_user = function() return nil end
+incoming.get_from = function() error('must not inspect inbound sender') end
+assert(callback(incoming) == false)
+assert(not incoming_result.pre_result, 'unauthenticated mail must remain unchanged')
+
+-- A Lua exception before HTTP and another inside the asynchronous callback must
+-- both be classified as technical failures of authenticated submission.
+local sync_crash, sync_crash_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+sync_crash.get_from = function() error('mock prefilter fault') end
+assert(callback(sync_crash) == false)
+assert(sync_crash_result.pre_result and sync_crash_result.pre_result.action == 'soft reject',
+  'unexpected prefilter error must defer')
+local previous_response = response
+response = setmetatable({}, {__index=function() error('mock async callback fault') end})
+local async_crash, async_crash_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(async_crash))
+assert(async_crash_result.pre_result and async_crash_result.pre_result.action == 'soft reject',
+  'unexpected callback error must defer')
+response = previous_response
+
+-- NONE and reply-disabled are intentional policy skips, not technical failures.
+response.html = ''
+local none, none_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(none) and not none_result.pre_result and not none_result.modified,
+  'NONE policy must not tempfail')
+response.html = '<b>OpenSigWeave Footer</b>'
+response.inject_on_replies = false
+local reply_skip, reply_skip_result = task_case('text/html; charset=utf-8','7bit','reply','reply',true,nil,true)
+assert(callback(reply_skip) and not reply_skip_result.pre_result and not reply_skip_result.modified,
+  'explicit reply exclusion must not tempfail')
+response.inject_on_replies = true
+
 local valid, valid_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 assert(callback(valid))
 assert(valid_result.modified and not valid_result.pre_result, 'healthy submission must pass')

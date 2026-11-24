@@ -106,7 +106,7 @@ Do not promote this adapter from beta to production until this list passes. Use 
 
 ## Experimental fail-closed opt-in (issue #14, not yet production-ready)
 
-The Rspamd adapter accepts `failure_policy = "fail_open"` (default) or `failure_policy = "tempfail"`. In the latter mode, engine HTTP failures, invalid API responses, request scheduling errors, failures to decode flat mail, unsafe multipart rewrite failures and failed `task:set_message()` requests set Rspamd's **soft reject** pre-result. A correlation ID appears in the SMTP text and Rspamd logs. Deliberate empty signatures, disabled reply-signing and protected S/MIME/PGP or embedded messages are excluded. Rollback is changing the option to `fail_open` and restarting Rspamd, after verifying its config.
+The Rspamd adapter accepts `failure_policy = "fail_open"` (default) or `failure_policy = "tempfail"`. In the latter mode, engine HTTP failures, invalid API responses, request scheduling errors, failures to decode flat mail, unsafe multipart rewrite failures, unexpected synchronous/asynchronous Lua callback exceptions and failed `task:set_message()` requests set Rspamd's **soft reject** pre-result. A correlation ID appears in the SMTP text and Rspamd logs. Deliberate empty signatures, disabled reply-signing and protected S/MIME/PGP or embedded messages are excluded. Rollback is changing the option to `fail_open` and restarting Rspamd, after verifying its config.
 
 This **does not guarantee** that Postfix rejects mail when Rspamd itself is offline or when the adapter could not load. Inspect the effective submission/SMTPS service (not only `main.cf`):
 

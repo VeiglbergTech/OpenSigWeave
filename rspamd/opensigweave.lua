@@ -718,6 +718,15 @@ local function inject_signature(task)
         end
     end
 
+    -- Rspamd invokes this after the asynchronous HTTP request; exceptions here
+    -- would otherwise bypass the strict failure policy and permit unsigned mail.
+    local function guarded_http_callback(err, code, body, headers)
+        local ok = pcall(http_callback, err, code, body, headers)
+        if not ok then
+            technical_failure(task, "ENGINE_CALLBACK_EXCEPTION")
+        end
+    end
+
     local request_headers = { ['X-Engine-Key'] = ENGINE_API_KEY }
     if INLINE_IMAGE_MODE == "cid" then
         request_headers['X-OpenSigWeave-Inline-Images'] = "cid"
@@ -735,7 +744,7 @@ local function inject_signature(task)
         timeout = REQUEST_TIMEOUT,
         max_size = MAX_RESPONSE_SIZE,
         no_ssl_verify = false,
-        callback = http_callback
+        callback = guarded_http_callback
     })
 
     if not request_ok or not scheduled then
@@ -745,9 +754,24 @@ local function inject_signature(task)
     return true
 end
 
+-- Guard synchronous prefilter errors too. Authenticate before reporting a failure:
+-- inbound unauthenticated mail must never inherit the submission-only policy.
+local function guarded_inject_signature(task)
+    local auth_ok, user = pcall(task.get_user, task)
+    if not auth_ok or type(user) ~= "string" or user == "" then
+        return false
+    end
+    local ok, result = pcall(inject_signature, task)
+    if not ok then
+        technical_failure(task, "INJECTION_EXCEPTION")
+        return false
+    end
+    return result
+end
+
 rspamd_config:register_symbol({
     name = 'OPENSIGWEAVE_INJECT',
     type = 'prefilter',
-    callback = inject_signature,
+    callback = guarded_inject_signature,
     priority = 0
 })
