@@ -121,6 +121,20 @@
     function signatureFontToolbarPlugin(editor) {
         const ui = window.CKEDITOR;
 
+        // CKEditor can collapse its model selection when an ordinary text
+        // input receives focus. Remember the last range observed while the
+        // editable itself was focused, before the toolbar steals focus.
+        let lastEditableRange = null;
+        const rememberEditableRange = () => {
+            if (editor.editing.view.document.isFocused) {
+                lastEditableRange = editor.model.document.selection.getFirstRange();
+            }
+        };
+        editor.model.document.selection.on("change:range", rememberEditableRange);
+        editor.editing.view.document.on("change:isFocused", (event, name, isFocused) => {
+            if (isFocused) rememberEditableRange();
+        });
+
         function createInputControl(locale, { commandName, label, className, placeholder, formatValue, parseInput, options }) {
             const command = editor.commands.get(commandName);
             const hasOptions = Array.isArray(options);
@@ -174,7 +188,11 @@
                     }
 
                     const captureSelection = () => {
-                        selectedRange = editor.model.document.selection.getFirstRange();
+                        // Prefer the last selection made inside the editable.
+                        // A range read after focus transitions may be collapsed
+                        // and would only format subsequent typed text.
+                        selectedRange = lastEditableRange ||
+                            editor.model.document.selection.getFirstRange();
                     };
                     const closeMenu = () => {
                         if (!listbox) return;
