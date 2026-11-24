@@ -1,6 +1,6 @@
 # 2026.11-alpha early-access acceptance record
 
-**Status:** NOT YET APPROVED FOR `main`, version tag or GHCR publication. This is an **alpha pre-release**, not 1.0 Stable. Record the tested features and known omissions from the [mail usage acceptance matrix](MAIL_USAGE_ACCEPTANCE_MATRIX.md); explicit maintainer sign-off on remaining alpha limitations is required. No checkbox is auto-approved by CI.
+**Status:** NOT APPROVED FOR `main`, version tag or GHCR publication. This is an **alpha pre-release**, not 1.0 Stable. Record the tested features and known omissions from the [mail usage acceptance matrix](MAIL_USAGE_ACCEPTANCE_MATRIX.md); explicit maintainer sign-off on remaining alpha limitations is required. No checkbox is auto-approved by CI.
 
 ## Automated gates — require final candidate SHA
 

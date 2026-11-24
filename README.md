@@ -6,7 +6,7 @@
 
 OpenSigWeave is an independent, self-hosted service for centrally managing email signatures. It provides a FastAPI administration portal, PostgreSQL-backed signature storage, rules, reusable signature groups, weighted rotation, scheduling, version history, OIDC/LDAP integration and mail-server adapters.
 
-> **Release status:** The first planned release is **`2026.11-alpha`** (not yet published). This is **early access, not v1.0 Stable**. The SOGo/Mailcow, Authentik, CID and selected fail-closed paths have been tested in an isolated lab. LDAP, Outlook/Thunderbird and independent missing-guard protection remain unverified. See [release process](docs/RELEASE_PROCESS.md), [alpha notes](docs/RELEASE_NOTES_v2026.11.md) and the [technical acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
+> **Release status:** The first planned release is **`2026.11-alpha`** (not yet published). This is **early access, not v1.0 Stable**. The SOGo/Mailcow, Authentik, CID and selected fail-closed paths have been tested in an isolated lab. LDAP, Outlook/Thunderbird and independent missing-guard protection remain unverified. See [release process](docs/RELEASE_PROCESS.md), [alpha notes](docs/RELEASE_NOTES_v2026.11.md), [release acceptance](docs/RELEASE_ACCEPTANCE_v2026.11.md) and the [technical acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
 
 ## Documentation
 
