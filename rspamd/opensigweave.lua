@@ -274,6 +274,31 @@ local function inject_signature(task)
             local ok_cid, wrapped, related_type = pcall(
                 cid_rewriter.wrap, task, message, inline_assets)
             if not ok_cid or not wrapped then
+                -- The wrapper returns a safe, bounded reason when it rejects
+                -- malformed MIME. Do not log the message, base64 asset or
+                -- arbitrary Lua exception (which could disclose content).
+                local detail = "CID_WRAPPER_EXCEPTION"
+                if ok_cid and type(wrapped) == "nil" and type(related_type) == "string" then
+                    local known = {
+                        ["missing outgoing message"] = true,
+                        ["missing message header terminator"] = true,
+                        ["invalid folded MIME header"] = true,
+                        ["invalid outgoing MIME headers"] = true,
+                        ["duplicate top-level MIME content type"] = true,
+                        ["missing top-level MIME content type"] = true,
+                        ["too many MIME parts"] = true,
+                        ["invalid number of inline assets"] = true,
+                        ["invalid managed CID image"] = true,
+                        ["duplicate content ID"] = true,
+                        ["inline assets exceed limit"] = true,
+                        ["invalid existing MIME part headers"] = true,
+                        ["invalid existing content ID"] = true,
+                        ["existing content ID collision"] = true,
+                        ["outgoing message exceeds MIME limit"] = true,
+                    }
+                    detail = known[related_type] and related_type or "CID_WRAPPER_REJECTED"
+                end
+                rspamd_logger.errx(task, "OpenSigWeave CID wrap failure detail=%s", detail)
                 technical_failure(task, "CID_MIME_REWRITE_FAILED")
                 return false
             end
