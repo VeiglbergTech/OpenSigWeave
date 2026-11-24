@@ -253,6 +253,11 @@ def missing_options(env: dict[str, str]) -> dict[str, str]:
             ". Restore them from secure records; generating replacements could break existing data.", 4
         )
     additions = {key: value for key, value in DEFAULTS.items() if key not in env}
+    # Do not silently broaden the network exposure of legacy installations
+    # which previously defaulted to loopback when APP_BIND_ADDRESS was missing.
+    # The new 0.0.0.0 default applies to NEW installations only.
+    if "APP_BIND_ADDRESS" not in env:
+        additions["APP_BIND_ADDRESS"] = "127.0.0.1"
     if not env.get("BACKUP_LOCATIONS_KEY"):
         additions["BACKUP_LOCATIONS_KEY"] = _fernet_key()
     return additions
