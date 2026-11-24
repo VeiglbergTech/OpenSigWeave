@@ -38,7 +38,9 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
         self.assertIn("smtp/inet", services)
         self.assertIn("smtpd/pass", services)
         self.assertIn("smtp/unix", services)
-        main = "smtpd_milters = inet:rspamd:9900\\nmilter_default_action = tempfail\\n"
+        self.assertIn("10465/inet", services)
+        self.assertIn("588/inet", services)
+        main = "smtpd_milters = inet:rspamd:9900\nmilter_default_action = tempfail\n"
         findings = audit(main, MAILCOW_MASTER_OUTPUT, "")
         self.assertEqual(sum(level == "FAIL" for level, _ in findings), 0)
         self.assertEqual(sum(level == "PASS" for level, _ in findings), 10)
@@ -48,14 +50,14 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
                              for _, msg in findings))
 
     def test_real_mailcow_service_override_still_fails_closed_audit(self):
-        main = "smtpd_milters = inet:rspamd:9900\\nmilter_default_action = tempfail\\n"
-        override = "588/inet/milter_default_action = accept\\n"
+        main = "smtpd_milters = inet:rspamd:9900\nmilter_default_action = tempfail\n"
+        override = "588/inet/milter_default_action = accept\n"
         findings = audit(main, MAILCOW_MASTER_OUTPUT, override)
         self.assertTrue(any(level == "FAIL" and "588:" in msg for level, msg in findings))
 
     def test_parse_service_records_ignores_arbitrary_key_value_settings(self):
-        services = parse_services("smtpd_milters=inet:rspamd:9900\\n"
-                                  "submission/inet=submission inet n - n - - smtpd\\n")
+        services = parse_services("smtpd_milters=inet:rspamd:9900\n"
+                                  "submission/inet=submission inet n - n - - smtpd\n")
         self.assertEqual(services, {"submission/inet"})
 
     def test_per_service_strict_does_not_block_inbound_default(self):

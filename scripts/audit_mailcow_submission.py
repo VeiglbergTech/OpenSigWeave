@@ -31,24 +31,27 @@ def parse_settings(output: str) -> dict[str, str]:
 
 
 def parse_services(output: str) -> set[str]:
-    """Parse both genuine 'postconf -M' table output and its -F key=value form.
+    """Read real 'postconf -M' columns and 'service/type=value' fixtures.
 
-    Postfix normally prints "submission inet ... smtpd" (no '='), unlike
-    'postconf -n'/'-P'. Never treat missing parsed listeners as evidence that
-    Mailcow has no active submission service.
+    A real master service line can contain '-o setting=value', so '='
+    anywhere on the line is NOT proof of a service/type=value record.
     """
     services: set[str] = set()
+    known_types = {"inet", "pass", "unix", "fifo"}
     for line in output.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        if "=" in line:
-            key = line.split("=", 1)[0].strip()
-            if re.fullmatch(r"[^/\\s=]+/(?:inet|pass|unix|fifo)", key):
+        fields = line.split()
+        first = fields[0]
+        if "=" in first:
+            key = first.split("=", 1)[0]
+            service_type = key.rsplit("/", 1)
+            if (len(service_type) == 2 and service_type[0]
+                    and service_type[1] in known_types):
                 services.add(key)
             continue
-        fields = line.split()
-        if len(fields) >= 3 and fields[1] in {"inet", "pass", "unix", "fifo"}:
+        if len(fields) >= 3 and fields[1] in known_types:
             services.add(f"{fields[0]}/{fields[1]}")
     return services
 
