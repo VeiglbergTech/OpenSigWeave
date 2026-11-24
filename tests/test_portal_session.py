@@ -46,7 +46,9 @@ class PortalSessionTests(unittest.TestCase):
         self.assertIn("async openAdmin()", portal)
         self.assertIn('window.addEventListener("popstate", async', portal)
         self.assertIn('response.status === 401 || response.status === 403', portal)
-        self.assertIn('portal.js?v=session-guard-20261124', template)
+        # Cache-busting versions change with fixes; the security check must
+        # assert the guarded script is loaded, not a specific release string.
+        self.assertIn('<script src="/static/js/portal.js?v=', template)
 
 
 if __name__ == "__main__":

@@ -138,9 +138,11 @@ def build_stalwart_hook_response(payload: dict[str, Any], signature_data: dict[s
     safe_parts = list(_safe_message_parts(parsed))
     if any(part.defects for part in safe_parts):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-    if any(part.get_content_maintype().lower() == "message" for part in parsed.walk()):
-        return {"action": "accept", **({"modifications": modifications} if modifications else {})}
-    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in parsed.walk()):
+    # Unrelated attached messages and detached signatures are opaque; they must
+    # not prevent adding the signature to an editable outer message. The CID
+    # attachment layer separately blocks full-MIME reserialization when such
+    # protected nested structures are present.
+    if any(part.get_content_type().lower() in _SIGNED_OR_ENCRYPTED for part in safe_parts):
         return {"action": "accept", **({"modifications": modifications} if modifications else {})}
 
     supported_transfer_encodings = {"7bit", "8bit", "binary", "quoted-printable", "base64"}
