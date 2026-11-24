@@ -1600,8 +1600,14 @@ async function main() {
     await timedRuleDialog.waitFor({ state: "hidden" });
     const priorityResponse = await page.request.get(baseURL + "/api/admin/rules");
     assert.equal(priorityResponse.status(), 200);
-    const persistedPriority = (await priorityResponse.json()).find(item => item.name === "Browser Smoke Schedule");
-    assert.equal(persistedPriority?.priority, 42, "priority must be persisted before checking reactive UI");
+    const priorityRules = await priorityResponse.json();
+    const persistedPriority = priorityRules.find(item => item.id === timedRule.id);
+    assert.ok(persistedPriority,
+      "updated rule must remain present by stable ID; received: " +
+      JSON.stringify(priorityRules.map(item => ({ id: item.id, name: item.name, priority: item.priority }))));
+    assert.equal(persistedPriority.name, "Browser Smoke Schedule",
+      "updating rule priority must not change the rule name");
+    assert.equal(persistedPriority.priority, 42, "priority must be persisted before checking reactive UI");
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="ruleManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Schedule"));
