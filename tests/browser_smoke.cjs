@@ -913,7 +913,18 @@ async function main() {
     assert.equal(await fontToolbar.locator(".osw-font-listbox [role='option']").count(), 15,
       "opening a field with an existing family must show all choices");
     await fontFamilyControl.press("Escape");
+    // Focusing via .press() alone can race with CKEditor's selection sync.
+    // Focus the actual editable before selecting, as a user would do.
+    await signatureCreateEditor.click();
     await signatureCreateEditor.press("Control+A");
+    const preSizeSelection = await page.evaluate(() => ({
+      selectedText: window.getSelection()?.toString() || "",
+      focused: document.activeElement?.getAttribute("role"),
+      sourceHtml: document.querySelector("#signature-html-source")?.value
+    }));
+    assert.match(preSizeSelection.selectedText, /Browser smoke version 1/,
+      "Ctrl+A must select the signature text before applying font size: "
+      + JSON.stringify(preSizeSelection));
     checkpoint("signature editor: applying 18pt to selected text");
     // Match real user input: pointerdown saves the editor selection before
     // focus moves from CKEditor to the font size field.
