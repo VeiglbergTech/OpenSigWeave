@@ -12,7 +12,11 @@ import shlex
 import subprocess
 import sys
 
-SUBMISSION_SERVICES = ("submission", "submissions", "smtps")
+# Besides the named 587/465 services, Mailcow uses an authenticated SOGo
+# sender listener on 588 and HAProxy-facing listeners on 10587/10465.
+# Do NOT include 590 (quarantine), 591 (BCC) or 589 (watchdog): those
+# deliberately bypass Milters and are not ordinary user submission.
+SUBMISSION_SERVICES = ("submission", "submissions", "smtps", "588", "10587", "10465")
 VARIABLE = re.compile(r"^\$(?:\{([A-Za-z_][A-Za-z_0-9]*)\}|([A-Za-z_][A-Za-z_0-9]*))$")
 
 
@@ -50,7 +54,10 @@ def audit(main_text: str, services_text: str, overrides_text: str,
     results: list[tuple[str, str]] = []
     found = [service for service in SUBMISSION_SERVICES if f"{service}/inet" in services]
     if not found:
-        results.append(("FAIL", "No enabled submission/submissions/smtps inet service found"))
+        results.append(("FAIL",
+                        "No recognized authenticated submission listener found "
+                        "(submission/submissions/smtps, Mailcow 588/10587/10465). "
+                        "Inspect postconf -M and active SMTP entrypoints."))
     for service in found:
         milters = effective_setting(main, overrides, service, "smtpd_milters")
         failure_action = effective_setting(main, overrides, service, "milter_default_action")

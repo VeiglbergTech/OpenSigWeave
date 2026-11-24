@@ -93,7 +93,7 @@
 | E01 | Engine HTTP 401, 422, 503, malformed JSON | No unsigned 250 acceptance in tempfail mode; traceable correlation ID | CI: Lua fail-closed; **Observed 4xx for MIME fault only**; LIVE variants |
 | E02 | DNS, TLS certificate, timeout or network failure to engine | Bounded request; SMTP 4xx in tempfail mode | CI: Lua mocks; LIVE |
 | E03 | Malformed/unsupported MIME or failed `set_message()` | No damaged email delivered; strict transient errors deferred, protected intentional skips pass | CI: Lua mocks; LIVE |
-| E04 | Stop Rspamd entirely on disposable submission server | Submission Postfix must return 4xx; no bypass via `milter_default_action=accept` | **HIGH PRIORITY — LIVE**, see `audit_mailcow_submission.py` |
+| E04 | Stop Rspamd entirely on disposable submission server | All configured authenticated submission paths (including Mailcow SOGo port 588 and HAProxy 10465/10587) must return 4xx; no bypass via `milter_default_action=accept` | **HIGH PRIORITY — LIVE**, see `audit_mailcow_submission.py` |
 | E05 | Postfix → Rspamd Milter unavailable, Rspamd Lua fails to load | Same 4xx guarantee on authenticated port 587/465, not untrusted port-25 changes | **HIGH PRIORITY — LIVE** |
 | E06 | OpenSigWeave app or PostgreSQL unavailable | SMTP temporary rejection for signature-required sender; recovery permits single signed send | CI: service error checks; LIVE |
 | E07 | Deliberate empty signature / reply injection disabled | No 4xx just because signature is intentionally absent | CI: Lua; LIVE |
