@@ -91,7 +91,7 @@ _IMG_WIDTH = re.compile(r"""(\swidth\s*=\s*)(["'])(\d+)\2""", re.I)
 _IMG_HEIGHT = re.compile(r"""(\sheight\s*=\s*)(["'])(\d+)\2""", re.I)
 _CSS_PIXEL_WIDTH = re.compile(r"(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px(?=\s|;|$)", re.I)
 _CSS_PIXEL_HEIGHT = re.compile(r"(?:^|;)\s*height\s*:\s*(\d+(?:\.\d+)?)px(?=\s|;|$)", re.I)
-_CSS_AUTO_HEIGHT = re.compile(r"(?<=;)\s*height\s*:\s*auto(?=\s|;|$)", re.I)
+_CSS_FLEXIBLE_HEIGHT = re.compile(r"(?<=;)\s*height\s*:\s*auto(?=\s|;|$)", re.I)
 _CSS_ASPECT = re.compile(r"(?:^|;)\s*aspect-ratio\s*:\s*(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)(?=\s|;|$)", re.I)
 
 
@@ -133,8 +133,8 @@ def _normalize_img_pixel_dimensions(match: re.Match) -> str:
     # Retain the original CSS width and other allowed styles. Set a fixed height
     # when known instead of relying on Outlook's inconsistent height:auto.
     if height is not None and not css_height:
-        if _CSS_AUTO_HEIGHT.search(css):
-            css = _CSS_AUTO_HEIGHT.sub(f" height: {height}px", css, count=1)
+        if _CSS_FLEXIBLE_HEIGHT.search(css):
+            css = _CSS_FLEXIBLE_HEIGHT.sub(f" height: {height}px", css, count=1)
         else:
             css = css.rstrip().rstrip(";") + f"; height: {height}px;"
     elif height is None:
