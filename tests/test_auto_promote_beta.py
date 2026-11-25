@@ -70,6 +70,44 @@ class AutoPromotionPolicyTests(unittest.TestCase):
             {"sha": verified, "force": False}
         )
 
+    def test_ref_read_lag_after_patch_does_not_report_false_failure(self):
+        verified, old = "a" * 40, "b" * 40
+        with patch("scripts.auto_promote_beta.branch_sha",
+                   side_effect=[verified, old, verified, old, old, verified]), \
+             patch("scripts.auto_promote_beta.api", side_effect=[
+                 {"ahead_by": 1, "behind_by": 0},
+                 {"object": {"sha": verified}},
+             ]), \
+             patch("scripts.auto_promote_beta.time.sleep") as sleep:
+            promote("VeiglbergTech/OpenSigWeave", verified)
+        sleep.assert_called_once_with(2)
+
+    def test_post_patch_unrelated_ref_change_still_blocks(self):
+        verified, old, unexpected = "a" * 40, "b" * 40, "c" * 40
+        with patch("scripts.auto_promote_beta.branch_sha",
+                   side_effect=[verified, old, verified, old, unexpected]), \
+             patch("scripts.auto_promote_beta.api", side_effect=[
+                 {"ahead_by": 1, "behind_by": 0},
+                 {"object": {"sha": verified}},
+             ]), \
+             patch("scripts.auto_promote_beta.time.sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "unexpected commit"):
+                promote("VeiglbergTech/OpenSigWeave", verified)
+        sleep.assert_not_called()
+
+    def test_post_patch_unconfirmed_ref_still_blocks(self):
+        verified, old = "a" * 40, "b" * 40
+        with patch("scripts.auto_promote_beta.branch_sha",
+                   side_effect=[verified, old, verified, old] + [old] * 8), \
+             patch("scripts.auto_promote_beta.api", side_effect=[
+                 {"ahead_by": 1, "behind_by": 0},
+                 {"object": {"sha": verified}},
+             ]), \
+             patch("scripts.auto_promote_beta.time.sleep") as sleep:
+            with self.assertRaisesRegex(RuntimeError, "did not confirm"):
+                promote("VeiglbergTech/OpenSigWeave", verified)
+        self.assertEqual(sleep.call_count, 7)
+
     def test_diverged_beta_is_never_rewritten_or_merged(self):
         verified, old = "a" * 40, "b" * 40
         with patch("scripts.auto_promote_beta.branch_sha", side_effect=[verified, old]), \
