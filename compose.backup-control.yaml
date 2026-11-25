@@ -1,0 +1,8 @@
+# Optional operator integration; install the host service before applying this file.
+# The application never receives the Docker socket or the age private identity.
+services:
+  opensigweave:
+    environment:
+      BACKUP_CONTROL_SOCKET: /run/opensigweave-backup/control.sock
+    volumes:
+      - /run/opensigweave-backup/control.sock:/run/opensigweave-backup/control.sock:rw

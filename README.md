@@ -1,235 +1,149 @@
-# OpenSigWeave
+<p align="center">
+  <img src="branding/logo.png" alt="OpenSigWeave – self-hosted email signature management for Mailcow and Rspamd" width="520">
+</p>
 
-OpenSigWeave is a centralized, self-hosted email signature manager designed to bridge the gap between **Authentik** (Identity Management) and **Rspamd / Mailcow** (Mail Filtering). 
+# OpenSigWeave – Open-Source Email Signature Manager for Mailcow & Rspamd
 
-Instead of forcing users to configure signatures in their individual mail clients (Outlook, Apple Mail, mobile devices, etc.), OpenSigWeave injects rich HTML signatures at the gateway level. It dynamically pulls live user attributes (Phone, Title, Name) from Authentik and appends them to outgoing emails seamlessly.
+**OpenSigWeave** is a free, open-source, self-hosted **email signature manager** for organizations that need to create, manage and automatically insert professional **HTML email signatures**. Its first integration targets **Mailcow** and **Rspamd**, enabling centrally controlled, server-side email signatures instead of maintaining a different signature on every device.
 
-## ✨ Key Features
-* **Gateway-Level Injection:** Signatures are applied by the mail server, meaning they work identically across all devices and email clients.
-* **Authentik SSO Integration:** Login is gated strictly via Authentik OIDC. Live attributes (name, phone number, email, title and domain) are polled instantly during mail transit.
-* **Rich Visual Editor:** A custom UI built with Tailwind CSS, Alpine.js, and Quill.js allows users and admins to design signatures visually or via raw HTML.
-* **Advanced HTML Import:** Sanitize and import complex layouts from external generators with an intelligent visual editor lock that protects table-based signatures from accidental formatting loss.
-* **Domain-Level Master Templates:** Enforce a corporate signature standard across an entire domain.
-* **User Overrides:** Allow specific users to customize their signatures, or administratively lock them out.
-* **Intelligent Reply-Chain Detection:** An experimental Lua engine detects when an email is a reply and cleanly injects the signature *above* the quoted history.
-* **Whitespace Normalization (The "Peeler"):** Aggressively strips rogue HTML spaces, empty paragraphs, and quoted-printable soft-breaks from user emails to ensure perfectly crisp spacing around injected signatures.
-* **Plain Text Conversion:** Automatically intercepts flat `text/plain` emails and upgrades them to `multipart/alternative` containers so rich HTML signatures can be injected.
-* **Mobile Signature Assassin:** Automatically detects and strips default mobile sign-offs (e.g., "Sent from my iPhone" or "Get Outlook for iOS") before applying the professional corporate signature.
-* **The "Kill Switch":** Easily disable signatures entirely for specific service accounts (e.g., `noreply@` or `billing@`).
-* **Branding:** Easy white label branding options for logo, title and title color via simple, persistent files.
-* **Deliverability Safe:** By design, **OpenSigWeave** is entirely SPF, DMARC and DKIM safe, so it will never affect your email deliverability.
+Manage company-wide email signatures across multiple domains with a web-based signature editor, sender and domain rules, signature groups, rotation and scheduled campaigns. OpenSigWeave can resolve user information from **LDAP / Active Directory** and **Authentik / OIDC**, with configurable per-domain fallback attributes.
 
----
-## 📸 UI Images
+The application runs with **Docker Compose**, **PostgreSQL** and **Python / FastAPI**. Its signature rendering engine is separated from mail-server adapters so support can be developed beyond Mailcow/Rspamd. OpenSigWeave is licensed under the [GNU GPL v3.0](LICENSE) and builds on the [original project by TylerHats](https://github.com/TylerHats/OpenSigWeave).
 
-<table width="100%">
-  <tr>
-    <td align="center">
-      <b>User UI</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/UserUI.png" alt="User UI">
-    </td>
-    <td align="center">
-      <b>Admin UI</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/AdminUI.png" alt="Admin UI">
-    </td>
-  </tr>
-</table>
+> **Release status: `2026.11-alpha` is planned, not yet published.** OpenSigWeave is in **early access**, not a stable or production-certified release. Mailcow/SOGo, Authentik, rule selection, rotation, scheduling, CID images and selected failure/recovery cases have been tested in an isolated environment. LDAP, Outlook/Thunderbird and independent enforcement when both the Rspamd injector and its guard are missing still need testing. Read the [alpha release notes](docs/RELEASE_NOTES_v2026.11.md), [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md) and [mail usage acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
 
-<table width="100%">
-  <tr>
-    <td align="center">
-      <b>Advanced HTML Import</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/AdvancedHTMLImport.png" alt="Advanced HTML Import">
-    </td>
-    <td align="center">
-      <b>Domain Settings</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/DomainSettingsUI.png" alt="Domain Settings UI">
-    </td>
-    <td align="center">
-      <b>User Overrides</b><br>
-      <img src="https://hatsthings.com/OpenSigWeave/UserOverridesUI.png" alt="User Overrides UI">
-    </td>
-  </tr>
-</table>
+## Features: centralized HTML email signature management
 
----
+- **Centralized business email signatures:** create and manage reusable HTML signatures for multiple domains and senders in one administration portal.
+- **WYSIWYG email signature editor:** use CKEditor, raw HTML editing, uploaded assets and version history.
+- **Dynamic user attributes:** use configured OIDC/Authentik and LDAP/Active Directory attributes, with per-domain fallback values when information is missing.
+- **Signature rules and groups:** choose signatures by sender/domain, configured conditions, user overrides and weighted rotation without immediate repetition where applicable.
+- **Scheduled email signatures:** apply time-based rules, for example a seasonal signature campaign.
+- **Mailcow/Rspamd signature injection:** insert signatures during mail processing using the Rspamd adapter and an adapter-neutral rendering API. Postfix Milter and Stalwart MTA hook adapters are **experimental**.
+- **Administration and recovery:** local administrator sign-in, optional identity provider integration, authenticated management API, custom branding, selective import/export and encrypted backup/restore.
 
-## 📧 Supported Mail Clients (Reply Injection)
-New, outbound emails are universally supported across all clients. 
+OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or guarantee signatures when mail-server filters are bypassed. Review the [Mailcow/Rspamd integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) before changing live mail flow.
 
-However, because there is no universal web standard for how email clients format reply chains, OpenSigWeave's **Experimental Reply Injection** uses specific Regex patterns to find the exact HTML line where the "quoted history" begins. 
+## How OpenSigWeave works
 
-The Lua engine officially supports injecting signatures cleanly into replies sent from the following clients:
-* **Thunderbird:** Desktop and Mobile.
-* **Self-Hosted Webmail:** Horde, Roundcube, SOGo (Mailcow default), and Nextcloud Mail.
-The Lua engine also theoretically supports injecting signatures into replies sent from these clients, but has not been verified:
-* **Microsoft Outlook:** Classic Desktop, New Desktop, OWA (Web), and iOS/Android Mobile Apps.
-* **Apple Mail:** iOS, iPadOS, and macOS native mail apps.
-* **Gmail:** Web, iOS, and Android Mobile Apps.
-* **Yahoo Mail & Open-Xchange:** Web clients.
+1. An administrator creates HTML signatures, groups, domain settings and matching rules in the web interface.
+2. The mail-server adapter calls OpenSigWeave's signature engine for the relevant message and sender.
+3. The engine selects the configured signature, resolves available identity attributes and domain fallbacks, and returns the rendered content.
+4. The adapter incorporates the result into the supported email/MIME structure. The observed Mailcow/SOGo integration supports inline CID images and nested replies, but other clients and mail paths require their own testing.
 
-*Note: If a user sends a reply from an unrecognized client, the Lua engine acts defensively. It will safely abort the inline injection and append the signature to the absolute bottom of the email rather than risk placing it in the middle of a sentence.*
+### What can you use OpenSigWeave for?
 
----
+OpenSigWeave is designed for IT administrators and organizations that want consistent email branding without maintaining signatures on each employee's devices. Typical uses include company-wide email signatures, centralized multi-domain signature management, directory-based contact details, rotating marketing banners and scheduled seasonal campaigns.
 
-## 💡 Usage Tips
-* **External Builders:** For the best results with multi-column layouts, it's recommended to design your signature in an online generator and use the Sanitize & Import feature.
-* **Variable Injection:** When using external builders, simply type {{ first_name }}, {{ title }}, etc., directly into their form fields. When you import the HTML into OpenSigWeave, these will become dynamic placeholders.
-* **Table Support:** If you paste a table into the "Advanced HTML" editor, the Visual Editor will lock to protect your layout. To return to the Visual Editor, you must clear the signature or remove the `<table>` tags.
+The first integration is Mailcow with Rspamd. Other mail-server adapters are not considered production-ready merely because the core engine is adapter-neutral.
 
----
+## Compatibility and project status
 
-## 🚀 1. Deploying the Web App
+| Component | Status |
+| --- | --- |
+| Mailcow with Rspamd, SOGo | Tested in an isolated lab; no general production certification |
+| Authentik / OIDC identity | Live functionality observed |
+| LDAP / Active Directory | Integration implemented; live acceptance pending |
+| Outlook and Thunderbird | Compatibility work ongoing; Outlook 2016 live test deferred |
+| Postfix Milter and Stalwart MTA hook | Experimental adapters |
+| Docker Compose and PostgreSQL | Used for deployment and CI integration tests |
 
-OpenSigWeave is a FastAPI application that utilizes an SQLite database. 
+Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architecture](docs/ADAPTERS.md) and the [acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md) for limitations.
 
-### Prerequisites
-* Python 3.10+
-* An active Authentik deployment
-* An active Rspamd/Mailcow deployment
-* A Reverse Proxy (Nginx, Traefik, Caddy, etc.) for SSL termination
+## Install OpenSigWeave on Linux with Docker Compose
 
-### Installation
-1. Clone the repository to your application server.
-   ```bash
-   git clone https://Github.com/TylerHats/OpenSigWeave.git
-   cd opensigweave
-   ```
-2. Create and activate a Python virtual environment.
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   ```
-3. Install the required Python modules.
-   ```bash
-   pip install -r requirements.txt
-   ```
-4. Prepare your environment variables.
-   ```bash
-   cp .env.example .env
-   nano .env
-   ```
-5. Prepare your branding (Optional).
-   ```bash
-   cp branding/logo.example.png branding/logo.png
-   cp branding/settings.example.json branding/settings.json
-   ```
-6. Start the application to verify it works. (See Step 7 for running as a permanent service).
-   ```bash
-   uvicorn main:app --host 0.0.0.0 --port 8085
-   ```
+**Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose 2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB available disk space. Your mail server and TLS reverse proxy must be configured separately.
 
-### Running as a Systemd Service (Recommended)
-To keep OpenSigWeave running permanently and ensure it starts automatically on server reboots, create a systemd service.
+**After the first approved `2026.11-alpha` package is published**, the release installation is:
 
-1. Create a new service file:
-   ```bash
-   sudo nano /etc/systemd/system/opensigweave.service
-   ```
-
-2. Paste the following configuration. *(Note: Adjust the `WorkingDirectory` and `Environment` paths if you cloned the repository to a location other than `/etc/OpenSigWeave`).*
-
-   ```ini
-   [Unit]
-   Description=OpenSigWeave FastAPI Backend
-   After=network.target
-
-   [Service]
-   User=root
-   Group=root
-   WorkingDirectory=/etc/OpenSigWeave
-   Environment="PATH=/etc/OpenSigWeave/venv/bin"
-   # The proxy-headers flag ensures IPs are read correctly behind a reverse proxy
-   ExecStart=/etc/OpenSigWeave/venv/bin/uvicorn main:app --host 127.0.0.1 --port 8085 --proxy-headers --forwarded-allow-ips="*"
-   Restart=always
-   RestartSec=3
-
-   [Install]
-   WantedBy=multi-user.target
-   ```
-
-3. Enable and start the service:
-   ```bash
-   sudo systemctl daemon-reload
-   sudo systemctl enable opensigweave
-   sudo systemctl start opensigweave
-   ```
-
-### Reverse Proxy & SSL Configuration
-OpenSigWeave does not handle SSL termination natively. It runs as a plain HTTP FastAPI application and **must** be placed behind a reverse proxy to secure the SSO callbacks and administrative sessions via HTTPS.
-
-Here is a standard configuration example for **Nginx**:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name signature.yourdomain.com;
-
-    # SSL Certificates (Managed by Certbot, etc.)
-    ssl_certificate /etc/letsencrypt/live/signature.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/signature.yourdomain.com/privkey.pem;
-
-    location / {
-        proxy_pass [http://127.0.0.1:8085](http://127.0.0.1:8085);
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
+```bash
+git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
+cd OpenSigWeave
+./install.sh
+./generate_config.sh --check
 ```
 
-### Authentik Setup
-You will need two configurations in Authentik:
-1. **OIDC Provider:** Create a standard OIDC Application/Provider for user logins. Ensure the scopes include `openid`, `email`, and `profile`.
-2. **Service Account API Token:** Create an App Token (Intent: **API Token**) bound to an administrative account. This is required for the Rspamd engine to query user attributes securely in the background.
+The interactive installer asks for the hostname, administrator account, bind address, allowed hosts and trusted proxies. It creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. Published releases **pull the prebuilt application image from GitHub Container Registry**, rather than building it on the deployment host. The GHCR image is not available before an authorized main release is actually published. For development, `dev` and `beta` use a separate source-build Compose overlay.
 
-**Note on SSO Compatibility:** OpenSigWeave was built and tested specifically for **Authentik** and **Mailcow**. While the OIDC web login is standard and adaptable, the backend signature engine strictly relies on Authentik's REST API (`/api/v3/core/users/`) to poll live user attributes during mail transit. Adapting this for Authelia, Keycloak, or Entra ID will require modifying the API request logic inside the `get_rspamd_signature` route in `main.py`.
+### Configure the listening address and reverse proxy
 
----
+**Default:** `APP_BIND_ADDRESS=0.0.0.0` listens on **all IPv4 network interfaces**. This does **not** enable HTTPS or configure your firewall. **Block public access to the application port** and allow only your intended reverse proxy. For a reverse proxy running on the same host, select `127.0.0.1`.
 
-## 🛠️ 2. Deploying the Rspamd Lua Engine (Mailcow)
+Both entrypoints ask for the listening address **during the initial interactive
+configuration**, with `0.0.0.0` offered as the default:
 
-The web app is only half the puzzle. To actually inject signatures, you must deploy the provided Lua script into your Mailcow/Rspamd instance.
+```bash
+./install.sh
+# Alternatively, create the configuration first:
+./generate_config.sh
+```
 
-1. **Copy the Script:**
-   Transfer the `opensigweave.lua` script from this repository into your Mailcow server's custom Lua directory:
-   ```text
-   /opt/mailcow-dockerized/data/conf/rspamd/lua/opensigweave.lua
-   ```
+At the `Application bind IP` question, press Enter to accept `0.0.0.0`,
+or enter `127.0.0.1` for a reverse proxy on the same host. No
+`--bind-address` option is required or supported.
 
-2. **Configure the Lua Script:**
-   Open the Lua script and update the configuration block at the top with your OpenSigWeave API URL and the `ENGINE_API_KEY` you set in your `.env` file.
+The installation wizard also configures `APP_ALLOWED_HOSTS` and optional `TRUSTED_PROXY_CIDRS`. Trust only the IP address or narrow CIDR range of an actual reverse proxy; trusting a proxy does not replace firewall rules. The bind-address question is asked for **new** configurations only. To change an existing deployment, edit `APP_BIND_ADDRESS` in the protected `.env` and recreate the affected application container; upgrades preserve existing values.
 
-3. **Enable the Plugin:**
-   Tell Rspamd to load the new plugin by pointing to the Lua file in your local configuration.
-   Open `/opt/mailcow-dockerized/data/conf/rspamd/rspamd.conf.local` (create it if it doesn't exist) and add:
-   ```hcl
-   lua = "/etc/rspamd/lua/opensigweave.lua";
-   ```
+For all options, unattended installation, security considerations and recovery steps, see [installation and update documentation](docs/INSTALL_UPDATE.md).
 
-4. **Restart Rspamd:**
-   Apply the changes by restarting the Mailcow Rspamd container.
-   ```bash
-   docker compose restart rspamd-mailcow
-   ```
+### Update a released installation
 
----
+```bash
+./update.sh --check
+./update.sh --prefetch
+./update.sh --dry-run
+./update.sh
+```
 
-## 🔒 Security Notes
-* OpenSigWeave's API endpoint (`/api/signature/{email}`) exposes employee metadata (Phone, Title, etc.) to successfully compile signatures. 
-* This endpoint is strictly protected by the `X-Engine-Key` header. Ensure your `ENGINE_API_KEY` is a long, cryptographically secure string, and never expose it to frontend clients.
+Update backups remain **optional**. If a configured backup fails, continuing requires an explicit decision. On `main`, the updater verifies that the pulled GHCR image matches the approved Git revision before applying changes. See [upgrade and recovery](docs/UPGRADE.md) and [GHCR release process](docs/RELEASE_PROCESS.md).
 
----
+## Documentation
 
-## 🪲 Bugs and Feature Requests
-* **Bug reports and Feature Requests** are always welcome! Where possible, patches and new updates will be pushed with responses directly on submitted issues for status, questions, etc.
-* **Pull requests** are also welcome and will be reviewed as soon as possible for *functionality, quality of code, and scope*. If approved, changes will be included in the next update of **OpenSigWeave**.
+The in-repository documentation remains the current reference while the separate [OpenSigWeave documentation repository](https://github.com/VeiglbergTech/OpenSigWeave-Docs/tree/dev) is being prepared. The planned website, [docs.veiglbergtech.com](https://docs.veiglbergtech.com), is **not yet published**.
 
----
+| Documentation | Description |
+| --- | --- |
+| [Installation and updates](docs/INSTALL_UPDATE.md) | Setup, configuration, backup policy and upgrades |
+| [Mailcow and Rspamd integration](docs/MAILCOW_RSPAMD_INTEGRATION.md) | Mail-server configuration, SMTP behavior and staging tests |
+| [API reference](docs/API.md) | Administrative and integration API |
+| [Adapter architecture](docs/ADAPTERS.md) | Supported engine contract and adapter design |
+| [Backup and restore](docs/BACKUP_RESTORE_DESIGN.md) | Backup scope and recovery limits |
+| [Release and GHCR publishing](docs/RELEASE_PROCESS.md) | Alpha/beta/stable version tags, images and approval policy |
 
-## 🙏 Acknowledgments & Licensing
+## Frequently asked questions about OpenSigWeave
 
-OpenSigWeave's Rspamd injection engine (`opensigweave.lua`) heavily relies on the MIME-rebuild array logic originally developed by the **Mailcow** team for their internal `MOO_FOOTER` module. 
+### What is a server-side email signature manager?
 
-A massive thank you to Mailcow / Servercow for their hard work. In compliance with their original work and to give back to the community, this entire project is proudly open-sourced under the **GNU GPL v3.0** license.
+A server-side email signature manager centrally chooses and inserts signatures when an email passes through a supported mail-processing integration. This can reduce the need to configure a signature separately in each desktop, mobile or webmail client. Actual placement and formatting depend on the MIME structure, sending client and adapter; see the [compatibility notes](docs/CLIENT_COMPATIBILITY.md).
+
+### Does OpenSigWeave work without LDAP?
+
+Yes. The application provides a local administrator login, and identity providers are optional. Directory-based signatures can use configured providers or supported domain fallback attributes.
+
+### Can I centrally manage Mailcow email signatures with OpenSigWeave?
+
+Yes, the Mailcow/Rspamd integration can insert centrally managed signatures on supported outbound mail paths and has passed selected live SOGo/Mailcow tests. It is still **early access**, and you should validate the full SMTP and DKIM flow before using it for critical or production email.
+
+### Do I need to build the Docker image myself?
+
+Not for an **approved published release**: the `main` installer pulls the corresponding image from GHCR and verifies its source commit. Development/staging checkouts can still build locally. The first release image is not published yet.
+
+### Is OpenSigWeave a replacement for CodeTwo or a mail server?
+
+It targets the central management and server-side insertion of email signatures, but it does not claim feature parity with commercial services or replace a mail server.
+
+## Credits and acknowledgments
+
+OpenSigWeave builds on the **[original OpenSigWeave repository by TylerHats](https://github.com/TylerHats/OpenSigWeave)**. Thank you to **[TylerHats](https://github.com/TylerHats)** for creating the project and its original approach to centrally managed, server-inserted email signatures. This repository is a separately maintained continuation with significant changes to architecture, editor, identity integrations, deployment and administration features.
+
+The original project's **Rspamd signature injection engine** drew heavily on the MIME-rebuild array logic developed by the **[mailcow team](https://github.com/mailcow/mailcow-dockerized)** for the **`MOO_FOOTER`** module. We retain that original acknowledgment and thank the mailcow / Servercow contributors for their work on the open-source email ecosystem. See the [mailcow project](https://mailcow.email/) and [TylerHats' original README](https://github.com/TylerHats/OpenSigWeave#-acknowledgments--licensing).
+
+**Project independence:** OpenSigWeave is not an official mailcow product; credits do not imply an endorsement or formal affiliation with mailcow, TylerHats or other named projects.
+
+## Development, security and license
+
+The project uses exactly three Git branches: **`dev`** for development, **`beta`** for CI-verified code and **`main`** for explicitly approved releases. Release versions follow `YYYY.MM-alpha`, `YYYY.MM-alpha1`, `YYYY.MM-beta` and `YYYY.MM`. Moving GHCR image aliases are `alpha`, `beta` and `latest` (stable only). The image publishing CI never automatically approves `main`.
+
+Before exposing any management service, configure HTTPS, an appropriate firewall and trusted proxy IPs. Never commit passwords, `.env` files or private keys. Report security concerns privately rather than posting credentials or customer data in public issues.
+
+**License:** [GNU General Public License v3.0](LICENSE). **Source code:** [VeiglbergTech/OpenSigWeave](https://github.com/VeiglbergTech/OpenSigWeave). **Bugs and feature requests:** [GitHub Issues](https://github.com/VeiglbergTech/OpenSigWeave/issues).

@@ -1,0 +1,185 @@
+name: Engine performance benchmark
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'core/**'
+      - 'adapters/**'
+      - 'signature_*.py'
+      - 'main.py'
+      - 'models.py'
+      - 'database.py'
+      - 'scripts/benchmark_*.py'
+      - 'scripts/seed_signature_benchmark.py'
+      - 'requirements.txt'
+      - 'Dockerfile'
+      - 'compose.yaml'
+      - '.github/workflows/benchmark.yml'
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: Quick or stress (dev only)
+        required: true
+        type: choice
+        default: quick
+        options: [quick, stress]
+
+permissions:
+  contents: read
+
+# Benchmark builds from source; production Compose never builds locally.
+env:
+  COMPOSE_FILE: compose.yaml:compose.build.yaml
+
+concurrency:
+  group: engine-benchmark-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    if: github.repository == 'VeiglbergTech/OpenSigWeave' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Python 3.12
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Install fixture dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Build a disposable application and PostgreSQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          session_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          engine_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          admin_hash="$(python -c 'from auth_config import hash_local_admin_password; print(hash_local_admin_password("benchmark-only-password"))')"
+          cat > .env <<EOF
+          POSTGRES_DB=opensigweave_benchmark
+          POSTGRES_USER=opensigweave_benchmark
+          POSTGRES_PASSWORD=benchmark-ci-only-password
+          SECRET_KEY=$session_key
+          ENGINE_API_KEY=$engine_key
+          LOCAL_ADMIN_EMAIL=admin@example.test
+          LOCAL_ADMIN_PASSWORD_HASH='$admin_hash'
+          APP_ALLOWED_HOSTS=localhost,127.0.0.1
+          SESSION_COOKIE_NAME=benchmark-session
+          SESSION_COOKIE_SECURE=false
+          UVICORN_WORKERS=1
+          DB_POOL_SIZE=5
+          DB_MAX_OVERFLOW=10
+          BENCHMARK_DISPOSABLE_DB=1
+          EOF
+          docker compose up -d --build --wait --wait-timeout 150
+          docker compose exec -T -e BENCHMARK_DISPOSABLE_DB=1 opensigweave \
+            python -m scripts.seed_signature_benchmark --confirm-disposable --senders 512
+      - name: Record benchmark runner hardware
+        shell: bash
+        run: |
+          mkdir -p benchmark-results
+          {
+            date -u
+            uname -a
+            nproc
+            free -h
+            docker version --format '{{.Server.Version}}'
+            docker compose ps
+          } > benchmark-results/host.txt
+      - name: Measure fixed, rotating, single-sender and large signatures
+        shell: bash
+        env:
+          BENCH_PROFILE: ${{ inputs.profile }}
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-results
+          if [[ "$BENCH_PROFILE" == "stress" ]]; then
+            attempts=1000
+            levels=1,5,10,25,50,100,250,500
+          else
+            attempts=100
+            levels=1,10,50
+          fi
+          set -a
+          source .env
+          set +a
+          failed=0
+          # Separate scenarios share the same disposable database, not mail.
+          for scenario in static rotation rotation-one large; do
+            mode="$scenario"
+            sender_count=128
+            if [[ "$scenario" == "rotation-one" ]]; then
+              mode=rotation
+              sender_count=1
+            fi
+            for level in ${levels//,/ }; do
+              # Preserve fixture/rotation state; restart only the web process.
+              docker compose restart opensigweave
+              docker compose up -d --wait --wait-timeout 120
+              python scripts/benchmark_sampler.py \
+                --output "benchmark-results/$scenario-$level-resources.jsonl" &
+              sampler=$!
+              if ! python scripts/benchmark_engine.py \
+                --domain "bench-$mode.example.test" \
+                --levels "$level" --requests-per-level "$attempts" \
+                --sender-count "$sender_count" --warmup 10 \
+                --fail-on-errors \
+                --output "benchmark-results/$scenario-$level.json"; then
+                failed=1
+              fi
+              kill "$sampler" 2>/dev/null || true
+              wait "$sampler" 2>/dev/null || true
+            done
+          done
+          exit "$failed"
+      - name: Summarize benchmark measurements
+        if: always()
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          lines = ["## OpenSigWeave HTTP engine benchmark",
+                   "API rendering throughput, not complete SMTP email delivery.",
+                   "| Scenario | Concurrent | OK | Failed | OK/s | P50 ms | P95 ms | P99 ms |",
+                   "|---|---:|---:|---:|---:|---:|---:|---:|"]
+          total_stages = 0
+          for path in sorted(Path("benchmark-results").glob("*.json")):
+              for stage in json.loads(path.read_text())["stages"]:
+                  total_stages += 1
+                  if stage["failed"]:
+                      print("::warning title=Benchmark request failures::" + path.stem
+                            + " at concurrency " + str(stage["concurrency"]) + ": "
+                            + str(stage["failed"]) + " of " + str(stage["attempted"])
+                            + " requests failed; possible capacity/timeout bottleneck")
+                  lines.append("| {} | {} | {} | {} | {} | {} | {} | {} |".format(
+                      path.stem, stage["concurrency"], stage["successful"],
+                      stage["failed"], stage["successful_requests_per_second"],
+                      stage["p50_ms"], stage["p95_ms"], stage["p99_ms"]))
+          lines.append(f"Measured stages: {total_stages}. All measured failures are strict failures.")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+              summary.write("\n".join(lines) + "\n")
+          PY
+      - name: Upload JSON results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: engine-benchmark-${{ github.run_id }}
+          path: benchmark-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Cleanup isolated volumes
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f .env ]]; then
+            docker compose ps || true
+            docker compose logs --tail=60 opensigweave postgres || true
+            docker compose down --volumes --remove-orphans || true
+            rm -f .env
+          fi

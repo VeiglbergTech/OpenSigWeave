@@ -1,0 +1,187 @@
+# OpenSigWeave – architecture and implementation boundaries
+
+**Document status:** Current beta/release-candidate architecture and explicit support boundaries  
+**Last reviewed:** 2026-11-19
+
+## 1. Product boundary
+
+OpenSigWeave is developed first as an independent, self-hosted application. Its standalone deployment must not require Mailcow or modify a mail server.
+
+The intended long-term product boundary is:
+
+- **OpenSigWeave core:** signature catalog, versions, variants, rules, rendering, identity abstraction, management API and web UI.
+- **Mail adapters:** independently deployable integrations for Rspamd, Postfix/Milter, Stalwart, Exim, Haraka, OpenSMTPD, Exchange and other compatible systems. They consume the versioned adapter-neutral engine API and must not make the core depend on a particular mail server. Availability depends on each product’s supported extension points; a planned adapter is not a supported integration until it has implementation and end-to-end tests.
+- **Native Mailcow integration:** a separate future project. It may add Mailcow-specific authentication, user discovery and UI integration without requiring changes to the standalone core.
+
+Managed identity providers are the only external authentication path. Installations configure an independent local administrator emergency account and create providers in the portal. Each provider's settings and secrets live in `.idp/{provider-id}/.env`. Domains select a login provider and a profile-attribute provider independently. No root-level/global OIDC compatibility path exists.
+
+## 2. Current runtime components
+
+### Web application
+
+- FastAPI application served by Uvicorn on TCP port 8085 inside the container.
+- Server-rendered Jinja templates and same-origin frontend assets, with the pinned Alpine CSP build still loaded from a CDN.
+- The login page presents a separate sign-in box for each configured managed OIDC provider and an email/password form for LDAP and the local administrator. The selected OIDC callback validates the returned email domain against the provider assignment.
+- Browser session authorization based on the `signature-users` and `signature-admins` groups.
+- CSRF protection for state-changing browser requests.
+- Secure session cookies and trusted-host validation.
+
+### Identity and attributes
+
+Managed identity-provider configuration is stored outside PostgreSQL under `.idp/{provider-id}/.env`; database rows contain provider metadata and per-domain assignments only. Provider secrets are not returned by the management API.
+
+**Login provider and profile provider are separate domain settings.** The login route extracts the email domain and selects its assigned provider. LDAP / Active Directory performs an exact email search with a read-only service bind, then verifies the password with a user-DN bind over LDAPS. Authentik uses OIDC Authorization Code with its own discovery URL, client credentials, scopes and exact callback URI `/auth/{provider-id}`. OIDC callbacks require a stable subject, a verified email (email_verified must be the JSON boolean true) and a groups array, then re-check the domain's current provider assignment.
+
+The profile provider is used independently by the portal and signature engine. Authentik and LDAP profile providers retrieve active user attributes and selected claims; generic OIDC uses verified callback claims cached for up to 24 hours. Successful values are cached per provider ID and normalized email. A confirmed missing or inactive account is an authoritative empty result and clears that provider's cached attributes; technical lookup failures fall back to the last successful cache.
+
+The local administrator account uses a salted scrypt hash and remains independent of external provider availability. Managed OIDC logout uses the provider's discovery-based HTTPS end-session endpoint and an optional post-logout redirect URI.
+
+### Signature and rule services
+
+The implemented services cover:
+
+- Signature catalog entries are mode-free; rules select a direct signature, a signature group or no signature.
+- Signature catalog metadata and active state.
+- Name-based signature directories at `signatur/{Signaturname}/signature.html`, with immutable UUID-addressed snapshots in each directory's `.versions/` subdirectory. PostgreSQL retains stable internal signature IDs, version metadata, SHA-256 hashes and integrity checks; renaming a signature moves its directory without changing its ID.
+- Weighted signature-group membership and stable-principal selection state to avoid immediate repetition.
+- Rules with priorities and AND-combined conditions for sender, domain, groups, claims and attributes.
+- Exact editable HTML source preservation with allowlist sanitization at preview/delivery trust boundaries and automatic escaping of dynamic identity values.
+- Reusable signature groups with transactional weighted no-repeat selection.
+- Concrete date/time schedules that target an active signature or signature group, optionally scoped to one domain and ordered by priority.
+- Persistent application branding (name, accent color, logo and favicon) stored in PostgreSQL.
+
+### Persistence and file storage
+
+PostgreSQL is the supported standalone deployment database. SQLAlchemy manages relational records and Alembic manages schema migrations. SQLite remains available for compatibility and unit-test scenarios.
+
+PostgreSQL stores domain and override configuration, signature metadata, version manifests, groups, rules, schedules, branding settings/assets, group selection state, identity caches and shared rate-limit buckets. Legacy mode/variant columns and tables are retained only for migration and rollback compatibility and are not read by normal runtime selection. Signature HTML content is stored in a separate filesystem root, configured through `SIGNATURE_STORAGE_PATH`. Each logical signature has a readable `signatur/{Signaturname}/signature.html` current file; immutable snapshots are retained below `signatur/{Signaturname}/.versions/` so historical version metadata remains valid.
+
+The application image stores files in `/data/signatures`; Compose persists this path in the `opensigweave-signatures` named volume. PostgreSQL uses the separate `opensigweave-postgres-data` volume. Both volumes must be backed up and restored together.
+
+### Rspamd adapter
+
+The Lua adapter is a separate integration. It:
+
+- Requires an authenticated Rspamd task and uses the SMTP envelope sender.
+- Calls the engine API with `X-Engine-Key`.
+- Supports concrete signature-name/checksum markers; deprecated mode-selector artifacts are cleanup-only.
+- Uses bounded HTTP request time and response-size settings.
+- Deliberately leaves every top-level `multipart/*` message unchanged.
+
+The current rewrite path is limited to non-multipart messages. No production mail flow or DKIM ordering is certified.
+
+## 3. Request and authorization boundaries
+
+### Browser identity
+
+The browser login page lists one sign-in box per configured Authentik or generic OIDC provider. Selecting a box starts that provider's Authorization Code flow; the callback verifies the email and checks that its domain is still assigned to the selected provider. LDAP users and the local administrator use the email/password form. LDAP routing is selected by the email domain.
+
+`APP_ALLOWED_HOSTS` must explicitly list the allowed portal hostname(s). Wildcards are rejected.
+
+### Portal permissions
+
+- `signature-users`: normal portal and personal-signature access.
+- `signature-admins`: administrator APIs and management operations.
+
+The server checks these permissions in route handlers. Hiding a menu item in the browser is not an authorization control.
+
+### Engine identity
+
+External adapters authenticate to the versioned `GET /api/v1/engine/signatures/{email}` endpoint with `X-Engine-Key`. The older `/api/signature/{email}` path remains only as a compatibility alias for existing Rspamd deployments. The key is configured independently from the session secret and is never embedded in the tracked Lua source.
+
+The Lua adapter requires `task:get_user()`, but that only indicates an authenticated SMTP session. It does not prove that the authenticated mailbox may send as the envelope sender. Mailcow/Postfix sender verification and explicit alias/delegated-send-as permissions must enforce that relationship before the signature hook.
+
+## 4. Standalone Docker deployment
+
+The root `compose.yaml` starts:
+
+- `postgres`: PostgreSQL 17 Alpine with a healthcheck and a persistent named volume.
+- `opensigweave`: the application image, built from the root Dockerfile.
+
+The application container:
+
+- Runs as UID/GID 10001, not root.
+- Uses a read-only root filesystem and a bounded `/tmp` tmpfs.
+- Drops all Linux capabilities and enables `no-new-privileges`.
+- Waits for PostgreSQL health and applies Alembic migrations before starting Uvicorn.
+- Exposes port 8085 on host loopback by default; a remote reverse proxy requires an explicit private-interface bind via `APP_BIND_ADDRESS` and a host-firewall allowlist for the proxy IP only.
+- Persists signature assets in a separate named volume.
+
+The deployment requires a reverse proxy for browser-facing HTTPS. A proxy on the same host can use `http://127.0.0.1:8085`. A proxy on a separate host requires `APP_BIND_ADDRESS` set to the application host private-interface IP, an inbound host-firewall rule allowing TCP/8085 only from the proxy private IP, and `TRUSTED_PROXY_CIDRS` restricted to that exact proxy source (`/32` or `/128`). This CIDR is used only for client-IP resolution in rate limiting; it is not a substitute for the firewall. Use an authenticated encrypted tunnel or TLS for the upstream if the path is not already trusted and encrypted. Do not expose the application port to the public internet.
+
+The Compose stack does not install Rspamd, change Mailcow, or configure a mail server.
+
+## 5. Implemented data model
+
+Current persisted concepts include:
+
+- Domains and their injection/override policy.
+- Personal user overrides.
+- Logical signatures and their scope/active state.
+- Immutable signature versions and file integrity metadata.
+- Signature rules and typed conditions.
+- Signature groups, independently weighted memberships and per-principal group-selection state.
+- Time-bounded signature/group schedules and priorities.
+- Persistent branding settings and uploaded assets.
+- Shared database-backed rate-limit buckets.
+
+Historical `signatures.mode`, `signature_variants` and `selection_state` storage is retained exclusively for old installations and rollback compatibility. Active selection uses signatures, groups, rules and schedules; retired selectors are rejected by the administrator API.
+- Identity-provider metadata and separate per-domain login/profile-provider associations.
+- Provider-scoped cached identity attributes keyed by normalized email.
+
+An independent audit-log subsystem, SCIM provisioning and nested LDAP group expansion are not part of the current beta contract.
+
+## 6. Security and operational controls
+
+Current implementation includes:
+
+- Strong non-placeholder startup validation for `SECRET_KEY` and `ENGINE_API_KEY`.
+- HTTPS-only OIDC discovery and Authentik API URL validation.
+- TLS certificate verification for Authentik API requests and LDAPS connections.
+- Per-provider OIDC callback validation and per-domain login-provider revalidation.
+- Secure, HttpOnly, SameSite session cookies with a one-hour lifetime. Starlette's current signed client-side session cookie is not immediately revocable: clearing it on logout removes it from that browser, but a copied cookie can remain usable until expiry. Role/group changes likewise may not affect an already-issued cookie immediately. Treat this as a known limitation; do not claim server-side session revocation.
+- Session-bound CSRF checks for state-changing browser requests.
+- Trusted Host validation using explicit allowed hostnames.
+- Security response headers and a global request-body size limit.
+- Server-side HTML sanitization, sandboxed previews and autoescaped template variables.
+- File-store path/symlink checks, atomic writes and SHA-256 integrity validation.
+- Database-backed rate limiting shared across workers.
+- A non-root, read-only Docker application container.
+- CI dependency auditing and full Git-history secret scanning.
+
+The Content Security Policy remains report-only. The current Chromium/Playwright workflow records no `securitypolicyviolation` events across its exercised portal/editor, scheduling and branding paths, but broader browser/deployment acceptance is still required before enforcement. These controls are not a substitute for a dynamic penetration test or production deployment review.
+
+## 7. Mail-flow constraints
+
+Before enabling Rspamd in any real mail flow, a disposable integration environment must verify:
+
+1. The SMTP envelope sender is authorized for the authenticated mailbox by Mailcow/Postfix.
+2. The Lua module runs at the intended processing stage.
+3. Signature mutation occurs before DKIM signing.
+4. The final delivered message passes DKIM validation.
+5. Repeated processing does not inject duplicate signatures.
+6. Plain text and HTML single-part messages are preserved correctly.
+7. Multipart messages, attachments, inline Content-IDs and transfer encodings remain unchanged until a MIME-aware rewrite implementation is tested.
+
+The current adapter intentionally skips multipart messages. Do not work around this by adding raw string-based multipart reconstruction.
+
+## 8. Remaining acceptance work
+
+- Verify live Authentik and Active Directory sign-in/logout.
+- Complete the two-host restore drill and real NFS/SMB backup-target tests.
+- Verify Rspamd sender authorization, processing order, idempotency and final DKIM in disposable Mailcow.
+- Verify Postfix against the live HTTPS engine and final DKIM ordering.
+- Verify Stalwart through live SMTP/DKIM end-to-end tests.
+- Validate real SOGo, Outlook and Thunderbird reply/forward rendering with delivered MIME.
+- Keep CSP report-only until broader browser/deployment acceptance confirms that enforcement will not break supported workflows.
+- Validate rate limits, reverse-proxy behavior and realistic load; perform dynamic security testing.
+
+Native Mailcow UI integration remains a separate future project.
+
+## 9. Deferred design work
+
+- Nested LDAP group expansion and SCIM user/group provisioning.
+- Native Mailcow authentication, user synchronization and UI integration.
+- Parser-backed multipart MIME mutation.
+- Full audit logging and retention policy.
+- Production SLOs and deployment orchestration.

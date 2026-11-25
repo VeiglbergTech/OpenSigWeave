@@ -1,74 +1,61 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en" class="dark" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% if app_name %}{{ app_name }} Admin{% else %}Signature Admin{% endif %}</title>
-    {% if has_favicon %} <link rel="icon" href="/branding/favicon.ico" type="image/x-icon"> {% endif %}
+    {% if has_favicon %}<link rel="icon" href="/branding/favicon">{% endif %}
     
     <link href="/static/css/tailwind.css" rel="stylesheet">
-    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
-    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
+    <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js?v=font-fields-20261124b"></script>
+    <script src="/static/js/rich-editor.js?v=font-fields-20261124b"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <style>
-        .ql-toolbar { background-color: #374151; border-color: #4b5563 !important; border-top-left-radius: 0.5rem; border-top-right-radius: 0.5rem; color: #d1d5db; }
-        .ql-toolbar .ql-stroke { stroke: #d1d5db; }
-        .ql-toolbar .ql-fill { fill: #d1d5db; }
-        .ql-toolbar .ql-picker { color: #d1d5db; }
-        .ql-container { border-color: #4b5563 !important; border-top-left-radius: 0 !important; border-top-right-radius: 0 !important; border-bottom-left-radius: 0.5rem !important; border-bottom-right-radius: 0.5rem !important; font-family: inherit; font-size: 1rem; background-color: #ffffff; color: #000000; overflow: hidden !important; }
-        .ql-editor { overflow-y: auto; height: 100%; padding: 1rem 1.5rem 2.5rem 1.5rem !important; }
-        .ql-snow.ql-toolbar button:hover .ql-stroke, .ql-snow .ql-toolbar button:focus .ql-stroke, .ql-snow.ql-toolbar button.ql-active .ql-stroke, .ql-snow .ql-toolbar button.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow .ql-toolbar .ql-picker-label.ql-active .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item:hover .ql-stroke, .ql-snow.ql-toolbar .ql-picker-item.ql-selected .ql-stroke, .ql-snow .ql-toolbar .ql-picker-item.ql-selected .ql-stroke { stroke: #60a5fa; }
-        
-        @keyframes slideUpFade {
-            0% { transform: translateY(100%); opacity: 0; }
-            10% { transform: translateY(0); opacity: 1; }
-            90% { transform: translateY(0); opacity: 1; }
-            100% { transform: translateY(-20%); opacity: 0; }
-        }
-        .animate-toast { animation: slideUpFade 3s forwards ease-in-out; }
-    </style>
+    <link href="/static/css/portal.css?v=font-fields-20261124b" rel="stylesheet">
+    <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
+    <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="{ tab: 'personal' }">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
+    <div id="osw-modal-backdrop" class="osw-dialog-backdrop" aria-hidden="true"></div>
 
-    <div x-data="{ toasts: [] }" @notify.window="toasts.push({id: Date.now(), msg: $event.detail.msg, type: $event.detail.type || 'success'}); setTimeout(() => { toasts.shift() }, 2900)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
+    <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
         <template x-for="toast in toasts" :key="toast.id">
             <div class="animate-toast px-4 py-3 rounded shadow-lg text-white font-medium text-sm pointer-events-auto flex items-center gap-2" :class="toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'"><span x-text="toast.msg"></span></div>
         </template>
     </div>
 
-    <script>const userData = { first_name: "{{ first_name }}", last_name: "{{ last_name }}", email: "{{ user.email }}", title: "{{ title }}", phone: "{{ phone }}" };</script>
+    
 
     <nav class="bg-gray-800 border-b border-gray-700 px-6 py-4 flex items-center justify-between">
         <div class="flex items-center space-x-4">
-            {% if has_logo %}<img src="/branding/logo.png" alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
-            {% if app_name %}<div class="text-xl font-bold tracking-wider" style="color: {{ app_color }};">{{ app_name }}</div>{% endif %}
+            {% if has_logo %}<img src="/branding/logo.png" data-osw-brand-logo alt="Company Logo" class="h-8 w-auto max-w-[250px] object-contain">{% endif %}
+            {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
             <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
-                <button @click="tab = 'personal'" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
-                {% if is_admin %}<button @click="tab = 'admin'" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
+                <button @click="openPersonal()" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
+                {% if is_admin %}<button @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
+            <button id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false" class="rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Light mode</button>
             <div class="h-6 w-px bg-gray-600"></div>
-            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><a href="/logout" class="text-blue-400 hover:text-blue-300 text-xs">Sign Out</a></div>
+            <div class="text-sm"><span class="text-gray-400 block">{{ user.email }}</span><button type="button" id="logout-button" class="text-blue-400 hover:text-blue-300 text-xs">Sign out</button></div>
         </div>
     </nav>
 
     <div class="max-w-7xl mx-auto p-6 mt-4">
 
-        <div x-show="tab === 'personal'" style="display: none;" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div x-show="tab === 'personal'" x-cloak class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="space-y-6">
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
-                    <h2 class="text-lg font-semibold text-white mb-4">Your Profile Data</h2>
+                    <h2 class="text-lg font-semibold text-white mb-4">Your Profile</h2>
                     <div class="space-y-3 text-sm text-gray-300 mb-6">
                         <p><span class="font-medium text-gray-400 w-16 inline-block">Name:</span> {{ user.name }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Email:</span> {{ user.email }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Title:</span> {{ title }}</p><p><span class="font-medium text-gray-400 w-16 inline-block">Phone:</span> {{ phone }}</p>
-                    </div>
-                    <a href="{{ authentik_settings_url }}" target="_blank" class="w-full block text-center bg-gray-700 hover:bg-gray-600 text-white py-2 rounded transition text-sm border border-gray-600">Edit Profile in Authentik ↗</a>
-                </div>
+                    </div></div>
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Available Variables</h2>
                     <ul class="space-y-2 text-sm font-mono text-blue-300 bg-gray-900 p-3 rounded border border-gray-700">
-                        <li>{{ '{{' }} first_name {{ '}}' }}</li><li>{{ '{{' }} last_name {{ '}}' }}</li><li>{{ '{{' }} title {{ '}}' }}</li><li>{{ '{{' }} phone {{ '}}' }}</li><li>{{ '{{' }} email {{ '}}' }}</li><li>{{ '{{' }} domain_name {{ '}}' }}</li>
+                        <li>{{ '{{' }} first_name {{ '}}' }}</li><li>{{ '{{' }} last_name {{ '}}' }}</li><li>{{ '{{' }} title {{ '}}' }}</li><li>{{ '{{' }} phone {{ '}}' }}</li><li>{{ '{{' }} email {{ '}}' }}</li><li>{{ '{{' }} domain_name {{ '}}' }}</li><li>{{ '{{' }} group:group-slug {{ '}}' }}</li>
                     </ul>
                 </div>
             </div>
@@ -82,460 +69,1200 @@
                     </div>
                     {% endif %}
 
-                    <div class="p-4 border-b border-gray-700 flex justify-between items-center bg-gray-800">
-                        <h2 class="text-lg font-semibold text-white">Custom Override Signature</h2>
-                        <div class="flex gap-2">
-                            <button @click="$dispatch('open-confirm', { action: 'clear-user' })" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
-                            <button onclick="saveUserSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
+                    <div class="p-4 border-b border-gray-700 flex flex-wrap justify-between items-center gap-3 bg-gray-800">
+                        <h2 class="text-lg font-semibold text-white">Personal Signature Override</h2>
+                        <div class="flex flex-wrap gap-2">
+                            <button @click="confirmClearUser()" class="bg-red-600 hover:bg-red-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Clear Override</button>
+                            <button id="save-user-signature" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-1.5 rounded text-sm transition shadow" {% if not can_edit %}disabled{% endif %}>Save Override</button>
                         </div>
                     </div>
                     
                     <div class="relative bg-gray-900 p-4">
-                        <div id="user-quill-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
+                        <div id="user-rich-editor-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
                             <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                             <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
                             <p class="text-sm text-gray-300 mt-1 max-w-sm">This signature contains tables or advanced HTML. Visual editing is locked to prevent data loss.</p>
                             <p class="text-xs text-gray-500 mt-4">Use the Advanced HTML editor below to make changes.</p>
                         </div>
-                        <div id="quill-editor" class="h-[300px]"></div>
+                        <div id="user-rich-editor" class="h-[300px]"><div data-editor-target></div></div>
                     </div>
                     
-                    <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
-                        <div class="flex justify-between items-center px-4 py-3">
+                    <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
+                        <div class="flex flex-wrap justify-between items-center gap-3 px-4 py-3">
                             <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                             <div class="flex gap-2">
                                 <button @click="$dispatch('open-sanitizer', 'personal')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                 </button>
-                                <button @click="$dispatch('open-preview', { html: document.getElementById('raw-html-editor').value })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
+                                <button @click="previewUserSignature()" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Preview Signature</button>
                             </div>
                         </div>
-                        <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                        <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-specific conditional comments or VML were detected. The original HTML is preserved, but these elements are removed from previews and outgoing signatures.</div></div>
                     </div>
                 </div>
                 
-                <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
-                    <h2 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Default Domain Template (Read-Only)</h2>
-                    <div class="bg-white border border-gray-700 rounded p-4 min-h-[100px] text-sm text-black">{{ domain_template | safe }}</div>
+                </div>
+        </div>
+
+        {% if is_admin %}
+        <div x-show="tab === 'admin'" x-cloak>
+            <div class="flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4">
+                <button @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
+                <button @click="setAdminTab('identity-providers')"  :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
+                <button @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
+                <button @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button @click="setAdminTab('signature-groups')" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
+                <button @click="setAdminTab('rules')" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button @click="setAdminTab('branding')" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
+                <button @click="setAdminTab('backups')" :class="adminTab === 'backups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Backup</button>
+                <button @click="setAdminTab('import-export')" :class="adminTab === 'import-export' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Import / Export</button>
+            </div>
+        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
+            <div class="osw-section-header mb-6">
+                <h1 class="text-2xl font-semibold">Identity Providers</h1>
+                <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll mb-6">
+                <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
+                        <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
+                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')"></td>
+                        <td class="px-4 py-3 text-sm"><span class="osw-admin-status" :class="provider.configured && provider.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Enabled' : 'Disabled')"></span></td>
+                        <td class="px-4 py-3 text-right space-x-3"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
+                    </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
+                </table>
+            </div>
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="editing" x-cloak role="dialog" aria-label="Identity Provider editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-medium">
+                        <div class="osw-modal-header"><h2 class="text-lg font-bold" x-text="form.original_id ? 'Edit Identity Provider' : 'Add Identity Provider'"></h2><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                        <div class="grid md:grid-cols-2 gap-4">
+                            <label class="text-sm">Provider ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Display Name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Provider Type<select x-model="form.provider_type" @change="changeType" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="oidc">OpenID Connect (generic)</option><option value="ldap">LDAP / Active Directory</option></select></label>
+                            <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Enabled</label>
+                        </div>
+                        <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
+                            <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">API Token<input type="password" autocomplete="new-password" x-model="form.settings.AUTHENTIK_API_TOKEN" placeholder="Leave empty to keep existing token" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <div class="md:col-span-2 border-t border-gray-700 pt-3 mt-2">
+                                <p class="text-sm font-semibold text-gray-200 mb-2">OIDC Sign-in (Optional)</p>
+                                <div class="grid md:grid-cols-2 gap-3">
+                                    <label class="text-sm">OIDC Discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://auth.example.org/application/o/app/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                    <label class="text-sm">OIDC Client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                    <label class="text-sm">OIDC Client Secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                    <label class="text-sm">OIDC Scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                    <label class="text-sm md:col-span-2">OIDC Callback / Redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/auth-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                    <label class="text-sm md:col-span-2">OIDC Post-logout Redirect URI (Optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                                </div>
+                            </div>
+                            <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                        </div>
+                        <div x-show="form.provider_type === 'oidc'" class="grid md:grid-cols-2 gap-4">
+                            <p class="md:col-span-2 text-xs text-gray-400">For profile attributes, select this provider as both the domain login and profile provider.</p>
+                            <label class="text-sm">OIDC Discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC Client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC Client Secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">OIDC Scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm md:col-span-2">OIDC Callback / Redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/oidc-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm md:col-span-2">OIDC Post-logout Redirect URI (Optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                        </div>
+                        <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
+                            <label class="text-sm">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Bind Password<input type="password" autocomplete="new-password" x-model="form.settings.LDAP_BIND_PASSWORD" placeholder="Leave empty to keep existing password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">User Filter<input x-model="form.settings.LDAP_USER_FILTER" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">CA Certificate File<input x-model="form.settings.LDAP_CA_CERT_FILE" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                            <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.LDAP_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
+                        </div>
+                        </div>
+                        <div class="osw-modal-footer"><button data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button><button @click="saveProvider()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">Save</button></div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        {% if is_admin %}
-        <div x-show="tab === 'admin'" style="display: none;" x-data="domainManager()" x-init="fetchDomains()" @domain-updated.window="fetchDomains()">
-            <div class="flex justify-between items-center mb-6">
+        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" class="osw-admin-section">
+            <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
             </div>
-            <div class="bg-gray-800 rounded-lg shadow overflow-hidden border border-gray-700">
+            <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
                 <table class="w-full text-left border-collapse">
-                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
+                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Profile Provider</th><th class="px-6 py-4 font-medium">Login Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="domain in domains" :key="domain.id">
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" x-text="domain.domain_name"></td>
-                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="$dispatch('open-confirm', {domain: domain, action: 'toggle'})" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4"><span class="px-2 py-1 text-xs font-semibold rounded-full cursor-pointer" @click="confirmDomainToggle(domain)" :class="domain.is_active ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'" x-text="domain.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="px-6 py-4 text-sm"><span class="osw-admin-status" x-text="providerLabel(domain.identity_provider_id, 'profile')"></span></td>
+                                <td class="px-6 py-4 text-sm"><span class="osw-admin-status" x-text="providerLabel(domain.authentication_provider_id, 'login')"></span></td>
                                 <td class="px-6 py-4 text-right space-x-3">
-                                    <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Settings & Users</button>
-                                    <button @click="$dispatch('open-confirm', {domain: domain, action: 'delete'})" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
+                                    <button @click="$dispatch('open-domain-settings', domain)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Manage Domain</button>
+                                    <button @click="confirmDomainDelete(domain)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="domains.length === 0"><td colspan="3" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
+                        <tr x-show="domains.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No domains configured yet.</td></tr>
                     </tbody>
                 </table>
             </div>
+        </div>
+
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section">
+            <div class="osw-section-header mb-6">
+                <h1 class="text-2xl font-semibold">Signature Catalog</h1>
+                <button type="button" @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Signature</button>
+            </div>
+            <div class="flex flex-wrap items-end gap-3 mb-4">
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[240px]">Search signatures
+                    <input type="search" x-model="searchQuery" placeholder="Name, domain or marker" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white" autocomplete="off">
+                </label>
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[150px]">Signature status
+                    <select x-model="statusFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                        <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Disabled</option>
+                    </select>
+                </label>
+                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[170px]">Domain scope
+                    <select x-model="domainFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                        <option value="all">All domains</option><option value="global">Global only</option>
+                        <template x-for="domain in domains" :key="domain.id"><option :value="'domain:' + domain.id" x-text="domain.domain_name"></option></template>
+                    </select>
+                </label>
+            </div>
+            <p class="text-xs text-gray-400 mb-3" role="status" x-text="signatureResultLabel"></p>
+            <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
+                <table class="w-full text-left border-collapse">
+                    <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700">
+                        <th class="px-6 py-4 font-medium">Name &amp; Marker</th>
+                        <th class="px-6 py-4 font-medium">Scope</th>
+                        <th class="px-6 py-4 font-medium">Versions</th>
+                        <th class="px-6 py-4 font-medium">Status</th>
+                        <th class="px-6 py-4 font-medium text-right">Actions</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="signature in filteredSignatures" :key="signature.id">
+                            <tr class="hover:bg-gray-750 transition duration-150">
+                                <td class="px-6 py-4 font-medium text-white">
+                                    <div x-text="signature.name"></div>
+                                    <div class="osw-signature-marker mt-1 text-xs text-gray-400 font-mono" x-text="formatSignatureMarker(signature)"></div>
+                                </td>
+                                <td class="px-6 py-4 text-sm" x-text="domainNames(signature)"></td>
+                                <td class="px-6 py-4 tabular-nums" x-text="signature.versions"></td>
+                                <td class="px-6 py-4">
+                                    <button type="button" class="osw-admin-status cursor-pointer" :class="signature.is_active ? 'text-green-400' : 'text-red-400'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
+                                </td>
+                                <td class="px-6 py-4">
+                                    <div class="osw-actions justify-end">
+                                        <button type="button" @click="previewSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Preview</button>
+                                        <button type="button" @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="signatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures configured.</td></tr>
+                        <tr x-show="signatures.length > 0 && filteredSignatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures match the selected filters.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="editing" x-cloak role="dialog" aria-label="Signature editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-large">
+                        <div class="osw-modal-header osw-domain-modal-header"><div><h3 class="text-lg font-bold text-white" x-text="form.id ? 'Edit Signature' : 'Create Signature'"></h3><p x-show="form.id" class="text-sm text-blue-400" x-text="form.name"></p></div><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                            <div class="text-sm text-gray-300 md:col-span-2">
+                                <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
+                                    <template x-for="domain in domains" :key="domain.id">
+                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch osw-switch--multi"><span x-text="domain.domain_name"></span></label>
+                                    </template>
+                                    <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
+                                </div>
+                            </div>
+                            <label class="flex items-center gap-3 cursor-pointer text-sm text-gray-300 md:col-span-2">
+                                <input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">
+                                Active signature
+                            </label>
+                        </div>
+                        </section>
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">HTML Template &amp; Versions</h4>
+                        <div class="block text-sm text-gray-300">
+                            <div x-show="form.id" x-cloak class="mt-2 rounded border border-gray-700 bg-gray-900/60 p-3">
+                                <div class="flex flex-wrap items-end gap-2">
+                                    <label class="text-xs text-gray-400 flex-1 min-w-[260px]">Version history
+                                        <select x-model="selectedVersionId" @change="loadVersion($event.target.value)" class="mt-1 block w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                                            <template x-for="version in versions" :key="version.id">
+                                                <option :value="version.id" x-text="versionLabel(version)"></option>
+                                            </template>
+                                        </select>
+                                    </label>
+                                    <button type="button" @click="restoreSelectedVersion()" :disabled="!selectedVersionId || !isViewingHistoricalVersion" class="px-3 py-2 rounded text-sm bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white">Restore selected version</button>
+                                </div>
+                                <p x-show="currentVersion" class="mt-2 text-xs text-emerald-300">Current version: <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong></p>
+                                <p x-show="isViewingHistoricalVersion" class="mt-1 text-xs text-amber-300">Previewing <strong x-text="selectedVersion ? 'v' + selectedVersion.version_number : ''"></strong> (current: <strong x-text="currentVersion ? 'v' + currentVersion.version_number : ''"></strong>).</p>
+                                <p class="mt-2 text-xs text-gray-500">Historical versions are read-only. Restore a version to make it current.</p>
+                            </div>
+                            <div id="signature-template-editor" class="signature-editor mt-2"><div data-editor-target></div></div>
+                            <button type="button" @click="openImageImportDialog()" :disabled="isViewingHistoricalVersion" class="osw-signature-mobile-import mt-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-3 py-2 rounded text-sm font-medium">Import Image from URL</button>
+                            <p class="mt-2 text-xs text-gray-500">Paste or drop PNG, JPEG, WebP or GIF images (6 MiB by default; up to 12 MiB if enabled in Branding).</p>
+                            <div x-data="htmlEditorToggle" class="mt-3">
+                                <button type="button" @click="showHtml = !showHtml" class="text-sm text-gray-400 hover:text-white">Advanced: Edit Raw HTML</button>
+                                <textarea id="signature-html-source" x-ref="signatureHtmlTemplate" x-model="form.html_content" :disabled="isViewingHistoricalVersion" x-show="showHtml" x-cloak rows="9" maxlength="65536" class="mt-2 w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-green-300 font-mono text-xs" placeholder="Enter signature HTML"></textarea>
+                            </div>
+                        </div>
+                        </section>
+                        </div>
+                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="bg-gray-700 hover:bg-gray-600 text-gray-200 border border-gray-600 rounded text-sm font-medium">Cancel</button><button type="button" @click="saveSignature()" class="bg-blue-600 hover:bg-blue-500 text-white rounded shadow transition text-sm font-medium">Save Signature</button></div>
+                    </div>
+                </div>
+            </div>
+            <div x-show="imageImportOpen" x-cloak class="osw-modal-root osw-modal-root--image-import">
+                <div class="osw-modal-placement">
+                    <div x-show="imageImportOpen" role="dialog" aria-modal="true" aria-label="Import Image from URL" class="osw-modal-shell osw-modal-width-small osw-image-import-dialog">
+                        <div class="osw-modal-header">
+                            <h3 class="text-lg font-bold">Import Image from URL</h3>
+                            <button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button>
+                        </div>
+                        <div class="osw-modal-body">
+                            <label for="signature-image-import-url" class="text-sm">Image URL</label>
+                            <input id="signature-image-import-url" type="url" x-model.trim="imageImportUrl" :disabled="imageImportBusy"
+                                @keydown.enter.prevent="importImageFromUrl()" maxlength="2048" autocomplete="url"
+                                placeholder="https://example.com/logo.png" class="w-full bg-gray-950 border border-gray-600 rounded px-3 py-2 text-white text-sm">
+                            <p class="text-xs text-gray-400">HTTPS images only. Redirects and private network addresses are blocked.</p>
+                        </div>
+                        <div class="osw-modal-footer">
+                            <button type="button" data-osw-dialog-close class="bg-gray-700 px-4 py-2 text-gray-200">Cancel</button>
+                            <button type="button" @click="importImageFromUrl()"
+                                :disabled="!imageImportUrl.trim() || imageImportBusy || isViewingHistoricalVersion"
+                                class="bg-blue-600 hover:bg-blue-500 px-4 py-2 text-white disabled:opacity-40"
+                                x-text="imageImportBusy ? 'Importing…' : 'Import image'"></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+
+        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="osw-admin-section">
+            <div class="osw-section-header">
+                <h2 class="text-2xl font-semibold">Signature Groups</h2>
+                <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
+            </div>
+            <p class="mb-4 text-xs text-gray-400">Group previews use an eligible domain and never advance rotation history. Use Advanced Preview to choose a specific domain.</p>
+            <div class="osw-table-scroll">
+                <table class="w-full min-w-[54rem] text-left text-sm">
+                    <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="group in groups" :key="group.id">
+                            <tr>
+                                <td class="align-top">
+                                    <h3 class="font-medium" x-text="group.name"></h3>
+                                    
+                                </td>
+                                <td class="align-top text-gray-300" x-text="group.domain_ids.length ? group.domain_ids.length + ' assigned domain(s)' : 'All domains'"></td>
+                                <td class="align-top">
+                                    <div class="space-y-2">
+                                        <template x-for="member in group.members" :key="member.signature_id">
+                                            <div class="flex flex-wrap items-center gap-3 rounded border border-gray-700 p-2">
+                                                <span class="min-w-[7rem] flex-1 break-words" x-text="signatureName(member.signature_id)"></span>
+                                                <label class="flex items-center gap-2 text-xs text-gray-300">Weight
+                                                    <input type="number" min="1" max="1000" class="w-20 rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)">
+                                                </label>
+                                                <label class="flex items-center gap-2 text-xs text-gray-300">
+                                                    <input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)" class="osw-switch" role="switch"> Enabled
+                                                </label>
+                                                <button type="button" @click="removeMember(group, member)" class="text-xs text-red-400 hover:text-red-300">Remove</button>
+                                            </div>
+                                        </template>
+                                        <p x-show="group.members.length === 0" class="text-xs text-gray-400">No signatures assigned.</p>
+                                    </div>
+                                </td>
+                                <td class="align-top"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="align-top"><div class="flex flex-wrap justify-end gap-3">
+                                    <button type="button" @click="previewGroup(group)" class="text-green-400 hover:text-green-300">Preview</button>
+                                    <button type="button" @click="openAdvancedPreview(group)" class="text-green-400 hover:text-green-300">Advanced Preview</button>
+                                    <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>
+                                    <button type="button" @click="deleteGroup(group)" class="text-red-400 hover:text-red-300">Delete</button>
+                                </div></td>
+                            </tr>
+                        </template>
+                        <tr x-show="groups.length === 0"><td colspan="5" class="text-center text-gray-400">No signature groups configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="editing" x-cloak role="dialog" aria-label="Signature Group editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-small">
+                        <div class="osw-modal-header"><h3 class="text-lg font-bold" x-text="form.id ? 'Edit Group' : 'Create Group'"></h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <label class="text-sm">Name<input x-model="form.name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                            <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
+                        </div>
+                        <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">Group enabled</label>
+                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch osw-switch--multi"><span x-text="domain.domain_name"></span></label></template></div></div>
+                        </div>
+                        <div class="osw-modal-footer"><button data-osw-dialog-close class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
+                    </div>
+                </div>
+            </div>
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="memberEditor" x-cloak role="dialog" aria-modal="true" aria-labelledby="member-editor-title" class="form-dialog osw-modal-shell osw-modal-width-small">
+                        <div class="osw-modal-header"><h3 id="member-editor-title" class="text-lg font-bold">Add Signature to Group</h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                        <label class="block text-sm text-gray-300">Signature group
+                            <select x-model="memberForm.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template></select>
+                        </label>
+                        <label class="block text-sm text-gray-300">Signature
+                            <select x-model="memberForm.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"><option value="">Select signature</option><template x-for="signature in signatures" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template></select>
+                        </label>
+                        <label class="block text-sm text-gray-300">Weight
+                            <input type="number" min="1" max="1000" x-model.number="memberForm.weight" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2">
+                        </label>
+                        </div>
+                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button type="button" @click="addMember()" class="px-3 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Add Signature</button></div>
+                    </div>
+                </div>
+            </div>
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="advancedPreviewOpen" x-cloak role="dialog" aria-modal="true" aria-labelledby="group-advanced-preview-title" class="osw-modal-shell osw-modal-width-small osw-group-preview-dialog">
+                        <div class="osw-modal-header"><h3 id="group-advanced-preview-title" class="text-lg font-bold">Advanced Group Preview</h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                            <p class="text-sm text-gray-300" x-text="advancedPreviewGroup ? advancedPreviewGroup.name : ''"></p>
+                            <label for="group-advanced-preview-domain" class="block text-sm text-gray-300">Preview domain
+                                <select id="group-advanced-preview-domain" x-model="advancedPreviewDomainId" class="mt-1 block w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                                    <template x-for="domain in advancedPreviewDomains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
+                                </select>
+                            </label>
+                            <p x-show="!advancedPreviewDomains.length" class="text-sm text-amber-300">No active domain has an eligible signature for this group.</p>
+                            <p class="text-xs text-gray-400">Preview is deterministic and does not advance rotation history.</p>
+                        </div>
+                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="px-3 py-2 rounded bg-gray-700 text-gray-200">Cancel</button><button type="button" @click="previewAdvancedGroup()" :disabled="!advancedPreviewDomainId" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white">Preview</button></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="osw-admin-section">
+            <details class="rounded border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300 mb-4">
+                <summary class="cursor-pointer">Scheduling priority</summary>
+                <p class="mt-2 text-xs text-gray-400">Active time-bound rules override always-on rules, regardless of normal priority. Higher priority wins within the same category. Older schedules remain active and are converted to rules when edited and saved.</p>
+            </details>
+            <div class="osw-section-header">
+                <h2 class="text-2xl font-semibold">Signature Rules</h2>
+                <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
+            </div>
+            <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll">
+                <table class="w-full text-left">
+                    <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
+                        <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Action</th><th class="px-4 py-3">Conditions</th><th class="px-4 py-3">Time window</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700">
+                        <template x-for="rule in combinedRules" :key="rule.source + ':' + rule.id">
+                            <tr>
+                                <td class="px-4 py-3 font-medium" x-text="rule.name"></td>
+                                <td class="px-4 py-3 tabular-nums" x-text="rule.priority"></td>
+                                <td class="px-4 py-3 text-sm" x-text="ruleActionLabel(rule)"></td>
+                                <td class="px-4 py-3 text-xs text-gray-400" x-text="formatConditions(rule)"></td>
+                                <td class="px-4 py-3 text-xs text-gray-300" x-text="formatWindow(rule)"></td>
+                                <td class="px-4 py-3"><span class="osw-admin-status" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="px-4 py-3 text-right whitespace-nowrap">
+                                    <button @click="editRule(rule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
+                                    <button @click="deleteRule(rule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="combinedRules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-500">No signature rules configured.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="osw-modal-root">
+                <div class="osw-modal-placement">
+                    <div x-show="editing" x-cloak role="dialog" aria-label="Signature Rule editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-medium">
+                        <div class="osw-modal-header"><h3 class="text-lg font-bold" x-text="form.id ? 'Edit Signature Rule' : 'Create Signature Rule'"></h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                        <div class="osw-modal-body">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                            <label class="text-sm text-gray-300">Priority<input type="number" x-model.number="form.priority" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                            <label class="text-sm text-gray-300">Action
+                                <select x-model="form.action_mode" @change="changeAction" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                                    <option value="SIGNATURE">Signature</option><option value="GROUP">Signature Group</option><option value="NONE">No Signature</option>
+                                </select>
+                            </label>
+                            <label class="text-sm text-gray-300" x-show="form.action_mode === 'SIGNATURE'">Signature
+                                <select x-model="form.signature_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                                    <option value="">Select signature</option>
+                                    <template x-for="signature in matchingSignatures" :key="signature.id"><option :value="signature.id" x-text="signature.name"></option></template>
+                                </select>
+                            </label>
+                            <label class="text-sm text-gray-300" x-show="form.action_mode === 'GROUP'">Signature Group
+                                <select x-model="form.group_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white">
+                                    <option value="">Select group</option><template x-for="group in groups" :key="group.id"><option :value="group.id" x-text="group.name"></option></template>
+                                </select>
+                            </label>
+                        </div>
+                        <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Rule enabled</label>
+                        <div class="border-t border-gray-700 pt-4 space-y-3">
+                            <label class="flex items-center gap-2 text-sm text-gray-300"><input type="checkbox" x-model="form.time_limited" class="osw-switch" role="switch" :disabled="!!form.legacy_schedule_id"> Only active in a specified time window (optional)</label>
+                            <div x-show="form.time_limited" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <label class="text-sm text-gray-300">Start<input type="datetime-local" x-model="form.starts_local" :required="form.time_limited" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                <label class="text-sm text-gray-300">End<input type="datetime-local" x-model="form.ends_local" :min="form.starts_local" :required="form.time_limited" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                <p class="sm:col-span-2 text-xs text-gray-400">Times use your local timezone. Start is inclusive, end exclusive.</p>
+                            </div>
+                        </div>
+                        <div class="border-t border-gray-700 pt-4 space-y-3">
+                            <div class="flex items-center justify-between"><h4 class="font-medium">Conditions</h4><span class="text-xs text-gray-500">All conditions must match</span></div>
+                            <template x-for="(condition, index) in form.conditions" :key="index">
+                                <div class="grid grid-cols-1 md:grid-cols-12 gap-2 items-center">
+                                    <select x-model="condition.kind" @change="changeConditionKind(condition, $event)" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                        <option value="sender_equals">Sender equals</option><option value="sender_not_equals">Sender not equal to</option>
+                                        <option value="domain_equals">Domain equals</option><option value="domain_not_equals">Domain not equal to</option>
+                                        <option value="group_contains">Group contains</option>
+                                        <option value="attribute_equals">Attribute equals</option><option value="attribute_not_equals">Attribute not equal to</option>
+                                        <option value="claim_equals">Claim equals</option><option value="claim_not_equals">Claim not equal to</option>
+                                    </select>
+                                    <input x-show="requiresConditionKey(condition.kind)" x-model="condition.key" :disabled="!requiresConditionKey(condition.kind)" :required="requiresConditionKey(condition.kind)" placeholder="Attribute / claim key" class="md:col-span-3 bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                    <input x-model="condition.value" placeholder="Value" :class="requiresConditionKey(condition.kind) ? 'md:col-span-5' : 'md:col-span-8'" class="bg-gray-900 border border-gray-600 rounded px-2 py-2 text-sm">
+                                    <button @click="form.conditions.splice(index,1)" class="text-red-400 text-sm md:col-span-1">Remove</button>
+                                </div>
+                            </template>
+                            <button @click="addCondition()" class="text-blue-400 hover:text-blue-300 text-sm">+ Add Condition</button>
+                        </div>
+                        </div>
+                        <div class="osw-modal-footer">
+                            <button data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Cancel</button>
+                            <button @click="saveRule()" class="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded text-sm">Save Rule</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="osw-admin-section space-y-5">
+            <div class="osw-section-header"><h2 class="text-2xl font-semibold">Branding</h2></div>
+            <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                    <h3 class="font-semibold">Application identity</h3>
+                    <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
+                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
+                    <label class="flex items-center gap-3 text-sm text-gray-300"><input type="checkbox" x-model="settings.large_image_uploads" class="osw-switch" role="switch"> Allow large images (12 MiB instead of 6 MiB)</label>
+                    <p class="text-xs text-gray-400">This setting applies to signature images, web interface logos and favicons. Existing uploaded images are unaffected if disabled later.</p>
+                    </div>
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-5">
+                    <div><div class="osw-branding-logo-heading"><h3 class="font-semibold">Light mode logo</h3><button type="button" @click="restoreLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Logo</button></div>
+                        <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="logoPreview()" alt="Brand logo preview" class="osw-branding-logo-image"></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose PNG File</button>
+                        <input type="file" aria-label="Light mode logo" accept="image/png,.png" @change="chooseLogo($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="logoFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG only, maximum 6 MiB (12 MiB when enabled). <span x-show="resetLogo" class="text-amber-300">Built-in logo will be restored when saved.</span></p></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Dark mode logo</h3><button type="button" @click="restoreDarkLogo()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Logo</button></div>
+                        <div class="mt-3 osw-branding-logo-preview rounded border border-gray-700 bg-gray-950"><img :src="darkLogoPreview()" alt="Dark mode logo preview" class="osw-branding-logo-image"></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose PNG File</button>
+                        <input type="file" aria-label="Dark mode logo" accept="image/png,.png" @change="chooseDarkLogo($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="darkLogoFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG only, maximum 6 MiB (12 MiB when enabled). Without an upload, the standard logo is used.</p></div>
+                    <div class="border-t border-gray-700 pt-4"><div class="osw-branding-logo-heading"><h3 class="font-semibold">Favicon</h3><button type="button" @click="restoreFavicon()" class="text-sm text-blue-400 hover:text-blue-300">Use Default Favicon</button></div>
+                        <div class="mt-3 osw-branding-favicon-preview rounded border border-gray-700 bg-gray-950"><img :src="faviconPreview()" alt="Favicon preview"></div>
+                        <button type="button" @click="openBrandingPicker($event)" class="osw-file-button mt-3 inline-flex rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-600">Choose ICO / PNG File</button>
+                        <input type="file" accept=".ico,image/x-icon,image/png" @change="chooseFavicon($event)" class="sr-only">
+                        <p class="mt-2 text-sm text-gray-300" x-text="faviconFileName || 'No file selected'"></p><p class="mt-2 text-xs text-gray-500">PNG or ICO, maximum 6 MiB (12 MiB when enabled). Without a custom favicon, the built-in logo is used.</p></div>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-700 pt-4">
+                <button type="button" @click="resetAll()" :disabled="saving" class="bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white px-5 py-2 rounded text-sm font-medium">Reset to Default</button>
+                <button type="button" @click="save()" :disabled="saving" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white px-5 py-2 rounded text-sm font-medium">Save Changes</button>
+            </div>
+        </div>
+
+        <div x-show="adminTab === 'import-export'" x-cloak class="osw-admin-section space-y-5">
+            <div class="osw-section-header"><h2 class="text-2xl font-semibold">Import / Export</h2></div>
+<section x-data="adminImportManager" aria-labelledby="osw-import-section" class="space-y-4">
+            <h3 id="osw-import-section" class="text-lg font-semibold text-white">Import</h3>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <label class="block text-sm font-medium text-gray-200" for="admin-import-file">OpenSigWeave Export Archive</label>
+                <button type="button" @click="openFilePicker()" :disabled="busy" class="osw-file-button inline-flex cursor-pointer rounded bg-gray-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">Choose ZIP File</button>
+                <input id="admin-import-file" type="file" accept=".zip,application/zip" @change="selectFile($event)" :disabled="busy" class="sr-only">
+                <p x-show="!fileName" class="text-sm text-gray-400">No file selected</p>
+                <p class="text-sm text-gray-200" x-show="fileName" x-text="fileName + ' · ' + fileSize + ' MiB'"></p>
+                <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
+                    Imports never overwrite existing records. Credentials and personal identities are not imported. <details class="mt-2"><summary class="cursor-pointer">Import details</summary><p class="mt-2">Domains and identity providers are reused only when metadata matches exactly. New providers require credentials after import.</p></details>
+                </div>
+                <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+                <div class="flex justify-end">
+                    <button @click="previewImport()" :disabled="busy || !file" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium" x-text="busy ? 'Validating…' : 'Validate and preview'"></button>
+                </div>
+            </div>
+            <div x-show="hasPreview" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <h3 class="font-semibold text-white">Import preview</h3>
+                <p class="text-sm" :class="preview.can_apply ? 'text-green-300' : 'text-red-300'" x-text="preview.can_apply ? 'Archive validated. No conflicts detected.' : 'Import blocked until conflicts are resolved.'"></p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <template x-for="component in preview ? preview.components : []" :key="component">
+                        <div class="rounded bg-gray-900 p-3">
+                            <div class="font-medium" x-text="componentLabels[component]"></div>
+                            <div class="text-gray-300" x-text="'New: ' + (preview.additions[component] || 0) + ' · Reused: ' + (preview.reusable[component] || 0)"></div>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="preview.conflicts.length" class="space-y-2">
+                    <h4 class="text-sm font-semibold text-red-300">Conflicts</h4>
+                    <ul class="list-disc pl-5 text-sm text-red-200"><template x-for="(conflict, index) in preview.conflicts" :key="index"><li x-text="conflict"></li></template></ul>
+                </div>
+                <ul class="list-disc pl-5 text-xs text-gray-400"><template x-for="(item, index) in preview.excluded" :key="index"><li x-text="item"></li></template></ul>
+                <div class="flex justify-end">
+                    <button @click="applyImport()" :disabled="busy || !preview || !preview.can_apply" class="px-4 py-2 rounded bg-green-700 hover:bg-green-600 disabled:opacity-50 text-sm font-medium">Apply Reviewed Import</button>
+                </div>
+            </div>
+            <div x-show="importComplete" x-cloak class="rounded border border-green-700 bg-green-950/30 p-4 text-sm text-green-200">
+                Configuration imported successfully. <span x-text="resultComponents"></span>
+            </div>
+        </section>
+<section x-data="adminExportManager" aria-labelledby="osw-export-section" class="space-y-4 border-t border-gray-700 pt-5">
+            <h3 id="osw-export-section" class="text-lg font-semibold text-white">Export</h3>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="osw-switch osw-switch--multi"> Signatures and all HTML versions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="osw-switch osw-switch--multi"> Domains and original templates</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="osw-switch osw-switch--multi"> Signature groups and memberships</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="osw-switch osw-switch--multi"> Rules and conditions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="osw-switch osw-switch--multi"> Identity-provider metadata</label>
+                </div>
+                <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
+                    Provider credentials, application secrets, personal user overrides and identity caches are never included. Rule conditions can still contain email addresses or other identifiers; review the archive before sharing. This is a selective configuration export, not a disaster-recovery backup.
+                </div>
+                <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+                <div class="flex justify-end">
+                    <button @click="download()" :disabled="busy || selected.length === 0" class="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-sm font-medium" x-text="busy ? 'Preparing export…' : 'Download selected components'"></button>
+                </div>
+            </div>
+        </section>
+        </div>
+        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="init()" class="osw-admin-section space-y-5">
+            <div class="osw-section-header">
+                <h2 class="text-2xl font-semibold">Backup Management</h2>
+                <button type="button" @click="fetchAll()" :disabled="loading || busy" class="rounded bg-gray-700 px-4 py-2 text-sm disabled:opacity-50" x-text="loading ? 'Loading…' : 'Refresh'"></button>
+            </div>
+            <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+            <p x-show="message" x-text="message" role="status" class="text-sm text-green-300"></p>
+            <p class="text-xs text-gray-400">Encrypted application backups run inside OpenSigWeave using Backup Rules, without a host operator or mounted SMB shares. Configure age recovery settings before enabling backups.</p>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h3 class="text-lg font-semibold">Backup Locations</h3>
+                        <p class="text-xs text-gray-400 mt-1">Manage Local and SMB storage destinations.</p>
+                    </div>
+                    <button type="button" @click="openLocation()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500">+ Add Backup Location</button>
+                </div>
+                <div class="osw-table-scroll border border-gray-700 rounded">
+                    <table class="w-full min-w-[38rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Destination</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in locations" :key="item.id">
+                                <tr class="hover:bg-gray-750">
+                                    <td class="px-4 py-3 font-medium" x-text="item.name"></td>
+                                    <td class="px-4 py-3 uppercase" x-text="item.type"></td>
+                                    <td class="px-4 py-3 break-all text-gray-300" x-text="locationDescription(item)"></td>
+                                    <td class="px-4 py-3"><button type="button" @click="toggleLocation(item)" class="osw-admin-status" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
+                                    <td class="px-4 py-3"><div class="flex flex-wrap gap-3 justify-end">
+                                        <button type="button" class="text-blue-400 hover:text-blue-300" @click="openLocation(item)">Edit</button>
+                                        <button type="button" class="text-cyan-300 hover:text-cyan-200 disabled:opacity-40" :disabled="locationTesting !== ''" @click="testLocation(item)">Test Connection</button>
+                                        <button type="button" class="text-red-400 hover:text-red-300" @click="deleteLocation(item)">Delete</button>
+                                    </div></td>
+                                </tr>
+                            </template>
+                            <tr x-show="locations.length === 0"><td colspan="5" class="px-4 py-6 text-center text-gray-400">No backup locations configured.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p x-show="locationTestResult" x-text="locationTestResult" class="text-sm" role="status"></p>
+                <p class="text-xs text-gray-400">Each Backup Rule publishes a verified, age-encrypted snapshot to its selected Local or SMB location. Keep the age recovery identity and deployment settings in off-host recovery storage.</p>
+            </section>
+            <template x-teleport="body">
+                <div x-show="locationModal" x-cloak class="osw-modal-root" @keydown.escape.window="closeLocation()">
+                    <div class="osw-modal-placement">
+                        <div x-show="locationModal" role="dialog" aria-modal="true" aria-labelledby="backup-location-modal-title" class="osw-modal-shell osw-modal-width-small">
+                            <div class="osw-modal-header">
+                                <h3 id="backup-location-modal-title" class="text-lg font-bold" x-text="locationEditingId ? 'Edit Backup Location' : 'Add Backup Location'"></h3>
+                                <button type="button" class="osw-modal-dismiss" @click="closeLocation()" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <form @submit.prevent="saveLocation()">
+                                <div class="osw-modal-body space-y-4">
+                                    <label class="block text-sm">Name<input type="text" x-model="locationForm.name" maxlength="120" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                    <label class="block text-sm">Type
+                                        <select x-model="locationForm.type" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            <option value="local">Local</option><option value="smb">SMB</option>
+                                        </select>
+                                    </label>
+                                    <label class="flex items-center gap-2 text-sm"><input type="checkbox" x-model="locationForm.enabled" class="osw-switch" role="switch"> Enabled</label>
+                                    <div x-show="locationForm.type === 'local'" class="rounded border border-gray-700 bg-gray-900 p-3 text-sm text-gray-300">
+                                        Local backups use a protected subdirectory of /app/backups/ in the persistent Docker volume.
+                                    </div>
+                                    <div x-show="locationForm.type === 'smb'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <label class="block text-sm">Server<input type="text" x-model="locationForm.server" :required="locationForm.type === 'smb'" maxlength="253" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Share<input type="text" x-model="locationForm.share" :required="locationForm.type === 'smb'" maxlength="80" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm sm:col-span-2">Directory / Subdirectory<input type="text" x-model="locationForm.directory" maxlength="512" placeholder="opensigweave/daily" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Username<input type="text" x-model="locationForm.username" :required="locationForm.type === 'smb'" maxlength="255" autocomplete="username" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm">Domain (optional)<input type="text" x-model="locationForm.domain" maxlength="128" autocomplete="off" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                        <label class="block text-sm sm:col-span-2">Password<input type="password" x-model="locationForm.password" :required="locationForm.type === 'smb' && !locationEditingId" autocomplete="new-password" :placeholder="locationEditingId ? 'Leave empty to keep existing password' : 'SMB password'" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></label>
+                                    </div>
+                                </div>
+                                <div class="osw-modal-footer">
+                                    <button type="button" @click="closeLocation()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>
+                                    <button type="submit" :disabled="locationSaving" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="locationSaving ? 'Saving…' : 'Save Location'"></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <h3 class="text-lg font-semibold">Backup Rules</h3>
+                    <button type="button" @click="openRule()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500" :disabled="!hasEnabledLocations">+ Add Backup Rule</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <input type="search" aria-label="Search backup rules" x-model="ruleFilter" placeholder="Search rules…" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm min-w-[14rem]">
+                </div>
+                <div class="osw-table-scroll rounded border border-gray-700">
+                    <table class="w-full min-w-[60rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Retention</th><th class="px-4 py-3">Next Run (Local Time)</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in filteredRules" :key="item.id">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium" x-text="item.name"></td>
+                                    <td class="px-4 py-3" x-text="item.location_name"></td>
+                                    <td class="px-4 py-3 capitalize" x-text="item.schedule_kind === 'interval' ? 'Every ' + item.interval_minutes + ' min' : item.schedule_kind + ' (UTC)'"></td>
+                                    <td class="px-4 py-3 text-gray-300" x-text="ruleRetentionText(item)"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'"></td>
+                                    <td class="px-4 py-3"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'"></button></td>
+                                    <td class="px-4 py-3"><div class="flex flex-wrap justify-end gap-3">
+                                        <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !item.enabled" @click="runRule(item)">Run Backup</button>
+                                        <button type="button" class="text-blue-400 hover:text-blue-300" @click="openRule(item)">Edit</button>
+                                        <button type="button" class="text-red-400 hover:text-red-300" @click="deleteRule(item)">Delete</button>
+                                    </div></td>
+                                </tr>
+                            </template>
+                            <tr x-show="filteredRules.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-400">No matching backup rules.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <template x-teleport="body">
+                <div x-show="ruleModal" x-cloak class="osw-modal-root">
+                    <div class="osw-modal-placement">
+                        <div x-show="ruleModal" role="dialog" aria-modal="true" aria-labelledby="backup-rule-modal-title" class="osw-modal-shell osw-modal-width-large">
+                            <div class="osw-modal-header osw-domain-modal-header">
+                                <h3 id="backup-rule-modal-title" class="text-lg font-bold" x-text="ruleEditingId ? 'Edit Backup Rule' : 'Add Backup Rule'"></h3>
+                                <button type="button" class="osw-modal-dismiss" @click="closeRule()" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <form class="osw-modal-form" @submit.prevent="saveRule()">
+                                <div class="osw-modal-body space-y-4">
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="backup-rule-general">
+                                        <h4 id="backup-rule-general" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">General</h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Rule Name
+                                                <input type="text" x-model="ruleForm.name" required maxlength="120" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label class="block text-sm">Backup Location
+                                                <select x-model="ruleForm.location_id" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option value="" disabled>Select location</option>
+                                                    <template x-for="item in locations" :key="item.id">
+                                                        <option :value="item.id" x-text="item.name + (item.enabled ? '' : ' (disabled)')"></option>
+                                                    </template>
+                                                </select>
+                                            </label>
+                                            <label class="flex gap-2 items-center text-sm md:col-span-2">
+                                                <input type="checkbox" x-model="ruleForm.enabled" class="osw-switch" role="switch"> Enabled
+                                            </label>
+                                            <label class="block text-sm md:col-span-2">Description (optional)
+                                                <textarea x-model="ruleForm.description" rows="2" maxlength="500" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2"></textarea>
+                                            </label>
+                                        </div>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-3" aria-labelledby="backup-rule-content">
+                                        <h4 id="backup-rule-content" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Content</h4>
+                                        <label class="block text-sm">Backup Content
+                                            <select x-model="ruleForm.content" required class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                <option value="full">Full Application Backup</option>
+                                            </select>
+                                        </label>
+                                        <p class="text-xs text-gray-400">Includes PostgreSQL, signatures and identity-provider configuration. Partial backups are not supported by the verified restore format.</p>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="backup-rule-schedule">
+                                        <h4 id="backup-rule-schedule" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Schedule</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Schedule Type
+                                                <select x-model="ruleForm.schedule_kind" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option value="daily">Daily</option><option value="weekly">Weekly</option>
+                                                    <option value="monthly">Monthly</option><option value="interval">Custom Interval</option>
+                                                </select>
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'weekly'" class="block text-sm">Weekday
+                                                <select x-model.number="ruleForm.weekday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    <option :value="0">Monday</option><option :value="1">Tuesday</option><option :value="2">Wednesday</option>
+                                                    <option :value="3">Thursday</option><option :value="4">Friday</option><option :value="5">Saturday</option><option :value="6">Sunday</option>
+                                                </select>
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'monthly'" class="block text-sm">Day of Month (1–28)
+                                                <input type="number" min="1" max="28" x-model.number="ruleForm.monthday" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label x-show="ruleForm.schedule_kind === 'interval'" class="block text-sm">Interval (Minutes)
+                                                <input type="number" min="15" max="43200" x-model.number="ruleForm.interval_minutes" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <template x-if="ruleForm.schedule_kind !== 'interval'">
+                                                <div class="grid grid-cols-2 gap-3 sm:col-span-2">
+                                                    <label class="block text-sm">Hour (UTC)
+                                                        <input type="number" min="0" max="23" x-model.number="ruleForm.hour" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    </label>
+                                                    <label class="block text-sm">Minute (UTC)
+                                                        <input type="number" min="0" max="59" x-model.number="ruleForm.minute" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                                    </label>
+                                                </div>
+                                            </template>
+                                        </div>
+                                        <p class="text-xs text-gray-400">Execution times are configured in UTC; the rule list displays the next run in your local time.</p>
+                                    </section>
+                                    <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-3" aria-labelledby="backup-rule-retention">
+                                        <h4 id="backup-rule-retention" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Retention</h4>
+                                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                            <label class="block text-sm">Maximum Backups to Keep
+                                                <input type="number" min="1" max="10000" placeholder="No count limit" x-model.number="ruleForm.retention_count" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                            <label class="block text-sm">Maximum Age (Days)
+                                                <input type="number" min="1" max="3650" placeholder="No age limit" x-model.number="ruleForm.retention_days" class="mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2">
+                                            </label>
+                                        </div>
+                                        <p class="text-xs text-gray-400">At least one limit is required. The newest successful backup is always retained.</p>
+                                    </section>
+                                </div>
+                                <div class="osw-modal-footer">
+                                    <p x-show="error" x-text="error" role="alert" class="w-full text-sm text-red-300"></p>
+                                    <button type="button" @click="closeRule()" class="rounded bg-gray-700 px-4 py-2 text-sm">Cancel</button>
+                                    <button type="submit" :disabled="ruleSaving" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50" x-text="ruleSaving ? 'Saving…' : 'Save Rule'"></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+                <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
+                    <h3 class="text-lg font-semibold">Backup History</h3>
+                    <button type="button" @click="fetchHistory()" class="rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600">Refresh</button>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <select x-model="historyStatus" aria-label="Filter history status" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm">
+                        <option value="">All statuses</option><option value="pending">Pending</option>
+                        <option value="running">Running</option><option value="success">Success</option><option value="failed">Failed</option>
+                    </select>
+                    <select x-model="historyRule" aria-label="Filter history rule" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm">
+                        <option value="">All rules</option>
+                        <template x-for="item in rules" :key="item.id"><option :value="item.id" x-text="item.name"></option></template>
+                    </select>
+                </div>
+                <div class="osw-table-scroll rounded border border-gray-700">
+                    <table class="w-full min-w-[55rem] text-left text-sm">
+                        <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
+                            <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Started</th><th class="px-4 py-3">Duration</th><th class="px-4 py-3">Size</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Details</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700">
+                            <template x-for="item in filteredHistory" :key="item.id">
+                                <tr>
+                                    <td class="px-4 py-3 font-medium" x-text="item.rule_name"></td>
+                                    <td class="px-4 py-3" x-text="item.location_name"></td>
+                                    <td class="px-4 py-3 whitespace-nowrap" x-text="formatDate(item.started_at || item.requested_at)"></td>
+                                    <td class="px-4 py-3" x-text="item.duration_seconds === null ? '—' : item.duration_seconds + ' s'"></td>
+                                    <td class="px-4 py-3" x-text="formatSize(item.size_bytes)"></td>
+                                    <td class="px-4 py-3 capitalize"><span class="osw-admin-status" :class="item.status === 'success' ? 'text-green-300' : (item.status === 'failed' ? 'text-red-300' : 'text-amber-300')" x-text="item.status"></span></td>
+                                    <td class="px-4 py-3 text-right"><button type="button" class="text-blue-400 hover:text-blue-300" @click="openHistoryDetails(item)">View</button></td>
+                                </tr>
+                            </template>
+                            <tr x-show="filteredHistory.length === 0"><td colspan="7" class="px-4 py-6 text-center text-gray-400">No backup runs found.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <template x-teleport="body">
+                <div x-show="historyDetail !== null" x-cloak class="osw-modal-root">
+                    <div class="osw-modal-placement">
+                        <div x-show="historyDetail !== null" role="dialog" aria-modal="true" aria-labelledby="backup-history-modal-title" class="osw-modal-shell osw-modal-width-small">
+                            <div class="osw-modal-header">
+                                <h3 id="backup-history-modal-title" class="text-lg font-bold">Backup Run Details</h3>
+                                <button type="button" class="osw-modal-dismiss" @click="historyDetail = null" aria-label="Close dialog">&times;</button>
+                            </div>
+                            <div class="osw-modal-body text-sm space-y-3" x-show="historyDetail">
+                                <div><strong>Rule:</strong> <span x-text="detailValue('rule_name')"></span></div>
+                                <div><strong>Location:</strong> <span x-text="detailValue('location_name')"></span></div>
+                                <div><strong>Trigger:</strong> <span class="capitalize" x-text="detailValue('trigger')"></span></div>
+                                <div><strong>Content:</strong> Full encrypted backup</div>
+                                <div><strong>Status:</strong> <span class="capitalize" x-text="detailValue('status')"></span></div>
+                                <div><strong>Started:</strong> <span x-text="detailDate('started_at')"></span></div>
+                                <div><strong>Finished:</strong> <span x-text="detailDate('finished_at')"></span></div>
+                                <div><strong>Duration:</strong> <span x-text="detailDuration()"></span></div>
+                                <div><strong>Size:</strong> <span x-text="detailSize()"></span></div>
+                                <div><strong>Archive:</strong> <code class="break-all" x-text="detailValue('file_key')"></code></div>
+                                <div x-show="canDownloadHistory"><a :href="historyDownloadUrl" download class="text-blue-400 hover:text-blue-300">Download Encrypted Backup</a></div>
+                                <div><strong>Retained:</strong> <span x-text="detailRetained()"></span></div>
+                                <p x-show="hasHistoryError" class="text-red-300 break-words" x-text="detailValue('error_detail')"></p>
+                            </div>
+                            <div class="osw-modal-footer">
+                                <button type="button" @click="historyDetail = null" class="rounded bg-gray-700 px-4 py-2 text-sm">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </template>
+
+        </div>
+        <div id="osw-system-status-panel" x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="start()" class="osw-admin-section space-y-5">
+            <div class="osw-section-header">
+                <div><h2 class="text-2xl font-semibold">System Status</h2><p class="mt-1 text-xs text-gray-400">Automatically refreshes every 10 seconds while this tab is visible.</p></div>
+                <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh Status'">Refresh Status</button>
+            </div>
+            <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
+                    <h3 class="font-semibold">Application</h3>
+                    <p>State: <span x-text="state">Not checked</span></p>
+                    <p>Checked: <span x-text="checkedAt">Not checked</span></p>
+                </div>
+                <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2">
+                    <h3 class="font-semibold">Dependencies</h3>
+                    <p>PostgreSQL: <span x-text="database">Not checked</span></p>
+                    <p>Signature storage: <span x-text="storage">Not checked</span></p>
+                    <p>Image storage: <span x-text="assets">Not checked</span></p>
+                </div>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3 text-sm">
+                <h3 class="font-semibold">Support Alerts</h3>
+                <p>Independent notifier: <span x-text="alertStatus">Not checked</span></p>
+                <p>Active incidents: <span x-text="alertActive">0</span>.
+                    Pending notifications: <span x-text="alertPending">0</span>.</p>
+                <p>Last notifier update: <span x-text="alertLastUpdate">—</span></p>
+                <ul class="space-y-1" x-show="alertIncidents.length">
+                    <template x-for="incident in alertIncidents" :key="incident.reason">
+                        <li class="text-gray-300">
+                            <span x-text="incident.reason"></span>:
+                            <span x-text="incident.failures"></span> occurrences
+                            <span x-text="incident.active ? '(active)' : '(recovery observed)'"></span>
+                        </li>
+                    </template>
+                </ul>
+                <p class="text-xs text-gray-400">Read-only aggregate status. No mail contents or SMTP credentials are exposed.</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-3">
+                <h3 class="font-semibold">Configuration Records</h3>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    <template x-for="item in records" :key="item.key">
+                        <div class="rounded bg-gray-900 border border-gray-700 p-3">
+                            <p class="text-sm text-gray-400" x-text="item.label"></p>
+                            <p class="text-xl font-semibold" x-text="item.count"></p>
+                        </div>
+                    </template>
+                </div>
+                <p x-show="records.length === 0" class="text-sm text-gray-400">Counts unavailable until the database check succeeds.</p>
+            </div>
+            <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-2 text-sm text-gray-300">
+                <h3 class="font-semibold">Operations</h3>
+                <p>Local emergency administrator: <span x-text="localAdmin">Not checked</span>. Management API key: <span x-text="managementApi">Not checked</span>.</p>
+                <p>External identity providers and mail servers are not checked.</p>
+            </div>
+        </div>
         </div>
         {% endif %}
 
     </div>
 
-    <div x-data="domainSettingsModal()" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="fetchOverrides()" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-50 overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
-            <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-4xl sm:w-full border border-gray-700 flex flex-col max-h-[90vh]">
-                <div class="px-6 py-4 border-b border-gray-700 flex justify-between items-center bg-gray-900">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="refreshDomainUsers()" x-show="show" x-cloak class="osw-modal-root">
+        <div class="osw-modal-placement">
+            
+            <div role="dialog" aria-modal="true" aria-label="Domain management" class="osw-modal-shell osw-modal-width-large">
+                <div class="osw-modal-header osw-domain-modal-header">
                     <div class="flex items-center gap-4">
                         <div><h3 class="text-lg font-bold text-white">Domain Management</h3><p class="text-sm text-blue-400" x-text="domain ? domain.domain_name : ''"></p></div>
                         <div class="h-8 w-px bg-gray-700 ml-4"></div>
                         <div class="flex gap-2 ml-4">
-                            <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings & Template</button>
-                            <button @click="modalTab = 'users'; fetchOverrides();" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">User Overrides</button>
+                            <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings</button>
+                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Users & Overrides</button>
                         </div>
                     </div>
-                    <button @click="show = false" class="text-gray-500 hover:text-gray-300"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+                    <button type="button" data-osw-dialog-close aria-label="Close dialog" class="osw-modal-dismiss"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
 
-                <div class="p-6 overflow-y-auto flex-grow bg-gray-800">
+                <div class="osw-modal-body">
                     <div x-show="modalTab === 'settings'" class="space-y-6">
                         
                         <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
                             
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="allowOverrides">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="allowOverrides ? 'bg-blue-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="allowOverrides ? 'translate-x-4' : ''"></div>
-                                </div>
-                                <div class="ml-3 text-sm font-medium text-gray-300">Allow Users to Override Signature</div>
+                                <input type="checkbox" x-model="allowOverrides" class="osw-switch" role="switch">
+                                <div class="ml-3 text-sm font-medium text-gray-300">Allow Personal Signature Overrides</div>
                             </label>
 
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="injectOnReplies">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="injectOnReplies ? 'bg-purple-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="injectOnReplies ? 'translate-x-4' : ''"></div>
-                                </div>
-                                <div class="ml-3 text-sm font-medium text-gray-300">Enable Experimental Reply Injection <span class="text-gray-500 text-xs ml-2">(Applies signatures to email replies)</span></div>
+                                <input type="checkbox" x-model="injectOnReplies" class="osw-switch" role="switch">
+                                <div class="ml-3 text-sm font-medium text-gray-300">Apply Signatures to Replies (Experimental) <span class="text-gray-500 text-xs ml-2">(Applies signatures to email replies)</span></div>
                             </label>
 
                             <label class="flex items-center cursor-pointer mb-4">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="trimWhitespace">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="trimWhitespace ? 'bg-green-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="trimWhitespace ? 'translate-x-4' : ''"></div>
-                                </div>
-                                <div class="ml-3 text-sm font-medium text-gray-300">Trim Extra Whitespace <span class="text-gray-500 text-xs ml-2">(Peels empty trailing lines before injecting)</span></div>
+                                <input type="checkbox" x-model="trimWhitespace" class="osw-switch" role="switch">
+                                <div class="ml-3 text-sm font-medium text-gray-300">Remove Extra Whitespace <span class="text-gray-500 text-xs ml-2">(Peels empty trailing lines before injecting)</span></div>
                             </label>
 
                             <label class="flex items-center cursor-pointer">
-                                <div class="relative">
-                                    <input type="checkbox" class="sr-only" x-model="stripDeviceSignatures">
-                                    <div class="block w-10 h-6 rounded-full transition-colors duration-200" :class="stripDeviceSignatures ? 'bg-red-500' : 'bg-gray-700'"></div>
-                                    <div class="dot absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition transform" :class="stripDeviceSignatures ? 'translate-x-4' : ''"></div>
-                                </div>
-                                <div class="ml-3 text-sm font-medium text-gray-300">Strip Mobile Device Signatures <span class="text-gray-500 text-xs ml-2">(Removes "Sent from my iPhone", etc.)</span></div>
+                                <input type="checkbox" x-model="stripDeviceSignatures" class="osw-switch" role="switch">
+                                <div class="ml-3 text-sm font-medium text-gray-300">Remove Mobile Signatures <span class="text-gray-500 text-xs ml-2">(Removes "Sent from my iPhone", etc.)</span></div>
                             </label>
                         </div>
 
-                        <div>
-                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-2">Master Template Editor</h4>
-                            <div class="bg-gray-900 rounded-lg border border-gray-700 overflow-hidden flex flex-col">
-                                <div class="relative p-4 bg-gray-900">
-                                    <div id="domain-quill-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
-                                        <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-                                        <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
-                                        <p class="text-sm text-gray-300 mt-1 max-w-sm">Visual editing is locked to prevent data loss.</p>
-                                    </div>
-                                    <div id="domain-quill-editor" class="h-[250px]"></div>
-                                </div>
-                                <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700">
-                                    <div class="flex justify-between items-center px-4 py-3">
-                                        <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
-                                        <div class="flex gap-2">
-                                            <button @click="$dispatch('open-sanitizer', 'domain')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
-                                            </button>
-                                            <button @click="$dispatch('open-preview', { html: document.getElementById('domain-raw-html-editor').value, previewDomain: domain.domain_name })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
-                                        </div>
-                                    </div>
-                                    <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="domain-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
-                                </div>
+                        <section class="bg-gray-900 p-4 rounded-lg border border-gray-700 space-y-4" aria-labelledby="domain-identity-heading">
+                            <div>
+                                <h4 id="domain-identity-heading" class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Identity &amp; Authentication</h4>
+                                <p class="mt-2 text-xs text-gray-400">The identity provider supplies signature profile attributes. The authentication provider controls how users sign in. These can be different services.</p>
                             </div>
-                        </div>
+                            <p x-show="providerLoading" role="status" class="text-xs text-gray-400">Loading available providers…</p>
+                            <p x-show="providerError" x-text="providerError" role="alert" class="text-sm text-red-300"></p>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <label class="block text-sm text-gray-300">Identity Provider
+                                    <select aria-label="Identity Provider" x-model="identityProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                        <option value="">No identity provider</option>
+                                        <template x-for="provider in profileProviders()" :key="provider.id">
+                                            <option :value="provider.id" x-text="provider.display_name"></option>
+                                        </template>
+                                        <template x-if="selectedProfileUnavailable()">
+                                            <option :value="identityProviderId" disabled x-text="providerLabel(identityProviderId, 'profile')"></option>
+                                        </template>
+                                    </select>
+                                    <span class="mt-1 block text-xs text-gray-400">LDAP / Active Directory or an Authentik attribute source for signature fields.</span>
+                                </label>
+                                <label class="block text-sm text-gray-300">Authentication / SSO Provider
+                                    <select aria-label="Authentication / SSO Provider" x-model="authenticationProviderId" :disabled="providerLoading || providerError || saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                        <option value="">Local Sign-in (No SSO)</option>
+                                        <template x-for="provider in loginProviders()" :key="provider.id">
+                                            <option :value="provider.id" x-text="provider.display_name"></option>
+                                        </template>
+                                        <template x-if="selectedLoginUnavailable()">
+                                            <option :value="authenticationProviderId" disabled x-text="providerLabel(authenticationProviderId, 'login')"></option>
+                                        </template>
+                                    </select>
+                                    <span class="mt-1 block text-xs text-gray-400">An enabled LDAP or configured OpenID Connect provider, or local sign-in without SSO.</span>
+                                </label>
+                            </div>
+                            <p x-show="selectedProfileUnavailable() || selectedLoginUnavailable()" role="status" class="text-xs text-amber-300">A previously assigned provider is unavailable or unsuitable. The existing assignment is preserved unless you explicitly change it.</p>
+                        </section>
+
+                        <details class="bg-gray-900 p-4 rounded-lg border border-gray-700" aria-label="Fallback Values">
+                            <summary class="cursor-pointer text-sm font-semibold text-gray-300 uppercase tracking-wider">Fallback Values</summary>
+                            <div class="mt-4 space-y-4">
+                                <p class="text-xs text-gray-400">Optional domain-specific values used only when an identity attribute is missing or blank. Directory attributes always win. Sender email and domain cannot be overridden.</p>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <label class="block text-sm text-gray-300">First name
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.first_name" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Last name
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.last_name" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Position / Title
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.title" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Telephone
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.phone" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Company
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.company" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Department
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.department" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Location
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.location" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Mobile
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.mobile" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                    <label class="block text-sm text-gray-300">Website
+                                        <input type="text" maxlength="256" autocomplete="off" x-model="fallbackValues.website" :disabled="saving" class="mt-2 block w-full min-w-0 rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white disabled:opacity-50">
+                                    </label>
+                                </div>
+                                <p class="text-xs text-gray-400">Available placeholders: first_name, last_name, title, phone, company, department, location, mobile and website. Empty values remain blank.</p>
+                            </div>
+                        </details>
+
                     </div>
 
-                    <div x-show="modalTab === 'users'" style="display: none;" class="space-y-4">
-                        <div class="flex justify-between items-center">
-                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Active User Overrides</h4>
-                            <div class="flex gap-2">
+                    <div x-show="modalTab === 'users'" x-cloak class="space-y-4">
+                        <div class="flex flex-wrap justify-between items-center gap-3">
+                            <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider">Domain users</h4>
+                            <div class="flex flex-wrap gap-2 min-w-0">
                                 <input type="text" x-model="newOverrideEmail" placeholder="user@domain.com" class="bg-gray-900 border border-gray-700 rounded px-3 py-1.5 text-sm text-white focus:outline-none focus:border-blue-500">
-                                <button @click="loadAdminEditor(newOverrideEmail)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm transition">+ Add / Edit</button>
+                                <button @click="loadAdminEditor(newOverrideEmail)" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded text-sm transition">+ Add or Edit User</button>
                             </div>
                         </div>
 
                         <div x-show="editingUserEmail !== ''" class="bg-gray-900 border border-blue-900 rounded-lg overflow-hidden mb-6 flex flex-col">
-                            <div class="bg-blue-900/30 px-4 py-2 flex justify-between items-center border-b border-blue-900">
+                            <div class="bg-blue-900/30 px-4 py-2 flex flex-wrap justify-between items-center gap-3 border-b border-blue-900">
                                 <span class="text-sm font-medium text-blue-200">Editing: <span x-text="editingUserEmail" class="text-white"></span></span>
-                                <div class="flex gap-4">
+                                <div class="flex flex-wrap gap-4">
                                     <label class="flex items-center cursor-pointer border-r border-blue-800 pr-4">
-                                        <div class="relative"><input type="checkbox" class="sr-only" x-model="editingUserDisabled"><div class="block bg-gray-700 w-8 h-4 rounded-full"></div><div class="dot absolute left-1 top-0.5 bg-white w-3 h-3 rounded-full transition transform" :class="editingUserDisabled ? 'translate-x-3 bg-red-500' : ''"></div></div>
+                                        <input type="checkbox" x-model="editingUserDisabled" class="osw-switch" role="switch">
                                         <div class="ml-2 text-xs font-medium text-gray-300">Disable Signature</div>
                                     </label>
-                                    <button @click="saveAdminOverride()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition">Save User</button>
+                                    <button @click="saveAdminOverride()" class="text-xs bg-blue-600 hover:bg-blue-500 text-white px-2 py-1 rounded transition">Save Changes</button>
                                     <button @click="editingUserEmail = ''" class="text-xs text-gray-400 hover:text-white">Cancel</button>
                                 </div>
                             </div>
                             <div class="relative p-4 bg-gray-900" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
-                                <div id="admin-quill-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
+                                <div id="admin-rich-editor-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
                                     <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                     <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
                                     <p class="text-sm text-gray-300 mt-1 max-w-sm">Visual editing is locked to prevent data loss.</p>
                                 </div>
-                                <div id="admin-quill-editor" class="h-[200px]"></div>
+                                <div id="admin-rich-editor" class="h-[200px]"><div data-editor-target></div></div>
                             </div>
-                            <div x-data="{ showHtml: false }" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
-                                <div class="flex justify-between items-center px-4 py-3">
+                            <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
+                                <div class="flex flex-wrap justify-between items-center gap-3 px-4 py-3">
                                     <button @click="showHtml = !showHtml" class="text-sm font-medium text-gray-400 hover:text-white flex items-center gap-2 transition-colors"><svg class="w-4 h-4 transition-transform duration-200" :class="showHtml ? 'rotate-90' : ''" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>Advanced: Edit Raw HTML</button>
                                     <div class="flex gap-2">
                                         <button @click="$dispatch('open-sanitizer', 'admin')" class="bg-green-700 hover:bg-green-600 border border-green-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">
                                             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>Import HTML
                                         </button>
-                                        <button @click="$dispatch('open-preview', { html: document.getElementById('admin-raw-html-editor').value, previewEmail: editingUserEmail })" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
+                                        <button @click="previewAdminSignature(editingUserEmail)" class="bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white px-4 py-1.5 rounded shadow-sm text-sm transition flex items-center gap-2">Live Preview</button>
                                     </div>
                                 </div>
-                                <div x-show="showHtml" style="display: none;" class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea></div>
+                                <div x-show="showHtml" x-cloak class="px-4 pb-4"><textarea id="admin-raw-html-editor" class="w-full h-48 bg-gray-950 text-green-400 font-mono text-sm p-3 rounded border border-gray-700 focus:outline-none focus:border-blue-500"></textarea>
+<div id="admin-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-specific conditional comments or VML were detected. The original HTML is preserved, but these elements are removed from previews and outgoing signatures.</div></div>
                             </div>
                         </div>
 
-                        <div class="bg-gray-900 rounded-lg border border-gray-700">
-                            <table class="w-full text-left text-sm">
-                                <thead class="border-b border-gray-700 text-gray-400"><tr><th class="px-4 py-2 font-medium">User Email</th><th class="px-4 py-2 font-medium text-right">Actions</th></tr></thead>
-                                <tbody class="divide-y divide-gray-800">
-                                    <template x-for="user in userOverrides" :key="user.id">
-                                        <tr class="hover:bg-gray-800 transition">
-                                            <td class="px-4 py-3 text-gray-200 flex items-center gap-3">
-                                                <span x-text="user.user_email"></span>
-                                                <span x-show="user.is_disabled" class="bg-red-900/50 text-red-400 text-[10px] uppercase font-bold px-2 py-0.5 rounded border border-red-800">Disabled</span>
-                                            </td>
-                                            <td class="px-4 py-3 text-right space-x-3">
-                                                <button @click="loadAdminEditor(user.user_email, user.html_content, user.is_disabled)" class="text-blue-400 hover:text-blue-300">Edit</button>
-                                                <button @click="$dispatch('open-confirm', { action: 'clear-admin', targetId: user.id })" class="text-red-400 hover:text-red-300">Clear</button>
-                                            </td>
-                                        </tr>
+                        <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
+                            <label class="text-sm text-gray-300">Search users<input type="search" x-model="userQuery" @input.debounce.300ms="fetchUsersFirstPage()" placeholder="Name or email" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"></label>
+                            <label class="text-sm text-gray-300">Source<select x-model="userSource" @change="fetchUsersFirstPage()" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"><option value="all">All known users</option><option value="ldap">LDAP</option><option value="authentik">Authentik</option><option value="local">Local identity cache</option><option value="override">Override only</option></select></label>
+                            <button type="button" @click="fetchUsers()" class="rounded bg-gray-700 px-4 py-2 text-sm">Refresh list</button>
+                        </div>
+                        <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>
+                        <p x-show="userError" x-text="userError" role="alert" class="text-sm text-red-300"></p>
+                        <div class="osw-table-scroll rounded border border-gray-700 bg-gray-900">
+                            <table class="w-full min-w-[32rem] text-left text-sm">
+                                <thead class="border-b border-gray-700 text-gray-300"><tr><th class="px-4 py-2">Email</th><th class="px-4 py-2">Display name</th><th class="px-4 py-2">Source</th><th class="px-4 py-2">Override</th><th class="px-4 py-2 text-right">Action</th></tr></thead>
+                                <tbody class="divide-y divide-gray-700">
+                                    <template x-for="user in users" :key="user.email">
+                                        <tr><td class="px-4 py-3 break-all" x-text="user.email"></td>
+                                        <td class="px-4 py-3" x-text="user.display_name || '—'"></td>
+                                        <td class="px-4 py-3" x-text="user.source"></td>
+                                        <td class="px-4 py-3" x-text="user.override_status"></td>
+                                        <td class="px-4 py-3 text-right"><button type="button" class="text-blue-400" @click="loadAdminEditor(user.email)">Edit override</button></td></tr>
                                     </template>
-                                    <tr x-show="userOverrides.length === 0"><td colspan="2" class="px-4 py-6 text-center text-gray-500">No custom overrides exist for this domain yet.</td></tr>
+                                    <tr x-show="!userLoading && users.length === 0"><td colspan="5" class="px-4 py-5 text-center text-gray-400">No known users match the filter.</td></tr>
                                 </tbody>
                             </table>
+                        </div>
+                        <p x-show="userLoading" class="text-sm text-gray-400" role="status">Loading users…</p>
+                        <div class="osw-actions justify-between text-sm">
+                            <span x-text="userTotal + ' known user(s) · page ' + userPage"></span>
+                            <div class="osw-actions">
+                                <button type="button" @click="previousUsersPage()" :disabled="userLoading || userPage <= 1" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Previous</button>
+                                <button type="button" @click="nextUsersPage()" :disabled="userLoading || userPage * 20 >= userTotal" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Next</button>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div x-show="modalTab === 'settings'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('save-domain-settings', {domain: domain, allowOverrides: allowOverrides, injectOnReplies: injectOnReplies, trimWhitespace: trimWhitespace, stripDeviceSignatures: stripDeviceSignatures, html: document.getElementById('domain-raw-html-editor').value}); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition">Save Settings</button>
-                    <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
+                <div x-show="modalTab === 'settings'" class="osw-modal-footer">
+                    <button @click="saveSettings()" :disabled="providerLoading || providerError || saving" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-500 text-sm font-medium transition disabled:opacity-50 disabled:cursor-not-allowed">Save Settings</button>
+                    <button data-osw-dialog-close class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
                 </div>
-                <div x-show="modalTab === 'users'" class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close Manager</button>
+                <div x-show="modalTab === 'users'" class="osw-modal-footer">
+                    <button data-osw-dialog-close class="px-4 py-2 bg-gray-700 text-gray-300 rounded hover:bg-gray-600 text-sm font-medium transition">Close</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div x-data="{ show: false, rawInput: '', targetEditor: '' }" 
-         @open-sanitizer.window="show = true; targetEditor = $event.detail; rawInput = ''; setTimeout(() => $refs.sanitizerInput.focus(), 100);" 
-         @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[70] overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div>
-            <div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-2xl border border-gray-700 sm:my-8 sm:align-middle sm:max-w-3xl w-full transform transition-all flex flex-col">
-                <div class="px-6 py-5 border-b border-gray-700 bg-gray-900">
-                    <h3 class="text-xl font-bold text-white mb-2">Import HTML Signature</h3>
-                    <p class="text-sm text-gray-400">Online generators wrap code in full-page tags (<code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>) that will break email layouts. Paste your raw generator code here. The browser will safely extract the core table structure and strip out the dangerous tags.</p>
+    <div x-data="sanitizerModal" 
+         @open-sanitizer.window="open($event)" 
+         x-show="show" x-cloak class="osw-modal-root">
+        <div class="osw-modal-placement">
+            
+            <div role="dialog" aria-modal="true" aria-label="Import HTML signature" class="osw-modal-shell osw-modal-width-medium">
+                <div class="osw-modal-header"><h3 class="text-xl font-bold">Import HTML</h3>
+                    <button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button>
                 </div>
-                <div class="p-6 bg-gray-800">
+                <div class="osw-modal-body">
                     <textarea x-ref="sanitizerInput" x-model="rawInput" placeholder="Paste your <!DOCTYPE HTML>... code here" class="w-full h-64 bg-gray-950 border border-gray-600 rounded-lg p-3 text-green-400 font-mono text-sm focus:outline-none focus:border-blue-500"></textarea>
                 </div>
-                <div class="bg-gray-900 px-6 py-4 flex flex-row-reverse border-t border-gray-700">
-                    <button @click="$dispatch('sanitize-html', { html: rawInput, target: targetEditor }); show = false;" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
+                <div class="osw-modal-footer">
+                    <button @click="apply()" class="ml-3 px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-500 text-sm font-medium transition shadow flex items-center gap-2">
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
-                        Sanitize & Import
+                        Import HTML
                     </button>
-                    <button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium transition">Cancel</button>
+                    <button data-osw-dialog-close class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium transition">Cancel</button>
                 </div>
             </div>
         </div>
     </div>
 
-    <div x-data="{ show: false, previewHtml: '' }" 
-         @open-preview.window="
-            show = true; 
-            let raw = $event.detail.html; 
+    <div x-data="previewModal" 
+         @open-preview.window="open($event)" x-show="show" x-cloak class="osw-modal-root osw-modal-root--preview">
+        <div class="osw-modal-placement">
             
-            let pEmail = $event.detail.previewEmail || userData.email;
-            let pDomain = $event.detail.previewDomain || pEmail.split('@')[1] || '';
-            
-            let pFirst = userData.first_name;
-            let pLast = userData.last_name;
-            let pTitle = userData.title;
-            let pPhone = userData.phone;
-
-            if ($event.detail.previewEmail) {
-                let namePart = pEmail.split('@')[0];
-                let parts = namePart.split('.');
-                pFirst = parts[0] ? parts[0].charAt(0).toUpperCase() + parts[0].slice(1) : 'User';
-                pLast = parts[1] ? parts[1].charAt(0).toUpperCase() + parts[1].slice(1) : '';
-                pTitle = 'Title (Preview)';
-                pPhone = 'Phone (Preview)';
-            }
-
-            raw = raw.replace(/\{\{\s*first_name\s*\}\}/g, pFirst)
-                     .replace(/\{\{\s*last_name\s*\}\}/g, pLast)
-                     .replace(/\{\{\s*title\s*\}\}/g, pTitle)
-                     .replace(/\{\{\s*phone\s*\}\}/g, pPhone)
-                     .replace(/\{\{\s*email\s*\}\}/g, pEmail)
-                     .replace(/\{\{\s*domain_name\s*\}\}/g, pDomain);
-            
-            previewHtml = raw;
-         " 
-         @keydown.escape.window="show = false" 
-         x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto">
-        <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
-            <div x-show="show" class="fixed inset-0 bg-gray-900/90 backdrop-blur-sm transition-opacity" @click="show = false"></div>
-            <div x-show="show" class="relative inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-gray-300">
-                <div class="bg-gray-100 px-6 py-4 border-b border-gray-300 flex justify-between items-center">
-                    <h3 class="text-lg font-bold text-gray-900">Live Signature Preview</h3>
-                    <button @click="show = false" class="text-gray-500 hover:text-gray-800"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
+            <div role="dialog" aria-modal="true" aria-label="Live signature preview" class="osw-modal-shell osw-modal-width-medium">
+                <div class="osw-modal-header">
+                    <h3 class="text-lg font-bold text-white">Live Signature Preview</h3>
+                    <button type="button" data-osw-dialog-close aria-label="Close dialog" class="osw-modal-dismiss"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
-                <div class="p-8 text-black text-sm" x-html="previewHtml"></div>
+                <div class="osw-modal-body"><iframe id="signature-preview-frame" title="Signature preview" sandbox="" class="w-full min-h-[320px] bg-white border-0"></iframe></div><div class="osw-modal-footer">
+                  <button type="button" data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Close</button>
+                </div>
             </div>
         </div>
     </div>
     
-    <div x-data="{ show: false, domainName: '' }" @open-add-domain.window="show = true; domainName = ''; setTimeout(() => $refs.domainInput.focus(), 100);" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4"><h3 class="text-xl font-bold text-white mb-4">Register New Mail Domain</h3><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="$dispatch('submit-new-domain', domainName); show = false;" placeholder="e.g., hatsthings.com" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('submit-new-domain', domainName); show = false;" class="ml-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
+    <div x-data="addDomainModal" @open-add-domain.window="open()" x-show="show" x-cloak class="osw-modal-root">
+        <div class="osw-modal-placement">
+            
+            <div x-show="show" role="dialog" aria-modal="true" aria-labelledby="add-domain-modal-title" class="osw-modal-shell osw-modal-width-small">
+                <div class="osw-modal-header"><h3 id="add-domain-modal-title" class="text-lg font-bold text-white">Add Mail Domain</h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                <div class="osw-modal-body"><input type="text" x-ref="domainInput" x-model="domainName" @keydown.enter="submit()" placeholder="example.com" aria-label="Mail domain" class="w-full bg-gray-900 border border-gray-600 rounded-lg px-4 py-2.5 text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"></div>
+                <div class="osw-modal-footer"><button data-osw-dialog-close class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button><button @click="submit()" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium">Register Domain</button></div>
+            </div>
+        </div>
+    </div>
     
-    <div x-data="{ show: false, domain: null, action: '', title: '', message: '', targetId: null }" @open-confirm.window="show = true; action = $event.detail.action; domain = $event.detail.domain || null; targetId = $event.detail.targetId || null; if (action === 'toggle') { title = (domain.is_active ? 'Disable' : 'Enable') + ' Domain?'; message = 'Are you sure you want to ' + (domain.is_active ? 'disable' : 'enable') + ' ' + domain.domain_name + '?'; } else if (action === 'delete') { title = 'Delete Domain?'; message = 'CRITICAL WARNING: Delete ' + domain.domain_name + ' permanently?'; } else if (action === 'clear-user') { title = 'Clear Custom Signature?'; message = 'Are you sure you want to clear your custom signature? Your emails will revert to the domain\'s default template.'; } else if (action === 'clear-admin') { title = 'Clear User Override?'; message = 'Are you sure you want to permanently delete this user\'s custom signature?'; }" @keydown.escape.window="show = false" x-show="show" style="display: none;" class="fixed inset-0 z-[60] overflow-y-auto"><div class="flex items-center justify-center min-h-screen px-4"><div x-show="show" class="fixed inset-0 bg-gray-900/80 backdrop-blur-sm transition-opacity" @click="show = false"></div><div x-show="show" class="relative inline-block align-bottom bg-gray-800 rounded-lg text-left overflow-hidden shadow-xl border border-gray-700 sm:max-w-lg w-full transform transition-all"><div class="px-6 pt-6 pb-4 sm:flex sm:items-start"><div class="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full sm:mx-0 sm:h-10 sm:w-10" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'"><svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg></div><div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left"><h3 class="text-lg font-medium text-white" x-text="title"></h3><p class="text-sm text-gray-300 mt-2" x-text="message"></p></div></div><div class="bg-gray-800/50 px-6 py-4 flex flex-row-reverse border-t border-gray-700"><button @click="$dispatch('confirm-action', {domain: domain, action: action, targetId: targetId}); show = false;" class="ml-3 px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button><button @click="show = false" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button></div></div></div></div>
-
-    <script>
-        var quill, domainQuill, adminQuill;
-        const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
-
-        // THE SMART LOCK ENGINE
-        function toggleLock(lockId, rawId) {
-            const rawVal = document.getElementById(rawId).value.toLowerCase();
-            const lockEl = document.getElementById(lockId);
-            if (lockEl) {
-                if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
-                else lockEl.classList.add('hidden');
-            }
-        }
-        function checkAllLocks() {
-            toggleLock('user-quill-lock', 'raw-html-editor');
-            toggleLock('domain-quill-lock', 'domain-raw-html-editor');
-            toggleLock('admin-quill-lock', 'admin-raw-html-editor');
-        }
-
-        document.addEventListener('DOMContentLoaded', async function() {
-            const tb = [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], [{ 'list': 'ordered'}, { 'list': 'bullet' }], ['link', 'image'], ['clean']];
-            quill = new Quill('#quill-editor', { theme: 'snow', modules: { toolbar: tb }});
-            domainQuill = new Quill('#domain-quill-editor', { theme: 'snow', modules: { toolbar: tb }});
+    <div x-data="confirmModal" @open-confirm.window="open($event)" x-show="show" x-cloak class="osw-modal-root osw-modal-root--confirm">
+        <div class="osw-modal-placement">
             
-            quill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('raw-html-editor').value = quill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('raw-html-editor').addEventListener('input', function() { quill.root.innerHTML = this.value; checkAllLocks(); });
-            
-            domainQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('domain-raw-html-editor').value = domainQuill.root.innerHTML; checkAllLocks(); } });
-            document.getElementById('domain-raw-html-editor').addEventListener('input', function() { domainQuill.root.innerHTML = this.value; checkAllLocks(); });
+            <div x-show="show" role="alertdialog" aria-modal="true" aria-labelledby="osw-confirm-title" aria-describedby="osw-confirm-description" class="osw-modal-shell osw-modal-width-small">
+                <div class="osw-modal-header"><h3 id="osw-confirm-title" class="text-lg font-semibold text-white" x-text="title"></h3><button type="button" @click="close()" class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                <div class="osw-modal-body">
+                    <div class="flex items-start gap-4">
+                        <div class="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-900' : 'bg-yellow-900'">
+                            <svg class="h-6 w-6" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'text-red-400' : 'text-yellow-400'" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        </div>
+                        <p id="osw-confirm-description" class="text-sm text-gray-300 pt-2" x-text="message"></p>
+                    </div>
+                </div>
+                <div class="osw-modal-footer"><button @click="close()" class="px-4 py-2 bg-gray-700 text-gray-200 rounded hover:bg-gray-600 border border-gray-600 text-sm font-medium">Cancel</button><button @click="confirm()" class="px-4 py-2 text-white rounded text-sm font-medium" :class="(action === 'delete' || action === 'clear-user' || action === 'clear-admin') ? 'bg-red-600 hover:bg-red-700' : 'bg-yellow-600 hover:bg-yellow-700'">Confirm</button></div>
+            </div>
+        </div>
+    </div>
 
-            if(!{{ 'true' if can_edit else 'false' }}) { quill.disable(); }
 
-            const res = await fetch('/api/my-signature');
-            if(res.ok) {
-                const data = await res.json();
-                document.getElementById('raw-html-editor').value = data.html_content;
-                quill.root.innerHTML = data.html_content;
-                checkAllLocks();
-            }
-        });
-
-        window.addEventListener('sanitize-html', (e) => {
-            const { html, target } = e.detail;
-            if (!html) return;
-
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            let cleanHtml = doc.body.innerHTML.trim();
-            cleanHtml = cleanHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-
-            if (target === 'personal') {
-                document.getElementById('raw-html-editor').value = cleanHtml;
-                quill.root.innerHTML = cleanHtml;
-            } else if (target === 'domain') {
-                document.getElementById('domain-raw-html-editor').value = cleanHtml;
-                domainQuill.root.innerHTML = cleanHtml;
-            } else if (target === 'admin') {
-                document.getElementById('admin-raw-html-editor').value = cleanHtml;
-                if(adminQuill) adminQuill.root.innerHTML = cleanHtml;
-            }
-            checkAllLocks();
-            notify("Signature successfully imported and sanitized!");
-        });
-
-        async function saveUserSignature() {
-            const finalHtml = document.getElementById('raw-html-editor').value;
-            const res = await fetch('/api/my-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: finalHtml }) });
-            if(res.ok) notify("Signature saved successfully!"); else notify("Failed to save.", "error");
-        }
-
-        function domainManager() { return { domains: [], async fetchDomains() { this.domains = await (await fetch('/domains/')).json(); } } }
-
-        function domainSettingsModal() {
-            return {
-                show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
-                open(domainData) {
-                    this.show = true; this.domain = domainData; this.allowOverrides = domainData.allow_overrides; this.injectOnReplies = domainData.inject_on_replies; this.trimWhitespace = domainData.trim_whitespace; this.stripDeviceSignatures = domainData.strip_device_signatures; this.modalTab = 'settings'; this.editingUserEmail = '';
-                    
-                    setTimeout(() => { 
-                        document.getElementById('domain-raw-html-editor').value = domainData.template_html;
-                        domainQuill.root.innerHTML = domainData.template_html; 
-                        checkAllLocks();
-                    }, 50);
-                    
-                    if(!adminQuill) {
-                        adminQuill = new Quill('#admin-quill-editor', { theme: 'snow', modules: { toolbar: [['bold', 'italic', 'underline'], [{ 'color': [] }, { 'background': [] }], ['link', 'image'], ['clean']] }});
-                        adminQuill.on('text-change', (d, old, source) => { if (source === 'user') { document.getElementById('admin-raw-html-editor').value = adminQuill.root.innerHTML; checkAllLocks(); } });
-                        document.getElementById('admin-raw-html-editor').addEventListener('input', function() { adminQuill.root.innerHTML = this.value; checkAllLocks(); });
-                    }
-                },
-                async fetchOverrides() {
-                    const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
-                    if(res.ok) this.userOverrides = await res.json();
-                },
-                loadAdminEditor(email, directHtml = null, isDisabled = false) {
-                    if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }
-                    this.editingUserEmail = email; 
-                    
-                    if (directHtml !== null) { 
-                        document.getElementById('admin-raw-html-editor').value = directHtml;
-                        adminQuill.root.innerHTML = directHtml; 
-                        this.editingUserDisabled = isDisabled;
-                    } else {
-                        const existingUser = this.userOverrides.find(u => u.user_email === email);
-                        const content = existingUser ? existingUser.html_content : '';
-                        document.getElementById('admin-raw-html-editor').value = content;
-                        adminQuill.root.innerHTML = content;
-                        this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
-                    }
-                    checkAllLocks();
-                },
-                async saveAdminOverride() {
-                    const finalHtml = document.getElementById('admin-raw-html-editor').value;
-                    const res = await fetch('/api/admin/overrides', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ user_email: this.editingUserEmail, html_content: finalHtml, is_disabled: this.editingUserDisabled }) });
-                    if(res.ok) { notify(`Saved configuration for ${this.editingUserEmail}`); this.editingUserEmail = ''; this.fetchOverrides(); }
-                }
-            }
-        }
-
-        window.addEventListener('submit-new-domain', async (e) => {
-            const res = await fetch('/domains/', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ domain_name: e.detail, is_active: true }) });
-            if (res.ok) { notify("Domain registered!"); window.dispatchEvent(new CustomEvent('domain-updated')); } else notify("Failed.", "error");
-        });
-        window.addEventListener('save-domain-settings', async (e) => {
-            const res = await fetch(`/domains/${e.detail.domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: e.detail.domain.is_active, allow_overrides: e.detail.allowOverrides, inject_on_replies: e.detail.injectOnReplies, trim_whitespace: e.detail.trimWhitespace, strip_device_signatures: e.detail.stripDeviceSignatures, template_html: document.getElementById('domain-raw-html-editor').value }) });
-            if (res.ok) { notify("Settings saved!"); window.dispatchEvent(new CustomEvent('domain-updated')); }
-        });
-        
-        window.addEventListener('confirm-action', async (e) => {
-            const { domain, action, targetId } = e.detail;
-            if (action === 'toggle') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: !domain.is_active, allow_overrides: domain.allow_overrides, inject_on_replies: domain.inject_on_replies, trim_whitespace: domain.trim_whitespace, strip_device_signatures: domain.strip_device_signatures, template_html: domain.template_html }) });
-                if (res.ok) { notify("Status updated."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'delete') {
-                const res = await fetch(`/domains/${domain.id}`, { method: 'DELETE' });
-                if (res.ok) { notify("Domain deleted."); window.dispatchEvent(new CustomEvent('domain-updated')); window.location.reload(); }
-            } else if (action === 'clear-user') {
-                const res = await fetch('/api/my-signature', { method: 'DELETE' });
-                if(res.ok) {
-                    document.getElementById('raw-html-editor').value = '';
-                    quill.root.innerHTML = ''; 
-                    checkAllLocks();
-                    notify("Signature cleared and removed from database!");
-                } else { notify("Failed to clear signature.", "error"); }
-            } else if (action === 'clear-admin') {
-                const res = await fetch(`/api/admin/overrides/${targetId}`, { method: 'DELETE' });
-                if(res.ok) { notify("User override deleted."); window.dispatchEvent(new CustomEvent('refresh-admin-overrides')); }
-            }
-        });
-    </script>
+    <script src="/static/js/portal.js?v=alert-status-20261124"></script>
 </body>
 </html>

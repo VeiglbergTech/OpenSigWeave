@@ -1,0 +1,73 @@
+name: Publish approved release image (GHCR)
+
+on:
+  push:
+    tags:
+      - "[0-9][0-9][0-9][0-9].[0-9][0-9]*"
+
+# Only approved, exact main HEAD release tags are eligible. Self-hosted runner
+# avoids metered hosted compute for private repositories. No build artifacts.
+permissions:
+  contents: read
+  actions: read
+  packages: write
+
+concurrency:
+  group: opensigweave-publish-ghcr
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'VeiglbergTech/OpenSigWeave'
+    runs-on: [self-hosted, linux, x64]
+    timeout-minutes: 90
+    steps:
+      - name: Check out exact release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: Require manually approved main and successful main push checks
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/release_tags.py
+      - name: Build and publish exact version plus matching channel alias
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMAGE_NAME: ghcr.io/veiglbergtech/opensigweave
+          VERSION: ${{ steps.gate.outputs.version }}
+          ALIAS: ${{ steps.gate.outputs.alias }}
+          REVISION: ${{ steps.gate.outputs.revision }}
+        run: |
+          set -euo pipefail
+          test -n "$VERSION" && test -n "$ALIAS" && test -n "$REVISION"
+          command -v docker >/dev/null
+          docker info >/dev/null
+          export DOCKER_CONFIG
+          DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Never intentionally overwrite a published version-specific tag.
+          # After a partial push, repair the moving alias from the existing
+          # version digest instead of rebuilding that version.
+          if docker manifest inspect "$IMAGE_NAME:$VERSION" >/dev/null 2>&1; then
+            echo "::error::Version tag already exists in GHCR; refusing to overwrite"
+            exit 1
+          fi
+          docker build --pull \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$REVISION" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --tag "$IMAGE_NAME:$VERSION" .
+          docker push "$IMAGE_NAME:$VERSION"
+          docker tag "$IMAGE_NAME:$VERSION" "$IMAGE_NAME:$ALIAS"
+          docker push "$IMAGE_NAME:$ALIAS"
+          {
+            echo "## GHCR release image"
+            echo "Published: \`$IMAGE_NAME:$VERSION\`"
+            echo "Alias: \`$IMAGE_NAME:$ALIAS\`"
+            echo "Revision: \`$REVISION\`"
+            echo "Only the channel matching the release tag was updated."
+            echo "A newly created GHCR package defaults to private; visibility must be explicitly reviewed."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,336 @@
+name: Tests
+
+on:
+  push:
+    branches: ["dev", "beta", "main"]
+  pull_request:
+    branches: ["dev", "beta", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only CI exercises the explicit local-build overlay.
+env:
+  COMPOSE_FILE: compose.yaml:compose.build.yaml
+
+concurrency:
+  group: opensigweave-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:d3244e8ce3f165ee3c93d9c4a4b1d0fe48b3a89e2287b717fdcbbde92d405065
+        env:
+          POSTGRES_DB: opensigweave
+          POSTGRES_USER: opensigweave
+          POSTGRES_PASSWORD: ci-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opensigweave -d opensigweave"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate GitHub workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Compile Python sources
+        run: python -m compileall -q .
+      - name: Check browser JavaScript syntax
+        run: |
+          node --check static/js/portal.js
+          node --check static/js/rich-editor.js
+          node --check static/js/branding.js
+          node --check static/js/logout.js
+      - name: Test Alpine CSP evaluator in a DOM
+        run: |
+          npm install --no-save --package-lock=false @alpinejs/csp@3.17.5 jsdom@26.1.0
+          node tests/frontend_csp_smoke.cjs
+      - name: Verify Alpine CSP CDN artifact and calculate SRI
+        run: |
+          curl -fsSLo /tmp/alpine-csp.min.js https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js
+          printf 'Alpine CSP SRI: sha384-'
+          openssl dgst -sha384 -binary /tmp/alpine-csp.min.js | base64 -w0
+          echo
+      - name: Check installer/updater shell entrypoints
+        run: |
+          bash -n install.sh generate_config.sh update.sh
+          python3 -m py_compile scripts/deploy_common.py scripts/config_manager.py scripts/install_manager.py scripts/update_manager.py
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck install.sh generate_config.sh update.sh
+          python3 -m unittest discover -s tests -p test_deployment_manager.py -v
+      - name: Check backup automation shell syntax
+        run: |
+          bash -n scripts/backup_to_mounted_storage.sh
+          bash -n tests/docker_backup_restore_e2e.sh
+      - name: Test scheduled backup remote-filesystem guards
+        run: bash tests/scheduled_backup_smoke.sh
+      - name: Check Rspamd Lua syntax
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.1
+          luac5.1 -p rspamd/opensigweave.lua rspamd/opensigweave_mime.lua rspamd/opensigweave_cid.lua rspamd/opensigweave_guard.lua tests/rspamd_guard_test.lua tests/rspamd_cid_test.lua tests/rspamd_multipart_test.lua tests/rspamd_mime_matrix_test.lua tests/rspamd_injection_test.lua tests/rspamd_marker_selector_test.lua
+          lua5.1 tests/rspamd_guard_test.lua
+          lua5.1 tests/rspamd_marker_selector_test.lua
+          lua5.1 tests/rspamd_multipart_test.lua > /tmp/opensigweave-multipart-test.eml
+          python tests/verify_rspamd_multipart.py /tmp/opensigweave-multipart-test.eml
+          lua5.1 tests/rspamd_mime_matrix_test.lua /tmp/opensigweave-mime-matrix.eml
+          python tests/verify_rspamd_mime_matrix.py /tmp/opensigweave-mime-matrix.eml
+          lua5.1 tests/rspamd_cid_test.lua /tmp/opensigweave-cid-mime.eml
+          python tests/verify_rspamd_cid.py /tmp/opensigweave-cid-mime.eml
+          mkdir -p /tmp/opensigweave-injection-fixtures
+          lua5.1 tests/rspamd_injection_test.lua /tmp/opensigweave-injection-fixtures
+          python tests/verify_rspamd_injection.py /tmp/opensigweave-injection-fixtures
+      - name: Test PostgreSQL schema migrations
+        env:
+          DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
+          POSTGRES_PASSWORD: ci-password
+        run: alembic upgrade head
+      - name: Test SQLite schema migrations
+        env:
+          DATABASE_URL: sqlite:///./ci_test.db
+        run: alembic upgrade head
+      - name: Test backup rules independently of Docker and SMB
+        run: python -m unittest discover -s tests -p test_backup_rules.py -v
+      - name: Install Playwright test client
+        run: npm install --no-save --package-lock=false playwright@1.56.0
+      - name: Build and smoke-test standalone Docker stack
+        timeout-minutes: 20
+        run: |
+          postgres_password='ci-password'
+          session_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          engine_key="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
+          local_admin_hash="$(python -c 'from auth_config import hash_local_admin_password; print(hash_local_admin_password("ci-local-admin-password"))')"
+          cat > .env <<EOF
+          POSTGRES_DB=opensigweave
+          POSTGRES_USER=opensigweave
+          POSTGRES_PASSWORD=$postgres_password
+          SECRET_KEY=$session_key
+          SESSION_COOKIE_NAME=opensigweave-session
+          SESSION_COOKIE_SECURE=false
+          ENGINE_API_KEY=$engine_key
+          APP_ALLOWED_HOSTS=signature.example.test,localhost
+          LOCAL_ADMIN_EMAIL=admin@example.test
+          LOCAL_ADMIN_PASSWORD_HASH='$local_admin_hash'
+          EOF
+          cleanup() {
+            status=$?
+            trap - EXIT
+            if [ "$status" -ne 0 ]; then
+              echo "::group::Docker Compose status after smoke-test failure"
+              docker compose ps || true
+              echo "::endgroup::"
+              echo "::group::Docker Compose logs after smoke-test failure"
+              docker compose logs --no-color --tail=250 || true
+              echo "::endgroup::"
+            fi
+            docker compose down --volumes || true
+            exit "$status"
+          }
+          trap cleanup EXIT
+          docker compose config --quiet
+          docker compose up -d --build --wait --wait-timeout 120
+          docker compose exec -T opensigweave alembic current
+          # Real container-native age/pg_dump/snapshot/recovery smoke test.
+          # The temporary key exists only for the CI environment.
+          age_pair="$(docker compose exec -T opensigweave age-keygen)"
+          age_identity="$(printf '%s\n' "$age_pair" | sed -n '/^AGE-SECRET-KEY-/p' | head -n 1)"
+          age_recipient="$(printf '%s\n' "$age_pair" | sed -n 's/^# public key: //p' | head -n 1)"
+          test -n "$age_identity" && test -n "$age_recipient"
+          ci_snapshot="opensigweave-before-update-20261123T000000Z-aaaaaaaaaaaa.age"
+          docker compose exec -T -e BACKUP_AGE_RECIPIENT="$age_recipient" \
+            -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave \
+            python backup_cli.py create-application --filename "$ci_snapshot"
+          docker compose exec -T -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave \
+            python backup_cli.py verify-application --filename "$ci_snapshot"
+          docker compose exec -T -e BACKUP_AGE_IDENTITY="$age_identity" opensigweave python - <<'PY'
+          from pathlib import Path
+          import os
+          import shutil
+          from backup_engine import restore_application_to_new_directory
+          root = Path("/app/backups")
+          identity = root / ".ci-recovery-identity"
+          target = root / ".ci-recovery-staging"
+          assert not identity.exists() and not target.exists()
+          try:
+              identity.write_text(os.environ["BACKUP_AGE_IDENTITY"] + "\n", encoding="ascii")
+              identity.chmod(0o600)
+              restored = restore_application_to_new_directory(
+                  root / "opensigweave-before-update-20261123T000000Z-aaaaaaaaaaaa.age",
+                  identity, target,
+              )
+              assert restored["metadata"]["backup_kind"] == "application"
+              assert (target / "database" / "opensigweave.dump").read_bytes().startswith(b"PGDMP")
+              assert (target / "manifest.json").exists()
+              assert (target / "data" / "signatures").is_dir() or (
+                  target / "data" / "idp-config"
+              ).is_dir() or restored["files"], "Expected a versioned snapshot manifest"
+          finally:
+              identity.unlink(missing_ok=True)
+              if target.exists():
+                  shutil.rmtree(target)
+          PY
+          # Exercise optional rule-managed pre-update backups end-to-end with
+          # no manually configured age keys or backup destinations.
+          docker compose exec -T opensigweave python backup_cli.py preupdate --check | \
+            python -c 'import json,sys; assert json.load(sys.stdin)["status"] == "not_configured"'
+          docker compose exec -T opensigweave python - <<'PY'
+          import uuid
+          from database import SessionLocal
+          from models import BackupLocationDB, BackupRuleDB
+          with SessionLocal() as db:
+              local_id, rule_id = uuid.uuid4().hex, uuid.uuid4().hex
+              db.add(BackupLocationDB(id=local_id, name="CI Preupdate Local", type="local", is_enabled=True))
+              db.add(BackupRuleDB(
+                  id=rule_id, name="CI Preupdate Backup", location_id=local_id,
+                  is_enabled=True, content="full", schedule_kind="daily",
+                  retention_count=2,
+              ))
+              db.commit()
+          PY
+          docker compose exec -T opensigweave python backup_cli.py preupdate --check | \
+            python -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "configured" and x["rule_name"] == "CI Preupdate Backup"'
+          docker compose exec -T opensigweave python backup_cli.py preupdate | \
+            python -c 'import json,sys; x=json.load(sys.stdin); assert x["status"] == "verified" and x["file_key"].endswith(".age"), x'
+          docker compose exec -T opensigweave test -s /app/backups/.recovery/age-identity.txt
+          docker compose exec -T opensigweave test -s /app/branding/logo.png
+          curl --fail --silent --show-error -H 'Host: signature.example.test'             http://127.0.0.1:8085/branding/logo.png -o /tmp/opensigweave-logo.png
+          python - <<'PY'
+          from pathlib import Path
+          data = Path("/tmp/opensigweave-logo.png").read_bytes()
+          assert data.startswith(b"\x89PNG\r\n\x1a\n"), "Bundled branding logo is not a PNG"
+          assert len(data) > 8, "Bundled branding logo is empty"
+          PY
+          if ! login_page="$(curl --fail --silent --show-error -H 'Host: signature.example.test' http://127.0.0.1:8085/login)"; then
+            docker compose logs --no-color opensigweave
+            exit 1
+          fi
+          # Verify functioning login controls instead of optional explanatory copy.
+          grep -q 'id="email"' <<<"$login_page"
+          grep -q 'id="password"' <<<"$login_page"
+          grep -q '/branding/logo.png' <<<"$login_page"
+          normal_user_session="$(python -c 'import base64,json,sys; from itsdangerous import TimestampSigner; payload={"user":{"email":"normal@example.test","name":"Normal User","groups":["signature-users"],"attributes":{}},"csrf_token":"ci-normal-user-csrf-token"}; encoded=base64.b64encode(json.dumps(payload,separators=(",",":")).encode()); print(TimestampSigner(sys.argv[1]).sign(encoded).decode())' "$session_key")"
+          restricted_user_session="$(python -c 'import base64,json,sys; from itsdangerous import TimestampSigner; payload={"user":{"email":"restricted@restricted.test","name":"Restricted User","groups":["signature-users"],"attributes":{}},"csrf_token":"ci-restricted-user-csrf-token"}; encoded=base64.b64encode(json.dumps(payload,separators=(",",":")).encode()); print(TimestampSigner(sys.argv[1]).sign(encoded).decode())' "$session_key")"
+          docker compose exec -T opensigweave python -c 'from database import SessionLocal; from models import DomainDB, IdentityProviderDB; db=SessionLocal(); db.add_all([DomainDB(domain_name="example.test", is_active=True, allow_overrides=True), DomainDB(domain_name="restricted.test", is_active=True, allow_overrides=False), IdentityProviderDB(id="browser-smoke-profile-provider", display_name="Browser Smoke Profile Provider", provider_type="ldap", is_enabled=True)]); db.commit(); db.close()'
+          # The profile-provider picker lists configured identity sources only.
+          # This offline LDAPS fixture is never contacted by the browser assignment test.
+          docker compose exec -T opensigweave python -c 'from main import identity_provider_registry; identity_provider_registry.save("browser-smoke-profile-provider", "Browser Smoke Profile Provider", "ldap", {"LDAP_URL": "ldaps://directory.example.invalid", "LDAP_BASE_DN": "dc=example,dc=invalid"}, True)'
+          engine_header="$(printf '%s: %s' 'X-Engine-Key' "$engine_key")"
+          response="$(curl --fail --silent --show-error -H 'Host: signature.example.test' -H "$engine_header" http://127.0.0.1:8085/api/signature/smoke@example.test)"
+          printf 'Signature engine smoke response: %s\n' "$response"
+          python -c 'import json,sys; result=json.loads(sys.argv[1]); assert result["html"] == "", "An unconfigured domain must not inject its retired master template"' "$response"
+          timeout --signal=TERM --kill-after=30s 12m docker run --rm --init --ipc=host --network host -v "$PWD:/work" -w /work -e BROWSER_TEST_EMAIL="admin@example.test" -e BROWSER_TEST_PASSWORD="ci-local-admin-password" -e BROWSER_TEST_NORMAL_USER_SESSION="$normal_user_session" -e BROWSER_TEST_RESTRICTED_USER_SESSION="$restricted_user_session" mcr.microsoft.com/playwright:v1.56.0-noble node tests/browser_smoke.cjs
+          # Verify administrator-provided branding survives a real application-container restart.
+          # PostgreSQL is kept running; only the stateless web container is restarted.
+          docker compose exec -T opensigweave python - <<'PY'
+          import base64
+          from database import SessionLocal
+          from models import BrandingSettingsDB
+          db = SessionLocal()
+          settings = db.get(BrandingSettingsDB, 1)
+          if settings is None:
+              settings = BrandingSettingsDB(id=1)
+              db.add(settings)
+          settings.app_name = "Branding restart test"
+          settings.app_color = "#123456"
+          settings.logo_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
+          settings.dark_logo_png = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==")
+          settings.favicon_data = settings.logo_png
+          settings.favicon_mime = "image/png"
+          # Scheduling data lives in PostgreSQL, not in the application container.
+          from datetime import datetime, timezone
+          from models import DomainDB, SignatureDB, SignatureScheduleDB
+          domain = db.query(DomainDB).filter(DomainDB.domain_name == "example.test").one()
+          signature = SignatureDB(id="c" * 32, name="CI Restart Signature", domain_id=None,
+                                  scope="GLOBAL", mode="UNUSED", is_active=True)
+          db.add(signature)
+          db.flush()
+          db.add(SignatureScheduleDB(
+              id="d" * 32, name="CI Schedule Restart", domain_id=domain.id,
+              target_type="SIGNATURE", signature_id=signature.id,
+              starts_at=datetime(2026, 12, 1, tzinfo=timezone.utc),
+              ends_at=datetime(2026, 12, 27, tzinfo=timezone.utc),
+              priority=70, is_enabled=True,
+          ))
+          db.commit()
+          db.close()
+          PY
+          docker compose restart opensigweave
+          docker compose up -d --wait --wait-timeout 120
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/login | grep -q 'Branding restart test'
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/logo.png -o /tmp/osw-restart-logo.png
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/logo-dark.png -o /tmp/osw-restart-dark-logo.png
+          curl -fsS -H 'Host: signature.example.test' http://127.0.0.1:8085/branding/favicon -o /tmp/osw-restart-favicon.png
+          docker compose exec -T opensigweave python - <<'PY'
+          from datetime import datetime, timezone
+          from database import SessionLocal
+          from models import DomainDB, SignatureScheduleDB
+          from core.schedule_repository import load_active_schedule
+          db = SessionLocal()
+          domain = db.query(DomainDB).filter(DomainDB.domain_name == "example.test").one()
+          schedule = db.get(SignatureScheduleDB, "d" * 32)
+          assert schedule is not None and schedule.name == "CI Schedule Restart"
+          assert schedule.priority == 70 and schedule.is_enabled
+          assert load_active_schedule(db, domain.id, now=datetime(2026, 12, 1, tzinfo=timezone.utc)).id == schedule.id
+          assert load_active_schedule(db, domain.id, now=datetime(2026, 12, 27, tzinfo=timezone.utc)) is None
+          db.close()
+          PY
+          python - <<'PY'
+          import base64
+          from pathlib import Path
+          expected = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==")
+          assert Path("/tmp/osw-restart-logo.png").read_bytes() == expected
+          expected_dark = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYPj/HwADAgH/5ncLrgAAAABJRU5ErkJggg==")
+          assert Path("/tmp/osw-restart-dark-logo.png").read_bytes() == expected_dark
+          assert Path("/tmp/osw-restart-favicon.png").read_bytes() == expected
+          PY
+          docker compose exec -T opensigweave python - <<'PY'
+          from database import SessionLocal
+          from models import BrandingSettingsDB
+          db = SessionLocal()
+          settings = db.get(BrandingSettingsDB, 1)
+          settings.app_name = "OpenSigWeave"
+          settings.app_color = "#ff7043"
+          settings.logo_png = None
+          settings.dark_logo_png = None
+          settings.favicon_data = None
+          settings.favicon_mime = None
+          db.commit()
+          db.close()
+          PY
+      - name: Install age for backup integration
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y age
+      - name: Test full encrypted Docker backup and fresh restore
+        run: bash tests/docker_backup_restore_e2e.sh
+      - name: Run regression tests
+        env:
+          DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
+          POSTGRES_PASSWORD: ci-password
+        run: python -m unittest discover -s tests -v
+      - name: Upload UI theme and modal screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dialog-visual-regression
+          path: |
+            test-artifacts/dialogs/
+            test-artifacts/themes/
+          if-no-files-found: warn
+          retention-days: 14

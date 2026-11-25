@@ -1,0 +1,466 @@
+name: Postfix Milter Compatibility
+
+on:
+  push:
+    branches: ["dev", "beta", "main"]
+    paths:
+      - "docs/POSTFIX_MILTER_DESIGN.md"
+      - "adapters/postfix_milter.py"
+      - "tests/test_postfix_milter_adapter.py"
+      - "tests/postfix_milter_e2e_server.py"
+      - ".github/workflows/postfix-milter-compat.yml"
+  pull_request:
+    branches: ["dev", "beta", "main"]
+    paths:
+      - "docs/POSTFIX_MILTER_DESIGN.md"
+      - "adapters/postfix_milter.py"
+      - "tests/test_postfix_milter_adapter.py"
+      - "tests/postfix_milter_e2e_server.py"
+      - ".github/workflows/postfix-milter-compat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pymilter-runtime:
+    name: Verify PyMilter 1.0.6 on Python 3.12
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    timeout-minutes: 10
+    steps:
+      - name: Install EPEL and PyMilter runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y epel-release
+          dnf install -y python3 python3-pymilter
+      - name: Verify Python and PyMilter versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          rpm -q --qf 'PyMilter RPM: %{VERSION}-%{RELEASE}\n' python3-pymilter
+          test "$(rpm -q --qf '%{VERSION}' python3-pymilter)" = "1.0.6"
+          python3 - <<'PY'
+          import sys
+          import Milter
+          import milter
+
+          assert sys.version_info[:2] == (3, 12), sys.version
+          print(f"Python runtime: {sys.version.split()[0]}")
+          print(f"Native extension: {milter.__file__}")
+          print(f"Python API module: {Milter.__file__}")
+          PY
+      - name: Exercise PyMilter callback and mutation API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import Milter
+
+          class FakeContext:
+              def __init__(self):
+                  self.replacements = []
+                  self.private = None
+
+              def setpriv(self, value):
+                  self.private = value
+
+              def getsymval(self, name):
+                  return {"{auth_authen}": "sender@example.org"}.get(name)
+
+              def replacebody(self, chunk):
+                  self.replacements.append(chunk)
+
+          class Probe(Milter.Base):
+              def __init__(self):
+                  self.sender = None
+                  self.headers = []
+                  self.body_chunks = []
+
+              def envfrom(self, sender, *args):
+                  self.sender = sender
+                  return Milter.CONTINUE
+
+              def header(self, field, value):
+                  self.headers.append((field, value))
+                  return Milter.CONTINUE
+
+              def body(self, chunk):
+                  self.body_chunks.append(chunk)
+                  return Milter.CONTINUE
+
+              def eom(self):
+                  self.replacebody(b"rewritten body")
+                  return Milter.CONTINUE
+
+          probe = Probe()
+          context = FakeContext()
+          probe._setctx(context)
+
+          assert probe.envfrom("<sender@example.org>") == Milter.CONTINUE
+          assert probe.sender == "<sender@example.org>"
+          assert probe.getsymval("{auth_authen}") == "sender@example.org"
+          assert probe.header("Content-Type", " text/plain") == Milter.CONTINUE
+          assert probe.body(b"original body") == Milter.CONTINUE
+          assert probe.eom() == Milter.CONTINUE
+          assert context.replacements == [b"rewritten body"]
+
+          print("Envelope sender callback: OK")
+          print("SASL macro lookup: OK")
+          print("Header callback: OK")
+          print("Body callback: OK")
+          print("End-of-message body replacement API: OK")
+          PY
+      - name: Verify native libmilter linkage
+        shell: bash
+        run: |
+          set -euo pipefail
+          extension="$(python3 -c 'import milter; print(milter.__file__)')"
+          ldd "$extension"
+          if ldd "$extension" | grep -q 'not found'; then
+            echo "Unresolved native library dependency"
+            exit 1
+          fi
+
+  postfix-protocol:
+    name: Verify real Postfix Milter protocol exchange
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    timeout-minutes: 10
+    steps:
+      - name: Check out OpenSigWeave
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Install Postfix, PyMilter and Cyrus SASL
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y epel-release
+          dnf --disablerepo=crb,extras install -y postfix python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
+      - name: Run disposable Postfix SMTP transaction through a real Milter
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > /tmp/probe_milter.py <<'PY'
+          import Milter
+
+          class ProbeMilter(Milter.Base):
+              @Milter.symlist('{auth_authen}')
+              def envfrom(self, sender, *args):
+                  authenticated_user = self.getsymval('{auth_authen}')
+                  print(f"CALLBACK_ENVFROM:{sender}", flush=True)
+                  print(f"CALLBACK_AUTH:{authenticated_user}", flush=True)
+                  return Milter.CONTINUE
+
+              def header(self, field, value):
+                  print(f"CALLBACK_HEADER:{field}", flush=True)
+                  return Milter.CONTINUE
+
+              def body(self, chunk):
+                  print(f"CALLBACK_BODY:{len(chunk)}", flush=True)
+                  return Milter.CONTINUE
+
+              def eom(self):
+                  self.addheader("X-OpenSigWeave-CI", "real-postfix-milter-ok")
+                  self.chgheader("Subject", 1, "OpenSigWeave header mutation verified")
+                  print("CALLBACK_CHGHEADER", flush=True)
+                  self.replacebody(b"OpenSigWeave body mutation verified")
+                  print("CALLBACK_REPLACEBODY", flush=True)
+                  print("CALLBACK_EOM", flush=True)
+                  return Milter.CONTINUE
+
+          Milter.factory = ProbeMilter
+          Milter.set_flags(Milter.ADDHDRS | Milter.CHGHDRS | Milter.MODBODY)
+          Milter.runmilter("opensigweave-ci", "inet:8899@127.0.0.1", 30)
+          PY
+
+          postconf -e 'myhostname = localhost.localdomain'
+          postconf -e 'mydestination = localhost, localhost.localdomain'
+          postconf -e 'local_recipient_maps ='
+          postconf -e 'mailbox_command = /usr/bin/python3 /tmp/capture_mail.py'
+          install -d -o root -g root -m 755 /var/spool/postfix
+          newaliases
+          postconf -e 'inet_interfaces = 127.0.0.1'
+          postconf -e 'inet_protocols = ipv4'
+          postconf -e 'mynetworks = 192.0.2.0/24'
+          postconf -e 'smtpd_relay_restrictions = permit_mynetworks,reject_unauth_destination'
+          postconf -e 'smtpd_milters = inet:127.0.0.1:8899'
+          postconf -e 'milter_protocol = 6'
+          postconf -e 'milter_default_action = tempfail'
+          postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          postconf -e 'smtpd_sasl_auth_enable = yes'
+          postconf -e 'smtpd_sasl_type = cyrus'
+          postconf -e 'smtpd_sasl_path = smtpd'
+          postconf -e 'smtpd_sasl_local_domain = localhost'
+          postconf -e 'smtpd_sasl_security_options = noanonymous'
+          postconf -e 'smtpd_sasl_exceptions_networks ='
+          postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
+
+          cat > /etc/sasl2/smtpd.conf <<'SASL'
+          pwcheck_method: auxprop
+          auxprop_plugin: sasldb
+          mech_list: PLAIN LOGIN
+          sasldb_path: /etc/sasldb2
+          SASL
+          printf 'ci-password\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost authuser
+          chown root:postfix /etc/sasldb2
+          chmod 640 /etc/sasldb2
+          printf 'sender@example.org authuser@localhost\n' > /etc/postfix/sender_login
+          postmap /etc/postfix/sender_login
+          test "$(postmap -q sender@example.org lmdb:/etc/postfix/sender_login)" = "authuser@localhost"
+
+          useradd --create-home testuser
+          install -d -o testuser -g testuser -m 700 /tmp/delivered
+          postconf -e 'alias_database ='
+          postconf -e 'alias_maps ='
+          cat > /tmp/capture_mail.py <<'PY'
+          import os
+          import sys
+          import uuid
+          os.makedirs('/tmp/delivered', exist_ok=True)
+          with open(f"/tmp/delivered/{uuid.uuid4().hex}.eml", "wb") as output:
+              output.write(sys.stdin.buffer.read())
+          PY
+          postfix check
+
+          python3 /tmp/probe_milter.py >/tmp/milter.log 2>&1 &
+          MILTER_PID=$!
+          cleanup() {
+            kill "$MILTER_PID" 2>/dev/null || true
+            postfix stop 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          milter_ready=false
+          for _ in $(seq 1 30); do
+            if ! kill -0 "$MILTER_PID" 2>/dev/null; then
+              cat /tmp/milter.log
+              exit 1
+            fi
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",8899),1); s.close()' 2>/dev/null; then
+              milter_ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$milter_ready" = true
+
+          postfix start
+          for _ in $(seq 1 30); do
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",25),1); s.close()' 2>/dev/null; then break; fi
+            sleep 1
+          done
+
+          python3 - <<'PY'
+          import smtplib
+          from email.message import EmailMessage
+
+          def message():
+              msg = EmailMessage()
+              msg["From"] = "sender@example.org"
+              msg["To"] = "testuser@localhost"
+              msg["Subject"] = "OpenSigWeave authenticated Milter test"
+              msg.set_content("Protocol callback test")
+              return msg
+
+          # Unauthenticated local SMTP must still reach the Milter without a SASL identity.
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["testuser@localhost"])
+          print("Unauthenticated SMTP transaction accepted; no identity expected")
+
+          # Authenticated submission must expose the actual Cyrus SASL identity to the Milter.
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.login("authuser@localhost", "ci-password")
+              smtp.send_message(message(), from_addr="sender@example.org", to_addrs=["testuser@localhost"])
+          print("Authenticated SMTP transaction accepted")
+
+          # The same authenticated principal must not be able to submit an unowned envelope sender.
+          with smtplib.SMTP("127.0.0.1", 25, timeout=10) as smtp:
+              smtp.login("authuser@localhost", "ci-password")
+              code, response = smtp.mail("spoofed@example.org")
+              assert code == 250, (code, response)
+              # Postfix delays sender restrictions until RCPT TO by default.
+              code, response = smtp.rcpt("testuser@localhost")
+              assert code in (550, 553), (code, response)
+              print(f"Unauthorized envelope sender rejected: {code} {response!r}")
+          PY
+
+          for _ in $(seq 1 20); do
+            if grep -q 'CALLBACK_AUTH:authuser@localhost' /tmp/milter.log; then break; fi
+            sleep 0.5
+          done
+          grep -q 'CALLBACK_ENVFROM:<sender@example.org>' /tmp/milter.log
+          grep -q 'CALLBACK_AUTH:None' /tmp/milter.log
+          grep -q 'CALLBACK_AUTH:authuser@localhost' /tmp/milter.log
+          grep -q 'CALLBACK_HEADER:Subject' /tmp/milter.log
+          grep -q 'CALLBACK_BODY:' /tmp/milter.log
+          grep -q 'CALLBACK_EOM' /tmp/milter.log
+          grep -q 'CALLBACK_CHGHEADER' /tmp/milter.log
+          grep -q 'CALLBACK_REPLACEBODY' /tmp/milter.log
+          cat /tmp/milter.log
+
+          # Verify Postfix actually delivers the mutated message, not merely that
+          # the Milter callback methods were invoked.
+          python3 - <<'PY'
+          import glob
+          import time
+          from email import policy
+          from email.parser import BytesParser
+
+          delivered = []
+          for attempt in range(40):
+              paths = glob.glob("/tmp/delivered/*.eml")
+              if len(paths) >= 2:
+                  delivered = [BytesParser(policy=policy.default).parsebytes(open(path, "rb").read()) for path in paths]
+                  break
+              time.sleep(0.5)
+
+          assert len(delivered) == 2, f"Expected two delivered messages, found {len(delivered)}; queue={__import__('subprocess').run(['postqueue', '-p'], capture_output=True, text=True).stdout}; maillog={open('/var/log/maillog').read() if __import__('os').path.exists('/var/log/maillog') else 'no maillog'}"
+          for message in delivered:
+              assert message["X-OpenSigWeave-CI"] == "real-postfix-milter-ok", message
+              assert message["Subject"] == "OpenSigWeave header mutation verified", message["Subject"]
+              assert message.get_content().strip() == "OpenSigWeave body mutation verified", message.get_content()
+          print("Delivered messages contain the mutated header, Subject and body: OK")
+          PY
+          echo "Authenticated identity, sender authorization, and delivered Postfix header/body mutation: OK"
+
+
+  postfix-opensigweave-adapter:
+    name: End-to-end OpenSigWeave adapter delivery through Postfix
+    runs-on: ubuntu-latest
+    container: almalinux:10
+    timeout-minutes: 10
+    steps:
+      - name: Check out OpenSigWeave
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+      - name: Install Postfix, PyMilter and Cyrus SASL
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y epel-release
+          dnf --disablerepo=crb,extras install -y postfix python3 python3-pymilter cyrus-sasl cyrus-sasl-plain
+      - name: Exercise the real adapter and verify delivered MIME
+        shell: bash
+        run: |
+          set -euo pipefail
+          postconf -e 'myhostname = localhost.localdomain'
+          postconf -e 'mydestination = localhost, localhost.localdomain'
+          postconf -e 'local_recipient_maps ='
+          postconf -e 'mailbox_command = /usr/bin/python3 /tmp/capture_mail.py'
+          postconf -e 'inet_interfaces = 127.0.0.1'
+          postconf -e 'inet_protocols = ipv4'
+          postconf -e 'mynetworks = 192.0.2.0/24'
+          postconf -e 'smtpd_relay_restrictions = permit_mynetworks,reject_unauth_destination'
+          postconf -e 'smtpd_milters = inet:127.0.0.1:8899'
+          postconf -e 'milter_protocol = 6'
+          postconf -e 'milter_default_action = tempfail'
+          postconf -e 'milter_mail_macros = {auth_type}, {auth_authen}, {auth_author}'
+          postconf -e 'smtpd_sasl_auth_enable = yes'
+          postconf -e 'smtpd_sasl_type = cyrus'
+          postconf -e 'smtpd_sasl_path = smtpd'
+          postconf -e 'smtpd_sasl_local_domain = localhost'
+          postconf -e 'smtpd_sasl_security_options = noanonymous'
+          postconf -e 'smtpd_sasl_exceptions_networks ='
+          postconf -e 'smtpd_sender_login_maps = lmdb:/etc/postfix/sender_login'
+          postconf -e 'smtpd_sender_restrictions = reject_authenticated_sender_login_mismatch'
+          install -d -o root -g root -m 755 /var/spool/postfix
+          printf 'root: root\n' > /etc/aliases
+          newaliases
+          cat > /etc/sasl2/smtpd.conf <<'SASL'
+          pwcheck_method: auxprop
+          auxprop_plugin: sasldb
+          mech_list: PLAIN LOGIN
+          sasldb_path: /etc/sasldb2
+          SASL
+          printf 'ci-password\n' | saslpasswd2 -c -p -f /etc/sasldb2 -u localhost authuser
+          chown root:postfix /etc/sasldb2
+          chmod 640 /etc/sasldb2
+          printf 'sender@example.org authuser@localhost\n' > /etc/postfix/sender_login
+          postmap /etc/postfix/sender_login
+          useradd --create-home testuser
+          install -d -o testuser -g testuser -m 700 /tmp/delivered
+          cat > /tmp/capture_mail.py <<'PY'
+          import os, sys, uuid
+          os.makedirs('/tmp/delivered', exist_ok=True)
+          with open(f'/tmp/delivered/{uuid.uuid4().hex}.eml', 'wb') as output:
+              output.write(sys.stdin.buffer.read())
+          PY
+          postfix check
+          export PYTHONPATH="$PWD"
+          python3 tests/postfix_milter_e2e_server.py >/tmp/opensigweave-milter.log 2>&1 &
+          MILTER_PID=$!
+          cleanup() { kill "$MILTER_PID" 2>/dev/null || true; postfix stop 2>/dev/null || true; }
+          trap cleanup EXIT
+          for _ in $(seq 1 30); do
+            if ! kill -0 "$MILTER_PID"; then cat /tmp/opensigweave-milter.log; exit 1; fi
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",8899),1); s.close()' 2>/dev/null; then break; fi
+            sleep 1
+          done
+          postfix start
+          for _ in $(seq 1 30); do
+            if python3 -c 'import socket; s=socket.create_connection(("127.0.0.1",25),1); s.close()' 2>/dev/null; then break; fi
+            sleep 1
+          done
+          python3 - <<'PY'
+          import smtplib
+          from email.message import EmailMessage
+          def make_message():
+              message = EmailMessage()
+              # Deliberately spoof the RFC 5322 From and pre-seed the internal
+              # marker: neither client-controlled header may influence processing.
+              message['From'] = 'spoofed@example.net'
+              message['To'] = 'testuser@localhost'
+              message['Subject'] = 'OpenSigWeave Postfix E2E'
+              # Duplicate, conflicting sender-controlled selector and marker headers
+              # must all be removed; duplicates must not create ambiguous selection.
+              message['X-OpenSigWeave-Mode'] = 'INTERNAL'
+              message.add_header('x-opensigweave-mOdE', 'PROFESSIONAL')
+              message['X-OpenSigWeave-Signature'] = 'Forged Signature'
+              message.add_header('x-opensigweave-sIgnature', 'Second Forged Signature')
+              message['X-OpenSigWeave-Signature-Code'] = 'FORGED1'
+              message.add_header('x-opensigweave-sIgnature-cOde', 'FORGED2')
+              message['X-OpenSigWeave-Injected'] = 'true'
+              message.add_header('x-opensigweave-iNjected', 'false')
+              message.set_content('Original message body')
+              return message
+          with smtplib.SMTP('127.0.0.1', 25, timeout=10) as smtp:
+              smtp.send_message(make_message(), from_addr='sender@example.org', to_addrs=['testuser@localhost'])
+          with smtplib.SMTP('127.0.0.1', 25, timeout=10) as smtp:
+              smtp.login('authuser@localhost', 'ci-password')
+              smtp.send_message(make_message(), from_addr='sender@example.org', to_addrs=['testuser@localhost'])
+          PY
+          python3 - <<'PY'
+          import glob, time
+          from email import policy
+          from email.parser import BytesParser
+          messages = []
+          for _ in range(40):
+              paths = glob.glob('/tmp/delivered/*.eml')
+              if len(paths) >= 2:
+                  messages = [BytesParser(policy=policy.default).parsebytes(open(p, 'rb').read()) for p in paths]
+                  break
+              time.sleep(0.5)
+          if len(messages) != 2:
+              import os, subprocess
+              queue = subprocess.run(['postqueue', '-p'], capture_output=True, text=True).stdout
+              log = open('/var/log/maillog').read() if os.path.exists('/var/log/maillog') else 'no /var/log/maillog'
+              raise AssertionError(f'Expected two delivered messages, got {len(messages)}; queue={queue}; maillog={log}; delivered={glob.glob("/tmp/delivered/*")}')
+          injected = [m for m in messages if m.get('X-OpenSigWeave-Injected') == 'true']
+          unchanged = [m for m in messages if m.get('X-OpenSigWeave-Injected') is None]
+          assert len(injected) == 1 and len(unchanged) == 1, messages
+          assert 'OpenSigWeave integration signature' in injected[0].get_content()
+          assert 'Original message body' in injected[0].get_content()
+          assert injected[0].get_all('X-OpenSigWeave-Mode') is None
+          assert injected[0].get_all('X-OpenSigWeave-Signature') is None
+          assert injected[0].get_all('X-OpenSigWeave-Signature-Code') is None
+          assert injected[0].get_all('X-OpenSigWeave-Injected') == ['true']
+          assert unchanged[0].get('X-OpenSigWeave-Injected') is None, unchanged[0]
+          assert injected[0]['From'] == 'spoofed@example.net'
+          assert unchanged[0]['From'] == 'spoofed@example.net'
+          assert 'OpenSigWeave integration signature' not in unchanged[0].get_content()
+          print('Actual OpenSigWeave Milter: authenticated injection and unauthenticated no-op verified')
+          PY
+          cat /tmp/opensigweave-milter.log

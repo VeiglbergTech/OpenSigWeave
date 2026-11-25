@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenSigWeave restricted host backup operator
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/opensigweave/backup.env
+ExecStart=/usr/bin/python3 /opt/opensigweave/scripts/backup_control_agent.py
+RuntimeDirectory=opensigweave-backup opensigweave
+RuntimeDirectoryMode=0700
+UMask=0077
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

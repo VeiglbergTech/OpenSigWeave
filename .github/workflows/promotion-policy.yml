@@ -1,0 +1,36 @@
+name: Branch promotion policy
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: promotion-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  promotion-policy:
+    name: Promotion source and CI gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout code without persisted credentials
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev # trusted verifier, not potentially untrusted PR merge code
+          persist-credentials: false
+      - name: Verify source commit, exact CI and candidate merge tree
+        env:
+          TARGET_BRANCH: ${{ github.base_ref }}
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          SOURCE_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -m scripts.verify_promotion

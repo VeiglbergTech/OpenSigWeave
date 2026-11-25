@@ -1,0 +1,734 @@
+        @keyframes slideUpFade {
+            0% { transform: translateY(100%); opacity: 0; }
+            10% { transform: translateY(0); opacity: 1; }
+            90% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-20%); opacity: 0; }
+        }
+        .animate-toast { animation: slideUpFade 3s forwards ease-in-out; }
+
+[x-cloak] { display: none !important; }
+
+
+body.osw-overlay-open { overflow: hidden; }
+.osw-actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+.osw-file-button:focus-within, .osw-file-button:hover { background: #45454f !important; }
+html, body { max-width: 100%; }
+main, section { min-width: 0; }
+
+/* CKEditor email canvas sizing is shared; toolbar colors use theme tokens below. */
+.ck.ck-editor__main > .ck-editor__editable {
+    min-height: 240px;
+    max-height: 520px;
+    overflow-y: auto;
+    background: #ffffff !important;
+    color: #111827 !important;
+    border-color: #4b5563 !important;
+}
+.ck.ck-editor__editable_inline {
+    padding: 1rem 1.25rem !important;
+}
+.ck-content table {
+    border-collapse: collapse;
+}
+.ck-content table td,
+.ck-content table th {
+    border: 1px solid #9ca3af;
+    min-width: 2em;
+    padding: .25em;
+}
+
+
+/* OpenSigWeave visual identity: charcoal surfaces with red/orange accents. */
+:root {
+    color-scheme: dark;
+    --osw-black: #09090b;
+    --osw-charcoal: #171719;
+    --osw-panel: #202024;
+    --osw-panel-raised: #29292f;
+    --osw-border: #3b3b43;
+    --osw-muted: #a1a1aa;
+    --osw-red: #e04436;
+    --osw-orange: #f07832;
+    --osw-accent: #ff7043;
+    --osw-text: #f4f4f5;
+    --osw-heading: #fff;
+    --osw-input: #121215;
+    --osw-link: #ffad87;
+    --osw-readable-accent: #ffad87;
+    --osw-action-accent: #a63b1b;
+    --osw-action-hover: #8f3016;
+}
+body { background: var(--osw-black) !important; color: #f4f4f5; }
+.bg-gray-900 { background-color: var(--osw-charcoal) !important; }
+.bg-gray-800 { background-color: var(--osw-panel) !important; }
+.bg-gray-700 { background-color: var(--osw-panel-raised) !important; }
+.hover\:bg-gray-800:hover { background-color: #303036 !important; }
+.hover\:bg-gray-700:hover { background-color: #393940 !important; }
+.border-gray-800, .border-gray-700, .border-gray-600 { border-color: var(--osw-border) !important; }
+.text-gray-500 { color: #92929c !important; }
+.text-gray-400 { color: #b0b0b8 !important; }
+.text-gray-300 { color: #d4d4d8 !important; }
+.bg-green-700, .bg-green-600 { background-color: #bd3d2d !important; }
+.hover\:bg-green-600:hover { background-color: var(--osw-orange) !important; }
+.ck.ck-toolbar .ck-button:focus, .ck.ck-toolbar .ck-dropdown__button:focus { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 2px rgba(240, 120, 50, .25) !important; }
+.ck.ck-editor__main > .ck-editor__editable { border-color: var(--osw-border) !important; }
+.ck.ck-editor__main > .ck-editor__editable.ck-focused { border-color: var(--osw-orange) !important; box-shadow: 0 0 0 1px var(--osw-orange) !important; }
+
+/* Fixed-size branding previews; uploaded files and their intrinsic ratios stay intact. */
+.osw-branding-logo-preview, .osw-branding-favicon-preview {
+    box-sizing: border-box; display: flex; align-items: center; justify-content: center;
+    width: 100%; min-width: 0; padding: .75rem; overflow: hidden;
+}
+.osw-branding-logo-preview { height: 5.5rem; }
+.osw-branding-favicon-preview { height: 5rem; }
+.osw-branding-logo-preview img, .osw-branding-favicon-preview img {
+    display: block; width: auto; height: auto; object-fit: contain;
+}
+.osw-branding-logo-preview img { max-width: min(100%, 13rem); max-height: 3.75rem; }
+.osw-branding-favicon-preview img { max-width: 3rem; max-height: 3rem; }
+.osw-branding-logo-heading {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: .5rem 1rem;
+}
+.osw-branding-logo-heading > * { min-width: 0; overflow-wrap: anywhere; }
+.osw-branding-color-input { min-width: 0; }
+
+/* Responsive section actions wrap instead of losing their labels. */
+.osw-section-header {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: .75rem; min-width: 0;
+}
+.osw-section-header > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.osw-section-header button {
+    box-sizing: border-box; min-height: 2.5rem; max-width: 100%;
+    white-space: normal; overflow-wrap: anywhere;
+}
+
+/* Table actions remain reachable even where the static Tailwind bundle has no
+   overflow-x-auto utility. Horizontal scroll is intentional on narrow screens. */
+.osw-table-scroll { box-sizing: border-box; max-width: 100%; overflow-x: auto; }
+.osw-table-scroll > table { min-width: 42rem; }
+.osw-table-scroll--wide > table { min-width: 54rem; }
+
+@media (max-width: 900px) {
+    nav { flex-wrap: wrap; gap: .75rem; }
+    nav > div { min-width: 0; flex-wrap: wrap; gap: .5rem; }
+    nav .app-brand, nav .text-sm { overflow-wrap: anywhere; }
+}
+
+/* Shared form and responsive spacing rules for administrators and mobile clients. */
+.osw-domain-modal-header > div { min-width: 0; flex-wrap: wrap; }
+.osw-user-controls label { min-width: 0; max-width: 100%; }
+.osw-user-controls input, .osw-user-controls select { max-width: 100%; width: 100%; }
+label > input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+label > select, label > textarea { margin-top: .375rem; }
+.osw-actions > button { flex-shrink: 0; }
+@media (max-width: 640px) {
+    nav { padding: .75rem 1rem !important; }
+    body > div.max-w-7xl { padding: .75rem !important; }
+    .osw-domain-modal-header > div { gap: .75rem; }
+    .osw-domain-modal-header .h-8.w-px { display: none; }
+    .osw-domain-modal-header .ml-4 { margin-left: 0; }
+    .osw-domain-modal-header button { white-space: nowrap; }
+    [x-data="domainSettingsModal"] .p-6 { padding: 1rem; }
+}
+
+
+/* Keep portal and signature links clean; the sanitizer also inlines this for email. */
+a, a:hover, a:focus-visible,
+.ck-content a, .ck-content a:hover, .ck-content a:focus-visible {
+    text-decoration: none !important;
+}
+
+/* Consistent air between separate administrator context cards and section blocks. */
+.osw-admin-section > :not(.osw-modal-root):not(.form-dialog) ~ :not(.osw-modal-root):not(.form-dialog) {
+    margin-top: 1.5rem;
+}
+.osw-admin-section > .grid {
+    gap: 1.5rem;
+}
+
+
+/* All dialogs share one backdrop, viewport constraint, scroll region and action bar. */
+.osw-dialog-backdrop {
+    position: fixed; inset: 0; z-index: 80;
+    background: rgba(3, 7, 18, .76); backdrop-filter: blur(3px);
+}
+body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
+.osw-modal-root {
+    position: fixed; inset: 0; z-index: 91; padding: 1rem;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+}
+.osw-modal-root--preview, .osw-modal-root--confirm { z-index: 111; }
+.osw-modal-root--image-import { z-index: 105; }
+.osw-modal-placement {
+    display: flex; align-items: center; justify-content: center;
+    width: 100%; height: 100%; min-width: 0; min-height: 0; pointer-events: none;
+}
+.osw-modal-shell {
+    --osw-dialog-width: 48rem;
+    box-sizing: border-box;
+    display: flex; flex-direction: column; flex: 0 1 auto;
+    width: min(var(--osw-dialog-width), calc(100vw - 2rem));
+    max-width: calc(100vw - 2rem); min-width: 0;
+    max-height: calc(100dvh - 2rem);
+    color: var(--osw-text); background: var(--osw-panel);
+    border: 1px solid var(--osw-border); border-radius: .875rem;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, .45); pointer-events: auto;
+}
+/* A form inside a modal must shrink; otherwise its auto min-height blocks
+   the body's scrollbar and pushes the Save action below the viewport. */
+.osw-modal-form {
+    display: flex;
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+    flex-direction: column;
+}
+.osw-modal-form > .osw-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+}
+.osw-modal-form > .osw-modal-footer { flex: 0 0 auto; }
+.osw-modal-width-small { --osw-dialog-width: 30rem; }
+.osw-modal-width-medium { --osw-dialog-width: 54rem; }
+.osw-modal-width-large { --osw-dialog-width: 64rem; }
+.osw-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    flex: 0 0 auto; gap: 1rem; min-width: 0; padding: 1rem 1.5rem;
+    background: var(--osw-charcoal); border-bottom: 1px solid var(--osw-border);
+    border-radius: .875rem .875rem 0 0;
+}
+.osw-modal-header > :first-child { min-width: 0; overflow-wrap: anywhere; }
+.osw-modal-header h2, .osw-modal-header h3 { margin: 0; }
+.osw-modal-dismiss {
+    flex: 0 0 auto; color: var(--osw-muted); font-size: 1.5rem;
+    line-height: 1; padding: .25rem .5rem; border-radius: .375rem;
+}
+.osw-modal-dismiss:hover, .osw-modal-dismiss:focus-visible {
+    color: var(--osw-text); background: var(--osw-panel-raised);
+}
+.osw-modal-body {
+    display: flex; flex-direction: column; flex: 1 1 auto;
+    gap: 1.25rem; min-height: 0; min-width: 0; max-width: 100%;
+    padding: 1.5rem; overflow-x: hidden; overflow-y: auto;
+    overscroll-behavior: contain; background: var(--osw-panel);
+}
+.osw-modal-body > * { min-width: 0; max-width: 100%; }
+.osw-modal-shell :is(input:not([type="checkbox"]):not([type="radio"]), textarea, select) {
+    min-width: 0; max-width: 100%;
+}
+.osw-modal-shell .grid > *, .osw-modal-shell .flex > * { min-width: 0; }
+.osw-modal-footer {
+    display: flex; align-items: center; justify-content: flex-end;
+    flex: 0 0 auto; flex-wrap: wrap; gap: .75rem;
+    margin: 0; padding: 1rem 1.5rem; background: var(--osw-charcoal);
+    border-top: 1px solid var(--osw-border); border-radius: 0 0 .875rem .875rem;
+}
+.osw-modal-footer button {
+    margin: 0; min-height: 2.5rem; padding: .5rem 1rem;
+    font-size: .875rem; font-weight: 500; line-height: 1.4; border-radius: .375rem;
+    box-sizing: border-box; max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+}
+.osw-modal-footer :is(.bg-blue-600, .bg-blue-700, .bg-red-600, .bg-red-700, .bg-yellow-600, .bg-yellow-700) {
+    color: #fff !important;
+}
+.osw-modal-shell .ck.ck-dropdown__panel { max-width: calc(100vw - 3rem); }
+.ck-body-wrapper .ck.ck-balloon-panel { z-index: 120 !important; }
+@media (max-width: 640px) {
+    .osw-modal-header, .osw-modal-footer { padding: .875rem 1rem; }
+    .osw-modal-header { align-items: flex-start; }
+    .osw-modal-body { padding: 1rem; }
+    .osw-modal-footer button { max-width: 100%; }
+    .osw-domain-modal-header > div { flex-wrap: wrap; gap: .5rem; }
+    .osw-domain-modal-header .ml-4 { margin-left: 0; }
+}
+
+
+/* A single token hierarchy for both appearances. The default tokens above
+   remain the established dark palette; only the light scope changes surfaces. */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --osw-black: #f2f5f9;
+  --osw-charcoal: #f6f8fb;
+  --osw-panel: #ffffff;
+  --osw-panel-raised: #e9eef5;
+  --osw-border: #cbd5e1;
+  --osw-muted: #516174;
+  --osw-text: #1e293b;
+  --osw-heading: #111827;
+  --osw-input: #ffffff;
+  --osw-link: #923b1d;
+  --osw-readable-accent: #923b1d;
+  --osw-action-accent: #a63b1b;
+  --osw-action-hover: #852d14;
+  --osw-hover: #e4eaf2;
+  --osw-subtle: #f8fafc;
+  --osw-card-shadow: 0 6px 22px rgba(15, 23, 42, .055);
+}
+/* Shared semantic colors: branding.js can override the accent without
+   changing either palette's structural surfaces. */
+body { color: var(--osw-text) !important; }
+.bg-gray-950 { background-color: var(--osw-input) !important; }
+.bg-blue-600, .bg-blue-700 { background-color: var(--osw-action-accent) !important; }
+/* Branding constrains action fills against white. Explicit white text prevents
+   inherited off-white dark-theme text from falling below WCAG AA. */
+:is(button, a):is(.bg-blue-600, .bg-blue-700) { color: #fff !important; }
+.hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-action-hover) !important; }
+.text-blue-300, .text-blue-400, .text-blue-500 { color: var(--osw-link) !important; }
+.hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: var(--osw-readable-accent) !important; }
+.border-blue-500, .border-blue-600, .border-green-600 { border-color: var(--osw-action-accent) !important; }
+.focus\:border-blue-500:focus, .focus\:ring-blue-500:focus {
+  --tw-ring-color: var(--osw-action-accent) !important;
+  border-color: var(--osw-action-accent) !important;
+}
+.app-brand { color: var(--osw-readable-accent) !important; }
+
+/* Native inputs/select popups and custom font controls share the theme. */
+body input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="color"]),
+body select, body textarea {
+  background-color: var(--osw-input) !important;
+  color: var(--osw-text) !important;
+  border-color: var(--osw-border) !important;
+  caret-color: var(--osw-text);
+}
+body select option, body select optgroup { background-color: var(--osw-input); color: var(--osw-text); }
+body input::placeholder, body textarea::placeholder { color: var(--osw-muted); opacity: 1; }
+body :is(input, select, textarea, button):focus-visible { outline-color: var(--osw-action-accent); }
+#theme-toggle { white-space: nowrap; }
+
+/* Light surfaces: navigation, content cards, list headers, rows and dialogs.
+   Existing bg-gray utility mapping remains the sole surface architecture. */
+/* The body has a legacy bg-gray-900 class: only the light appearance
+   needs to outrank that utility to expose the distinct canvas token. */
+html[data-theme="light"] body { background-color: var(--osw-black) !important; }
+html[data-theme="light"] nav {
+  background-color: var(--osw-panel) !important;
+  border-color: var(--osw-border) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .05);
+}
+html[data-theme="light"] :is(.bg-gray-800.rounded-lg, .bg-gray-800.rounded-xl) {
+  box-shadow: var(--osw-card-shadow);
+}
+html[data-theme="light"] :is(.osw-table-scroll thead, .osw-modal-header, .osw-modal-footer) {
+  background-color: var(--osw-charcoal) !important;
+}
+html[data-theme="light"] .osw-table-scroll tbody tr:hover { background-color: var(--osw-subtle); }
+html[data-theme="light"] .osw-table-scroll tbody tr { border-color: var(--osw-border); }
+html[data-theme="light"] [class~="bg-gray-900/60"] { background-color: rgba(233, 238, 245, .65) !important; }
+html[data-theme="light"] .bg-gray-600 { background-color: var(--osw-panel-raised) !important; }
+html[data-theme="light"] .hover\:bg-gray-800:hover,
+html[data-theme="light"] .hover\:bg-gray-700:hover,
+html[data-theme="light"] .hover\:bg-gray-600:hover,
+html[data-theme="light"] .hover\:bg-gray-750:hover,
+html[data-theme="light"] .osw-file-button:is(:hover, :focus-within) {
+  background-color: var(--osw-hover) !important;
+}
+html[data-theme="light"] :is(button.bg-gray-700, button.bg-gray-900):active {
+  background-color: var(--osw-panel-raised) !important;
+}
+/* The dark utility text classes are used throughout legacy markup. Light
+   foregrounds are explicit rather than relying on inherited dark grays. */
+html[data-theme="light"] .text-white,
+html[data-theme="light"] .text-gray-100,
+html[data-theme="light"] .text-gray-200,
+html[data-theme="light"] .text-gray-300 { color: var(--osw-text) !important; }
+html[data-theme="light"] .text-gray-400 { color: #475569 !important; }
+html[data-theme="light"] .text-gray-500 { color: #526174 !important; }
+html[data-theme="light"] .hover\:text-white:hover { color: var(--osw-heading) !important; }
+html[data-theme="light"] .text-blue-200 { color: var(--osw-readable-accent) !important; }
+html[data-theme="light"] :is(.text-red-200, .text-red-300, .text-red-400, .text-red-500),
+html[data-theme="light"] :is(.hover\:text-red-200:hover, .hover\:text-red-300:hover) { color: #9f1239 !important; }
+html[data-theme="light"] :is(.text-green-200, .text-green-300, .text-green-400, .text-emerald-300, .text-emerald-400) { color: #166534 !important; }
+html[data-theme="light"] :is(.text-amber-100, .text-amber-200, .text-amber-300, .text-yellow-400),
+html[data-theme="light"] .hover\:text-amber-200:hover { color: #854d0e !important; }
+html[data-theme="light"] :is(.bg-green-700, .bg-green-600) { background-color: #166534 !important; }
+html[data-theme="light"] .hover\:bg-green-600:hover { background-color: #15803d !important; }
+html[data-theme="light"] :is(.bg-red-600, .bg-red-500, .bg-red-700) { background-color: #b91c1c !important; }
+html[data-theme="light"] :is(.hover\:bg-red-500:hover, .hover\:bg-red-600:hover, .hover\:bg-red-700:hover) { background-color: #991b1b !important; }
+html[data-theme="light"] .bg-yellow-600 { background-color: #92400e !important; }
+html[data-theme="light"] .hover\:bg-yellow-700:hover { background-color: #78350f !important; }
+/* Solid action buttons and status chips retain white on an accessible
+   saturated background; secondary actions inherit the dark-on-light text. */
+html[data-theme="light"] :is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
+  .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700, .bg-green-500).text-white,
+html[data-theme="light"] :is(button, a):is(.bg-blue-600, .bg-blue-700, .bg-green-600, .bg-green-700,
+  .bg-red-600, .bg-red-500, .bg-red-700, .bg-yellow-600, .bg-indigo-700),
+html[data-theme="light"] :is(.bg-blue-600, .bg-green-700, .bg-red-600, .bg-yellow-600) .text-white {
+  color: #fff !important;
+}
+/* Locked/disabled editor layers are light scrims, not dark-mode islands. */
+html[data-theme="light"] .bg-gray-900\/95 { background-color: rgba(248, 250, 252, .96) !important; }
+html[data-theme="light"] .bg-gray-900\/80 { background-color: rgba(241, 245, 249, .88) !important; }
+/* Warning, error and success panels must not retain dark translucent fills. */
+html[data-theme="light"] :is(.bg-amber-950\/30, .bg-amber-950\/40, .bg-yellow-900) { background-color: #fffbeb !important; }
+html[data-theme="light"] :is(.bg-red-900, .bg-red-900\/40) { background-color: #fff1f2 !important; }
+html[data-theme="light"] :is(.bg-green-900, .bg-green-950\/30) { background-color: #f0fdf4 !important; }
+html[data-theme="light"] .bg-blue-900\/30 { background-color: #eff6ff !important; }
+html[data-theme="light"] .border-amber-700 { border-color: #d7ac59 !important; }
+html[data-theme="light"] .border-green-700 { border-color: #86b89b !important; }
+html[data-theme="light"] :is(.border-blue-800, .border-blue-900) { border-color: #c5d7ec !important; }
+html[data-theme="light"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--osw-action-accent); }
+html[data-theme="light"] :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--osw-action-accent);
+  outline-offset: 2px;
+}
+html[data-theme="light"] :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
+  border-color: var(--osw-action-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--osw-action-accent) 18%, transparent);
+}
+html[data-theme="light"] :is(button, input, textarea, select):disabled {
+  cursor: not-allowed;
+}
+html[data-theme="light"] .osw-modal-dismiss:is(:hover, :focus-visible) { color: var(--osw-heading); }
+html[data-theme="light"] :is(.form-dialog, .osw-modal-shell) {
+  box-shadow: 0 20px 60px rgba(19, 31, 48, .15);
+}
+/* CKEditor chrome follows light tokens; the email editing canvas itself is
+   intentionally kept white in both modes (see shared rule below). */
+html[data-theme="light"] .ck {
+  --ck-color-focus-border: var(--osw-action-accent);
+  --ck-color-button-default-disabled-background: var(--osw-charcoal);
+  --ck-color-toolbar-background: var(--osw-panel);
+  --ck-color-toolbar-border: var(--osw-border);
+  --ck-color-list-background: var(--osw-panel);
+}
+html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-balloon-panel) {
+  box-shadow: 0 2px 10px rgba(15, 23, 42, .035);
+}
+
+/* CKEditor 5: all menus/dialogs are themed; avoid overwriting font-color swatches. */
+.ck {
+  --ck-color-base-background: var(--osw-panel);
+  --ck-color-base-foreground: var(--osw-panel-raised);
+  --ck-color-base-border: var(--osw-border);
+  --ck-color-text: var(--osw-text);
+  --ck-color-button-default-background: var(--osw-panel);
+  --ck-color-button-default-hover-background: var(--osw-panel-raised);
+  --ck-color-button-default-active-background: var(--osw-panel-raised);
+  --ck-color-button-on-background: var(--osw-panel-raised);
+  --ck-color-button-on-color: var(--osw-text);
+  --ck-color-list-button-hover-background: var(--osw-panel-raised);
+  --ck-color-panel-background: var(--osw-panel);
+  --ck-color-input-background: var(--osw-input);
+  --ck-color-input-text: var(--osw-text);
+  --ck-color-input-border: var(--osw-border);
+}
+.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-balloon-panel,
+.ck.ck-list, .ck.ck-color-selector, .ck.ck-color-grid {
+  background-color: var(--osw-panel) !important;
+  color: var(--osw-text) !important;
+  border-color: var(--osw-border) !important;
+}
+.ck.ck-toolbar .ck-button, .ck.ck-toolbar .ck-dropdown__button,
+.ck.ck-dropdown__panel .ck-button, .ck.ck-dropdown__panel .ck-button__label,
+.ck.ck-balloon-panel .ck-button,
+.ck.ck-labeled-field-view .ck-label, .ck.ck-dropdown__panel .ck-label {
+  color: var(--osw-text) !important;
+}
+.ck.ck-toolbar .ck-button:hover, .ck.ck-toolbar .ck-button.ck-on,
+.ck.ck-dropdown__panel .ck-button:hover, .ck.ck-dropdown__panel .ck-button.ck-on,
+.ck.ck-balloon-panel .ck-button:hover {
+  color: var(--osw-text) !important;
+  background-color: var(--osw-panel-raised) !important;
+}
+.ck.ck-dropdown__panel .ck-input, .ck.ck-dropdown__panel .ck-input-text,
+.ck.ck-balloon-panel .ck-input, .ck.ck-balloon-panel .ck-input-text {
+  color: var(--osw-text) !important;
+  background: var(--osw-input) !important;
+  border-color: var(--osw-border) !important;
+}
+/* Preserve the real (white) email canvas in either UI appearance. */
+.ck.ck-editor__main > .ck-editor__editable,
+.ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
+.ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
+
+/* Allow every CKEditor toolbar to wrap instead of cutting off controls. */
+.osw-rich-editor .ck-toolbar__items {
+    flex-wrap: wrap !important;
+    max-width: 100%;
+    min-width: 0;
+}
+.osw-rich-editor .ck-editor { min-width: 0; max-width: 100%; }
+.osw-rich-editor .ck-editor__top { min-width: 0; }
+#signature-template-editor .osw-editor-import-url-button {
+    flex: 0 0 auto;
+    cursor: pointer;
+}
+#signature-template-editor .osw-editor-import-url-button .ck-button__label {
+    display: none;
+}
+#signature-template-editor .osw-editor-import-url-button:focus-visible {
+    outline: 2px solid var(--osw-action-accent);
+    outline-offset: 1px;
+}
+#signature-template-editor .osw-editor-import-url-button:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+}
+
+/* CKEditor floating panels render outside dialogs. Keep the balloons above
+   domain/signature modal shells and keep in-toolbar menus reachable. */
+.ck-body-wrapper .ck.ck-balloon-panel {
+    z-index: 130 !important;
+}
+.osw-rich-editor .ck.ck-dropdown__panel {
+    max-height: min(24rem, calc(100dvh - 8rem));
+    overflow-y: auto;
+}
+@supports selector(:has(*)) {
+    .osw-modal-body:has(.osw-rich-editor .ck-dropdown__panel-visible),
+    .osw-modal-body:has(.osw-rich-editor .osw-font-listbox:not([hidden])) {
+        overflow: visible;
+    }
+}
+
+/* Domain Management is the visual reference for all admin sections. Keep this
+   in one place so future tables, status badges, and actions stay consistent. */
+.osw-admin-section .osw-section-header > :is(h1, h2) {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 2rem;
+    color: var(--osw-heading);
+}
+.osw-admin-section .osw-section-header > button,
+.osw-admin-section .osw-section-header > div > button {
+    min-height: 2.5rem;
+    padding: .5rem 1rem;
+    border-radius: .375rem;
+    font-size: .875rem;
+    font-weight: 500;
+    box-sizing: border-box;
+}
+.osw-admin-section .osw-table-scroll {
+    border: 1px solid var(--osw-border);
+    border-radius: .5rem;
+    background-color: var(--osw-panel);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+.osw-admin-section .osw-table-scroll table > thead {
+    background-color: var(--osw-charcoal);
+    color: var(--osw-muted);
+    border-bottom: 1px solid var(--osw-border);
+    font-size: .875rem;
+    letter-spacing: .035em;
+    text-transform: uppercase;
+}
+.osw-admin-section .osw-table-scroll table > thead th {
+    padding: 1rem 1.5rem;
+    font-weight: 500;
+}
+.osw-admin-section .osw-table-scroll table > tbody td {
+    padding: 1rem 1.5rem;
+}
+.osw-admin-section .osw-table-scroll table > tbody tr {
+    transition: background-color .15s ease;
+}
+.osw-admin-section .osw-table-scroll table > tbody tr:hover {
+    background-color: var(--osw-panel-raised);
+}
+.osw-admin-section > section.bg-gray-800,
+.osw-admin-section > .grid .bg-gray-800 {
+    border-radius: .5rem;
+    border-color: var(--osw-border);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
+}
+.osw-admin-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: .25rem .5rem;
+    border-radius: 9999px;
+    font-size: .75rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    white-space: nowrap;
+}
+.osw-admin-status:is(.text-green-400, .text-green-300) {
+    background-color: #14532d;
+    color: #bbf7d0 !important;
+}
+.osw-admin-status:is(.text-gray-500, .text-red-300, .text-red-400) {
+    background-color: #7f1d1d;
+    color: #fecaca !important;
+}
+.osw-admin-status.text-amber-300 {
+    background-color: #78350f;
+    color: #fde68a !important;
+}
+html[data-theme="light"] .osw-admin-status:is(.text-green-400, .text-green-300) {
+    background-color: #dcfce7;
+    color: #166534 !important;
+}
+html[data-theme="light"] .osw-admin-status:is(.text-gray-500, .text-red-300, .text-red-400) {
+    background-color: #fee2e2;
+    color: #991b1b !important;
+}
+html[data-theme="light"] .osw-admin-status.text-amber-300 {
+    background-color: #fef3c7;
+    color: #92400e !important;
+}
+@media (max-width: 640px) {
+    .osw-admin-section .osw-table-scroll table > :is(thead, tbody) :is(th, td) {
+        padding: .75rem 1rem;
+    }
+}
+
+/* Long signature markers must wrap inside the shared domain-style table cells. */
+.osw-signature-marker { overflow-wrap: anywhere; word-break: break-word; max-width: 26rem; }
+
+/* On narrow viewports CKEditor's overflowing toolbar can swallow the URL action.
+   Expose the same import workflow as a reachable control underneath the editor. */
+.osw-signature-mobile-import { display: none; }
+@media (max-width: 640px) {
+    #signature-template-editor .osw-editor-import-url-button { display: none !important; }
+    .osw-signature-mobile-import { display: inline-flex; align-items: center; justify-content: center; max-width: 100%; }
+}
+
+/* Shared toggle control for binary settings and independent multi-selection.
+   Native checkbox inputs keep Alpine's checked/change bindings, labels and
+   keyboard semantics. Only binary controls use role="switch" in the template. */
+input[type="checkbox"].osw-switch {
+    -webkit-appearance: none;
+    appearance: none;
+    position: relative;
+    box-sizing: border-box;
+    display: inline-block;
+    flex: 0 0 2.75rem;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    height: 1.5rem;
+    margin: 0;
+    vertical-align: middle;
+    border: 2px solid var(--osw-border);
+    border-radius: 9999px;
+    background-color: var(--osw-panel-raised);
+    cursor: pointer;
+    transition: background-color .18s ease, border-color .18s ease;
+}
+input[type="checkbox"].osw-switch::before {
+    content: "";
+    position: absolute;
+    top: .125rem;
+    left: .125rem;
+    width: 1rem;
+    height: 1rem;
+    border-radius: 50%;
+    background-color: #ffffff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+    transition: transform .18s ease;
+}
+input[type="checkbox"].osw-switch:checked {
+    background-color: var(--osw-action-accent);
+    border-color: var(--osw-action-accent);
+}
+input[type="checkbox"].osw-switch:checked::before {
+    transform: translateX(1.5rem);
+}
+input[type="checkbox"].osw-switch:focus-visible {
+    outline: 3px solid var(--osw-action-accent) !important;
+    outline-offset: 3px;
+}
+input[type="checkbox"].osw-switch:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+    filter: grayscale(.35);
+}
+label:has(> input.osw-switch), label:has(> .osw-switch) { cursor: pointer; }
+label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+    input[type="checkbox"].osw-switch,
+    input[type="checkbox"].osw-switch::before { transition: none; }
+}
+@media (forced-colors: active) {
+    input[type="checkbox"].osw-switch {
+        forced-color-adjust: none;
+        background-color: Canvas;
+        border-color: ButtonText;
+    }
+    input[type="checkbox"].osw-switch::before { background-color: ButtonText; box-shadow: none; }
+    input[type="checkbox"].osw-switch:checked { background-color: Highlight; border-color: Highlight; }
+    input[type="checkbox"].osw-switch:checked::before { background-color: HighlightText; }
+    input[type="checkbox"].osw-switch:disabled { border-color: GrayText; }
+}
+
+/* Shared single-label CKEditor font fields in dark mode and light mode. */
+.ck-toolbar .osw-ckeditor-font-input {
+    position: relative;
+    display: flex;
+    flex: 0 1 172px;
+    min-width: 92px;
+    max-width: 190px;
+    margin: 2px 3px;
+    overflow: visible;
+}
+.ck-toolbar .osw-signature-size-input {
+    flex-basis: 95px;
+    max-width: 105px;
+}
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 32px;
+    padding: 4px 8px;
+    color: var(--osw-text) !important;
+    background: var(--osw-input) !important;
+    border: 1px solid var(--osw-border) !important;
+    border-radius: 5px;
+}
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field::placeholder {
+    color: var(--osw-muted);
+    opacity: 1;
+}
+.ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field:focus {
+    border-color: var(--osw-action-accent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-action-accent) 20%, transparent);
+    outline: none;
+}
+.ck-toolbar .osw-font-listbox {
+    position: absolute;
+    z-index: 140;
+    top: calc(100% + 4px);
+    left: 0;
+    box-sizing: border-box;
+    width: max(100%, 210px);
+    max-width: calc(100vw - 3rem);
+    max-height: 210px;
+    padding: 4px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-color: var(--osw-border) var(--osw-panel);
+    scrollbar-width: thin;
+    color: var(--osw-text);
+    background: var(--osw-panel);
+    border: 1px solid var(--osw-border);
+    border-radius: 6px;
+    box-shadow: 0 10px 24px rgb(0 0 0 / 18%);
+}
+.ck-toolbar .osw-font-listbox[hidden] { display: none !important; }
+.ck-toolbar .osw-font-option {
+    display: block;
+    width: 100%;
+    padding: 7px 9px;
+    text-align: left;
+    color: var(--osw-text);
+    background: transparent;
+    border: 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.ck-toolbar .osw-font-option:hover,
+.ck-toolbar .osw-font-option.osw-font-option-active,
+.ck-toolbar .osw-font-option:focus-visible {
+    background: var(--osw-panel-raised);
+    outline: 1px solid var(--osw-action-accent);
+    outline-offset: -1px;
+}
+.ck-toolbar .osw-font-empty {
+    padding: 8px;
+    color: var(--osw-muted);
+}

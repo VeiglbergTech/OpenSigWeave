@@ -1,0 +1,64 @@
+services:
+  postgres:
+    # Pin the multi-platform image index; Dependabot tracks digest updates.
+    image: postgres:17-alpine@sha256:d3244e8ce3f165ee3c93d9c4a4b1d0fe48b3a89e2287b717fdcbbde92d405065
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-opensigweave}
+      POSTGRES_USER: ${POSTGRES_USER:-opensigweave}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - opensigweave-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  opensigweave:
+    # Release deployments pull a published GHCR image; no host source build.
+    image: ghcr.io/veiglbergtech/opensigweave:${OSW_IMAGE_TAG:-alpha}
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-opensigweave}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-opensigweave}
+      SIGNATURE_STORAGE_PATH: /data/signatures
+      IDP_CONFIG_DIR: /app/.idp
+      BACKUP_LOCAL_ROOT: /app/backups
+      BACKUP_WORK_ROOT: /app/backups
+      BACKUP_RULE_SCHEDULER_ENABLED: ${BACKUP_RULE_SCHEDULER_ENABLED:-true}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-1}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # Default 0.0.0.0 listens on all IPv4 interfaces. Restrict access with a
+      # host firewall, or set 127.0.0.1 for same-host reverse proxy only.
+      - "${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8085}:8085"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8085), timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - opensigweave-signatures:/data/signatures
+      - opensigweave-idp-data:/app/.idp
+      # Local backup locations persist across container recreation.
+      - opensigweave-backups:/app/backups
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  opensigweave-postgres-data:
+  opensigweave-signatures:
+  opensigweave-idp-data:
+  opensigweave-backups:

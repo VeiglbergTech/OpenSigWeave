@@ -1,0 +1,228 @@
+"""Email-signature HTML compatibility checks for the editor evaluation.
+
+These tests cover the markup the current server-side sanitizer is expected to retain.
+They intentionally do not claim that arbitrary Outlook VML or conditional comments
+survive: nh3 currently strips comments and disallowed VML elements.
+"""
+import re
+import unittest
+
+from signature_sanitizer import sanitize_signature_html
+from signature_renderer import render_signature_template
+
+
+class SignatureEditorCompatibilityTests(unittest.TestCase):
+    def test_nested_tables_and_layout_attributes_survive(self):
+        source = (
+            '<table role="presentation" width="600" cellpadding="0" cellspacing="0" '
+            'style="border-collapse: collapse; width: 600px;">'
+            '<tbody><tr><td width="180" valign="top" style="padding: 8px;">'
+            '<table><tr><td>Logo</td></tr></table>'
+            '</td><td valign="middle">Name</td></tr></tbody></table>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn("<table", result)
+        self.assertIn("<tbody>", result)
+        self.assertIn("<tr>", result)
+        self.assertIn("<td", result)
+        self.assertIn('width="600"', result)
+        self.assertIn('valign="top"', result)
+        self.assertIn("border-collapse", result)
+        self.assertIn("padding", result)
+        self.assertIn("Logo", result)
+
+    def test_common_inline_email_styles_survive(self):
+        source = (
+            '<p style="font-family: Arial, sans-serif; font-size: 12px; '
+            'font-weight: bold; color: #333333; line-height: 18px; '
+            'text-align: center; margin: 0; padding: 4px;">Signature</p>'
+        )
+        result = sanitize_signature_html(source)
+        for prop in ("font-family", "font-size", "font-weight", "color",
+                     "line-height", "text-align", "margin", "padding"):
+            with self.subTest(property=prop):
+                self.assertIn(prop, result)
+        self.assertIn("Signature", result)
+
+    def test_px_font_size_and_email_safe_font_families_are_preserved(self):
+        source = (
+            '<p><span style="font-size: 14px; font-family: Arial, Helvetica, sans-serif;">'
+            'Normal size</span>'
+            '<span style="font-size: 17px; font-family: Georgia, serif;">Custom size</span></p>'
+        )
+        sanitized = sanitize_signature_html(source)
+        for value in ("14px", "17px", "Arial", "Helvetica", "Georgia"):
+            self.assertIn(value, sanitized)
+        rendered = render_signature_template(sanitized, {})
+        self.assertRegex(rendered, r"font-size:\s*14px\b")
+        self.assertRegex(rendered, r"font-size:\s*17px\b")
+        self.assertIn("font-family", sanitize_signature_html(rendered))
+
+    def test_pt_and_fractional_font_sizes_survive_sanitization(self):
+        source = (
+            '<p><span style="font-size: 13pt;">Standard point size</span>'
+            '<span style="font-size: 17.5pt; font-family: Georgia, serif;">'
+            'Custom decimal</span><span style="font-size: 17px;">Legacy pixel</span></p>'
+        )
+        sanitized = sanitize_signature_html(source)
+        rendered = render_signature_template(sanitized, {})
+        for size in ("13pt", "17.5pt", "17px"):
+            with self.subTest(size=size):
+                self.assertIn(size, sanitized)
+                self.assertIn(size, rendered)
+        self.assertIn("font-family", sanitized)
+
+    def test_extended_email_safe_font_stacks_survive_delivery(self):
+        stacks = (
+            "Arial, Helvetica, sans-serif",
+            "Arial Black, Arial, sans-serif",
+            "Calibri, Arial, sans-serif",
+            "Cambria, Georgia, Times New Roman, serif",
+            "Courier New, Courier, monospace",
+            "Garamond, Georgia, Times New Roman, serif",
+            "Georgia, serif",
+            "Helvetica, Arial, sans-serif",
+            "Lucida Sans Unicode, Lucida Grande, sans-serif",
+            "Palatino Linotype, Palatino, Georgia, serif",
+            "Segoe UI, Tahoma, Arial, sans-serif",
+            "Tahoma, Geneva, sans-serif",
+            "Times New Roman, Times, serif",
+            "Trebuchet MS, Helvetica, sans-serif",
+            "Verdana, Geneva, sans-serif",
+        )
+        for stack in stacks:
+            with self.subTest(stack=stack):
+                source = f'<span style="font-family: {stack}; font-size: 12pt;">Signature</span>'
+                sanitized = sanitize_signature_html(source)
+                rendered = render_signature_template(sanitized, {})
+                # nh3 normalizes whitespace around commas in CSS font lists.
+                # Compare the ordered faces, not the exact source spacing.
+                css_pattern = r"font-family:\s*" + r"\s*,\s*".join(
+                    re.escape(face.strip()) for face in stack.split(",")
+                )
+                self.assertRegex(sanitized, css_pattern)
+                self.assertRegex(rendered, css_pattern)
+                self.assertIn("12pt", rendered)
+                self.assertNotIn("<link", rendered)
+
+    def test_mixed_font_families_survive_repeated_sanitization(self):
+        source = (
+            '<p><span style="font-family: Arial Black, Arial, sans-serif;">Bold</span>'
+            '<span style="font-family: Segoe UI, Tahoma, Arial, sans-serif;">Modern</span>'
+            '<span style="font-family: Palatino Linotype, Palatino, Georgia, serif;">Classic</span></p>'
+        )
+        rendered = render_signature_template(sanitize_signature_html(source), {})
+        self.assertEqual(rendered.count("font-family:"), 3)
+        for family in ("Arial Black", "Segoe UI", "Palatino Linotype"):
+            self.assertIn(family, rendered)
+        self.assertEqual(sanitize_signature_html(rendered), rendered)
+
+    def test_links_have_non_underlined_inline_style_for_email_clients(self):
+        source = (
+            '<a href="https://example.org">Default link</a>'
+            '<a href="https://example.org/about" style="color: #dd5533; text-decoration: underline;">Styled link</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertEqual(sanitized.count("text-decoration: none;"), 2)
+        self.assertNotIn("text-decoration: underline", sanitized)
+        self.assertIn("color", sanitized)
+        self.assertEqual(sanitize_signature_html(sanitized), sanitized)
+        self.assertEqual(render_signature_template(sanitized, {}), sanitized)
+        self.assertNotIn("href=\"javascript:", sanitize_signature_html('<a href="javascript:alert(1)">Bad</a>'))
+
+    def test_links_images_and_template_tokens_survive(self):
+        source = (
+            '<div><a href="https://example.org" title="Website">Website</a>'
+            '<img src="https://example.org/logo.png" alt="Company" width="120" height="40">'
+            '{{ first_name }} {{ group:staff }}</div>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('href="https://example.org"', result)
+        self.assertIn('src="https://example.org/logo.png"', result)
+        self.assertIn('alt="Company"', result)
+        self.assertIn('width="120"', result)
+        self.assertIn("{{ first_name }}", result)
+        self.assertIn("{{ group:staff }}", result)
+
+    def test_https_link_with_profile_variables_survives_rendering(self):
+        source = (
+            '<a href="https://{{ domain_name }}/contact?email={{ email }}">Contact</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertIn('href="https://{{ domain_name }}/contact?email={{ email }}"', sanitized)
+        rendered = render_signature_template(
+            sanitized, {"domain_name": "example.org", "email": "alice@example.org"}
+        )
+        self.assertIn('href="https://example.org/contact?email=alice@example.org"', rendered)
+        # The output must also pass strict URL sanitization after substitution.
+        self.assertIn('href="https://example.org/', sanitize_signature_html(rendered))
+
+    def test_unsafe_or_relative_templated_link_schemes_remain_disallowed(self):
+        source = (
+            '<a href="javascript:{{ email }}">Script</a>'
+            '<a href="data:text/html,{{ email }}">Data</a>'
+            '<a href="{{ domain_name }}">Relative</a>'
+            '<a href="https://{{ domain_name }}">Safe</a>'
+        )
+        sanitized = sanitize_signature_html(source)
+        self.assertNotIn('href="javascript:', sanitized)
+        self.assertNotIn('href="data:', sanitized)
+        self.assertNotIn('href="{{ domain_name }}"', sanitized)
+        self.assertIn('href="https://{{ domain_name }}"', sanitized)
+
+    def test_persisted_asset_urls_survive_but_data_and_blob_urls_do_not(self):
+        asset_url = "https://signature.example.org/signature-assets/" + ("a" * 64) + ".webp"
+        source = (
+            f'<img src="{asset_url}" alt="Persisted">'
+            '<img src="data:image/png;base64,AAAA" alt="Inline">'
+            '<img src="blob:https://signature.example.org/temporary" alt="Blob">'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn(asset_url, result)
+        self.assertNotIn("data:image", result)
+        self.assertNotIn("blob:", result)
+
+    def test_unsafe_markup_is_removed_without_losing_signature_text(self):
+        source = (
+            '<p onclick="alert(1)" style="color: red; position: fixed">'
+            '<script>alert(1)</script><a href="javascript:alert(1)">Contact</a>'
+            '</p>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn("Contact", result)
+        self.assertNotIn("onclick", result)
+        self.assertNotIn("javascript:", result)
+        self.assertNotIn("<script", result)
+        self.assertNotIn("position", result)
+
+    def test_resized_image_width_survives_email_sanitization(self):
+        source = (
+            '<figure class="image image_resized" style="width: 220px;">'
+            '<img src="https://example.org/logo.png" alt="Brand"></figure>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('width="220"', result)
+        self.assertRegex(result, r"width:\s*220px")
+        self.assertNotIn("<figure", result)
+        malicious = sanitize_signature_html(
+            '<figure class="image_resized" style="width: 200px">'
+            '<img src="javascript:alert(1)" onclick="alert(1)"></figure>'
+        )
+        self.assertNotIn("javascript:", malicious)
+        self.assertNotIn("onclick", malicious)
+
+    def test_outlook_conditional_vml_is_not_currently_preserved(self):
+        source = (
+            '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml">'
+            '<v:textbox>Outlook only</v:textbox></v:roundrect><![endif]-->'
+            '<p>Visible fallback</p>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn("Visible fallback", result)
+        self.assertNotIn("roundrect", result)
+        self.assertNotIn("Outlook only", result)
+        self.assertNotIn("[if mso]", result)
+
+
+if __name__ == "__main__":
+    unittest.main()
