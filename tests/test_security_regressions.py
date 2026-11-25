@@ -337,18 +337,23 @@ class SecurityRegressionTests(unittest.TestCase):
 
 
 
-    def test_remote_reverse_proxy_requires_private_bind_and_firewall_boundary(self):
+    def test_public_bind_default_documents_explicit_firewall_boundary(self):
         compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
         env_example = (ROOT / ".env.example").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         architecture = (ROOT / "docs" / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        config = (ROOT / "scripts" / "config_manager.py").read_text(encoding="utf-8")
 
-        self.assertIn('${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8085}:8085', compose)
+        # The bind-all default is explicitly requested for NEW installations.
+        # It is NOT a firewall or permission policy: documentation must warn
+        # about reachable management ports and explain safe local binding.
+        self.assertIn('${APP_BIND_ADDRESS:-0.0.0.0}:${APP_PORT:-8085}:8085', compose)
         self.assertIn('APP_PORT="8085"', env_example)
-        self.assertIn('APP_BIND_ADDRESS="127.0.0.1"', env_example)
-        self.assertIn("private-interface IP", readme)
-        self.assertIn("only from the reverse-proxy private IP", readme)
-        self.assertIn("does not make the proxy network boundary for you", readme)
+        self.assertIn('APP_BIND_ADDRESS="0.0.0.0"', env_example)
+        self.assertIn('DEFAULTS["APP_BIND_ADDRESS"]', config)
+        self.assertIn("Block public access", readme)
+        self.assertIn("reverse proxy", readme)
+        self.assertIn("127.0.0.1", readme)
         self.assertIn("TRUSTED_PROXY_CIDRS", architecture)
 
         postgres_service = compose.split("  postgres:", 1)[1].split("  opensigweave:", 1)[0]
