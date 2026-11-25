@@ -2228,8 +2228,24 @@ async function main() {
     const profileRecord = providerRecords.find(item => item.id === "browser-smoke-profile-provider");
     const loginRecord = providerRecords.find(item => item.id === "browser-smoke-login-provider");
     assert.ok(profileRecord && loginRecord, "browser smoke providers must be configured");
-    assert.match(await domainRow.locator("td").nth(2).textContent(), new RegExp(profileRecord.display_name));
-    assert.match(await domainRow.locator("td").nth(3).textContent(), new RegExp(loginRecord.display_name));
+    // The 200 response confirms persistence, but domainManager refetches its
+    // table asynchronously on domain-updated. Wait for the actual rendered
+    // values instead of asserting against the previous "No provider" snapshot.
+    // The timeout still fails if the overview never reflects the saved IDs.
+    await page.waitForFunction(({ domainName, profileName, loginName }) => {
+      const rows = document.querySelectorAll('[x-data="domainManager"] tbody tr');
+      const row = [...rows].find(item => item.cells[0]?.textContent.trim() === domainName);
+      return row?.cells[2]?.textContent.trim() === profileName
+        && row?.cells[3]?.textContent.trim() === loginName;
+    }, {
+      domainName: "browser-smoke-domain.test",
+      profileName: profileRecord.display_name,
+      loginName: loginRecord.display_name
+    }, { timeout: 15000 });
+    assert.equal((await domainRow.locator("td").nth(2).textContent()).trim(),
+      profileRecord.display_name, "domain overview must show the saved profile provider");
+    assert.equal((await domainRow.locator("td").nth(3).textContent()).trim(),
+      loginRecord.display_name, "domain overview must show the saved login provider");
 
     await page.reload();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
