@@ -157,8 +157,23 @@ def promote(repo: str, sha: str) -> None:
     )
     if result.get("object", {}).get("sha") != sha:
         raise RuntimeError("GitHub did not confirm the exact promoted SHA.")
-    if branch_sha(repo, "beta") != sha:
-        raise RuntimeError("beta was changed again during promotion; inspect ref.")
+    # GitHub's refs read can briefly lag behind a successfully accepted PATCH.
+    # Only the previous or the requested SHA is ever acceptable while polling;
+    # any unrelated ref update still fails closed.
+    for attempt in range(8):
+        observed = branch_sha(repo, "beta")
+        if observed == sha:
+            break
+        if observed != beta_before:
+            raise RuntimeError(
+                "beta points to an unexpected commit after promotion; inspect ref."
+            )
+        if attempt < 7:
+            time.sleep(2)
+    else:
+        raise RuntimeError(
+            "beta ref did not confirm the verified dev commit; inspect ref."
+        )
 
     print(f"Fast-forward promoted verified dev {sha} to beta (no extra commits).")
 
