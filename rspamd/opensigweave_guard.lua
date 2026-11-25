@@ -30,7 +30,7 @@ if options.enabled == true then
         )
         task:set_pre_result(
             "soft reject",
-            "OpenSigWeave: Signaturmodul nicht geladen; bitte spaeter erneut versuchen. Fehler-ID: " .. failure_id,
+            "OpenSigWeave: Your email could not be sent because the signature service is unavailable. Please try again later. Error ID: " .. failure_id,
             "opensigweave_guard",
             nil,
             3
