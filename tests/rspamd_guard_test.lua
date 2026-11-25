@@ -56,7 +56,7 @@ assert(check(inbound) == false and not inbound_result.action,
 local plugin_missing, missing_result = task_case("test@example.org")
 assert(check(plugin_missing) == true)
 assert(missing_result.action == "soft reject", "missing plugin must tempfail")
-assert(missing_result.message:find("Fehler-ID: 0011aabb", 1, true))
+assert(missing_result.message:find("Error ID: 0011aabb", 1, true))
 assert(missing_result.module == "opensigweave_guard")
 assert(missing_result.priority == 3)
 assert(#errors == 1 and errors[1]:find("SIGNATURE_PLUGIN_NOT_LOADED", 1, true))
