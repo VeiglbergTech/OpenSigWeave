@@ -25,6 +25,8 @@ local asset = {
 local result, kind = cid.wrap(task,original,{asset})
 assert(result, kind)
 assert(kind:find('multipart/related',1,true))
+assert(kind:find('type="multipart/alternative"',1,true), 'related root must name original alternative')
+assert(result:find('Content-Type: multipart/related; type="multipart/alternative"',1,true))
 assert(kind:find('type="multipart/alternative"',1,true), 'root media type is mandatory')
 assert(result:find('X-Trace: intact',1,true))
 assert(result:find('--alt--\r\n',1,true))
@@ -127,6 +129,7 @@ local html_only = table.concat({
 }, '\r\n')
 local html_result, html_type = cid.wrap(task, html_only, {asset})
 assert(html_result, html_type)
+assert(html_type:find('type="text/html"',1,true), 'related root must name original HTML')
 assert(html_type:find('type="text/html"',1,true), 'HTML-only root type must match')
 write_fixture(arg[1]..'.html', html_result)
 
@@ -177,5 +180,6 @@ local long_asset = {
 }
 local mixed_result, mixed_type = cid.wrap(mixed_task, mixed_original, {long_asset})
 assert(mixed_result, mixed_type)
+assert(mixed_type:find('type="multipart/mixed"',1,true), 'related root must name original mixed tree')
 assert(mixed_type:find('type="multipart/mixed"',1,true), 'mixed root type must match')
 write_fixture(arg[1]..'.mixed', mixed_result)

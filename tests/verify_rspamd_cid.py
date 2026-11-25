@@ -8,6 +8,7 @@ message = BytesParser(policy=policy.default).parsebytes(Path(sys.argv[1]).read_b
 assert message.get_content_type() == "multipart/related"
 assert message.get_param("type") == "multipart/alternative"
 assert not message.defects, message.defects
+assert message.get_param("type", header="content-type") == "multipart/alternative"
 parts = list(message.iter_parts())
 assert len(parts) == 2
 assert parts[0].get_content_type() == "multipart/alternative"
@@ -23,6 +24,7 @@ assert message["X-Trace"] == "intact"
 html_only = BytesParser(policy=policy.default).parsebytes(Path(sys.argv[1] + ".html").read_bytes())
 assert not html_only.defects, html_only.defects
 assert html_only.get_content_type() == "multipart/related"
+assert html_only.get_param("type", header="content-type") == "text/html"
 assert html_only.get_param("type") == "text/html"
 html_root, html_image = list(html_only.iter_parts())
 assert html_root.get_content_type() == "text/html"
@@ -32,6 +34,7 @@ assert html_image.get_content_disposition() == "inline"
 mixed = BytesParser(policy=policy.default).parsebytes(Path(sys.argv[1] + ".mixed").read_bytes())
 assert not mixed.defects, mixed.defects
 assert mixed.get_content_type() == "multipart/related"
+assert mixed.get_param("type", header="content-type") == "multipart/mixed"
 assert mixed.get_param("type") == "multipart/mixed"
 mixed_root, new_image = list(mixed.iter_parts())
 assert mixed_root.get_content_type() == "multipart/mixed"

@@ -151,8 +151,14 @@ function M.wrap(task, message, assets)
     -- multipart/mixed or another supported root. Do not assume HTML.
     local root_type = nil
     for _, header in ipairs(inner) do
-        local kind = header:lower():match("^content%-type:%s*([%w!#    local related_ct = 'multipart/related; boundary="' .. boundary .. '"'^_.+%-]+/[%w!#    local related_ct = 'multipart/related; boundary="' .. boundary .. '"'^_.+%-]+)")
-        if kind then root_type = kind:lower(); break end
+        -- Strip the root Content-Type parameters; RFC 2387 requires type to
+        -- match the first related child's media type, including subtypes
+        -- such as multipart/alternative or text/html.
+        local kind = header:lower():match("^content%-type:%s*([^;%s]+)")
+        if kind and kind:match("^[%w!#$&^_.+%-]+/[%w!#$&^_.+%-]+$") then
+            root_type = kind
+            break
+        end
     end
     if not root_type then return nil, "missing root MIME content type" end
     local related_ct = 'multipart/related; type="' .. root_type .. '"; boundary="' .. boundary .. '"'
