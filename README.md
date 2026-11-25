@@ -2,22 +2,24 @@
   <img src="branding/logo.png" alt="OpenSigWeave – self-hosted email signature management for Mailcow and Rspamd" width="520">
 </p>
 
-# OpenSigWeave – Self-Hosted Email Signature Management
+# OpenSigWeave – Open-Source Email Signature Manager for Mailcow & Rspamd
 
-**OpenSigWeave** is a GPL-3.0-licensed, self-hosted **email signature management** application for organizations that want centrally managed HTML email signatures. It combines **Mailcow/Rspamd integration**, an administration web interface, **LDAP/Active Directory and OIDC/Authentik identity support**, domain-specific rules, rotating signatures and scheduled campaigns.
+**OpenSigWeave** is a free, open-source, self-hosted **email signature manager** for organizations that need to create, manage and automatically insert professional **HTML email signatures**. Its first integration targets **Mailcow** and **Rspamd**, enabling centrally controlled, server-side email signatures instead of maintaining a different signature on every device.
 
-Manage email signatures in one place instead of configuring every user and mail client separately. OpenSigWeave uses a Python/FastAPI service, PostgreSQL, Docker Compose and a mail-server-independent signature engine with adapters.
+Manage company-wide email signatures across multiple domains with a web-based signature editor, sender and domain rules, signature groups, rotation and scheduled campaigns. OpenSigWeave can resolve user information from **LDAP / Active Directory** and **Authentik / OIDC**, with configurable per-domain fallback attributes.
+
+The application runs with **Docker Compose**, **PostgreSQL** and **Python / FastAPI**. Its signature rendering engine is separated from mail-server adapters so support can be developed beyond Mailcow/Rspamd. OpenSigWeave is licensed under the [GNU GPL v3.0](LICENSE) and builds on the [original project by TylerHats](https://github.com/TylerHats/OpenSigWeave).
 
 > **Release status: `2026.11-alpha` is planned, not yet published.** OpenSigWeave is in **early access**, not a stable or production-certified release. Mailcow/SOGo, Authentik, rule selection, rotation, scheduling, CID images and selected failure/recovery cases have been tested in an isolated environment. LDAP, Outlook/Thunderbird and independent enforcement when both the Rspamd injector and its guard are missing still need testing. Read the [alpha release notes](docs/RELEASE_NOTES_v2026.11.md), [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md) and [mail usage acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
 
-## Email signature management features
+## Features: centralized HTML email signature management
 
-- **Centralized HTML signatures:** manage signatures for multiple email domains through an administration portal.
+- **Centralized business email signatures:** create and manage reusable HTML signatures for multiple domains and senders in one administration portal.
 - **WYSIWYG email signature editor:** use CKEditor, raw HTML editing, uploaded assets and version history.
 - **Dynamic user attributes:** use configured OIDC/Authentik and LDAP/Active Directory attributes, with per-domain fallback values when information is missing.
 - **Signature rules and groups:** choose signatures by sender/domain, configured conditions, user overrides and weighted rotation without immediate repetition where applicable.
 - **Scheduled email signatures:** apply time-based rules, for example a seasonal signature campaign.
-- **Mail-server integration:** a Mailcow/Rspamd adapter for server-side signature injection, with an adapter-neutral rendering API. Postfix Milter and Stalwart MTA hook adapters are **experimental**.
+- **Mailcow/Rspamd signature injection:** insert signatures during mail processing using the Rspamd adapter and an adapter-neutral rendering API. Postfix Milter and Stalwart MTA hook adapters are **experimental**.
 - **Administration and recovery:** local administrator sign-in, optional identity provider integration, authenticated management API, custom branding, selective import/export and encrypted backup/restore.
 
 OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or guarantee signatures when mail-server filters are bypassed. Review the [Mailcow/Rspamd integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) before changing live mail flow.
@@ -29,7 +31,11 @@ OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or
 3. The engine selects the configured signature, resolves available identity attributes and domain fallbacks, and returns the rendered content.
 4. The adapter incorporates the result into the supported email/MIME structure. The observed Mailcow/SOGo integration supports inline CID images and nested replies, but other clients and mail paths require their own testing.
 
-**Typical use cases:** company-wide email signatures, multi-domain signature management, rotating promotional banners, seasonal campaigns and user-specific signatures based on directory data.
+### What can you use OpenSigWeave for?
+
+OpenSigWeave is designed for IT administrators and organizations that want consistent email branding without maintaining signatures on each employee's devices. Typical uses include company-wide email signatures, centralized multi-domain signature management, directory-based contact details, rotating marketing banners and scheduled seasonal campaigns.
+
+The first integration is Mailcow with Rspamd. Other mail-server adapters are not considered production-ready merely because the core engine is adapter-neutral.
 
 ## Compatibility and project status
 
@@ -44,7 +50,7 @@ OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or
 
 Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architecture](docs/ADAPTERS.md) and the [acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md) for limitations.
 
-## Install OpenSigWeave with Docker Compose
+## Install OpenSigWeave on Linux with Docker Compose
 
 **Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose 2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB available disk space. Your mail server and TLS reverse proxy must be configured separately.
 
@@ -53,11 +59,11 @@ Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architec
 ```bash
 git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
 cd OpenSigWeave
-./install.sh --hostname signatures.example.com
+./install.sh
 ./generate_config.sh --check
 ```
 
-The installer creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. Published releases **pull the prebuilt application image from GitHub Container Registry**, rather than building it on the deployment host. The GHCR image is not available before an authorized main release is actually published. For development, `dev` and `beta` use a separate source-build Compose overlay.
+The interactive installer asks for the hostname, administrator account, bind address, allowed hosts and trusted proxies. It creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. Published releases **pull the prebuilt application image from GitHub Container Registry**, rather than building it on the deployment host. The GHCR image is not available before an authorized main release is actually published. For development, `dev` and `beta` use a separate source-build Compose overlay.
 
 ### Configure the listening address and reverse proxy
 
@@ -104,15 +110,19 @@ The in-repository documentation remains the current reference while the separate
 | [Backup and restore](docs/BACKUP_RESTORE_DESIGN.md) | Backup scope and recovery limits |
 | [Release and GHCR publishing](docs/RELEASE_PROCESS.md) | Alpha/beta/stable version tags, images and approval policy |
 
-## Frequently asked questions
+## Frequently asked questions about OpenSigWeave
+
+### What is a server-side email signature manager?
+
+A server-side email signature manager centrally chooses and inserts signatures when an email passes through a supported mail-processing integration. This can reduce the need to configure a signature separately in each desktop, mobile or webmail client. Actual placement and formatting depend on the MIME structure, sending client and adapter; see the [compatibility notes](docs/CLIENT_COMPATIBILITY.md).
 
 ### Does OpenSigWeave work without LDAP?
 
 Yes. The application provides a local administrator login, and identity providers are optional. Directory-based signatures can use configured providers or supported domain fallback attributes.
 
-### Can OpenSigWeave add email signatures to Mailcow?
+### Can I centrally manage Mailcow email signatures with OpenSigWeave?
 
-The Mailcow/Rspamd integration has passed selected live SOGo/Mailcow tests. It is still **early access**, and you should validate the full SMTP and DKIM flow before using it for critical or production email.
+Yes, the Mailcow/Rspamd integration can insert centrally managed signatures on supported outbound mail paths and has passed selected live SOGo/Mailcow tests. It is still **early access**, and you should validate the full SMTP and DKIM flow before using it for critical or production email.
 
 ### Do I need to build the Docker image myself?
 
@@ -122,10 +132,18 @@ Not for an **approved published release**: the `main` installer pulls the corres
 
 It targets the central management and server-side insertion of email signatures, but it does not claim feature parity with commercial services or replace a mail server.
 
+## Credits and acknowledgments
+
+OpenSigWeave builds on the **[original OpenSigWeave repository by TylerHats](https://github.com/TylerHats/OpenSigWeave)**. Thank you to **[TylerHats](https://github.com/TylerHats)** for creating the project and its original approach to centrally managed, server-inserted email signatures. This repository is a separately maintained continuation with significant changes to architecture, editor, identity integrations, deployment and administration features.
+
+The original project's **Rspamd signature injection engine** drew heavily on the MIME-rebuild array logic developed by the **[mailcow team](https://github.com/mailcow/mailcow-dockerized)** for the **`MOO_FOOTER`** module. We retain that original acknowledgment and thank the mailcow / Servercow contributors for their work on the open-source email ecosystem. See the [mailcow project](https://mailcow.email/) and [TylerHats' original README](https://github.com/TylerHats/OpenSigWeave#-acknowledgments--licensing).
+
+**Project independence:** OpenSigWeave is not an official mailcow product; credits do not imply an endorsement or formal affiliation with mailcow, TylerHats or other named projects.
+
 ## Development, security and license
 
 The project uses exactly three Git branches: **`dev`** for development, **`beta`** for CI-verified code and **`main`** for explicitly approved releases. Release versions follow `YYYY.MM-alpha`, `YYYY.MM-alpha1`, `YYYY.MM-beta` and `YYYY.MM`. Moving GHCR image aliases are `alpha`, `beta` and `latest` (stable only). The image publishing CI never automatically approves `main`.
 
 Before exposing any management service, configure HTTPS, an appropriate firewall and trusted proxy IPs. Never commit passwords, `.env` files or private keys. Report security concerns privately rather than posting credentials or customer data in public issues.
 
-**License:** [GNU General Public License v3.0](LICENSE). **Project:** [VeiglbergTech/OpenSigWeave](https://github.com/VeiglbergTech/OpenSigWeave).
+**License:** [GNU General Public License v3.0](LICENSE). **Source code:** [VeiglbergTech/OpenSigWeave](https://github.com/VeiglbergTech/OpenSigWeave). **Bugs and feature requests:** [GitHub Issues](https://github.com/VeiglbergTech/OpenSigWeave/issues).
