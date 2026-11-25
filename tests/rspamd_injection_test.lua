@@ -410,7 +410,7 @@ for _, http_status in ipairs({401, 422, 503}) do
   assert(callback(t))
   assert(r.modified == nil, 'engine failure should not mutate mail')
   assert(r.pre_result and r.pre_result.action == 'soft reject', 'strict mode must defer')
-  assert(r.pre_result.message:find('Fehler-ID:', 1, true))
+  assert(r.pre_result.message:find('Error ID:', 1, true))
 end
 status = 200
 response.html = 123
