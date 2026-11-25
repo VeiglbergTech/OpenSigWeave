@@ -67,10 +67,17 @@ def _flatten_resized_figure(match: re.Match) -> str:
     value = f"{size:g}{unit}"
     attribute_width = f"{size:g}" if unit == "px" else value
     img = match.group("img")
+    # Retain the original image aspect ratio for the pixel-size normalizer.
+    original_width, original_height = _IMG_WIDTH.search(img), _IMG_HEIGHT.search(img)
+    intrinsic_ratio = ""
+    if unit == "px" and original_width and original_height:
+        width_px, height_px = int(original_width.group(3)), int(original_height.group(3))
+        if width_px > 0 and height_px > 0:
+            intrinsic_ratio = f" aspect-ratio: {width_px}/{height_px};"
     img = re.sub(r"""\s+(?:style|width)\s*=\s*(["']).*?\1""", "", img, flags=re.I | re.S)
     img = img.rstrip()
     img = img[:-1].rstrip().removesuffix("/").rstrip()
-    return img + f' width="{attribute_width}" style="width: {value}; height: auto;">'
+    return img + f' width="{attribute_width}" style="width: {value}; height: auto;{intrinsic_ratio}">'
 
 
 
@@ -127,7 +134,7 @@ def _normalize_img_pixel_dimensions(match: re.Match) -> str:
     # when known instead of relying on Outlook's inconsistent height:auto.
     if height is not None and not css_height:
         if _CSS_AUTO_HEIGHT.search(css):
-            css = _CSS_AUTO_HEIGHT.sub(f"; height: {height}px", css, count=1)
+            css = _CSS_AUTO_HEIGHT.sub(f" height: {height}px", css, count=1)
         else:
             css = css.rstrip().rstrip(";") + f"; height: {height}px;"
     elif height is None:
