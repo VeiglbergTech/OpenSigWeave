@@ -114,66 +114,50 @@ local function remove_deprecated_selector_markers(html)
 end
 
 local function find_signature_text_marker(task, is_reply)
-    local unique_markers = {}
-    local unique_count = 0
-    local total_found = 0
-    local duplicate_within_part = false
+    -- MIME text/plain and text/html are two representations, not two messages.
+    -- The last authored marker is authoritative; prefer HTML when both exist.
+    -- Markers in quoted history must never select the new signature.
+    local last_html, last_plain = nil, nil
     local marker_prefix_found = false
-    local parts = task:get_text_parts() or {}
-    for _, part in ipairs(parts) do
+    for _, part in ipairs(task:get_text_parts() or {}) do
         local data = part:get_content("raw_utf")
         local content = data and tostring(data) or ""
         if content ~= "" then
             local is_html = part:is_html()
             local quote_start = #content + 1
-            local splitters = is_html and html_splitters or plain_splitters
-            for _, pattern in ipairs(splitters) do
+            for _, pattern in ipairs(is_html and html_splitters or plain_splitters) do
                 local start_pos = string.find(content, pattern)
                 if start_pos and start_pos < quote_start then quote_start = start_pos end
             end
             if not (is_reply and quote_start == #content + 1) then
                 local current = string.sub(content, 1, quote_start - 1)
-                -- HTML clients may encode angle brackets in text nodes.
+                -- Encoded HTML text nodes are equivalent to literal markers.
                 current = current:gsub("&lt;", "<"):gsub("&gt;", ">")
                 if current:find("<%-%-%-%[") then marker_prefix_found = true end
-                local part_found = 0
-                for name, code in string.gmatch(current, "<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->") do
-                    part_found = part_found + 1
-                    total_found = total_found + 1
-                    -- multipart/alternative normally contains the same visible
-                    -- marker once in text/plain and once in text/html. Treat
-                    -- those as one selector, while still rejecting two markers
-                    -- in the same representation or conflicting selectors.
-                    local key = name .. "\0" .. code
-                    if not unique_markers[key] then
-                        unique_markers[key] = { name = name, code = code }
-                        unique_count = unique_count + 1
-                    end
+                local last_in_part = nil
+                for name, code in current:gmatch("<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->") do
+                    last_in_part = { name = name, code = code }
                 end
-                if part_found > 1 then duplicate_within_part = true end
+                if last_in_part then
+                    if is_html then last_html = last_in_part else last_plain = last_in_part end
+                end
             end
         end
     end
-    if total_found == 0 then
+    local marker = last_html or last_plain
+    if not marker then
         if marker_prefix_found then return { cleanup = true, valid = false, name = "", code = "" } end
         return nil
     end
-    local marker = nil
-    for _, item in pairs(unique_markers) do
-        marker = item
-        break
-    end
     marker.raw = "<---[" .. marker.name .. "]--[" .. marker.code .. "]--->"
     marker.cleanup = true
-    marker.cleanup_all = total_found > 1
-    marker.valid = unique_count == 1 and not duplicate_within_part
-        and marker.name ~= "" and #marker.name <= 255
+    marker.valid = marker.name ~= "" and #marker.name <= 255
         and #marker.code == 4 and marker.code:match("^[%w][%w][%w][%w]$") ~= nil
     if not marker.valid then
-        -- Send an explicitly invalid selector so a malformed marker cannot fall back silently.
+        -- Keep the invalid last marker from falling back to an earlier selector.
         marker.name = ""
         marker.code = ""
-        rspamd_logger.warnx(task, "OpenSigWeave: malformed or ambiguous signature text marker")
+        rspamd_logger.warnx(task, "OpenSigWeave: invalid final signature text marker")
     end
     return marker
 end
@@ -227,7 +211,12 @@ local function inject_signature(task)
         local headers = headers_data and tostring(headers_data) or ""
         local function remove_literal_once(value, literal)
             if not literal or literal == "" then return value, false end
-            local first, last = string.find(value, literal, 1, true)
+            local first, last, search = nil, nil, 1
+            while true do
+                local s, e = string.find(value, literal, search, true)
+                if not s then break end
+                first, last, search = s, e, e + 1
+            end
             if not first then return value, false end
             return string.sub(value, 1, first - 1) .. string.sub(value, last + 1), true
         end
@@ -238,17 +227,17 @@ local function inject_signature(task)
             repeat
                 remaining, removed = remove_literal_once(remaining, signature_marker.raw)
                 changed = changed or removed
-            until not removed or not signature_marker.cleanup_all
+            until true
             local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
             repeat
                 remaining, removed = remove_literal_once(remaining, escaped)
                 changed = changed or removed
-            until not removed or not signature_marker.cleanup_all
+            until true
             local quoted_printable = signature_marker.raw:gsub("<", "=3C"):gsub(">", "=3E")
             repeat
                 remaining, removed = remove_literal_once(remaining, quoted_printable)
                 changed = changed or removed
-            until not removed or not signature_marker.cleanup_all
+            until true
             body = remaining
         else
             local cleaned, count = body:gsub("<%-%-%-%[[^\r\n]*", "")
@@ -491,26 +480,35 @@ local function inject_signature(task)
                 end
             end
 
-            -- A validly-shaped text marker is replaced at its exact position.
-            -- The API has already verified its four-character SHA-256 check.
+            -- Insert at the LAST authored marker, regardless of whether earlier
+            -- markers select the same signature or a different one. Earlier
+            -- markers remain literal text. The engine validates the selected
+            -- (HTML-preferred) marker's four-character checksum.
             if signature_marker and signature_marker.valid then
-                local marker_pattern = "<%-%-%-%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
-                    .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%->"
-                local replaced, count = spliced:gsub(marker_pattern, function() return signature end, 1)
-                if count == 0 and is_html then
-                    local escaped_pattern = "&lt;---%[" .. signature_marker.name:gsub("([^%w])", "%%%1")
-                        .. "%]%-%-%[" .. signature_marker.code .. "%]%-%-%-&gt;"
-                    replaced, count = spliced:gsub(escaped_pattern, function() return signature end, 1)
+                local authored_end = quote_hint or first_quote_boundary(spliced, splitters) or (#spliced + 1)
+                local authored = spliced:sub(1, authored_end - 1)
+                local last_start, last_after = nil, nil
+                local function consider(pattern)
+                    for start_pos, _, _, after_pos in authored:gmatch(pattern) do
+                        if not last_start or start_pos > last_start then
+                            last_start, last_after = start_pos, after_pos
+                        end
+                    end
                 end
-                if count > 0 then
+                consider("()<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->()")
+                if is_html then
+                    consider("()&lt;%-%-%[(.-)%]%-%-%[(.-)%]%-%-%-&gt;()")
+                end
+                if last_start then
+                    local replaced = spliced:sub(1, last_start - 1) .. signature .. spliced:sub(last_after)
                     if strip_device_signatures then
-                        replaced = replaced:gsub("\r?\n[Ss]ent from my [^\r\n<]+", "")
-                        replaced = replaced:gsub("\r?\n[Gg]et Outlook for [^\r\n<]+", "")
+                        replaced = replaced:gsub("\\r?\\n[Ss]ent from my [^\\r\\n<]+", "")
+                        replaced = replaced:gsub("\\r?\\n[Gg]et Outlook for [^\\r\\n<]+", "")
                         replaced = replaced:gsub("<[bB][rR]%s*/?>[Ss]ent from my [^<]+", "")
                         replaced = replaced:gsub("<[bB][rR]%s*/?>[Gg]et Outlook for [^<]+", "")
                     end
                     replaced = is_html and clean_trailing_html(replaced) or clean_trailing_plain(replaced)
-                    rspamd_logger.infox(task, "OpenSigWeave: replaced explicit signature text marker")
+                    rspamd_logger.infox(task, "OpenSigWeave: replaced last explicit signature text marker")
                     return replaced, true
                 end
             elseif signature_marker and signature_marker.cleanup then

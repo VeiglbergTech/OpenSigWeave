@@ -88,11 +88,33 @@ headers = run({
 assert(headers['X-OpenSigWeave-Signature'] == '')
 assert(headers['X-OpenSigWeave-Signature-Code'] == '')
 
--- Two marker occurrences inside one representation are still ambiguous.
+-- Repeated markers are intentional: the last marker wins.
 headers = run({
   text_part(marker .. '\r\n' .. marker, false),
 })
-assert(headers['X-OpenSigWeave-Signature'] == '')
-assert(headers['X-OpenSigWeave-Signature-Code'] == '')
+assert(headers['X-OpenSigWeave-Signature'] == 'Sales')
+assert(headers['X-OpenSigWeave-Signature-Code'] == 'a1b2')
+
+-- Two different markers must choose the last authored selector.
+local support = '<---[Support]--[c3d4]--->'
+headers = run({ text_part(marker .. '\r\n' .. support, false) })
+assert(headers['X-OpenSigWeave-Signature'] == 'Support')
+assert(headers['X-OpenSigWeave-Signature-Code'] == 'c3d4')
+headers = run({ text_part(support .. '\r\n' .. marker, false) })
+assert(headers['X-OpenSigWeave-Signature'] == 'Sales')
+
+-- The HTML alternative takes priority in a multipart/alternative message.
+headers = run({
+  text_part(marker .. '\r\n' .. support, false),
+  text_part('<html><body>' .. support .. '<br>' .. marker .. '</body></html>', true),
+})
+assert(headers['X-OpenSigWeave-Signature'] == 'Sales')
+
+-- Quoted markers do not override the newly written selector.
+headers = run({
+  text_part('<html><body>' .. marker .. '<div class="gmail_quote">'
+    .. support .. '</div></body></html>', true),
+})
+assert(headers['X-OpenSigWeave-Signature'] == 'Sales')
 
 io.write('rspamd marker selector tests passed\n')

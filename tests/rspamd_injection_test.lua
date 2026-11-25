@@ -137,6 +137,34 @@ local html=run_and_save(dir..'/flat_html.eml',
 assert(html.modified:find('X-Custom: folded\r\n\tand intact',1,true),'folded unrelated header lost')
 assert(not html.modified:find('base64',1,true),'folded old CTE not removed')
 
+-- Multiple markers: only the bottom one is replaced; all previous ones
+-- stay visible even when they name a different signature.
+local top_tag = '<---[Sales]--[a1b2]--->'
+local bottom_tag = '<---[Support]--[c3d4]--->'
+local marker_case = '<html><body>Hello<br>' .. top_tag .. '<br>' .. bottom_tag .. '</body></html>'
+local marker_result = run_and_save(dir..'/flat_last_marker.eml',
+  'text/html; charset=utf-8', '7bit', marker_case, marker_case, true)
+assert(marker_result.modified:find(top_tag, 1, true),
+  'earlier marker must remain unchanged in HTML')
+assert(not marker_result.modified:find(bottom_tag, 1, true),
+  'last marker must be replaced in HTML')
+assert(marker_result.modified:find('OpenSigWeave=20Footer', 1, true),
+  'signature missing at last marker position')
+
+local same_case = '<html><body>' .. top_tag .. '<br>' .. top_tag .. '</body></html>'
+local same_result = run_and_save(dir..'/flat_repeated_marker.eml',
+  'text/html; charset=utf-8', '7bit', same_case, same_case, true)
+local _, top_count = same_result.modified:gsub(top_tag, '')
+assert(top_count == 1, 'only the final repeated marker may be replaced')
+
+local plain_case = 'Hello\\r\\n' .. top_tag .. '\\r\\n' .. bottom_tag
+local plain_marker = run_and_save(dir..'/flat_plain_last_marker.eml',
+  'text/plain; charset=utf-8', '7bit', plain_case, plain_case, false)
+assert(plain_marker.modified:find(top_tag, 1, true),
+  'earlier marker must remain in plain text')
+assert(not plain_marker.modified:find(bottom_tag, 1, true),
+  'final marker must be replaced in both converted alternatives')
+
 local already_signed = '<html><body>Hi <b>OpenSigWeave Footer</b> '
   .. '<a href="https://example.test/contact">Contact</a></body></html>'
 local already=run_and_save(dir..'/flat_already_signed.eml',
