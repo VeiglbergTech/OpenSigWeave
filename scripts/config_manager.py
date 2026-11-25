@@ -104,6 +104,7 @@ def _available(bind: str, port: int) -> bool:
     try:
         with socket.socket(family, socket.SOCK_STREAM) as probe:
             if not parsed.is_unspecified:
+                probe.settimeout(0.5)
                 return probe.connect_ex((bind, port)) != 0
             # Only a loopback test socket is bound during the preflight.
             probe.bind(("::1" if parsed.version == 6 else "127.0.0.1", port))
