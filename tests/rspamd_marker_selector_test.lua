@@ -80,13 +80,14 @@ assert(headers['X-OpenSigWeave-Signature'] == 'Sales',
   'identical marker across MIME alternatives must remain valid')
 assert(headers['X-OpenSigWeave-Signature-Code'] == 'a1b2')
 
--- Conflicting selectors across alternatives must remain fail-closed.
+-- The HTML representation selects the last visible marker, even when plain
+-- text carries a different marker. MIME alternatives are not separate emails.
 headers = run({
   text_part('Hello\r\n<---[Sales]--[a1b2]--->', false),
   text_part('<html><body><---[Support]--[c3d4]---></body></html>', true),
 })
-assert(headers['X-OpenSigWeave-Signature'] == '')
-assert(headers['X-OpenSigWeave-Signature-Code'] == '')
+assert(headers['X-OpenSigWeave-Signature'] == 'Support')
+assert(headers['X-OpenSigWeave-Signature-Code'] == 'c3d4')
 
 -- Repeated markers are intentional: the last marker wins.
 headers = run({

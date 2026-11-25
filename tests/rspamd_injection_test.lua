@@ -157,7 +157,7 @@ local same_result = run_and_save(dir..'/flat_repeated_marker.eml',
 local _, top_count = same_result.modified:gsub(top_tag, '')
 assert(top_count == 1, 'only the final repeated marker may be replaced')
 
-local plain_case = 'Hello\\r\\n' .. top_tag .. '\\r\\n' .. bottom_tag
+local plain_case = 'Hello\r\n' .. top_tag .. '\r\n' .. bottom_tag
 local plain_marker = run_and_save(dir..'/flat_plain_last_marker.eml',
   'text/plain; charset=utf-8', '7bit', plain_case, plain_case, false)
 assert(plain_marker.modified:find(top_tag, 1, true),
@@ -272,6 +272,32 @@ local multipart_fixture=assert(io.open(dir..'/multipart_sogo_nested_reply.eml','
 multipart_fixture:write(multipart_result.modified)
 multipart_fixture:close()
 
+
+-- Two tags in both multipart alternatives: preserve the upper tag and
+-- replace only the last one with the selected signature in each representation.
+local markers_plain = 'Body\r\n' .. top_tag .. '\r\n' .. bottom_tag
+local markers_html = '<html><body>Body<br>' .. top_tag .. '<br>' .. bottom_tag .. '</body></html>'
+local markers_task, markers_result = task_case(
+  'multipart/alternative; boundary="' .. boundary .. '"', '7bit', '', '', false)
+local markers_plain_part = mock_mime_part('text', 'plain', plain_headers, markers_plain)
+local markers_html_part = mock_mime_part('text', 'html', html_headers, markers_html)
+markers_task.get_parts=function() return {root_part, markers_plain_part, markers_html_part} end
+markers_task.get_text_parts=function()
+  return {markers_plain_part:get_text(), markers_html_part:get_text()}
+end
+markers_task.get_rawbody=function()
+  return '--' .. boundary .. '\r\n' .. plain_headers .. '\r\n' .. markers_plain
+    .. '\r\n--' .. boundary .. '\r\n' .. html_headers .. '\r\n' .. markers_html
+    .. '\r\n--' .. boundary .. '--\r\n'
+end
+assert(callback(markers_task))
+assert(markers_result.modified, 'multipart message with repeated markers must be rewritten')
+assert(markers_result.modified:find(top_tag, 1, true),
+  'upper tag must remain in multipart output')
+assert(not markers_result.modified:find(bottom_tag, 1, true),
+  'last marker must be replaced in both multipart alternatives')
+local _, injected_count = markers_result.modified:gsub('OpenSigWeave=20Footer', '')
+assert(injected_count == 2, 'plain and HTML alternatives must each receive a signature')
 
 -- Regression: the real SOGo 5.12.x plain reply is converted to two MIME
 -- alternatives. Its current signature must precede the 19:46 attribution in

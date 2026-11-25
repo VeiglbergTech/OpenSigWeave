@@ -514,21 +514,20 @@ local function inject_signature(task)
             elseif signature_marker and signature_marker.cleanup then
                 local removed = false
                 if signature_marker.raw then
-                    local first, last
-                    repeat
-                        first, last = string.find(spliced, signature_marker.raw, 1, true)
-                        if first then
-                            spliced = string.sub(spliced, 1, first - 1) .. string.sub(spliced, last + 1)
-                            removed = true
+                    local function remove_last(value, literal)
+                        local first, last, cursor = nil, nil, 1
+                        while true do
+                            local s, e = string.find(value, literal, cursor, true)
+                            if not s then break end
+                            first, last, cursor = s, e, e + 1
                         end
-                    until not first or not signature_marker.cleanup_all
-                    if is_html then
+                        if not first then return value, false end
+                        return value:sub(1, first - 1) .. value:sub(last + 1), true
+                    end
+                    spliced, removed = remove_last(spliced, signature_marker.raw)
+                    if is_html and not removed then
                         local escaped = signature_marker.raw:gsub("<", "&lt;"):gsub(">", "&gt;")
-                        local a, b
-                        repeat
-                            a, b = string.find(spliced, escaped, 1, true)
-                            if a then spliced = string.sub(spliced, 1, a - 1) .. string.sub(spliced, b + 1); removed = true end
-                        until not a or not signature_marker.cleanup_all
+                        spliced, removed = remove_last(spliced, escaped)
                     end
                 else
                     local cleaned, count = spliced:gsub("<%-%-%-%[[^\r\n]*", "")
