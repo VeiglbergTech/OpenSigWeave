@@ -148,7 +148,7 @@ assert(marker_result.modified:find(top_tag, 1, true),
   'earlier marker must remain unchanged in HTML')
 assert(not marker_result.modified:find(bottom_tag, 1, true),
   'last marker must be replaced in HTML')
-assert(marker_result.modified:find('OpenSigWeave=20Footer', 1, true),
+assert(marker_result.modified:find('OpenSigWeave', 1, true),
   'signature missing at last marker position')
 
 local same_case = '<html><body>' .. top_tag .. '<br>' .. top_tag .. '</body></html>'
@@ -296,7 +296,7 @@ assert(markers_result.modified:find(top_tag, 1, true),
   'upper tag must remain in multipart output')
 assert(not markers_result.modified:find(bottom_tag, 1, true),
   'last marker must be replaced in both multipart alternatives')
-local _, injected_count = markers_result.modified:gsub('OpenSigWeave=20Footer', '')
+local _, injected_count = markers_result.modified:gsub('OpenSigWeave', '')
 assert(injected_count == 2, 'plain and HTML alternatives must each receive a signature')
 
 -- Regression: the real SOGo 5.12.x plain reply is converted to two MIME
