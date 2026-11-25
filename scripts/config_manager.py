@@ -93,15 +93,20 @@ def _hostname_default() -> str:
 
 
 def _available(bind: str, port: int) -> bool:
-    # Only the production Docker port mapping may bind to all interfaces.
-    # Preflight probes use loopback for wildcard addresses; Docker Compose
-    # performs the authoritative check against every real host interface.
+    """Best-effort check; Docker Compose enforces the final exact port binding.
+
+    Never preflight-bind an address that exposes an interface to the network.
+    An unspecified address is checked only on loopback. A specific address is
+    checked with a non-listening connect probe instead of a socket bind.
+    """
     parsed = ipaddress.ip_address(bind)
-    probe_host = ("::1" if parsed.version == 6 else "127.0.0.1") if parsed.is_unspecified else bind
+    family = socket.AF_INET6 if parsed.version == 6 else socket.AF_INET
     try:
-        with socket.socket(socket.AF_INET6 if parsed.version == 6 else socket.AF_INET,
-                           socket.SOCK_STREAM) as probe:
-            probe.bind((probe_host, port))
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            if not parsed.is_unspecified:
+                return probe.connect_ex((bind, port)) != 0
+            # Only a loopback test socket is bound during the preflight.
+            probe.bind(("::1" if parsed.version == 6 else "127.0.0.1", port))
             return True
     except OSError:
         return False

@@ -344,7 +344,15 @@ class InstallTests(unittest.TestCase):
     def test_port_conflict_detected(self):
         with patch.object(install.socket, "socket") as sockets:
             sockets.return_value.__enter__.return_value.bind.side_effect = OSError("occupied")
-            self.assertFalse(install.port_available("127.0.0.1", 8085))
+            self.assertFalse(install.port_available("0.0.0.0", 8085))
+
+    def test_specific_address_checks_port_without_binding(self):
+        with patch.object(cfg.socket, "socket") as sockets:
+            probe = sockets.return_value.__enter__.return_value
+            probe.connect_ex.return_value = 0
+            self.assertFalse(cfg._available("192.0.2.22", 8085))
+            probe.connect_ex.assert_called_once_with(("192.0.2.22", 8085))
+            probe.bind.assert_not_called()
 
     def test_installer_uses_interactive_config_without_bind_flag(self):
         with patch.object(install, "perform_install") as perform:
