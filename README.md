@@ -10,7 +10,7 @@ Manage company-wide email signatures across multiple domains with a web-based si
 
 The application runs with **Docker Compose**, **PostgreSQL** and **Python / FastAPI**. Its signature rendering engine is separated from mail-server adapters so support can be developed beyond Mailcow/Rspamd. OpenSigWeave is licensed under the [GNU GPL v3.0](LICENSE) and builds on the [original project by TylerHats](https://github.com/TylerHats/OpenSigWeave).
 
-> **Release status: `2026.11-alpha` is planned, not yet published.** OpenSigWeave is in **early access**, not a stable or production-certified release. Mailcow/SOGo, Authentik, rule selection, rotation, scheduling, CID images and selected failure/recovery cases have been tested in an isolated environment. LDAP, Outlook/Thunderbird and independent enforcement when both the Rspamd injector and its guard are missing still need testing. Read the [alpha release notes](docs/RELEASE_NOTES_v2026.11.md), [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md) and [mail usage acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
+> **Latest published release: [OpenSigWeave 2026.11-alpha](https://github.com/VeiglbergTech/OpenSigWeave/releases/tag/2026.11-alpha) (25 November 2026).** GitHub Actions successfully published the Docker image to GitHub Container Registry (GHCR) as `ghcr.io/veiglbergtech/opensigweave:2026.11-alpha` and the moving `:alpha` alias. This is an **early-access pre-release**, not a stable or production-certified version. Mailcow/SOGo, Authentik, rule selection, rotation, scheduling, CID images and selected failure/recovery cases have been tested in an isolated environment. LDAP, Outlook/Thunderbird and independent enforcement when both the Rspamd injector and its guard are missing still need testing. Read the [alpha release notes](docs/RELEASE_NOTES_v2026.11.md), [release acceptance checklist](docs/RELEASE_ACCEPTANCE_v2026.11.md) and [mail usage acceptance matrix](docs/MAIL_USAGE_ACCEPTANCE_MATRIX.md).
 
 ## Features: centralized HTML email signature management
 
@@ -54,7 +54,7 @@ Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architec
 
 **Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose 2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB available disk space. Your mail server and TLS reverse proxy must be configured separately.
 
-**After the first approved `2026.11-alpha` package is published**, the release installation is:
+**The approved `2026.11-alpha` package is published.** For the verified release source on `main`, install with:
 
 ```bash
 git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
@@ -63,7 +63,15 @@ cd OpenSigWeave
 ./generate_config.sh --check
 ```
 
-The interactive installer asks for the hostname, administrator account, bind address, allowed hosts and trusted proxies. It creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. Published releases **pull the prebuilt application image from GitHub Container Registry**, rather than building it on the deployment host. The GHCR image is not available before an authorized main release is actually published. For development, `dev` and `beta` use a separate source-build Compose overlay.
+The interactive installer asks for the hostname, administrator account, bind address, allowed hosts and trusted proxies. It creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. The published `main` release **pulls the prebuilt application image from GitHub Container Registry** rather than building it on the deployment host. Development branches (`dev` and `beta`) use a separate source-build Compose overlay.
+
+**Published Docker image:** `ghcr.io/veiglbergtech/opensigweave:2026.11-alpha` (immutable release version) or `ghcr.io/veiglbergtech/opensigweave:alpha` (moving alpha alias). To verify that you can access the package, run:
+
+```bash
+docker pull ghcr.io/veiglbergtech/opensigweave:2026.11-alpha
+```
+
+The default Docker Compose tag is `alpha`. After generating the protected `.env`, you can pin the exact version with `OSW_IMAGE_TAG=2026.11-alpha`. The installer verifies that the image's embedded source revision matches the **exact Git commit checked out on `main`**. The first alpha image was built from commit `29f43e9c5df70fa09576422b86f55c2e4d5c9e3c`; newer `main` commits require their own approved, source-matched published image. If GHCR returns an authentication error, check the package visibility or authenticate with an authorized read-only GitHub token.
 
 ### Configure the listening address and reverse proxy
 
@@ -126,7 +134,7 @@ Yes, the Mailcow/Rspamd integration can insert centrally managed signatures on s
 
 ### Do I need to build the Docker image myself?
 
-Not for an **approved published release**: the `main` installer pulls the corresponding image from GHCR and verifies its source commit. Development/staging checkouts can still build locally. The first release image is not published yet.
+No. The first prebuilt alpha image has been published as `ghcr.io/veiglbergtech/opensigweave:2026.11-alpha` with the `alpha` alias. The `main` installer pulls the image from GHCR and verifies its exact source commit; development/staging checkouts can still build locally. See the [published alpha release](https://github.com/VeiglbergTech/OpenSigWeave/releases/tag/2026.11-alpha).
 
 ### Is OpenSigWeave a replacement for CodeTwo or a mail server?
 
