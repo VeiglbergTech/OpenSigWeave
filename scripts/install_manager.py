@@ -11,17 +11,12 @@ from deploy_common import (
     exclusive_lock, healthcheck, info, ok, parse_env, pristine, service_state,
     system_checks, validate_config, warn, verify_release_image,
 )
-from config_manager import ENV, create_config, migrate_config
+from config_manager import ENV, create_config, migrate_config, _available
 
 
 def port_available(bind: str, port: int) -> bool:
-    family = socket.AF_INET6 if ":" in bind else socket.AF_INET
-    try:
-        with socket.socket(family, socket.SOCK_STREAM) as sock:
-            sock.bind((bind, port))
-            return True
-    except OSError:
-        return False
+    # Share the safe loopback-only wildcard probe with initial configuration.
+    return _available(bind, port)
 
 
 def perform_install(channel: str | None, *, hostname: str | None = None,
@@ -61,8 +56,8 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
             env = parse_env(ENV)
         validate_config(env)
         os.chmod(ENV, 0o600)
-        bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")
-        if bind in ("0.0.0.0", "::"):
+        bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")  # nosec B104 - configured listening address
+        if bind in ("0.0.0.0", "::"):  # nosec B104 - warns about wide host binding
             warn("Application binds to all interfaces: restrict the port in the host firewall and use an HTTPS reverse proxy.")
         port = int(env.get("APP_PORT", "8085"))
         if not port_available(bind, port):
@@ -98,7 +93,7 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         else:
             print(f"Public URL after configuring TLS reverse proxy: https://{host}")
         print(f"Container status:\n{compose('ps')}")
-        if bind in ("0.0.0.0", "::"):
+        if bind in ("0.0.0.0", "::"):  # nosec B104 - warns about wide host binding
             print(f"Reverse-proxy upstream: http://<server-private-ip>:{port} (binds {bind})")
         else:
             print(f"Reverse-proxy upstream: http://{bind}:{port}")

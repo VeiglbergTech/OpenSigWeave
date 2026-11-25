@@ -30,7 +30,7 @@ DEFAULTS = {
     "POSTGRES_DB": "opensigweave",
     "POSTGRES_USER": "opensigweave",
     "SIGNATURE_STORAGE_PATH": "/data/signatures",
-    "APP_BIND_ADDRESS": "0.0.0.0",
+    "APP_BIND_ADDRESS": "0.0.0.0",  # nosec B104 - explicitly requested default; firewall restriction required
     "APP_PORT": "8085",
     "MANAGEMENT_API_KEY": "",
     "STALWART_HOOK_TOKEN": "",
@@ -93,10 +93,15 @@ def _hostname_default() -> str:
 
 
 def _available(bind: str, port: int) -> bool:
+    # Only the production Docker port mapping may bind to all interfaces.
+    # Preflight probes use loopback for wildcard addresses; Docker Compose
+    # performs the authoritative check against every real host interface.
+    parsed = ipaddress.ip_address(bind)
+    probe_host = ("::1" if parsed.version == 6 else "127.0.0.1") if parsed.is_unspecified else bind
     try:
-        with socket.socket(socket.AF_INET6 if ":" in bind else socket.AF_INET,
+        with socket.socket(socket.AF_INET6 if parsed.version == 6 else socket.AF_INET,
                            socket.SOCK_STREAM) as probe:
-            probe.bind((bind, port))
+            probe.bind((probe_host, port))
             return True
     except OSError:
         return False
@@ -236,7 +241,7 @@ def create_config(*, hostname: str | None = None, admin_email: str | None = None
             GENERATED_PASSWORD_FILE.unlink(missing_ok=True)
         raise
     ok("Created .env with mode 0600 and independent cryptographic secrets")
-    if values["APP_BIND_ADDRESS"] in ("0.0.0.0", "::"):
+    if values["APP_BIND_ADDRESS"] in ("0.0.0.0", "::"):  # nosec B104 - security warning for wide bind
         info("WARNING: Application binds on all interfaces; restrict its port with a firewall and use an HTTPS reverse proxy.")
     if generate_admin_password:
         info(f"Initial administrator password stored in {GENERATED_PASSWORD_FILE} (0600); move it offline")

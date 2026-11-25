@@ -235,7 +235,7 @@ def validate_config(env: dict[str, str]) -> None:
                 raise DeploymentError("TRUSTED_PROXY_CIDRS must contain only IP addresses/CIDRs", 4) from exc
             if network.prefixlen == 0:
                 raise DeploymentError("TRUSTED_PROXY_CIDRS must not trust every address (/0)", 4)
-    bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")
+    bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")  # nosec B104 - validated explicit bind setting
     try:
         ipaddress.ip_address(bind)
         port = int(env.get("APP_PORT", "8085"))
@@ -287,7 +287,7 @@ def healthcheck(env: dict[str, str]) -> None:
     service_state("postgres")
     service_state("opensigweave")
     check_migration()
-    bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")
+    bind = env.get("APP_BIND_ADDRESS", "0.0.0.0")  # nosec B104 - validated explicit bind setting
     parsed = ipaddress.ip_address(bind)
     address = ("::1" if parsed.version == 6 else "127.0.0.1") if parsed.is_unspecified else bind
     port = int(env.get("APP_PORT", "8085"))

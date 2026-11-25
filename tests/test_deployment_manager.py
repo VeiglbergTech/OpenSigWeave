@@ -330,6 +330,17 @@ class ReleaseImageTests(unittest.TestCase):
 
 
 class InstallTests(unittest.TestCase):
+    def test_unspecified_addresses_are_only_probed_on_loopback(self):
+        with patch.object(cfg.socket, "socket") as sockets:
+            self.assertTrue(cfg._available("0.0.0.0", 8085))
+            sockets.return_value.__enter__.return_value.bind.assert_called_with(
+                ("127.0.0.1", 8085)
+            )
+            self.assertTrue(install.port_available("::", 8090))
+            sockets.return_value.__enter__.return_value.bind.assert_called_with(
+                ("::1", 8090)
+            )
+
     def test_port_conflict_detected(self):
         with patch.object(install.socket, "socket") as sockets:
             sockets.return_value.__enter__.return_value.bind.side_effect = OSError("occupied")
