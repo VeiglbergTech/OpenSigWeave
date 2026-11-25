@@ -146,7 +146,16 @@ function M.wrap(task, message, assets)
     if not seen_mime then outer[#outer + 1] = "MIME-Version: 1.0" end
 
     local boundary = "----OSWCID" .. rspamd_util.random_hex(16)
-    local related_ct = 'multipart/related; boundary="' .. boundary .. '"'
+    -- RFC 2387/2557 require type= to name the actual first (root) MIME part.
+    -- Its original Content-Type can be text/html, multipart/alternative,
+    -- multipart/mixed or another supported root. Do not assume HTML.
+    local root_type = nil
+    for _, header in ipairs(inner) do
+        local kind = header:lower():match("^content%-type:%s*([%w!#    local related_ct = 'multipart/related; boundary="' .. boundary .. '"'^_.+%-]+/[%w!#    local related_ct = 'multipart/related; boundary="' .. boundary .. '"'^_.+%-]+)")
+        if kind then root_type = kind:lower(); break end
+    end
+    if not root_type then return nil, "missing root MIME content type" end
+    local related_ct = 'multipart/related; type="' .. root_type .. '"; boundary="' .. boundary .. '"'
     outer[#outer + 1] = "Content-Type: " .. related_ct
     local chunks = {
         table.concat(outer, nl), nl, nl,
