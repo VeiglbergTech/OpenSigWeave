@@ -22,12 +22,12 @@ jobs:
     timeout-minutes: 120
     steps:
       - name: Check out the exact dev commit without persistent credentials
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Obtain repository-scoped GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         with:
           app-id: ${{ secrets.CI_PROMOTION_APP_ID }}
           private-key: ${{ secrets.CI_PROMOTION_APP_PRIVATE_KEY }}
