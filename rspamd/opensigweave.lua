@@ -497,7 +497,7 @@ local function inject_signature(task)
                 end
                 consider("()<%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%->()")
                 if is_html then
-                    consider("()&lt;%-%-%[(.-)%]%-%-%[(.-)%]%-%-%-&gt;()")
+                    consider("()&lt;%-%-%-%[(.-)%]%-%-%[(.-)%]%-%-%-&gt;()")
                 end
                 if last_start then
                     local replaced = spliced:sub(1, last_start - 1) .. signature .. spliced:sub(last_after)
