@@ -74,6 +74,81 @@ def _flatten_resized_figure(match: re.Match) -> str:
 
 
 
+# CKEditor can leave an image's original intrinsic dimensions (for example,
+# 1920x2560) in its HTML width/height attributes while recording the intended
+# displayed size (for example, 245px) in inline CSS. Classic Outlook prioritizes
+# HTML dimensions: the resulting embedded CID image appears enormous.
+_IMG_TAG = re.compile(r"<img\b[^>]*>", re.I | re.S)
+_IMG_STYLE = re.compile(r"""(\sstyle\s*=\s*)(["'])(.*?)\2""", re.I | re.S)
+_IMG_WIDTH = re.compile(r"""(\swidth\s*=\s*)(["'])(\d+)\2""", re.I)
+_IMG_HEIGHT = re.compile(r"""(\sheight\s*=\s*)(["'])(\d+)\2""", re.I)
+_CSS_PIXEL_WIDTH = re.compile(r"(?:^|;)\s*width\s*:\s*(\d+(?:\.\d+)?)px(?=\s|;|$)", re.I)
+_CSS_PIXEL_HEIGHT = re.compile(r"(?:^|;)\s*height\s*:\s*(\d+(?:\.\d+)?)px(?=\s|;|$)", re.I)
+_CSS_AUTO_HEIGHT = re.compile(r"(?<=;)\s*height\s*:\s*auto(?=\s|;|$)", re.I)
+_CSS_ASPECT = re.compile(r"(?:^|;)\s*aspect-ratio\s*:\s*(\d+(?:\.\d+)?)/(\d+(?:\.\d+)?)(?=\s|;|$)", re.I)
+
+
+def _normalize_img_pixel_dimensions(match: re.Match) -> str:
+    """Keep numeric img dimensions consistent with CKEditor's explicit px size."""
+    tag = match.group(0)
+    style_match = _IMG_STYLE.search(tag)
+    if not style_match:
+        return tag
+    css = style_match.group(3)
+    width_match = _CSS_PIXEL_WIDTH.search(css)
+    if not width_match:
+        return tag  # Do not guess dimensions for percentages or max-width.
+    width_value = float(width_match.group(1))
+    if not 1 <= width_value <= 2000:
+        return tag
+    display_width = int(width_value + 0.5)
+
+    css_height = _CSS_PIXEL_HEIGHT.search(css)
+    height = None
+    if css_height:
+        value = float(css_height.group(1))
+        if 1 <= value <= 8192:
+            height = int(value + 0.5)
+    else:
+        # Prefer CKEditor's original aspect-ratio, then intrinsic dimensions.
+        aspect = _CSS_ASPECT.search(css)
+        if aspect:
+            ratio_width, ratio_height = map(float, aspect.groups())
+        else:
+            old_w, old_h = _IMG_WIDTH.search(tag), _IMG_HEIGHT.search(tag)
+            ratio_width = float(old_w.group(3)) if old_w else 0
+            ratio_height = float(old_h.group(3)) if old_h else 0
+        if ratio_width > 0 and ratio_height > 0:
+            candidate = int(display_width * ratio_height / ratio_width + 0.5)
+            if 1 <= candidate <= 8192:
+                height = candidate
+
+    # Retain the original CSS width and other allowed styles. Set a fixed height
+    # when known instead of relying on Outlook's inconsistent height:auto.
+    if height is not None and not css_height:
+        if _CSS_AUTO_HEIGHT.search(css):
+            css = _CSS_AUTO_HEIGHT.sub(f"; height: {height}px", css, count=1)
+        else:
+            css = css.rstrip().rstrip(";") + f"; height: {height}px;"
+    elif height is None:
+        # An obsolete intrinsic height attribute would override CSS width in
+        # Outlook, so remove it if the aspect ratio cannot be verified.
+        pass
+
+    tag = _IMG_STYLE.sub(
+        lambda m: m.group(1) + m.group(2) + css + m.group(2),
+        tag, count=1
+    )
+    tag = _IMG_WIDTH.sub("", tag, count=1)
+    tag = _IMG_HEIGHT.sub("", tag, count=1)
+    attr = f' width="{display_width}"'
+    if height is not None:
+        attr += f' height="{height}"'
+    before_end = tag[:-2] if tag.endswith("/>") else tag[:-1]
+    close = "/>" if tag.endswith("/>") else ">"
+    return before_end.rstrip() + attr + close
+
+
 # Only recognized, plain profile variables are protected in already-safe URL schemes.
 # An opaque URL-safe placeholder prevents nh3 from discarding e.g.
 # href="https://{{ domain_name }}" before Jinja can render the domain.
@@ -139,9 +214,9 @@ def sanitize_signature_html(html_content: str) -> str:
     """Strip unsafe markup while preserving common email-signature layout markup."""
     if not isinstance(html_content, str):
         raise TypeError("html_content must be a string")
-    source, placeholders = _mask_templated_link_urls(
-        _RESIZED_FIGURE.sub(_flatten_resized_figure, html_content)
-    )
+    normalized = _RESIZED_FIGURE.sub(_flatten_resized_figure, html_content)
+    normalized = _IMG_TAG.sub(_normalize_img_pixel_dimensions, normalized)
+    source, placeholders = _mask_templated_link_urls(normalized)
     sanitized = _CLEANER.clean(source)
     for placeholder, variable in placeholders.items():
         sanitized = sanitized.replace(placeholder, variable)

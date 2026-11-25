@@ -211,6 +211,58 @@ class SignatureEditorCompatibilityTests(unittest.TestCase):
         self.assertNotIn("javascript:", malicious)
         self.assertNotIn("onclick", malicious)
 
+    def test_outlook_pixel_width_overrides_intrinsic_image_dimensions(self):
+        # The real CKEditor shape: source image is 1920x2560 but displayed
+        # as 245px. Outlook must not render the intrinsic 1920px width.
+        source = (
+            '<p><img class="image_resized" '
+            'style="aspect-ratio:1920/2560;width:245px;" '
+            'src="https://signature.example.org/signature-assets/logo.jpg" '
+            'width="1920" height="2560"></p>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('width="245"', result)
+        self.assertIn('height="327"', result)
+        self.assertRegex(result, r"width:\s*245px")
+        self.assertRegex(result, r"height:\s*327px")
+        self.assertNotIn('width="1920"', result)
+        self.assertNotIn('height="2560"', result)
+        self.assertEqual(sanitize_signature_html(result), result)
+
+    def test_outlook_resized_figure_drops_stale_height(self):
+        source = (
+            '<figure class="image image_resized" style="width: 200px;">'
+            '<img src="https://example.org/logo.png" width="1000" height="500">'
+            '</figure>'
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('width="200"', result)
+        self.assertNotIn('height="500"', result)
+        # The original image's aspect ratio is preserved when available.
+        self.assertIn('height="100"', result)
+
+    def test_images_without_explicit_pixel_width_are_not_resized(self):
+        source = '<img src="https://example.org/original.jpg" width="1920" height="2560">'
+        result = sanitize_signature_html(source)
+        self.assertIn('width="1920"', result)
+        self.assertIn('height="2560"', result)
+
+    def test_cid_image_keeps_outlook_pixel_dimensions(self):
+        source = (
+            '<img src="cid:example@assets.opensigweave.invalid" '
+            'style="width: 180px; height: auto;" width="1920" height="2560">'
+        )
+        # The stored source is an HTTPS managed asset; CID substitution happens
+        # after sanitization, so check the source dimensions here.
+        source = source.replace(
+            "cid:example@assets.opensigweave.invalid",
+            "https://example.org/signature-assets/example.jpg"
+        )
+        result = sanitize_signature_html(source)
+        self.assertIn('width="180"', result)
+        self.assertIn('height="240"', result)
+        self.assertRegex(result, r"height:\s*240px")
+
     def test_outlook_conditional_vml_is_not_currently_preserved(self):
         source = (
             '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml">'
