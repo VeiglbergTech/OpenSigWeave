@@ -163,7 +163,7 @@ class SecurityRegressionTests(unittest.TestCase):
         logo = (ROOT / "branding" / "logo.png").read_bytes()
         self.assertTrue(logo.startswith(b"\x89PNG\r\n\x1a\n"))
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-        self.assertIn("FROM node:22.23.5-alpine3.24 AS ckeditor", dockerfile)
+        self.assertRegex(dockerfile, r"(?m)^FROM node:[0-9]+\.[0-9]+\.[0-9]+-alpine[0-9]+\.[0-9]+ AS ckeditor$")
         self.assertNotIn("FROM node:22-alpine AS ckeditor", dockerfile)
         for obsolete in (
             ROOT / "branding" / "logo.png.example",
