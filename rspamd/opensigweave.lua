@@ -36,7 +36,7 @@ local function technical_failure(task, reason)
         failure_id, reason, FAILURE_POLICY)
     if FAILURE_POLICY == "tempfail" then
         task:set_pre_result("soft reject",
-            "OpenSigWeave: Signatur konnte nicht eingefuegt werden; bitte spaeter erneut versuchen. Fehler-ID: "
+            "OpenSigWeave: Your email could not be sent because the signature could not be applied. Please try again later. Error ID: "
                 .. failure_id, "opensigweave", nil, 3)
     end
 end
