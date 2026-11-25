@@ -27,7 +27,6 @@ def port_available(bind: str, port: int) -> bool:
 def perform_install(channel: str | None, *, hostname: str | None = None,
                     admin_email: str | None = None,
                     allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
-                    bind_address: str | None = None,
                     generate_admin_password: bool = False) -> None:
     with exclusive_lock():
         pristine()
@@ -44,10 +43,6 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         if ENV.is_symlink():
             raise DeploymentError("Refusing symlinked .env", 4)
         if ENV.exists():
-            if bind_address is not None:
-                raise DeploymentError(
-                    "Existing .env is preserved: change APP_BIND_ADDRESS there and recreate the application container", 4
-                )
             env = parse_env(ENV)
             validate_config(env)
             migrate_config()
@@ -62,7 +57,6 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         else:
             create_config(hostname=hostname, admin_email=admin_email,
                           allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
-                          bind_address=bind_address,
                           generate_admin_password=generate_admin_password)
             env = parse_env(ENV)
         validate_config(env)
@@ -119,7 +113,6 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--admin-email", help="Initial administrator email")
     parser.add_argument("--allowed-hosts", help="Comma-separated portal hostnames, without scheme/port/wildcard")
     parser.add_argument("--trusted-proxy-cidrs", help="Comma-separated trusted proxy IPs/CIDRs (empty by default)")
-    parser.add_argument("--bind-address", help="First-install bind IP, default 0.0.0.0; set 127.0.0.1 for same-host-only access")
     parser.add_argument("--generate-admin-password", action="store_true",
                         help="Save a generated first-login password in a 0600 file")
     args = parser.parse_args(argv)
@@ -127,7 +120,6 @@ def main(argv: list[str] | None = None) -> int:
         perform_install(args.channel, hostname=args.hostname,
                         admin_email=args.admin_email, allowed_hosts=args.allowed_hosts,
                         trusted_proxy_cidrs=args.trusted_proxy_cidrs,
-                        bind_address=args.bind_address,
                         generate_admin_password=args.generate_admin_password)
         return 0
     except (DeploymentError, OSError, EOFError, KeyboardInterrupt, ValueError) as exc:

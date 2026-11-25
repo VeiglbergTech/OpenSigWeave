@@ -100,12 +100,13 @@ class ConfigTests(unittest.TestCase):
             recovery = Path(temp) / "generated-admin-password"
             with patch.object(cfg, "ENV", path), patch.object(
                 cfg, "GENERATED_PASSWORD_FILE", recovery
-            ), patch.object(cfg, "_free_port", return_value=8085):
+            ), patch.object(cfg, "_free_port", return_value=8085), patch.object(
+                cfg, "prompt", return_value="192.0.2.45"
+            ):
                 cfg.create_config(
                     hostname="portal.example.test", admin_email="admin@example.test",
                     allowed_hosts="portal.example.test, localhost",
                     trusted_proxy_cidrs="10.35.32.8, 2001:db8::/64",
-                    bind_address="192.0.2.45",
                     generate_admin_password=True,
                 )
                 saved = common.parse_env(path)
@@ -148,42 +149,52 @@ class ConfigTests(unittest.TestCase):
             with self.subTest(existing_config=invalid), self.assertRaises(common.DeploymentError):
                 common.validate_config(valid | {"TRUSTED_PROXY_CIDRS": invalid})
 
-    def test_bind_address_validation_selects_port_on_configured_interface(self):
-        with patch.object(cfg.sys, "stdin", Terminal(False)), patch.object(
-            cfg, "_free_port", return_value=8090
-        ) as select_port:
+    def test_interactive_bind_address_validation_and_port_selection(self):
+        # The binding is prompted during first configuration, not supplied as a CLI flag.
+        with patch.object(cfg, "_free_port", return_value=8090) as select_port, patch.object(
+            cfg, "prompt", side_effect=["portal.example.test", "", "127.0.0.1"]
+        ) as prompt:
             values = cfg.create_values(
                 hostname="portal.example.test", admin_email="admin@example.test",
-                bind_address="127.0.0.1", generate_admin_password=True,
+                generate_admin_password=True,
             )
             self.assertEqual(values["APP_BIND_ADDRESS"], "127.0.0.1")
             self.assertEqual(values["APP_PORT"], "8090")
             select_port.assert_called_once_with("127.0.0.1")
-            for invalid in ("", "example.com", "127.0.0.1:8085", "not-an-ip"):
-                with self.subTest(bind=invalid), self.assertRaises(common.DeploymentError):
-                    cfg.create_values(
-                        hostname="portal.example.test", admin_email="admin@example.test",
-                        bind_address=invalid, generate_admin_password=True
-                    )
+            self.assertEqual(prompt.call_args.args[0],
+                             "Application bind IP (0.0.0.0 = all IPv4 interfaces)")
+            self.assertEqual(prompt.call_args.args[1], "0.0.0.0")
+        for invalid in ("example.com", "127.0.0.1:8085", "not-an-ip"):
+            with self.subTest(bind=invalid), patch.object(
+                cfg, "prompt", side_effect=["portal.example.test", "", invalid]
+            ), self.assertRaises(common.DeploymentError):
+                cfg.create_values(
+                    hostname="portal.example.test", admin_email="admin@example.test",
+                    generate_admin_password=True,
+                )
 
-    def test_config_generator_cli_forwards_bind_address(self):
+    def test_config_generator_cli_uses_wizard_not_bind_flag(self):
         with patch.object(cfg, "exclusive_lock", return_value=nullcontext()), patch.object(
             cfg, "ENV", Mock(**{"exists.return_value": False, "is_symlink.return_value": False})
         ), patch.object(cfg, "create_config") as create:
-            self.assertEqual(cfg.main(["--bind-address", "127.0.0.1",
-                                       "--generate-admin-password"]), 0)
-            self.assertEqual(create.call_args.kwargs["bind_address"], "127.0.0.1")
+            self.assertEqual(cfg.main(["--generate-admin-password"]), 0)
+            self.assertNotIn("bind_address", create.call_args.kwargs)
+        with self.assertRaises(SystemExit) as exited:
+            cfg.main(["--bind-address", "127.0.0.1"])
+        self.assertEqual(exited.exception.code, 2)
 
-    def test_generator_does_not_overwrite_existing_bind_address(self):
+    def test_existing_config_migration_does_not_prompt_for_bind_address(self):
         with tempfile.TemporaryDirectory() as temp:
             path = Path(temp) / ".env"
             path.write_text(env_text(sample_env()), encoding="utf-8")
             with patch.object(cfg, "ENV", path), patch.object(
                 cfg, "exclusive_lock", return_value=nullcontext()
-            ), patch.object(cfg, "migrate_config") as migrate:
+            ), patch.object(cfg, "prompt", side_effect=AssertionError("Unexpected prompt")), patch.object(
+                cfg, "migrate_config"
+            ) as migrate:
                 previous = path.read_bytes()
-                self.assertEqual(cfg.main(["--bind-address", "127.0.0.1"]), 4)
-                migrate.assert_not_called()
+                self.assertEqual(cfg.main([]), 0)
+                migrate.assert_called_once_with()
                 self.assertEqual(path.read_bytes(), previous)
 
     def test_create_never_overwrites_and_permissions(self):
@@ -324,10 +335,13 @@ class InstallTests(unittest.TestCase):
             sockets.return_value.__enter__.return_value.bind.side_effect = OSError("occupied")
             self.assertFalse(install.port_available("127.0.0.1", 8085))
 
-    def test_install_cli_forwards_bind_address(self):
+    def test_installer_uses_interactive_config_without_bind_flag(self):
         with patch.object(install, "perform_install") as perform:
-            self.assertEqual(install.main(["--bind-address", "192.0.2.35"]), 0)
-            self.assertEqual(perform.call_args.kwargs["bind_address"], "192.0.2.35")
+            self.assertEqual(install.main([]), 0)
+            self.assertNotIn("bind_address", perform.call_args.kwargs)
+        with self.assertRaises(SystemExit) as exited:
+            install.main(["--bind-address", "192.0.2.35"])
+        self.assertEqual(exited.exception.code, 2)
 
     def test_healthy_existing_installation_preserves_all_state(self):
         with patch.object(install, "exclusive_lock", return_value=nullcontext()), \

@@ -38,11 +38,9 @@ copy. It is ignored by Git.
 # Headless first install (explicit opt-in to generated admin password):
 ./install.sh --generate-admin-password --hostname signatures.example.com \
   --allowed-hosts "signatures.example.com,localhost" \
-  --trusted-proxy-cidrs "192.0.2.8/32" \
-  --bind-address "0.0.0.0"
+  --trusted-proxy-cidrs "192.0.2.8/32"
 # First-time configuration without starting the stack:
-./generate_config.sh --hostname signatures.example.com \
-  --bind-address "127.0.0.1"
+./generate_config.sh --hostname signatures.example.com
 ```
 
 Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
@@ -55,17 +53,19 @@ identity, OIDC, LDAP, Stalwart or other optional integration is required.
 
 **Security:** by default `APP_BIND_ADDRESS=0.0.0.0` listens on **all IPv4
 interfaces**. **Do not publicly expose the management port.** Restrict access
-with a host firewall to your HTTPS reverse proxy, or pass
-`--bind-address 127.0.0.1` for a same-host reverse proxy. If your proxy
+with a host firewall to your HTTPS reverse proxy, or enter
+`127.0.0.1` at the interactive bind-address prompt for a same-host reverse proxy. If your proxy
 runs on a separate host, binding to a specific private-interface IP is
 safer than binding to every interface; also limit the port to the proxy IP. `TRUSTED_PROXY_CIDRS` controls which immediate peers Uvicorn
 trusts for forwarded headers; it does **not** change the listening address,
 open a firewall, or authorize arbitrary `Host` headers. The allowed hostname
 list is enforced by the application. TLS must terminate at a trusted reverse
 proxy; do not expose plaintext management endpoints to the internet.
-The `--bind-address` option is supported in **both** `install.sh` and
-`generate_config.sh` on first-time configuration. An existing `.env` is
-never silently overwritten: change `APP_BIND_ADDRESS` in the protected file
+Both `./install.sh` and `./generate_config.sh` ask for the bind address
+**interactively during first-time configuration**, with `0.0.0.0` as the
+default. Neither script accepts a `--bind-address` option. Noninteractive
+installation retains the default. An existing `.env` is never silently
+overwritten: change `APP_BIND_ADDRESS` in the protected file
 deliberately, then recreate the affected application container for the new
 port binding to take effect. Existing proxy/host allowlists are preserved
 during reinstall and update.

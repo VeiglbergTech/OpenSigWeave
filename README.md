@@ -53,7 +53,7 @@ Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architec
 ```bash
 git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
 cd OpenSigWeave
-./install.sh --hostname signatures.example.com --bind-address 127.0.0.1
+./install.sh --hostname signatures.example.com
 ./generate_config.sh --check
 ```
 
@@ -63,15 +63,20 @@ The installer creates a protected `.env`, generates the required application and
 
 **Default:** `APP_BIND_ADDRESS=0.0.0.0` listens on **all IPv4 network interfaces**. This does **not** enable HTTPS or configure your firewall. **Block public access to the application port** and allow only your intended reverse proxy. For a reverse proxy running on the same host, select `127.0.0.1`.
 
-Both first-install entrypoints support the same option:
+Both entrypoints ask for the listening address **during the initial interactive
+configuration**, with `0.0.0.0` offered as the default:
 
 ```bash
-./install.sh --bind-address 0.0.0.0
-# Or, create only the configuration first:
-./generate_config.sh --bind-address 127.0.0.1
+./install.sh
+# Alternatively, create the configuration first:
+./generate_config.sh
 ```
 
-The installation wizard also configures `APP_ALLOWED_HOSTS` and optional `TRUSTED_PROXY_CIDRS`. Trust only the IP address or narrow CIDR range of an actual reverse proxy; trusting a proxy does not replace firewall rules. The bind-address option applies to **new** configurations. To change an existing deployment, edit `APP_BIND_ADDRESS` in the protected `.env` and recreate the affected application container; upgrades preserve existing values.
+At the `Application bind IP` question, press Enter to accept `0.0.0.0`,
+or enter `127.0.0.1` for a reverse proxy on the same host. No
+`--bind-address` option is required or supported.
+
+The installation wizard also configures `APP_ALLOWED_HOSTS` and optional `TRUSTED_PROXY_CIDRS`. Trust only the IP address or narrow CIDR range of an actual reverse proxy; trusting a proxy does not replace firewall rules. The bind-address question is asked for **new** configurations only. To change an existing deployment, edit `APP_BIND_ADDRESS` in the protected `.env` and recreate the affected application container; upgrades preserve existing values.
 
 For all options, unattended installation, security considerations and recovery steps, see [installation and update documentation](docs/INSTALL_UPDATE.md).
 
