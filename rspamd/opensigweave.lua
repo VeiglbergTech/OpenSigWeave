@@ -318,7 +318,7 @@ local function inject_signature(task)
 
 
     local function fail_api(reason)
-        if FAILURE_POLICY == "fail_open" then remove_text_marker_from_message() end
+        if FAILURE_POLICY == "disabled" then remove_text_marker_from_message() end
         fail(reason)
     end
 
@@ -896,7 +896,7 @@ local function inject_signature(task)
     })
 
     if not request_ok or not scheduled then
-        if FAILURE_POLICY == "fail_open" then remove_text_marker_from_message() end
+        if FAILURE_POLICY == "disabled" then remove_text_marker_from_message() end
         fail("ENGINE_REQUEST_NOT_SCHEDULED")
     end
     return true
