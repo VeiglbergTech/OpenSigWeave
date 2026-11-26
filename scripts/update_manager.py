@@ -304,6 +304,50 @@ def show_plan(channel: str, installed: str, remote: str, critical: list[str] | N
     print("Review docs/UPGRADE.md and the relevant release notes before applying.")
 
 
+BETA_LOCAL_IMAGE = "opensigweave-source-test:local"
+
+
+def beta_image_current(revision: str) -> bool:
+    """Verify both the locally built commit and the actually running image.
+
+    A beta checkout may coexist with a running alpha container. Git SHA alone
+    is not sufficient. Unlabeled/missing older images require one new build.
+    """
+    try:
+        label = docker(
+            "image", "inspect", "--format",
+            '{{ index .Config.Labels "org.opencontainers.image.revision" }}',
+            BETA_LOCAL_IMAGE,
+        )
+        if label.strip() != revision:
+            return False
+        image_id = docker("image", "inspect", "--format", "{{.Id}}", BETA_LOCAL_IMAGE).strip()
+        container_id = compose("ps", "-q", "opensigweave").strip()
+        if not image_id or not container_id:
+            return False
+        running_image_id = docker(
+            "inspect", "--format", "{{.Image}}", container_id
+        ).strip()
+        return image_id == running_image_id
+    except DeploymentError:
+        return False
+
+
+def parse_alembic_revision(output: str) -> str:
+    """Extract one revision from Alembic output; never trust BuildKit headers."""
+    found = re.findall(
+        r"(?m)^\s*([0-9][a-zA-Z0-9_]{3,63})(?:\s+\(head\))?\s*$",
+        output,
+    )
+    if len(found) != 1:
+        raise DeploymentError(
+            "Could not verify exactly one Alembic revision; "
+            "inspect migration state before retrying",
+            8,
+        )
+    return found[0]
+
+
 def apply_update(channel: str, remote: str, *, yes: bool,
                  approve_breaking: bool, skip_start: bool,
                  continue_without_backup: bool = False,
@@ -312,13 +356,11 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         ensure_no_incomplete_update()
         env = preflight()
         installed = current_sha()
-        if installed == remote and current_channel() == channel and channel != "beta":
-            ok("Already at the requested source revision")
-            return
-        if installed == remote and channel == "beta":
-            # A matching checkout may still run the old main/alpha GHCR image.
-            # Beta always rebuilds and checks the local Docker image.
-            info("Beta Git commit matches; rebuilding and validating the local Docker image")
+        if installed == remote and current_channel() == channel:
+            if channel != "beta" or beta_image_current(remote):
+                ok("Already up-to-date: source, running image and schema verified")
+                return
+            info("Beta Git commit is current, but the running image needs rebuilding")
         info(f"Fetching authorized {channel} source without executing downloaded scripts")
         if release_tag:
             if channel != "main":
@@ -337,7 +379,10 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         if fetched != remote:
             raise DeploymentError("Remote moved or release tag changed; recheck before applying", 4)
         critical = validate_target(fetched)
-        show_plan(channel, installed, fetched, critical)
+        if installed == fetched and channel == "beta":
+            info("Git commit is current; the local beta image still needs deployment")
+        else:
+            show_plan(channel, installed, fetched, critical)
         if critical:
             warn("Critical changes detected; migration and backup safeguards remain active")
         if not yes and input("Apply this update? [y/N]: ").strip().lower() != "y":
@@ -372,17 +417,40 @@ def apply_update(channel: str, remote: str, *, yes: bool,
             info("Using pre-pulled, SHA-verified GHCR image (no build)")
         else:
             info("Building unreleased development image")
-            compose("build", "--pull", "opensigweave", timeout=3600)
+            os.environ["OSW_BUILD_REVISION"] = fetched
+            try:
+                compose("build", "--pull", "opensigweave", timeout=3600)
+                if channel == "beta":
+                    built_revision = docker(
+                        "image", "inspect", "--format",
+                        '{{ index .Config.Labels "org.opencontainers.image.revision" }}',
+                        BETA_LOCAL_IMAGE,
+                    ).strip()
+                    if built_revision != fetched:
+                        raise DeploymentError(
+                            "Local beta image revision label does not match the authorized Git commit",
+                            8,
+                        )
+            finally:
+                os.environ.pop("OSW_BUILD_REVISION", None)
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="migration")
         info("Stopping application to serialize Alembic migration")
         compose("stop", "--timeout", "30", "opensigweave", timeout=120)
         try:
             compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "upgrade", "head", timeout=1200)
-            revision = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "current", timeout=120)
-            heads = compose("run", "--rm", "--no-deps", "opensigweave", "alembic", "heads", timeout=120)
-            if not revision or revision.split()[0] != heads.split()[0]:
-                raise DeploymentError("Post-migration Alembic revision does not match head", 8)
+            current_output = compose(
+                "run", "--rm", "--no-deps", "opensigweave", "alembic", "current", timeout=120
+            )
+            heads_output = compose(
+                "run", "--rm", "--no-deps", "opensigweave", "alembic", "heads", timeout=120
+            )
+            revision = parse_alembic_revision(current_output)
+            heads = parse_alembic_revision(heads_output)
+            if revision != heads:
+                raise DeploymentError(
+                    f"Post-migration Alembic mismatch: current={revision}, head={heads}", 8
+                )
             info(f"Alembic after migration: {revision}")
         except DeploymentError as exc:
             raise DeploymentError(

@@ -392,6 +392,8 @@ class BetaRebuildContractTests(unittest.TestCase):
              patch.object(update, "preflight", return_value=sample_env()), \
              patch.object(update, "current_sha", return_value=sha), \
              patch.object(update, "current_channel", return_value="beta"), \
+             patch.object(update, "beta_image_current", return_value=False), \
+             patch.object(update, "docker", return_value=sha), \
              patch.object(update, "git", side_effect=fake_git), \
              patch.object(update, "validate_target", return_value=[]), \
              patch.object(update, "show_plan"), \
@@ -409,6 +411,58 @@ class BetaRebuildContractTests(unittest.TestCase):
         self.assertTrue(any(call.args[:3] == ("build", "--pull", "opensigweave")
                             for call in compose.call_args_list),
                         "Matching beta Git SHA must still build the local image")
+
+
+class BetaImageAndMigrationTests(unittest.TestCase):
+    def test_up_to_date_beta_has_no_backup_or_build(self):
+        sha = "a" * 40
+        with patch.object(update, "exclusive_lock", return_value=nullcontext()), \
+             patch.object(update, "ensure_no_incomplete_update"), \
+             patch.object(update, "preflight", return_value=sample_env()), \
+             patch.object(update, "current_sha", return_value=sha), \
+             patch.object(update, "current_channel", return_value="beta"), \
+             patch.object(update, "beta_image_current", return_value=True) as image, \
+             patch.object(update, "select_backup_for_update") as backup, \
+             patch.object(update, "compose") as compose, \
+             patch.object(update, "git") as git:
+            update.apply_update("beta", sha, yes=True, approve_breaking=False,
+                                skip_start=False)
+        image.assert_called_once_with(sha)
+        backup.assert_not_called()
+        compose.assert_not_called()
+        git.assert_not_called()
+
+    def test_local_image_requires_matching_label_and_runtime_image(self):
+        revision = "a" * 40
+        def docker(*args):
+            if args[:2] == ("image", "inspect"):
+                return revision if "Config.Labels" in args[3] else "sha256:expected"
+            return "sha256:expected"
+        with patch.object(update, "docker", side_effect=docker), \
+             patch.object(update, "compose", return_value="container-id"):
+            self.assertTrue(update.beta_image_current(revision))
+        with patch.object(update, "docker", side_effect=docker), \
+             patch.object(update, "compose", return_value=""):
+            self.assertFalse(update.beta_image_current(revision))
+        with patch.object(update, "docker", return_value="old-commit"):
+            self.assertFalse(update.beta_image_current(revision))
+
+    def test_migration_parser_ignores_build_logs(self):
+        buildkit = (
+            "#1 [internal] load local bake definitions\n"
+            "#1 DONE 0.0s\n"
+            "0020_system_setup (head)\n"
+        )
+        self.assertEqual(update.parse_alembic_revision(buildkit), "0020_system_setup")
+        with self.assertRaises(common.DeploymentError):
+            update.parse_alembic_revision("#1 DONE 0.0s\n")
+        with self.assertRaises(common.DeploymentError):
+            update.parse_alembic_revision("0019_previous\n0020_system_setup (head)\n")
+
+    def test_overlay_does_not_auto_build_on_migration_run(self):
+        overlay = (ROOT / "compose.build.yaml").read_text(encoding="utf-8")
+        self.assertIn("pull_policy: never", overlay)
+        self.assertIn("org.opencontainers.image.revision:", overlay)
 
 
 class UpdateTests(unittest.TestCase):

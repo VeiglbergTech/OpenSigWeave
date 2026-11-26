@@ -6,4 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    pull_policy: build
+      labels:
+        org.opencontainers.image.revision: ${OSW_BUILD_REVISION:-unverified}
+    # The updater builds explicitly. One-off Alembic runs reuse that image.
+    pull_policy: never

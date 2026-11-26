@@ -152,6 +152,17 @@ This fetches the latest beta **commit**, checks out the existing or new
 locally using the Compose build overlay. The `main` release is never built
 locally.
 
+When the beta commit is unchanged, the updater verifies both the Git-revision
+label on the local image and whether the running container uses that exact
+image. If all checks pass, `--beta` exits without creating another backup,
+building or restarting. Older unlabeled images are rebuilt once.
+
+The Compose overlay uses `pull_policy: never` to prevent Alembic's one-off
+containers from rebuilding the image after the explicit update build. Alembic
+current/head output is parsed by revision, not by the first token of potentially
+mixed BuildKit output. Parsing failures stop the upgrade rather than reporting
+a false successful migration.
+
 ### One-time transition from a legacy alpha updater
 
 An older `update.sh` may not recognize `--beta`. Bootstrap once using
