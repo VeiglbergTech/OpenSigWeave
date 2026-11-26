@@ -107,16 +107,16 @@
 
         {% if is_admin %}
         <div x-show="tab === 'admin'" x-cloak>
-            <div class="osw-tabs flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4" role="tablist" aria-label="Administration sections">
-                <button role="tab" :aria-selected="adminTab === 'system'" @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
-                <button role="tab" :aria-selected="adminTab === 'identity-providers'" @click="setAdminTab('identity-providers')"  :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
-                <button role="tab" :aria-selected="adminTab === 'domains'" @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
-                <button role="tab" :aria-selected="adminTab === 'signatures'" @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
-                <button role="tab" :aria-selected="adminTab === 'signature-groups'" @click="setAdminTab('signature-groups')" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
-                <button role="tab" :aria-selected="adminTab === 'rules'" @click="setAdminTab('rules')" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
-                <button role="tab" :aria-selected="adminTab === 'branding'" @click="setAdminTab('branding')" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
-                <button role="tab" :aria-selected="adminTab === 'backups'" @click="setAdminTab('backups')" :class="adminTab === 'backups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Backup</button>
-                <button role="tab" :aria-selected="adminTab === 'import-export'" @click="setAdminTab('import-export')" :class="adminTab === 'import-export' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Import / Export</button>
+            <div class="osw-tabs flex flex-wrap gap-2 mb-6 border-b border-gray-700 pb-4" role="navigation" aria-label="Administration sections">
+                <button :aria-pressed="adminTab === 'system'" @click="setAdminTab('system')" :class="adminTab === 'system' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">System</button>
+                <button :aria-pressed="adminTab === 'identity-providers'" @click="setAdminTab('identity-providers')"  :class="adminTab === 'identity-providers' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Identity Providers</button>
+                <button :aria-pressed="adminTab === 'domains'" @click="setAdminTab('domains')" :class="adminTab === 'domains' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Domains</button>
+                <button :aria-pressed="adminTab === 'signatures'" @click="setAdminTab('signatures')" :class="adminTab === 'signatures' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signatures</button>
+                <button :aria-pressed="adminTab === 'signature-groups'" @click="setAdminTab('signature-groups')" :class="adminTab === 'signature-groups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Signature Groups</button>
+                <button :aria-pressed="adminTab === 'rules'" @click="setAdminTab('rules')" :class="adminTab === 'rules' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Rules</button>
+                <button :aria-pressed="adminTab === 'branding'" @click="setAdminTab('branding')" :class="adminTab === 'branding' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Branding</button>
+                <button :aria-pressed="adminTab === 'backups'" @click="setAdminTab('backups')" :class="adminTab === 'backups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Backup</button>
+                <button :aria-pressed="adminTab === 'import-export'" @click="setAdminTab('import-export')" :class="adminTab === 'import-export' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Import / Export</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
