@@ -80,7 +80,7 @@ class StrictMilterTests(unittest.TestCase):
     def test_crlf_and_missing_identity_never_reach_service(self):
         with mock.patch.object(mod.socket, "create_connection") as conn:
             self.assertFalse(mod.verify_receipt(
-                "ABCDEF0123\\nspoof", "u@example.test", "u@example.test",
+                "ABCDEF0123\nspoof", "u@example.test", "u@example.test",
                 host="127.0.0.1", port=10043,
             ))
             self.assertFalse(mod.verify_receipt(
