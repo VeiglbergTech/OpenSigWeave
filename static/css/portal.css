@@ -773,23 +773,23 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     border-radius: .375rem;
 }
 .osw-tabs { align-items: center; gap: .5rem; }
-.osw-tabs [role="tab"] {
+.osw-tabs button {
     position: relative; font-weight: 500;
     padding: .5rem 1rem; border: 1px solid transparent;
     border-radius: .375rem; color: var(--osw-muted);
 }
-.osw-tabs [role="tab"][aria-selected="true"] {
+.osw-tabs button[aria-pressed="true"] {
     background: var(--osw-panel-raised) !important;
     color: var(--osw-heading) !important;
     border-color: var(--osw-border);
     font-weight: 600;
 }
-.osw-tabs [role="tab"][aria-selected="true"]::after {
+.osw-tabs button[aria-pressed="true"]::after {
     content: ""; position: absolute; bottom: -.375rem;
     left: .75rem; right: .75rem; height: 2px;
     background: var(--osw-brand-action);
 }
-.osw-tabs [role="tab"]:hover:not([aria-selected="true"]) {
+.osw-tabs button:hover:not([aria-pressed="true"]) {
     color: var(--osw-text); background: var(--osw-panel-raised);
 }
 .osw-button { display: inline-flex; align-items: center; justify-content: center;
