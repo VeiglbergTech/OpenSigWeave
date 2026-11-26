@@ -49,7 +49,7 @@ class SharedToggleSwitchTests(unittest.TestCase):
 
     def test_shared_styles_cover_states_and_accessibility(self):
         for selector in ('input[type="checkbox"].osw-switch',
-                         'input[type="checkbox"].osw-checkbox::after',
+                         'input[type="checkbox"].osw-checkbox:checked::after',
                          'input[type="checkbox"].osw-switch::before',
                          'input[type="checkbox"].osw-switch:checked',
                          'input[type="checkbox"].osw-switch:disabled',
