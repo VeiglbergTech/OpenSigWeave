@@ -137,6 +137,19 @@ docker compose exec -T postfix-mailcow postconf -n smtpd_milters milter_default_
 docker compose exec -T rspamd-mailcow rspamadm configtest
 ~~~
 
+You can also run the read-only strict wiring auditor from the Mailcow host:
+
+~~~bash
+python3 /path/to/OpenSigWeave/scripts/audit_mailcow_submission.py \
+  --postconf-command "docker compose exec -T postfix-mailcow postconf" \
+  --strict-milter opensigweave-strict-milter
+~~~
+
+It fails if an authenticated listener omits the independent Milter, places it
+before Rspamd, has the wrong Postfix submission marker or does not use
+`milter_default_action=tempfail`. It also rejects a strict Milter accidentally
+configured on the inbound port-25 listener. It cannot prove live SMTP behavior.
+
 An SMTP-DATA 451 without actual Milter/queue evidence is not sufficient to
 approve production deployment.
 
