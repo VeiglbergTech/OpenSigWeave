@@ -2593,8 +2593,9 @@ async function main() {
     }
     checkpoint("dialog visual matrix: complete");
 
-    // Run the same administrative path with a narrow mobile viewport.
-    const mobileContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    // Narrow phones and tablet layouts share one functional viewport check.
+    for (const [width, height] of [[390, 844], [320, 568], [768, 1024]]) {
+    const mobileContext = await browser.newContext({ viewport: { width, height } });
     await mobileContext.addCookies(await page.context().cookies());
     const mobilePage = await mobileContext.newPage();
     await mobilePage.goto(baseURL + "/?view=admin&section=domains");
@@ -2620,6 +2621,7 @@ async function main() {
     await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Close", exact: true }).click();
     await mobilePage.waitForFunction(() => !document.body.classList.contains("osw-overlay-open"));
     await mobileContext.close();
+    }
 
     // Delete the test domain and verify it is removed from persistence and the UI.
     await domainRow.getByRole("button", { name: "Delete", exact: true }).click();
