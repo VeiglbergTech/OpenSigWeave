@@ -377,6 +377,40 @@ class InstallTests(unittest.TestCase):
             compose.assert_not_called()
 
 
+class BetaRebuildContractTests(unittest.TestCase):
+    def test_beta_rebuild_is_not_skipped_on_matching_git_commit(self):
+        # The checkout may match beta while the running container is still alpha.
+        sha = "a" * 40
+
+        def fake_git(*args):
+            if args[:2] == ("rev-parse", "refs/remotes/origin/beta"):
+                return sha
+            return ""
+
+        with patch.object(update, "exclusive_lock", return_value=nullcontext()), \
+             patch.object(update, "ensure_no_incomplete_update"), \
+             patch.object(update, "preflight", return_value=sample_env()), \
+             patch.object(update, "current_sha", return_value=sha), \
+             patch.object(update, "current_channel", return_value="beta"), \
+             patch.object(update, "git", side_effect=fake_git), \
+             patch.object(update, "validate_target", return_value=[]), \
+             patch.object(update, "show_plan"), \
+             patch.object(update, "select_backup_for_update", return_value={"status": "not_configured"}), \
+             patch.object(update, "write_update_journal"), \
+             patch.object(update, "checkout_target_channel"), \
+             patch.object(update, "parse_env", return_value=sample_env()), \
+             patch.object(update, "validate_config"), \
+             patch.object(update, "migrate_config"), \
+             patch.object(update, "clear_update_journal"), \
+             patch.object(update, "healthcheck"), \
+             patch.object(update, "compose", return_value="0020_system_setup") as compose:
+            update.apply_update("beta", sha, yes=True, approve_breaking=False,
+                                skip_start=False)
+        self.assertTrue(any(call.args[:3] == ("build", "--pull", "opensigweave")
+                            for call in compose.call_args_list),
+                        "Matching beta Git SHA must still build the local image")
+
+
 class UpdateTests(unittest.TestCase):
     def test_check_read_only_and_never_backups(self):
         with patch.object(update, "current_channel", return_value="dev"), \

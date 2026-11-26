@@ -152,6 +152,29 @@ This fetches the latest beta **commit**, checks out the existing or new
 locally using the Compose build overlay. The `main` release is never built
 locally.
 
+### One-time transition from a legacy alpha updater
+
+An older `update.sh` may not recognize `--beta`. Bootstrap once using
+the authorized remote Git branch, then run the new updater for the full
+rebuild and migration. Only fast-forward existing local history; never discard
+local changes or use `docker compose down -v`.
+
+~~~bash
+cd /opt/OpenSigWeave
+git fetch origin beta
+git switch beta
+git merge --ff-only origin/beta
+./update.sh --beta
+~~~
+
+`git switch beta` normally creates a local tracking branch automatically
+when only `origin/beta` exists. If it does not, use
+`git switch --track -c beta origin/beta` instead.
+
+The updater **must rebuild beta even when Git already matches origin/beta**,
+because the running app container may still use the old alpha image. The
+preflight, backup decision, migrations and health checks must still run.
+
 Optional diagnostic flags remain `--check`, `--dry-run`, `--prefetch`
 and `--version`; `--yes` supports noninteractive execution. The ordinary
 update no longer requires separately copying an `--approve-breaking`

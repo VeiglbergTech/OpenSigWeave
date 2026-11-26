@@ -312,9 +312,13 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         ensure_no_incomplete_update()
         env = preflight()
         installed = current_sha()
-        if installed == remote and current_channel() == channel:
-            ok("Already up-to-date")
+        if installed == remote and current_channel() == channel and channel == "main":
+            ok("Already at the published main release")
             return
+        if installed == remote and channel == "beta":
+            # A matching checkout may still run the old main/alpha GHCR image.
+            # Beta always rebuilds and checks the local Docker image.
+            info("Beta Git commit matches; rebuilding and validating the local Docker image")
         info(f"Fetching authorized {channel} source without executing downloaded scripts")
         if release_tag:
             if channel != "main":
