@@ -100,6 +100,7 @@ jobs:
         run: |
           python -m unittest discover -s tests -p test_strict_submission_gate.py -v
           python -m unittest discover -s tests -p test_strict_milter.py -v
+          python -m unittest discover -s tests -p test_strict_submission_audit.py -v
       - name: Test PostgreSQL schema migrations
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave
