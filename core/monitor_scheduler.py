@@ -13,22 +13,23 @@ _stop = threading.Event()
 _thread: threading.Thread | None = None
 
 
-def check_once(session_factory) -> None:
+def check_once(session_factory, *, force: bool = False) -> dict[str, object] | None:
     with session_factory() as session:
         config = session.get(SystemSetupDB, 1)
-        if config is None or not config.monitoring_enabled:
-            return
+        if config is None or (not config.monitoring_enabled and not force):
+            return None
         now = datetime.now(timezone.utc)
         checked = config.last_monitored_at
         if checked is not None:
             checked = checked.replace(tzinfo=timezone.utc) if checked.tzinfo is None else checked
-            if (now - checked).total_seconds() < config.monitoring_interval:
-                return
+            if not force and (now - checked).total_seconds() < config.monitoring_interval:
+                return None
         result = probe(config.mail_server, config.controller_url)
         config.last_monitor_status = str(result["status"])[:32]
         config.last_monitor_detail = str(result["detail"])[:255]
         config.last_monitored_at = now
         session.commit()
+        return result
 
 
 def start(session_factory) -> None:
