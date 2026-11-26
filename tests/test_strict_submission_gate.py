@@ -64,7 +64,7 @@ class StrictGateTests(unittest.TestCase):
         attrs = allowed_attrs()
         attrs["protocol_state"] = "RCPT"
         self.assertEqual(self.gate.policy_action(attrs), REJECT)
-        for invalid_id in ("", "x", "../tmp", "HEADER\\nBYPASS"):
+        for invalid_id in ("", "x", "../tmp", "HEADER\nBYPASS"):
             self.assertFalse(self.gate.record(receipt_attrs(queue_id=invalid_id), SECRET))
             self.assertEqual(self.gate.policy_action(allowed_attrs(queue_id=invalid_id)), REJECT)
 
@@ -95,25 +95,25 @@ class StrictGateWireTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_valid_receipt_allows_exactly_one_postfix_request(self):
         body = b"queue_id=ABCDEF0123&sender=u%40example.test&username=u%40example.test&decision=signed"
-        data = (b"POST /receipt HTTP/1.1\\r\\nHost: gate\\r\\n"
+        data = (b"POST /receipt HTTP/1.1\r\nHost: gate\r\n"
                 + b"X-OSW-Receipt-Key: " + SECRET.encode()
-                + b"\\r\\nContent-Length: " + str(len(body)).encode()
-                + b"\\r\\n\\r\\n" + body)
+                + b"\r\nContent-Length: " + str(len(body)).encode()
+                + b"\r\n\r\n" + body)
         self.assertIn(b"204 No Content", await self._wire(handle_receipt, data))
         policy_data = (
-            b"request=smtpd_access_policy\\nprotocol_state=END-OF-MESSAGE\\n"
-            b"queue_id=ABCDEF0123\\nsender=u@example.test\\n"
-            b"sasl_username=u@example.test\\n\\n"
+            b"request=smtpd_access_policy\nprotocol_state=END-OF-MESSAGE\n"
+            b"queue_id=ABCDEF0123\nsender=u@example.test\n"
+            b"sasl_username=u@example.test\n\n"
         )
-        self.assertEqual(await self._wire(handle_policy, policy_data), b"action=DUNNO\\n\\n")
+        self.assertEqual(await self._wire(handle_policy, policy_data), b"action=DUNNO\n\n")
         response = await self._wire(handle_policy, policy_data)
         self.assertIn(b"451 4.7.1", response)
 
     async def test_refuses_bad_auth_receipt(self):
         body = b"queue_id=ABCDEF0123&sender=u%40example.test&username=u%40example.test&decision=signed"
-        data = (b"POST /receipt HTTP/1.1\\r\\nX-OSW-Receipt-Key: wrong\\r\\n"
+        data = (b"POST /receipt HTTP/1.1\r\nX-OSW-Receipt-Key: wrong\r\n"
                 + b"Content-Length: " + str(len(body)).encode()
-                + b"\\r\\n\\r\\n" + body)
+                + b"\r\n\r\n" + body)
         self.assertIn(b"403 Forbidden", await self._wire(handle_receipt, data))
         self.assertEqual(self.gate.policy_action(allowed_attrs()), REJECT)
 
