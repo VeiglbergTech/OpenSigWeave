@@ -29,9 +29,13 @@ with mock.patch.dict(sys.modules, {"Milter": fake_milter}):
 
 
 class StrictMilterTests(unittest.TestCase):
-    def _instance(self, auth="u@example.test", queue="ABCDEF0123"):
+    def _instance(self, auth="u@example.test", queue="ABCDEF0123", submission=True):
         instance = mod.StrictReceiptMilter()
-        instance.macros = {"{auth_authen}": auth, "i": queue}
+        instance.macros = {
+            "{auth_authen}": auth,
+            "i": queue,
+            "{daemon_name}": "OPENSIGWEAVE_SUBMISSION" if submission else "smtp",
+        }
         self.assertEqual(instance.envfrom("<u@example.test>"), fake_milter.CONTINUE)
         return instance
 
@@ -55,6 +59,11 @@ class StrictMilterTests(unittest.TestCase):
         with mock.patch.object(mod, "verify_receipt") as verify:
             self.assertEqual(instance.eom(), fake_milter.CONTINUE)
             verify.assert_not_called()
+
+    def test_no_auth_on_submission_tempfails_instead_of_bypass(self):
+        instance = self._instance(auth="", submission=True)
+        self.assertEqual(instance.eom(), fake_milter.TEMPFAIL)
+        self.assertEqual(instance.reply[0], "451")
 
     def test_missing_queue_id_tempfails(self):
         instance = self._instance(queue="")
