@@ -57,8 +57,16 @@ main, section { min-width: 0; }
     --osw-readable-accent: #ffad87;
     --osw-action-accent: #a63b1b;
     --osw-action-hover: #8f3016;
+    --osw-bg: var(--osw-black);
+    --osw-surface: var(--osw-panel);
+    --osw-surface-raised: var(--osw-panel-raised);
+    --osw-input-bg: var(--osw-input);
+    --osw-brand-chosen: var(--osw-accent);
+    --osw-brand-action: var(--osw-action-accent);
+    --osw-brand-text: var(--osw-readable-accent);
+    --osw-focus: var(--osw-action-accent);
 }
-body { background: var(--osw-black) !important; color: #f4f4f5; }
+body { background: var(--osw-bg) !important; color: var(--osw-text); }
 .bg-gray-900 { background-color: var(--osw-charcoal) !important; }
 .bg-gray-800 { background-color: var(--osw-panel) !important; }
 .bg-gray-700 { background-color: var(--osw-panel-raised) !important; }
@@ -478,12 +486,8 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
     max-height: min(24rem, calc(100dvh - 8rem));
     overflow-y: auto;
 }
-@supports selector(:has(*)) {
-    .osw-modal-body:has(.osw-rich-editor .ck-dropdown__panel-visible),
-    .osw-modal-body:has(.osw-rich-editor .osw-font-listbox:not([hidden])) {
-        overflow: visible;
-    }
-}
+/* Keep the dialog body scrollable while CKEditor menus are open. Body-level
+   font menus and CKEditor balloons use their own viewport-constrained overlays. */
 
 /* Domain Management is the visual reference for all admin sections. Keep this
    in one place so future tables, status badges, and actions stay consistent. */
@@ -688,7 +692,7 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-action-accent) 20%, transparent);
     outline: none;
 }
-.ck-toolbar .osw-font-listbox {
+.osw-font-listbox {
     position: absolute;
     z-index: 140;
     top: calc(100% + 4px);
@@ -709,8 +713,8 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     border-radius: 6px;
     box-shadow: 0 10px 24px rgb(0 0 0 / 18%);
 }
-.ck-toolbar .osw-font-listbox[hidden] { display: none !important; }
-.ck-toolbar .osw-font-option {
+.osw-font-listbox[hidden] { display: none !important; }
+.osw-font-option {
     display: block;
     width: 100%;
     padding: 7px 9px;
@@ -721,14 +725,151 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     border-radius: 4px;
     cursor: pointer;
 }
-.ck-toolbar .osw-font-option:hover,
-.ck-toolbar .osw-font-option.osw-font-option-active,
-.ck-toolbar .osw-font-option:focus-visible {
+.osw-font-option:hover,
+.osw-font-option.osw-font-option-active,
+.osw-font-option:focus-visible {
     background: var(--osw-panel-raised);
     outline: 1px solid var(--osw-action-accent);
     outline-offset: -1px;
 }
-.ck-toolbar .osw-font-empty {
+.osw-font-empty {
     padding: 8px;
     color: var(--osw-muted);
+}
+
+
+/* UI_DESIGN_SYSTEM.md: unified controls and spacing in every personal/admin tab. */
+.osw-admin-section, .osw-personal-layout { --osw-control-height: 2.5rem; }
+.osw-section-header :is(h1,h2,h3) {
+    font-size: 1.5rem !important;
+    font-weight: 600 !important;
+    line-height: 2rem;
+    color: var(--osw-heading) !important;
+    margin: 0;
+}
+.osw-modal-header :is(h2,h3), .osw-personal-layout h2 {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.5rem;
+    color: var(--osw-heading);
+}
+.osw-admin-section > .grid, .osw-personal-layout { gap: 1.5rem; }
+.osw-personal-layout .bg-gray-800.rounded-lg,
+.osw-admin-section .bg-gray-800.rounded-lg {
+    border: 1px solid var(--osw-border);
+    border-radius: .5rem;
+}
+.osw-admin-section :is(button,input,select,textarea),
+.osw-personal-layout :is(button,input,select,textarea) { font-size: .875rem; }
+.osw-admin-section :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),select),
+.osw-personal-layout :is(input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),select) {
+    min-height: 2.5rem; min-width: 0; max-width: 100%;
+    border-radius: .375rem;
+}
+.osw-admin-section button:not(.osw-admin-status):not(.ck-button):not(.osw-font-option),
+.osw-personal-layout button:not(.ck-button):not(.osw-font-option),
+.osw-modal-shell button:not(.ck-button):not(.osw-font-option) {
+    min-height: 2.5rem;
+    border-radius: .375rem;
+}
+.osw-tabs { align-items: center; gap: .5rem; }
+.osw-tabs [role="tab"] {
+    position: relative; font-weight: 500;
+    padding: .5rem 1rem; border: 1px solid transparent;
+    border-radius: .375rem; color: var(--osw-muted);
+}
+.osw-tabs [role="tab"][aria-selected="true"] {
+    background: var(--osw-panel-raised) !important;
+    color: var(--osw-heading) !important;
+    border-color: var(--osw-border);
+    font-weight: 600;
+}
+.osw-tabs [role="tab"][aria-selected="true"]::after {
+    content: ""; position: absolute; bottom: -.375rem;
+    left: .75rem; right: .75rem; height: 2px;
+    background: var(--osw-brand-action);
+}
+.osw-tabs [role="tab"]:hover:not([aria-selected="true"]) {
+    color: var(--osw-text); background: var(--osw-panel-raised);
+}
+.osw-button { display: inline-flex; align-items: center; justify-content: center;
+    min-height: 2.5rem; padding: .5rem 1rem; font-size: .875rem;
+    border-radius: .375rem; font-weight: 500; border: 1px solid transparent;
+}
+.osw-button--secondary { background: var(--osw-panel-raised);
+    color: var(--osw-text); border-color: var(--osw-border);
+}
+.osw-button--secondary:hover:not(:disabled) { background: var(--osw-charcoal); }
+.osw-button:disabled { opacity: .48; cursor: not-allowed; }
+.osw-health-result { display: inline-flex; align-items: center; gap: .375rem;
+    padding: .5rem .75rem; border: 1px solid var(--osw-border);
+    border-radius: .375rem; background: var(--osw-panel-raised);
+    color: var(--osw-text); font-size: .875rem;
+}
+
+/* A switch means a Boolean state. Multiple selections use square checkboxes. */
+input[type="checkbox"].osw-checkbox {
+    appearance: none; -webkit-appearance: none;
+    display: inline-grid; place-content: center;
+    flex: 0 0 1.125rem; width: 1.125rem; min-width: 1.125rem;
+    height: 1.125rem; margin: 0;
+    border: 2px solid var(--osw-border);
+    border-radius: .25rem;
+    background: var(--osw-input);
+    cursor: pointer; vertical-align: middle;
+}
+input[type="checkbox"].osw-checkbox:checked {
+    background: var(--osw-action-accent);
+    border-color: var(--osw-action-accent);
+}
+input[type="checkbox"].osw-checkbox:checked::after {
+    content: ""; width: .55rem; height: .32rem;
+    border-bottom: 2px solid white; border-left: 2px solid white;
+    transform: translateY(-1px) rotate(-45deg);
+}
+input[type="checkbox"].osw-checkbox:focus-visible,
+input[type="checkbox"].osw-switch:focus-visible {
+    outline: 2px solid var(--osw-focus) !important; outline-offset: 3px;
+}
+input[type="checkbox"].osw-checkbox:disabled {
+    opacity: .4; cursor: not-allowed;
+}
+.osw-switch { color-scheme: inherit; }
+.osw-modal-root { overflow: hidden; }
+.osw-modal-placement, .osw-modal-shell { min-height: 0; }
+.osw-modal-body { overflow-y: auto !important; overflow-x: hidden; min-height: 0; }
+.osw-modal-body .osw-rich-editor,
+.osw-modal-body .ck-editor,
+.osw-modal-body .ck-editor__main { min-height: 0; min-width: 0; max-width: 100%; }
+.osw-rich-editor { min-width: 0; max-width: 100%; }
+.osw-rich-editor .ck.ck-editor__main > .ck-editor__editable {
+    min-height: 12rem; max-height: min(27rem, 45dvh);
+    overflow-y: auto;
+}
+.osw-font-listbox-portal { z-index: 145; }
+.osw-font-listbox { scrollbar-width: thin; }
+/* Native CKEditor dropdowns remain within the visible scroll region; never
+   bypass the parent's scroll limits simply to reveal an editor panel. */
+.osw-modal-shell .ck.ck-dropdown__panel {
+    max-height: min(20rem, 42dvh);
+    overflow-y: auto;
+}
+@media (max-width: 640px) {
+    .osw-modal-root {
+        padding: calc(.5rem + env(safe-area-inset-top, 0px))
+            .5rem calc(.5rem + env(safe-area-inset-bottom, 0px));
+    }
+    .osw-modal-shell {
+        width: calc(100vw - 1rem); max-width: calc(100vw - 1rem);
+        max-height: calc(100dvh - 1rem - env(safe-area-inset-top, 0px)
+            - env(safe-area-inset-bottom, 0px));
+    }
+    .osw-modal-body { padding: 1rem; }
+    .osw-modal-footer { gap: .5rem; }
+    .osw-modal-footer button { flex: 1 1 auto; }
+}
+@media (forced-colors: active) {
+    input[type="checkbox"].osw-checkbox { border-color: ButtonText; background: Canvas; }
+    input[type="checkbox"].osw-checkbox:checked { background: Highlight; border-color: Highlight; }
+    input[type="checkbox"].osw-checkbox:checked::after { border-color: HighlightText; }
 }
