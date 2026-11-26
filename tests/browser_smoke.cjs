@@ -399,7 +399,7 @@ async function main() {
       "Escape must restore the current formatting rather than committing a search");
     assert.equal(await page.locator("#user-rich-editor .osw-editor-font-toolbar").count(), 0,
       "font controls must not render above CKEditor");
-    assert.equal(await page.locator('#user-rich-editor .osw-signature-family-input [role="option"]').filter({ hasText: "Georgia" }).count(), 1,
+    assert.equal(await personalFontList.locator('[role="option"]').filter({ hasText: "Georgia" }).count(), 1,
       "Font family input must expose its predefined listbox choices");
     const menuContrast = await personalFontFamily.evaluate(button => {
       const channels = value => (value.match(/[\d.]+/g) || []).slice(0, 3).map(Number);
