@@ -873,3 +873,32 @@ input[type="checkbox"].osw-checkbox:disabled {
     input[type="checkbox"].osw-checkbox:checked { background: Highlight; border-color: Highlight; }
     input[type="checkbox"].osw-checkbox:checked::after { border-color: HighlightText; }
 }
+
+
+/* Sign-in and first-run setup are part of the same theme/spacing system. */
+.osw-auth-page { background: var(--osw-bg); color: var(--osw-text); }
+.osw-auth-card {
+    background: var(--osw-surface) !important;
+    color: var(--osw-text); border: 1px solid var(--osw-border);
+    border-radius: .875rem;
+    box-shadow: 0 16px 42px rgba(0,0,0,.14);
+}
+.osw-auth-card h1 {
+    font-size: 1.5rem; font-weight: 600; line-height: 2rem;
+    color: var(--osw-heading);
+}
+.osw-auth-card label { display: block; font-size: .875rem; font-weight: 500; }
+.osw-auth-card input:not([type="hidden"]) {
+    width: 100%; min-width: 0; min-height: 2.75rem;
+    color: var(--osw-text) !important; background: var(--osw-input-bg) !important;
+    border: 1px solid var(--osw-border) !important; border-radius: .375rem;
+}
+.osw-auth-card :is(button[type="submit"], a) { border-radius: .375rem; }
+.osw-auth-card button[type="submit"] { min-height: 2.75rem; }
+.osw-auth-card :is(button,input,a):focus-visible {
+    outline: 2px solid var(--osw-focus); outline-offset: 3px;
+}
+@media (max-width: 640px) {
+    .osw-auth-page { padding: .75rem; }
+    .osw-auth-card { padding: 1.25rem !important; }
+}
