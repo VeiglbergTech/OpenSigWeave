@@ -1,6 +1,8 @@
 """Adapter health and setup contract tests."""
 import json
 import unittest
+from urllib.error import HTTPError
+from unittest.mock import patch
 from core.adapter_monitor import probe, validate_controller_url, adapter_instructions
 
 
@@ -21,6 +23,51 @@ class AdapterHealthTests(unittest.TestCase):
                            {"name": "OPENSIGWEAVE_GUARD"}]).encode()
         self.assertEqual(probe("rspamd", "http://10.0.0.9:11334",
                                fetch=lambda _: data)["status"], "configured")
+
+    def test_real_grouped_rules_response(self):
+        # Rspamd /symbols exposes group objects with nested rules.
+        payload = [{"name": "local", "rules": [
+            {"symbol": "OPENSIGWEAVE_INJECT", "weight": 0.0},
+            {"symbol": "OPENSIGWEAVE_GUARD", "weight": 0.0}
+        ]}]
+        result = probe("rspamd", "http://10.0.0.9:11334",
+                       fetch=lambda _: json.dumps(payload).encode())
+        self.assertEqual(result["status"], "configured")
+
+    def test_group_name_does_not_count_as_registered_symbol(self):
+        payload = [{"name": "OPENSIGWEAVE_INJECT", "rules": [
+            {"symbol": "SOME_OTHER_RULE"}
+        ]}]
+        result = probe("rspamd", "http://10.0.0.9:11334",
+                       fetch=lambda _: json.dumps(payload).encode())
+        self.assertEqual(result["status"], "unknown")
+
+    def test_controller_auth_required_has_distinct_status(self):
+        class DeniedOpener:
+            def open(self, request, timeout):
+                raise HTTPError(request.full_url, 401, "Unauthorized", {}, None)
+        with patch("core.adapter_monitor.build_opener", return_value=DeniedOpener()):
+            result = probe("rspamd", "http://10.0.0.9:11334")
+        self.assertEqual(result["status"], "auth_required")
+        self.assertNotIn("10.0.0.9", result["detail"])
+
+    def test_password_uses_read_only_header(self):
+        class FakeResponse:
+            status = 200
+            def __enter__(self): return self
+            def __exit__(self, *args): return None
+            def read(self, length): return json.dumps([
+                {"name": "OPENSIGWEAVE_INJECT"}, {"name": "OPENSIGWEAVE_GUARD"}
+            ]).encode()
+        class PasswordOpener:
+            def open(self, request, timeout):
+                self.request = request
+                return FakeResponse()
+        opener = PasswordOpener()
+        with patch("core.adapter_monitor.build_opener", return_value=opener):
+            result = probe("rspamd", "http://10.0.0.9:11334", password="readonly-secret")
+        self.assertEqual(result["status"], "configured")
+        self.assertEqual(opener.request.get_header("Password"), "readonly-secret")
 
     def test_missing_symbol_not_healthy(self):
         data = json.dumps([{"name": "OPENSIGWEAVE_INJECT"}]).encode()
