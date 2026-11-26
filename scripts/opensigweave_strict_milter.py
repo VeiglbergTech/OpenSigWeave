@@ -60,18 +60,24 @@ class StrictReceiptMilter(Milter.Base):
         super().__init__()
         self.sender = ""
         self.username = ""
+        self.submission = False
 
     def envfrom(self, f, *args):
         self.sender = f.strip("<>").strip().lower()
         self.username = self.getsymval("{auth_authen}") or ""
+        self.submission = self.getsymval("{daemon_name}") == "OPENSIGWEAVE_SUBMISSION"
         return Milter.CONTINUE
 
     def eom(self):
-        # The Milter is wired only to authenticated submission. Never impose
-        # an outbound signature policy on unauthenticated incoming messages.
+        # A trusted Postfix daemon marker distinguishes authenticated
+        # submission from inbound SMTP even if authentication is broken.
+        # Any authenticated SMTP must still be checked without the marker.
         username = self.getsymval("{auth_authen}") or self.username
-        if not username:
+        if not username and not self.submission:
             return Milter.CONTINUE
+        if not username:
+            self.setreply("451", "4.7.1", REPLY)
+            return Milter.TEMPFAIL
         queue_id = self.getsymval("i") or ""
         if verify_receipt(
             queue_id, self.sender, username,
