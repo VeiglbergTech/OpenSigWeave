@@ -136,9 +136,19 @@ The repository validates the Rspamd adapter's **Lua logic and MIME output**, but
 Do not promote this adapter from beta to production until this list passes. Use the exact, recorded `dev` commit in the disposable environment; never silently copy untested files from a different branch.
 
 
-## Experimental fail-closed opt-in (issue #14, not yet production-ready)
+## Failure policies: disabled, standard and strict (issue #14)
 
-The Rspamd adapter accepts `failure_policy = "fail_open"` (default) or `failure_policy = "tempfail"`. In the latter mode, engine HTTP failures, invalid API responses, request scheduling errors, failures to decode flat mail, unsafe multipart rewrite failures, unexpected synchronous/asynchronous Lua callback exceptions and failed `task:set_message()` requests set Rspamd's **soft reject** pre-result. A correlation ID appears in the SMTP text and Rspamd logs. Deliberate empty signatures, disabled reply-signing and protected S/MIME/PGP or embedded messages are excluded. Rollback is changing the option to `fail_open` and restarting Rspamd, after verifying its config.
+The three supported values and the independent strict Postfix submission gate
+are documented in [Mailcow failure policies](MAILCOW_FAILURE_POLICIES.md).
+Legacy `fail_open` and `tempfail` remain accepted as aliases for
+`disabled` and `standard`. No web portal switch exists. The
+`strict` mode is **not approved for production** until a real isolated
+Mailcow END-OF-MESSAGE validation demonstrates 451 with both Lua plugins
+missing and 250 for properly signed messages.
+
+## Legacy standard-mode fail-closed opt-in (issue #14, not yet production-ready)
+
+The Rspamd adapter retains the legacy `failure_policy = "fail_open"` (default alias for `disabled`) and `failure_policy = "tempfail"` (alias for `standard`). In the latter mode, engine HTTP failures, invalid API responses, request scheduling errors, failures to decode flat mail, unsafe multipart rewrite failures, unexpected synchronous/asynchronous Lua callback exceptions and failed `task:set_message()` requests set Rspamd's **soft reject** pre-result. A correlation ID appears in the SMTP text and Rspamd logs. Deliberate empty signatures, disabled reply-signing and protected S/MIME/PGP or embedded messages are excluded. Rollback is changing the option to `fail_open` and restarting Rspamd, after verifying its config.
 
 This **does not guarantee** that Postfix rejects mail when Rspamd itself is offline or when the adapter could not load. Inspect the effective submission/SMTPS service (not only `main.cf`):
 
