@@ -902,3 +902,7 @@ input[type="checkbox"].osw-checkbox:disabled {
     .osw-auth-page { padding: .75rem; }
     .osw-auth-card { padding: 1.25rem !important; }
 }
+
+/* Consistent helper text under all branded form fields. */
+.osw-field-hint { display: block; margin-top: .375rem; font-size: .75rem;
+    line-height: 1.5; color: var(--osw-muted); }
