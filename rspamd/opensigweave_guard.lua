@@ -5,7 +5,13 @@ local rspamd_logger = require "rspamd_logger"
 local rspamd_util = require "rspamd_util"
 
 local options = rspamd_config:get_all_opt("opensigweave_guard") or {}
-if options.enabled == true then
+local adapter_options = rspamd_config:get_all_opt("opensigweave") or {}
+local failure_policy = adapter_options.failure_policy or "disabled"
+if failure_policy == "fail_open" then failure_policy = "disabled" end
+if failure_policy == "tempfail" then failure_policy = "standard" end
+-- A disabled failure policy must not turn a missing optional plugin into SMTP
+-- rejection. Strict remains independently enforced by the Postfix gate.
+if options.enabled == true and failure_policy ~= "disabled" then
     local function require_injector(task)
         -- Never reject unauthenticated inbound SMTP for missing outbound plugin.
         local user_ok, user = pcall(task.get_user, task)
