@@ -94,7 +94,7 @@ def audit(main_text: str, services_text: str, overrides_text: str,
         else:
             results.append(("PASS", f"{service}: expected Milter endpoint referenced"))
         if strict_milter_hint:
-            endpoints = [part.strip().casefold() for part in re.split(r"[,\\s]+", milters or "") if part.strip()]
+            endpoints = [part.strip().casefold() for part in re.split(r"[,\s]+", milters or "") if part.strip()]
             rspamd_positions = [i for i, item in enumerate(endpoints) if milter_hint.casefold() in item]
             gate_positions = [i for i, item in enumerate(endpoints) if strict_milter_hint.casefold() in item]
             if not rspamd_positions or not gate_positions or min(gate_positions) <= max(rspamd_positions):
