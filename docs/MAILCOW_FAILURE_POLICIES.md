@@ -121,6 +121,7 @@ restrictions. A schematic service-specific `master.cf` option is:
 ~~~text
 -o smtpd_milters=inet:rspamd:9900,inet:opensigweave-strict-milter:10045
 -o milter_default_action=tempfail
+-o milter_macro_daemon_name=OPENSIGWEAVE_SUBMISSION
 ~~~
 
 These are **not a drop-in Mailcow configuration**. Determine the effective
