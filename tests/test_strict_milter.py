@@ -54,11 +54,13 @@ class StrictMilterTests(unittest.TestCase):
         self.assertEqual(instance.reply[:2], ("451", "4.7.1"))
         self.assertIn("OpenSigWeave", instance.reply[2])
 
-    def test_untrusted_inbound_is_unchanged(self):
-        instance = self._instance(auth="")
+    def test_missing_sasl_macro_is_always_fail_closed(self):
+        instance = self._instance(auth="", submission=False)
         with mock.patch.object(mod, "verify_receipt") as verify:
-            self.assertEqual(instance.eom(), fake_milter.CONTINUE)
+            self.assertEqual(instance.eom(), fake_milter.TEMPFAIL)
             verify.assert_not_called()
+        # Inbound SMTP is protected by NOT wiring this Milter to port 25.
+        # A mistakenly attached Milter must never turn into a bypass.
 
     def test_no_auth_on_submission_tempfails_instead_of_bypass(self):
         instance = self._instance(auth="", submission=True)
