@@ -3,6 +3,9 @@ import hashlib
 import os
 import re
 import unittest
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 os.environ.setdefault("SECRET_KEY", "a-secret-key-longer-than-thirty-two-characters")
@@ -104,6 +107,51 @@ class BrowserBootstrapTests(unittest.TestCase):
             response = self.client.get("/")
             self.assertEqual(response.status_code, 200)
             self.assertIn('data-mail-setup-required="false"', response.text)
+
+    def test_public_liveness_and_dependency_readiness(self):
+        self.assertEqual(self.client.get("/livez").json()["status"], "alive")
+        with tempfile.TemporaryDirectory() as directory:
+            signatures = Path(directory) / "signatures"
+            assets = Path(directory) / "assets"
+            signatures.mkdir()
+            assets.mkdir()
+            store = SimpleNamespace(signatures_root=signatures, assets_root=assets)
+            with patch.object(main, "SessionLocal", self.Session), patch.object(
+                    main, "signature_file_store", store):
+                ready = self.client.get("/readyz")
+                self.assertEqual(ready.status_code, 200, ready.text)
+                self.assertEqual(ready.json()["status"], "ready")
+                assets.rmdir()
+                missing = self.client.get("/readyz")
+                self.assertEqual(missing.status_code, 503)
+                self.assertEqual(missing.json()["status"], "not_ready")
+
+    def test_manual_adapter_check_protected_and_truthful(self):
+        self.assertEqual(self.client.post("/api/admin/mail-adapter-check").status_code, 403)
+        with patch.object(main, "LOCAL_ADMIN_CONFIGURED", True):
+            response = self.client.get("/login")
+            token = self.csrf(response)
+            result = self.client.post("/login", data={
+                "csrf_token": token, "email": "admin@example.org",
+                "password": "correct horse battery staple",
+            })
+            self.assertEqual(result.status_code, 303)
+            csrf = re.search(r'data-csrf-token="([^"]+)"', self.client.get("/").text).group(1)
+            saved = self.client.put("/api/admin/mail-adapter-setup", json={
+                "mail_server": "rspamd", "monitoring_enabled": False,
+                "monitoring_interval": 60, "controller_url": "http://10.35.12.29:11334"
+            }, headers={"X-CSRF-Token": csrf})
+            self.assertEqual(saved.status_code, 200, saved.text)
+            with patch.object(main, "SessionLocal", self.Session), patch(
+                    "core.monitor_scheduler.probe", return_value={
+                        "status": "configured", "detail": "Both OpenSigWeave symbols are registered"
+                    }) as checked:
+                result = self.client.post("/api/admin/mail-adapter-check",
+                                          headers={"X-CSRF-Token": csrf})
+            self.assertEqual(result.status_code, 200, result.text)
+            self.assertEqual(result.json()["last_monitor_status"], "configured")
+            self.assertIsNotNone(result.json()["last_monitored_at"])
+            checked.assert_called_once()
 
     def test_monitoring_preferences_require_admin(self):
         self.assertEqual(self.client.get("/api/admin/mail-adapter-setup").status_code, 403)
