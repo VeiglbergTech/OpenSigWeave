@@ -35,7 +35,7 @@ def validate_controller_url(url: str) -> str:
         ip = ipaddress.ip_address(parts.hostname)
     except ValueError:
         raise ValueError("Use a private numeric IP address for the Rspamd controller") from None
-    if not (ip.is_private or ip.is_loopback) or ip.is_multicast or ip.is_unspecified:
+    if not (ip.is_private or ip.is_loopback) or ip.is_multicast or ip.is_unspecified or ip.is_link_local:
         raise ValueError("Controller must use a private IP address")
     try:
         port = parts.port

@@ -50,9 +50,15 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
                 raise DeploymentError("Published tag is not on approved main history", 4)
             if current_sha() != target:
                 info(f"Aligning clean first-install main source with published release {release_tag}")
-                # Allowed only before .env and its persistent deployment exist.
-                # --keep refuses overwriting tracked or untracked working files.
+                # Only before .env and persisted deployment state exist.
+                # Re-execute the installer FROM that trusted release. Its image
+                # and setup behavior must match the published code, including
+                # older releases that predate browser bootstrap.
                 git("reset", "--keep", target)
+                if current_sha() != target:
+                    raise DeploymentError("Checkout did not reach the published release", 4)
+                os.execv(str(ROOT / "install.sh"),
+                         [str(ROOT / "install.sh"), *sys.argv[1:]])
         if ENV.is_symlink():
             raise DeploymentError("Refusing symlinked .env", 4)
         if ENV.exists():
