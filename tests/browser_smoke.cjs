@@ -657,8 +657,9 @@ async function main() {
       // The onboarding card is another .bg-gray-800 sibling *before* the
       // summary. Measure the next actual status card, not the first card.
       const next = summary.nextElementSibling;
-      assert.ok(next && next.classList.contains("bg-gray-800"),
-        "system summary must be followed by a context card");
+      if (!next || !next.classList.contains("bg-gray-800")) {
+        throw new Error("System summary must be followed by a context card");
+      }
       return next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom;
     });
     assert.ok(cardGap >= 20, "separate system context cards need visible spacing: " + cardGap);
