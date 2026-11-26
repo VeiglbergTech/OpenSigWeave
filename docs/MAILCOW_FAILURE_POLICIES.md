@@ -33,6 +33,16 @@ injector does not independently reject when disabled. The existing Postfix
 `milter_default_action` remains separate: `disabled` cannot override a global
 Postfix decision to temporary-reject an unavailable Rspamd Milter.
 
+To also allow delivery when **Rspamd itself is completely offline** in
+`disabled` mode, the relevant authenticated Postfix submission listeners
+must independently use `milter_default_action=accept`, or another explicit
+fail-open Milter strategy. The Rspamd `failure_policy` option **cannot**
+change Postfix's behavior on its own. This weakens protection against *all*
+unavailable Milters on those listeners, not just OpenSigWeave; assess that
+tradeoff before applying it and never silently alter Mailcow's inbound policy.
+When switching back to `standard` or `strict`, restore the appropriate
+submission-only `milter_default_action=tempfail`.
+
 ## Strict architecture
 
 The Rspamd injector generates an event only after successful message mutation
