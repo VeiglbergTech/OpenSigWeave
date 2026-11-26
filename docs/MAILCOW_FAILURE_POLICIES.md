@@ -124,6 +124,11 @@ restrictions. A schematic service-specific `master.cf` option is:
 -o milter_macro_daemon_name=OPENSIGWEAVE_SUBMISSION
 ~~~
 
+The independent strict Milter requires proof for **every transaction that
+reaches it**. Missing SASL authentication context results in SMTP 451; it is
+never an implicit exemption. The Postfix daemon marker is supplementary audit
+context only. Do not attach the strict Milter to inbound port 25.
+
 These are **not a drop-in Mailcow configuration**. Determine the effective
 service and its supported override location for the installed Mailcow version
 before editing; never change inbound port-25 Milters. Rspamd down, strict
