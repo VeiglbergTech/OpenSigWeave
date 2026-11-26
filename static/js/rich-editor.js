@@ -373,7 +373,12 @@
                     });
                     input.disabled = !this.isEnabled;
                     this.listenTo(command, "change:value", update);
-                    const dismissOnViewportChange = () => closeMenu();
+                    const dismissOnViewportChange = event => {
+                        // Scrolling inside the font list must not dismiss the list.
+                        if (listbox && event?.type === "scroll" &&
+                            (event.target === listbox || listbox.contains(event.target))) return;
+                        closeMenu();
+                    };
                     if (listbox) {
                         window.addEventListener("scroll", dismissOnViewportChange, true);
                         window.addEventListener("resize", dismissOnViewportChange);
