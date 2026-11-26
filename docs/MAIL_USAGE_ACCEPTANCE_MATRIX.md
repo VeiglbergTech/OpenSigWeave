@@ -18,13 +18,17 @@
 
 ## Failure-policy implementation update (26 November 2026)
 
-The three selectable Rspamd `failure_policy` values are now `disabled`,
-`standard` and `strict`; legacy `fail_open`/`tempfail` aliases remain.
-`strict` adds an independent, **second Postfix EOM Milter** plus a short-lived,
-one-time receipt service, as specified in
-[Mailcow failure policies](MAILCOW_FAILURE_POLICIES.md). The optional strict
-mode is **source/CI staging only**. No live strict Milter proof, complete
-Mailcow EOM ordering evidence or production approval exists yet.
+The currently supported modes are `disabled` and `enabled`. The legacy
+`standard`/`tempfail` values are accepted aliases for `enabled`. The
+independent strict receipt service and second Postfix Milter were removed
+from the development branch in favor of a separate host-side module health
+check. Historical experimental evidence below is retained for traceability.
+
+The new read-only checker verifies the presence/readability of four Rspamd
+Lua files and whether the injector and guard are listed as enabled modules.
+Its status is **not proof** of an active signature injection, and it cannot
+block mail when both modules are missing. An SMTP end-to-end acceptance test
+remains necessary, especially after updating Mailcow or Rspamd.
 
 **Newly supplied operator evidence (26 November 2026):** After intentionally
 disabling both OpenSigWeave Lua modules while Rspamd remained healthy, two
@@ -38,12 +42,12 @@ The operator additionally reported successful live tests on SMTP ports
 redacted output for those assertions is not archived in this file. Thunderbird
 was observed to show the temporary SMTP error with a correlation ID.
 
-The new strict acceptance criterion is unambiguous: after enabling the
-independent second Milter on a disposable Mailcow Submission listener,
-**healthy signed messages and intentional policy skips must succeed, and
-disabling both Lua modules must return SMTP 451 without queue acceptance**.
-Repeat across all active listener variants; ensure inbound port 25 is not
-affected. Do not infer this result from unit fixtures alone.
+Current acceptance requires `check_mailcow_modules.py` to return
+exit 0 with `--policy enabled`, plus an authenticated SMTP end-to-end
+test with exactly one signature, appropriate temporary rejection on a
+technical engine failure, and recovery. No guarantee exists if both Lua
+modules disappear while Rspamd remains active.
+
 
 ## Status notation and evidence
 
@@ -116,7 +120,7 @@ affected. Do not infer this result from unit fixtures alone.
 | D03 | Existing CID + new signature CID | No collisions, no missing original CID or attachment | CI: CID wrapper; LIVE |
 | D04 | Hosted image imported once, source URL later unreachable | Delivery uses managed bytes, not original source or public OpenSigWeave asset URL | CI: `test_cid_assets.py`; LIVE with blocked external image loading |
 | D05 | Unknown external image URL in signature | Never fetched on SMTP path; CID API rejects unsupported external image rather than leaking it | CI: `test_cid_assets.py`; LIVE |
-| D06 | Missing/corrupt/unavailable image asset | Stable engine error; required signature triggers 4xx in strict Milter mode | CI: engine/CID; LIVE |
+| D06 | Missing/corrupt/unavailable image asset | Stable engine error; required signature triggers 4xx in enabled mode | CI: engine/CID; LIVE |
 | D07 | Max image count, size and response limits | Safe explicit rejection / no partial malformed message | CI: CID/Rspamd; LIVE controlled limits |
 | D08 | Recipient blocks remote content / mobile client | CID image renders without externally loading the signature server; record client/version | **LIVE** |
 
@@ -126,7 +130,7 @@ affected. Do not infer this result from unit fixtures alone.
 |---|---|---|---|
 | E01 | Engine HTTP 401, 422, 503, malformed JSON | No unsigned 250 acceptance in tempfail mode; traceable correlation ID | CI: Lua fail-closed; **Observed 4xx for MIME fault only**; LIVE variants |
 | E02 | DNS, TLS certificate, timeout or network failure to engine | Bounded request; SMTP 4xx in tempfail mode | CI: Lua mocks; LIVE |
-| E03 | Malformed/unsupported MIME or failed `set_message()` | No damaged email delivered; strict transient errors deferred, protected intentional skips pass | CI: Lua mocks; LIVE |
+| E03 | Malformed/unsupported MIME or failed `set_message()` | No damaged email delivered; enabled transient errors deferred, protected intentional skips pass | CI: Lua mocks; LIVE |
 | E04 | Stop Rspamd entirely on disposable submission server | All configured authenticated submission paths (including Mailcow SOGo port 588 and HAProxy 10465/10587) must return 4xx; no bypass via `milter_default_action=accept` | **LIVE PASS for SOGo/588 at 22:18:48:** Postfix CONNECT and EHLO returned 451 4.7.1 NOQUEUE; SOGo UI misreported SMTP AUTH error. Public 587/465 and HAProxy paths remain LIVE |
 | E05 | Postfix → Rspamd Milter unavailable, Rspamd Lua fails to load | Same 4xx guarantee on authenticated port 587/465, not untrusted port-25 changes | **LIVE PASS (guard enabled, SOGo/588):** 22:39:01 injector missing → `SIGNATURE_PLUGIN_NOT_LOADED`; Postfix EOM `milter-reject 4.7.1`, failure ID `1dababed`. Without guard: unsigned message delivered at 22:22:19. **Not an independent Postfix guarantee**; other listeners and guard-absent scenario still LIVE |
 | E06 | OpenSigWeave app or PostgreSQL unavailable | SMTP temporary rejection for signature-required sender; recovery permits single signed send | **LIVE PASS for stopped engine on SOGo/588:** EOM 4.7.1 / `e25097f2`, recovery successful. **Observed under PostgreSQL outage:** SMTP 4.7.1 / `11bba0f2`, Web UI edits unavailable; after DB restart, Web UI fully available **and signature sending successful** (operator-confirmed). Server-side outage correlation not archived |
@@ -144,4 +148,4 @@ affected. Do not infer this result from unit fixtures alone.
 3. **Failure lab only:** Perform E01-E07 and E10-E12 on deliberately isolated Mailcow submission infrastructure. Before changing anything, run `scripts/audit_mailcow_submission.py` read-only, then use `scripts/mailcow_smtp_probe.py --expect tempfail` and `--expect accepted` as documented in [Mailcow integration](MAILCOW_RSPAMD_INTEGRATION.md). Stop Rspamd **only if** this is a disposable lab and inbound SMTP is unaffected.
 4. **Performance:** Check B11, retries, mail queue, request latency, rate limits and max-size boundaries with harmless synthetic messages. Measure without putting regular accounts at risk.
 
-**Acceptance rule:** An item with only CI evidence is **not** live-pass. A production Mailcow release remains **unapproved** while E04/E05 across other applicable submission paths, independent enforcement when both injector and guard are missing, E08 (DKIM), relevant real-client tests and attachment hash integrity are unverified. `dev` is the only development branch; `beta` promotion remains CI-gated; `main` requires explicit approval.
+**Acceptance rule:** An item with only CI evidence is **not** live-pass. A production Mailcow release remains **unapproved** while E04/E05 across other applicable submission paths, monitoring when both injector and guard are missing, E08 (DKIM), relevant real-client tests and attachment hash integrity are unverified. `dev` is the only development branch; `beta` promotion remains CI-gated; `main` requires explicit approval.

@@ -8,9 +8,9 @@ local options = rspamd_config:get_all_opt("opensigweave_guard") or {}
 local adapter_options = rspamd_config:get_all_opt("opensigweave") or {}
 local failure_policy = adapter_options.failure_policy or "disabled"
 if failure_policy == "fail_open" then failure_policy = "disabled" end
-if failure_policy == "tempfail" then failure_policy = "standard" end
+if failure_policy == "tempfail" or failure_policy == "standard" then failure_policy = "enabled" end
 -- A disabled failure policy must not turn a missing optional plugin into SMTP
--- rejection. Strict remains independently enforced by the Postfix gate.
+-- rejection. A missing guard cannot independently enforce the policy.
 if options.enabled == true and failure_policy ~= "disabled" then
     local function require_injector(task)
         -- Never reject unauthenticated inbound SMTP for missing outbound plugin.

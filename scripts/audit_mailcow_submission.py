@@ -73,7 +73,7 @@ def effective_setting(main: dict[str, str], overrides: dict[str, str],
 
 
 def audit(main_text: str, services_text: str, overrides_text: str,
-          milter_hint: str = "rspamd", strict_milter_hint: str = "") -> list[tuple[str, str]]:
+          milter_hint: str = "rspamd") -> list[tuple[str, str]]:
     main = parse_settings(main_text)
     overrides = parse_settings(overrides_text)
     services = parse_services(services_text)
@@ -93,28 +93,11 @@ def audit(main_text: str, services_text: str, overrides_text: str,
             results.append(("FAIL", f"{service}: expected Rspamd Milter endpoint not found"))
         else:
             results.append(("PASS", f"{service}: expected Milter endpoint referenced"))
-        if strict_milter_hint:
-            endpoints = [part.strip().casefold() for part in re.split(r"[,\s]+", milters or "") if part.strip()]
-            rspamd_positions = [i for i, item in enumerate(endpoints) if milter_hint.casefold() in item]
-            gate_positions = [i for i, item in enumerate(endpoints) if strict_milter_hint.casefold() in item]
-            if not rspamd_positions or not gate_positions or min(gate_positions) <= max(rspamd_positions):
-                results.append(("FAIL", f"{service}: independent strict Milter missing or not after Rspamd"))
-            else:
-                results.append(("PASS", f"{service}: independent strict Milter follows Rspamd"))
-            marker = effective_setting(main, overrides, service, "milter_macro_daemon_name")
-            if marker != "OPENSIGWEAVE_SUBMISSION":
-                results.append(("FAIL", f"{service}: missing trusted OPENSIGWEAVE_SUBMISSION marker"))
-            else:
-                results.append(("PASS", f"{service}: trusted submission marker configured"))
         if failure_action != "tempfail":
             results.append(("FAIL", f"{service}: milter_default_action must be tempfail (effective: {failure_action or 'unset/unknown'})"))
         else:
             results.append(("PASS", f"{service}: Milter outage yields tempfail"))
     if "smtp/inet" in services:
-        if strict_milter_hint:
-            inbound_milters = effective_setting(main, overrides, "smtp", "smtpd_milters") or ""
-            if strict_milter_hint.casefold() in inbound_milters.casefold():
-                results.append(("FAIL", "Port-25 smtp/inet must not use the strict submission Milter"))
         inbound_action = effective_setting(main, overrides, "smtp", "milter_default_action")
         if inbound_action == "tempfail":
             results.append(("WARN", "Port-25 smtp/inet also uses tempfail; verify this is an intentional inbound policy"))
@@ -141,8 +124,6 @@ def main_cli(argv: list[str] | None = None) -> int:
                         help='e.g. "docker compose exec -T postfix-mailcow postconf"')
     parser.add_argument("--expected-milter", default="rspamd",
                         help="Case-insensitive substring of configured Rspamd Milter endpoint")
-    parser.add_argument("--strict-milter", default="",
-                        help="If set, require this independent Milter AFTER Rspamd on every submission listener")
     args = parser.parse_args(argv)
     try:
         command = shlex.split(args.postconf_command)
@@ -154,8 +135,7 @@ def main_cli(argv: list[str] | None = None) -> int:
     except RuntimeError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 2
-    findings = audit(main_text, services_text, overrides_text, args.expected_milter,
-                     args.strict_milter)
+    findings = audit(main_text, services_text, overrides_text, args.expected_milter)
     for level, message in findings:
         print(f"[{level}] {message}")
     return 1 if any(level == "FAIL" for level, _ in findings) else 0

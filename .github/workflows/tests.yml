@@ -96,11 +96,8 @@ jobs:
           mkdir -p /tmp/opensigweave-injection-fixtures
           lua5.1 tests/rspamd_injection_test.lua /tmp/opensigweave-injection-fixtures
           python tests/verify_rspamd_injection.py /tmp/opensigweave-injection-fixtures
-      - name: Test independent strict SMTP submission gate
-        run: |
-          python -m unittest discover -s tests -p test_strict_submission_gate.py -v
-          python -m unittest discover -s tests -p test_strict_milter.py -v
-          python -m unittest discover -s tests -p test_strict_submission_audit.py -v
+      - name: Test Mailcow module health checks
+        run: python -m unittest discover -s tests -p test_mailcow_module_health.py -v
       - name: Test PostgreSQL schema migrations
         env:
           DATABASE_URL: postgresql+psycopg://opensigweave:ci-password@127.0.0.1:5432/opensigweave

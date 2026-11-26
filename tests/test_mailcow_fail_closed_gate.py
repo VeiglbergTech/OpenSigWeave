@@ -9,7 +9,7 @@ from scripts.mailcow_smtp_probe import submit_message
 
 BASE = "smtpd_milters = inet:rspamd:9900\nmilter_default_action = accept\n"
 SERVICES = "smtp/inet=smtp inet n - y - - smtpd\nsubmission/inet=submission inet n - y - - smtpd\nsmtps/inet=smtps inet n - y - - smtpd\n"
-STRICT = "submission/inet/milter_default_action = tempfail\nsmtps/inet/milter_default_action = tempfail\n"
+ENABLED_OVERRIDES = "submission/inet/milter_default_action = tempfail\nsmtps/inet/milter_default_action = tempfail\n"
 
 
 # Real "postconf -M" returns whitespace-separated columns, not '='.
@@ -60,8 +60,8 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
                                   "submission/inet=submission inet n - n - - smtpd\n")
         self.assertEqual(services, {"submission/inet"})
 
-    def test_per_service_strict_does_not_block_inbound_default(self):
-        findings = audit(BASE, SERVICES, STRICT)
+    def test_per_service_enabled_does_not_block_inbound_default(self):
+        findings = audit(BASE, SERVICES, ENABLED_OVERRIDES)
         self.assertEqual(sum(level == "FAIL" for level, _ in findings), 0)
         self.assertFalse(any(level == "WARN" for level, _ in findings))
         self.assertEqual(sum(level == "PASS" for level, _ in findings), 4)
@@ -72,29 +72,29 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
         self.assertTrue(all("milter_default_action" in msg for msg in failures))
 
     def test_missing_milter_is_rejected_even_if_action_is_tempfail(self):
-        overrides = STRICT + "submission/inet/smtpd_milters = \n"
+        overrides = ENABLED_OVERRIDES + "submission/inet/smtpd_milters = \n"
         failures = [msg for level, msg in audit(BASE, SERVICES, overrides) if level == "FAIL"]
         self.assertTrue(any("smtpd_milters" in msg for msg in failures))
 
     def test_mailcow_sogo_listener_588_is_a_required_outbound_path(self):
         # SOGo submits to Postfix's internal listener, not public port 587.
         services = SERVICES + "588/inet=588 inet n - n - - smtpd\n"
-        findings = audit(BASE, services, STRICT)
+        findings = audit(BASE, services, ENABLED_OVERRIDES)
         self.assertTrue(any(level == "FAIL" and "588:" in msg for level, msg in findings))
-        strict = STRICT + "588/inet/milter_default_action = tempfail\n"
-        self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, strict)))
+        overrides = ENABLED_OVERRIDES + "588/inet/milter_default_action = tempfail\n"
+        self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, overrides)))
 
     def test_mailcow_haproxy_submission_services_are_required(self):
         services = (SERVICES
                     + "10465/inet=10465 inet n - n - - smtpd\n"
                     + "10587/inet=10587 inet n - n - - smtpd\n")
-        strict = (STRICT
+        overrides = (ENABLED_OVERRIDES
                   + "10465/inet/milter_default_action = tempfail\n"
                   + "10587/inet/milter_default_action = tempfail\n")
         self.assertEqual(
-            sum(level == "FAIL" for level, _ in audit(BASE, services, STRICT)), 2
+            sum(level == "FAIL" for level, _ in audit(BASE, services, ENABLED_OVERRIDES)), 2
         )
-        self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, strict)))
+        self.assertFalse(any(level == "FAIL" for level, _ in audit(BASE, services, overrides)))
 
     def test_quarantine_bcc_watchdog_are_not_user_submission(self):
         services = ("590/inet=590 inet n - n - - smtpd\n"
@@ -130,7 +130,7 @@ class PostfixSubmissionAuditTests(unittest.TestCase):
         self.assertTrue(any(level == "FAIL" for level, _ in findings))
 
     def test_expected_endpoint_is_verified(self):
-        failures = audit(BASE.replace("rspamd", "unrelated-milter"), SERVICES, STRICT)
+        failures = audit(BASE.replace("rspamd", "unrelated-milter"), SERVICES, ENABLED_OVERRIDES)
         self.assertTrue(any("expected Rspamd" in msg for level, msg in failures))
 
     def test_legacy_smtps_only(self):

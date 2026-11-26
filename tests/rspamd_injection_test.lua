@@ -4,8 +4,6 @@ local callback, status = nil, 200
 local failure_policy = 'fail_open'
 local inline_images_mode = 'external'
 local request_error, request_scheduled = nil, true
-local strict_receipt_count = 0
-local strict_receipt_http_status = 204
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
   inject_on_replies = true,
@@ -23,13 +21,6 @@ end
 package.preload['rspamd_http'] = function()
   return { request=function(opts)
     if not request_scheduled then return false end
-    if opts.url == 'http://strict-gate.test:10044/receipt' then
-      strict_receipt_count = strict_receipt_count + 1
-      assert(opts.body:find('queue_id=ABCDEF1234', 1, true))
-      assert(opts.headers['X-OSW-Receipt-Key'] == string.rep('s', 48))
-      opts.callback(nil, strict_receipt_http_status, '', {})
-      return true
-    end
     opts.callback(request_error, status, '{}', {})
     return true
   end }
@@ -77,8 +68,6 @@ rspamd_config = {
     engine_api_key=string.rep('x',40),
     failure_policy=failure_policy,
     inline_images=inline_images_mode,
-    strict_receipt_url='http://strict-gate.test:10044/receipt',
-    strict_receipt_key=string.rep('s',48),
   } end,
   register_symbol=function(_,sym) callback=sym.callback end,
 }
@@ -413,7 +402,7 @@ assert(callback(signed)==false, 'signed MIME must be skipped before HTTP')
 assert(signed_res.modified==nil)
 io.stderr:write('Flat encoding, signature idempotency, reply/forward placement and fail-open checks passed\n')
 
--- The strict policy must never return a permanent rejection on technical failure.
+-- Enabled must never cause a permanent rejection on a technical failure.
 failure_policy = 'tempfail'
 dofile('rspamd/opensigweave.lua')
 for _, http_status in ipairs({401, 422, 503}) do
@@ -421,7 +410,7 @@ for _, http_status in ipairs({401, 422, 503}) do
   local t, r = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
   assert(callback(t))
   assert(r.modified == nil, 'engine failure should not mutate mail')
-  assert(r.pre_result and r.pre_result.action == 'soft reject', 'strict mode must defer')
+  assert(r.pre_result and r.pre_result.action == 'soft reject', 'enabled mode must defer')
   assert(r.pre_result.message:find('Error ID:', 1, true))
 end
 status = 200
@@ -488,53 +477,22 @@ local valid, valid_result = task_case('text/html; charset=utf-8','7bit','hello',
 assert(callback(valid))
 assert(valid_result.modified and not valid_result.pre_result, 'healthy submission must pass')
 
--- Three public modes: disabled, standard and strict.
+-- Public modes: disabled and enabled. Keep legacy aliases.
 failure_policy = 'disabled'
 dofile('rspamd/opensigweave.lua')
 status = 503
 local disabled_task, disabled_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(disabled_task) and not disabled_result.pre_result,
-  'disabled must never soft-reject an engine failure')
-
-failure_policy = 'standard'
-dofile('rspamd/opensigweave.lua')
-local standard_task, standard_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(standard_task) and standard_result.pre_result
-  and standard_result.pre_result.action == 'soft reject',
-  'standard must reject an engine failure')
-
-failure_policy = 'strict'
-dofile('rspamd/opensigweave.lua')
+assert(callback(disabled_task) and not disabled_result.pre_result, 'disabled must not reject an engine failure')
+for _, mode in ipairs({'enabled','standard','tempfail'}) do
+  failure_policy = mode
+  dofile('rspamd/opensigweave.lua')
+  local t, r = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+  assert(callback(t) and r.pre_result and r.pre_result.action == 'soft reject',
+    mode .. ' must temporarily reject an engine failure')
+end
+failure_policy = 'enabled'
 status = 200
-strict_receipt_count = 0
-local strict_task, strict_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(strict_task))
-assert(strict_result.modified and not strict_result.pre_result)
-assert(strict_receipt_count == 1, 'strict signing must emit a per-message receipt')
-
-response.html = ''
-strict_receipt_count = 0
-local strict_none, strict_none_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(strict_none) and not strict_none_result.pre_result)
-assert(strict_receipt_count == 1, 'strict NONE must receive an explicit skip receipt')
-response.html = '<b>OpenSigWeave Footer</b>'
-
-status = 503
-strict_receipt_count = 0
-local strict_down, strict_down_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(strict_down) and strict_down_result.pre_result)
-assert(strict_receipt_count == 0, 'strict engine errors must not get receipts')
-status = 200
-
-strict_receipt_http_status = 503
-local strict_agent_down, strict_agent_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(strict_agent_down) and strict_agent_result.pre_result
-  and strict_agent_result.pre_result.action == 'soft reject',
-  'strict receipt-service failure must tempfail')
-strict_receipt_http_status = 204
-
-local strict_bad_queue, strict_bad_queue_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-strict_bad_queue.get_queue_id = function() return nil end
-assert(callback(strict_bad_queue) and strict_bad_queue_result.pre_result,
-  'strict must reject if Postfix queue identity is unavailable')
-io.stderr:write('OpenSigWeave disabled/standard/strict policy fixtures passed\\n')
+dofile('rspamd/opensigweave.lua')
+local recovered, result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(recovered) and result.modified and not result.pre_result, 'enabled must pass a healthy message')
+io.stderr:write('OpenSigWeave disabled/enabled fixtures passed\n')

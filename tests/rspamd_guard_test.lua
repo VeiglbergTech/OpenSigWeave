@@ -15,7 +15,7 @@ end
 local registered
 local injector
 local enabled = true
-local failure_policy = "standard"
+local failure_policy = "enabled"
 rspamd_config = {
     get_all_opt = function(_, name)
         if name == "opensigweave" then return { failure_policy = failure_policy } end
@@ -83,6 +83,10 @@ failure_policy = "disabled"
 registered = nil
 dofile("rspamd/opensigweave_guard.lua")
 assert(registered == nil, "disabled mode must never register rejection guard")
-failure_policy = "standard"
+failure_policy = "enabled"
 
-io.stderr:write("OpenSigWeave independent guard fixture passed\n")
+failure_policy = "standard"
+registered = nil
+dofile("rspamd/opensigweave_guard.lua")
+assert(registered ~= nil, "legacy standard alias must still enable guard")
+io.stderr:write("OpenSigWeave guard fixture passed\\n")

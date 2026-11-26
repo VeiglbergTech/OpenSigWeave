@@ -24,21 +24,13 @@ if INLINE_IMAGE_MODE ~= "external" and INLINE_IMAGE_MODE ~= "cid" then
 end
 local MAX_RESPONSE_SIZE = tonumber(module_options.max_response_size)
     or (INLINE_IMAGE_MODE == "cid" and 6291456 or 65536)
--- Backward-compatible aliases: old fail_open -> disabled, tempfail -> standard.
--- Strict additionally REQUIRES an independent Postfix end-of-data policy gate.
+-- Enabled rejects technical failures; disabled allows them. Historical
+-- standard and tempfail names remain accepted for existing installations.
 local FAILURE_POLICY = module_options.failure_policy or "disabled"
 if FAILURE_POLICY == "fail_open" then FAILURE_POLICY = "disabled" end
-if FAILURE_POLICY == "tempfail" then FAILURE_POLICY = "standard" end
-if FAILURE_POLICY ~= "disabled" and FAILURE_POLICY ~= "standard" and FAILURE_POLICY ~= "strict" then
-    rspamd_logger.errx(rspamd_config, "OpenSigWeave: invalid failure_policy; adapter disabled")
-    return
-end
-local STRICT_RECEIPT_URL = module_options.strict_receipt_url
-local STRICT_RECEIPT_KEY = module_options.strict_receipt_key
-if FAILURE_POLICY == "strict"
-    and (type(STRICT_RECEIPT_URL) ~= "string" or not STRICT_RECEIPT_URL:match("^https?://")
-        or type(STRICT_RECEIPT_KEY) ~= "string" or #STRICT_RECEIPT_KEY < 32) then
-    rspamd_logger.errx(rspamd_config, "OpenSigWeave: strict policy requires a separate receipt service and 32+ character key")
+if FAILURE_POLICY == "tempfail" or FAILURE_POLICY == "standard" then FAILURE_POLICY = "enabled" end
+if FAILURE_POLICY ~= "disabled" and FAILURE_POLICY ~= "enabled" then
+    rspamd_logger.errx(rspamd_config, "OpenSigWeave: invalid failure_policy; use enabled or disabled")
     return
 end
 local function technical_failure(task, reason)
@@ -173,54 +165,8 @@ local function find_signature_text_marker(task, is_reply)
     return marker
 end
 
--- Independent per-message proof for the Postfix end-of-data gate. An absent
--- injector cannot create this receipt. No sender-controlled email header is
--- accepted as proof. A missing receipt always leads to a Postfix 451 in strict.
-local function strict_receipt(task, decision)
-    if FAILURE_POLICY ~= "strict" then return true end
-    local ok_id, queue_id = pcall(task.get_queue_id, task)
-    local ok_sender, sender = pcall(task.get_from, task, 1)
-    local ok_user, username = pcall(task.get_user, task)
-    local address = ok_sender and type(sender) == "table" and sender[1] and sender[1].addr
-    if not ok_id or type(queue_id) ~= "string" or not queue_id:match("^[A-Za-z0-9]+$")
-        or not ok_user or type(username) ~= "string"
-        or type(address) ~= "string" or type(decision) ~= "string" then
-        technical_failure(task, "STRICT_RECEIPT_IDENTITY_MISSING")
-        return false
-    end
-    local body = "queue_id=" .. url_encode(queue_id)
-        .. "&sender=" .. url_encode(address)
-        .. "&username=" .. url_encode(username)
-        .. "&decision=" .. url_encode(decision)
-    local ok, scheduled = pcall(rspamd_http.request, {
-        url = STRICT_RECEIPT_URL,
-        task = task,
-        method = 'POST',
-        headers = {
-            ['X-OSW-Receipt-Key'] = STRICT_RECEIPT_KEY,
-            ['Content-Type'] = 'application/x-www-form-urlencoded'
-        },
-        body = body,
-        timeout = 3.0,
-        max_size = 2048,
-        no_ssl_verify = false,
-        callback = function(err, code)
-            if err or code ~= 204 then
-                technical_failure(task, "STRICT_RECEIPT_DELIVERY_FAILED")
-            end
-        end,
-    })
-    if not ok or not scheduled then
-        technical_failure(task, "STRICT_RECEIPT_NOT_SCHEDULED")
-        return false
-    end
-    return true
-end
-
 local function inject_signature(task)
-    local processing_failed = false
     local function fail(reason)
-        processing_failed = true
         technical_failure(task, reason)
     end
     local envfrom = task:get_from(1)
@@ -230,18 +176,12 @@ local function inject_signature(task)
         or type(uname) ~= "string" or uname == "" then return false end
     local eligible, reason = mime_rewriter.preflight(task)
     if not eligible then
-        if reason == "signed, encrypted or embedded message" then
-            strict_receipt(task, "protected_skip")
-        elseif FAILURE_POLICY == "strict" then
-            fail("STRICT_UNSAFE_MESSAGE")
-        end
         rspamd_logger.infox(task, "OpenSigWeave: skipped unsafe mail (%s)", reason)
         return false
     end
     local original_headers = task:get_raw_headers()
     if original_headers and #original_headers > 256 * 1024 then
         rspamd_logger.warnx(task, "OpenSigWeave: header block exceeds processing limit")
-        if FAILURE_POLICY == "strict" then fail("STRICT_HEADER_LIMIT") end
         return false
     end
 
@@ -324,7 +264,6 @@ local function inject_signature(task)
 
     local inline_assets = nil
     local cid_related_type = nil
-    local message_processed = false
     local function set_checked_message(message)
         if INLINE_IMAGE_MODE == "cid" and inline_assets and #inline_assets > 0 then
             local ok_cid, wrapped, related_type = pcall(
@@ -372,7 +311,6 @@ local function inject_signature(task)
             return false
         end
         rspamd_logger.infox(task, "OpenSigWeave processing_success adapter=rspamd")
-        message_processed = true
         return true
     end
 
@@ -426,14 +364,12 @@ local function inject_signature(task)
         local multipart_message = content_type and tostring(content_type):lower():match("^%s*multipart/") ~= nil
         if not html_sig or html_sig == "" then
             remove_text_marker_from_message()
-            if not processing_failed then strict_receipt(task, "policy_skip") end
             return
         end
 
         if is_reply and not inject_on_replies then
             remove_text_marker_from_message()
             rspamd_logger.infox(task, "OpenSigWeave: Reply detected, API flag is FALSE. Skipping.")
-            if not processing_failed then strict_receipt(task, "policy_skip") end
             return
         end
         local function html_signature_to_plain(html)
@@ -855,19 +791,15 @@ local function inject_signature(task)
                 fail("MULTIPART_REWRITE_FAILED")
             else
                 rspamd_logger.infox(task, "OpenSigWeave: existing signature retained")
-                if not processing_failed then strict_receipt(task, "already_signed") end
                 return
             end
         else
             fail("UNSUPPORTED_MESSAGE_TYPE")
         end
-        if not processing_failed and message_processed then
-            strict_receipt(task, "signed")
-        end
     end
 
     -- Rspamd invokes this after the asynchronous HTTP request; exceptions here
-    -- would otherwise bypass the strict failure policy and permit unsigned mail.
+    -- would otherwise bypass the enabled failure policy and permit unsigned mail.
     local function guarded_http_callback(err, code, body, headers)
         local ok = pcall(http_callback, err, code, body, headers)
         if not ok then

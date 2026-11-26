@@ -22,6 +22,14 @@ The application runs with **Docker Compose**, **PostgreSQL** and **Python / Fast
 - **Mailcow/Rspamd signature injection:** insert signatures during mail processing using the Rspamd adapter and an adapter-neutral rendering API. Postfix Milter and Stalwart MTA hook adapters are **experimental**.
 - **Administration and recovery:** local administrator sign-in, optional identity provider integration, authenticated management API, custom branding, selective import/export and encrypted backup/restore.
 
+On Mailcow/Rspamd, `failure_policy = "enabled"` temporarily rejects
+technical signature-processing failures, while `disabled` does not. The
+former `standard` and `tempfail` options remain supported as aliases.
+A [host-side module health check](docs/MAILCOW_FAILURE_POLICIES.md) verifies
+module files and configuration after restarts/updates without granting
+the web application Docker daemon access. A successful health check does
+not replace an SMTP signing test.
+
 OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or guarantee signatures when mail-server filters are bypassed. Review the [Mailcow/Rspamd integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) before changing live mail flow.
 
 ## How OpenSigWeave works
