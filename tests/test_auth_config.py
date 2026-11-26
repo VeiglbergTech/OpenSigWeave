@@ -162,6 +162,10 @@ class ManagedLoginRoutingTests(unittest.IsolatedAsyncioTestCase):
             return ManagedLoginRoutingTests.FakeQuery(self.domain)
 
         def get(self, model, provider_id):
+            # Only identity-provider lookup returns the configured test
+            # provider. A fresh deployment has no browser-created admin.
+            if model is main.LocalAdminDB:
+                return None
             return self.provider
 
     def _request(self, email, password=""):
