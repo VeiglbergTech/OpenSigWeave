@@ -4,6 +4,8 @@ local callback, status = nil, 200
 local failure_policy = 'fail_open'
 local inline_images_mode = 'external'
 local request_error, request_scheduled = nil, true
+local strict_receipt_count = 0
+local strict_receipt_http_status = 204
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
   inject_on_replies = true,
@@ -21,6 +23,13 @@ end
 package.preload['rspamd_http'] = function()
   return { request=function(opts)
     if not request_scheduled then return false end
+    if opts.url == 'http://strict-gate.test:10044/receipt' then
+      strict_receipt_count = strict_receipt_count + 1
+      assert(opts.body:find('queue_id=ABCDEF1234', 1, true))
+      assert(opts.headers['X-OSW-Receipt-Key'] == string.rep('s', 48))
+      opts.callback(nil, strict_receipt_http_status, '', {})
+      return true
+    end
     opts.callback(request_error, status, '{}', {})
     return true
   end }
@@ -68,6 +77,8 @@ rspamd_config = {
     engine_api_key=string.rep('x',40),
     failure_policy=failure_policy,
     inline_images=inline_images_mode,
+    strict_receipt_url='http://strict-gate.test:10044/receipt',
+    strict_receipt_key=string.rep('s',48),
   } end,
   register_symbol=function(_,sym) callback=sym.callback end,
 }
@@ -90,6 +101,7 @@ local function task_case(ct, cte, body, decoded, is_html, other_headers, reply)
   local task = {
     get_from=function() return {{addr='sender@example.test'}} end,
     get_user=function() return 'sender@example.test' end,
+    get_queue_id=function() return 'ABCDEF1234' end,
     get_size=function() return 1000 end,
     get_parts=function() return {part} end,
     get_text_parts=function() return {textpart} end,
@@ -475,3 +487,54 @@ response.inject_on_replies = true
 local valid, valid_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 assert(callback(valid))
 assert(valid_result.modified and not valid_result.pre_result, 'healthy submission must pass')
+
+-- Three public modes: disabled, standard and strict.
+failure_policy = 'disabled'
+dofile('rspamd/opensigweave.lua')
+status = 503
+local disabled_task, disabled_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(disabled_task) and not disabled_result.pre_result,
+  'disabled must never soft-reject an engine failure')
+
+failure_policy = 'standard'
+dofile('rspamd/opensigweave.lua')
+local standard_task, standard_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(standard_task) and standard_result.pre_result
+  and standard_result.pre_result.action == 'soft reject',
+  'standard must reject an engine failure')
+
+failure_policy = 'strict'
+dofile('rspamd/opensigweave.lua')
+status = 200
+strict_receipt_count = 0
+local strict_task, strict_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(strict_task))
+assert(strict_result.modified and not strict_result.pre_result)
+assert(strict_receipt_count == 1, 'strict signing must emit a per-message receipt')
+
+response.html = ''
+strict_receipt_count = 0
+local strict_none, strict_none_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(strict_none) and not strict_none_result.pre_result)
+assert(strict_receipt_count == 1, 'strict NONE must receive an explicit skip receipt')
+response.html = '<b>OpenSigWeave Footer</b>'
+
+status = 503
+strict_receipt_count = 0
+local strict_down, strict_down_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(strict_down) and strict_down_result.pre_result)
+assert(strict_receipt_count == 0, 'strict engine errors must not get receipts')
+status = 200
+
+strict_receipt_http_status = 503
+local strict_agent_down, strict_agent_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(strict_agent_down) and strict_agent_result.pre_result
+  and strict_agent_result.pre_result.action == 'soft reject',
+  'strict receipt-service failure must tempfail')
+strict_receipt_http_status = 204
+
+local strict_bad_queue, strict_bad_queue_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+strict_bad_queue.get_queue_id = function() return nil end
+assert(callback(strict_bad_queue) and strict_bad_queue_result.pre_result,
+  'strict must reject if Postfix queue identity is unavailable')
+io.stderr:write('OpenSigWeave disabled/standard/strict policy fixtures passed\\n')
