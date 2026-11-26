@@ -8,10 +8,11 @@
   <link rel="stylesheet" href="/static/css/portal.css">
   {% if has_favicon %}<link rel="icon" href="/branding/favicon">{% endif %}
   <script src="/static/js/theme.js"></script>
+  <script defer src="/static/js/branding.js"></script>
 </head>
-<body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6" data-app-color="{{ app_color|e }}">
-  <main class="w-full max-w-lg rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
-    {% if has_logo %}<img src="/branding/logo.png" alt="{{ app_name }} logo" class="max-h-24 mx-auto mb-5">{% endif %}
+<body class="osw-auth-page min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6" data-app-color="{{ app_color|e }}">
+  <main class="osw-auth-card w-full max-w-lg rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
+    {% if has_logo %}<img src="/branding/logo.png" data-osw-brand-logo alt="{{ app_name }} logo" class="max-h-24 mx-auto mb-5">{% endif %}
     <h1 class="text-2xl font-semibold mb-3">Create your administrator account</h1>
     <p class="text-sm text-gray-300 mb-5">This one-time setup requires the protected code saved on your OpenSigWeave host in <code>.admin-setup-token</code>. Use HTTPS or a restricted local connection.</p>
     {% if error %}<p role="alert" class="mb-4 border border-red-700 bg-red-950 rounded p-3 text-sm">Setup details are invalid. Check the code, email address and matching passwords.</p>{% endif %}
