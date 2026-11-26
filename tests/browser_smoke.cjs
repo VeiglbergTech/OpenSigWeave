@@ -654,7 +654,11 @@ async function main() {
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     const cardGap = await systemPanel.evaluate(section => {
       const summary = section.querySelector(':scope > .grid');
-      const next = section.querySelector(':scope > .bg-gray-800');
+      // The onboarding card is another .bg-gray-800 sibling *before* the
+      // summary. Measure the next actual status card, not the first card.
+      const next = summary.nextElementSibling;
+      assert.ok(next && next.classList.contains("bg-gray-800"),
+        "system summary must be followed by a context card");
       return next.getBoundingClientRect().top - summary.getBoundingClientRect().bottom;
     });
     assert.ok(cardGap >= 20, "separate system context cards need visible spacing: " + cardGap);
