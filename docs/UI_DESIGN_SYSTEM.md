@@ -1,7 +1,7 @@
 # OpenSigWeave UI design system and health diagnostics
 
-**Status:** Approved design proposal for implementation; not a claim that the current application already conforms.
-**Target:** \`dev\` only. Promote to \`beta\` after green CI and visual acceptance; \`main\` only by explicit release approval.
+**Status:** Proposed design specification for implementation; not a claim that the current application already conforms.
+**Target:** `dev` only. Promote to `beta` after green CI and visual acceptance; `main` only by explicit release approval.
 **Scope:** All portal views (personal/admin), login/setup, overlays, signature editing, dynamic branding, and operational status.
 **Language:** English throughout the application.
 
@@ -21,21 +21,21 @@ Use semantic CSS custom properties with exactly one dark/default and one light d
 
 | Role | Dark | Light | Rule |
 |---|---|---|---|
-| Application canvas | \`#09090B\` | \`#F2F5F9\` | Whole page |
-| Header/table header | \`#171719\` | \`#F6F8FB\` | Distinct from cards |
-| Card/dialog surface | \`#202024\` | \`#FFFFFF\` | Primary containers |
-| Raised/hover/select surface | \`#29292F\` | \`#E9EEF5\` | Secondary controls |
-| Input background | \`#121215\` | \`#FFFFFF\` | Bordered inputs |
-| Neutral border | \`#3B3B43\` | \`#CBD5E1\` | Outline and section delimiters |
-| Main foreground | \`#F4F4F5\` | \`#1E293B\` | Normal text |
-| Secondary foreground | \`#A1A1AA\` | \`#516174\` | Descriptions and metadata |
-| Heading | \`#FFFFFF\` | \`#111827\` | All page/card/dialog headings |
-| Brand accent (stored default) | \`#FF7043\` | \`#FF7043\` | Exact chosen swatch; computed contrast variants for actions |
-| Critical action | \`#B91C1C\` | \`#B91C1C\` | Delete/destructive, never ordinary save |
+| Application canvas | `#09090B` | `#F2F5F9` | Whole page |
+| Header/table header | `#171719` | `#F6F8FB` | Distinct from cards |
+| Card/dialog surface | `#202024` | `#FFFFFF` | Primary containers |
+| Raised/hover/select surface | `#29292F` | `#E9EEF5` | Secondary controls |
+| Input background | `#121215` | `#FFFFFF` | Bordered inputs |
+| Neutral border | `#3B3B43` | `#CBD5E1` | Outline and section delimiters |
+| Main foreground | `#F4F4F5` | `#1E293B` | Normal text |
+| Secondary foreground | `#A1A1AA` | `#516174` | Descriptions and metadata |
+| Heading | `#FFFFFF` | `#111827` | All page/card/dialog headings |
+| Brand accent (stored default) | `#FF7043` | `#FF7043` | Exact chosen swatch; computed contrast variants for actions |
+| Critical action | `#B91C1C` | `#B91C1C` | Delete/destructive, never ordinary save |
 
-Additional semantic variables: \`--osw-bg\`, \`--osw-surface\`, \`--osw-surface-raised\`, \`--osw-input-bg\`, \`--osw-border\`, \`--osw-text\`, \`--osw-text-muted\`, \`--osw-heading\`, \`--osw-brand-chosen\`, \`--osw-brand-action\`, \`--osw-brand-text\`, \`--osw-focus\`, \`--osw-success-*\`, \`--osw-warning-*\`, \`--osw-danger-*\`.
+Additional semantic variables: `--osw-bg`, `--osw-surface`, `--osw-surface-raised`, `--osw-input-bg`, `--osw-border`, `--osw-text`, `--osw-text-muted`, `--osw-heading`, `--osw-brand-chosen`, `--osw-brand-action`, `--osw-brand-text`, `--osw-focus`, `--osw-success-*`, `--osw-warning-*`, `--osw-danger-*`.
 
-Keep legacy \`--osw-black\`, \`--osw-panel\` etc. as *aliases* while migrating templates. Remove competing hard-coded overrides when migration is complete. One JS owner (\`static/js/branding.js\`) computes effective contrast-safe accent variants, and \`static/js/theme.js\` remains the only theme persistence/logo switch owner. Changing theme or resetting branding must immediately update every surface and CKEditor chrome; no stale inline colors.
+Keep legacy `--osw-black`, `--osw-panel` etc. as *aliases* while migrating templates. Remove competing hard-coded overrides when migration is complete. One JS owner (`static/js/branding.js`) computes effective contrast-safe accent variants, and `static/js/theme.js` remains the only theme persistence/logo switch owner. Changing theme or resetting branding must immediately update every surface and CKEditor chrome; no stale inline colors.
 
 **Contrast requirements:** WCAG AA minimum 4.5:1 for normal text, 3:1 for large text and meaningful controls/focus indicators. At least one non-color signal must distinguish a selected option, failure or disabled control. The email HTML preview itself is always white in both themes and must not be recolored.
 
@@ -45,8 +45,8 @@ Use a system font stack (Segoe UI, Inter, Arial, sans-serif; no mandatory extern
 
 | Element | Font | Weight | Geometry |
 |---|---|---|---|
-| Page heading | 24px | 600 | One shared \`osw-page-header\` |
-| Section heading | 18px | 600 | One shared \`osw-section-heading\` |
+| Page heading | 24px | 600 | One shared `osw-page-header` |
+| Section heading | 18px | 600 | One shared `osw-section-heading` |
 | Card/dialog title | 16–18px | 600 | Same in personal/admin |
 | Body text | 14–16px | 400 | No arbitrary bold labels |
 | Field label/button | 14px | 500 | Identical all tabs |
@@ -62,30 +62,30 @@ The global app bar, admin navigation and section heading use separate but consis
 ## 4. Component contracts
 
 ### Headers, cards and navigation
-- \`osw-page-header\`: left title + optional subtitle, right actions. All headings use the same typography regardless of nested \`h1/h2\` or wrapper \`div\`; mobile actions wrap below the title.
-- \`osw-card\`: one surface, 1px border, 8px radius, standard padding; \`osw-card-header\` for repeated card titles; avoid nested visually identical gray boxes without space or dividers.
-- \`osw-tabs\`: active fill + indicator/border + \`aria-selected\`; inactive and hover states clearly distinct. A pair of adjacent options must never resemble one large clickable area.
+- `osw-page-header`: left title + optional subtitle, right actions. All headings use the same typography regardless of nested `h1/h2` or wrapper `div`; mobile actions wrap below the title.
+- `osw-card`: one surface, 1px border, 8px radius, standard padding; `osw-card-header` for repeated card titles; avoid nested visually identical gray boxes without space or dividers.
+- `osw-tabs`: active fill + indicator/border + `aria-selected`; inactive and hover states clearly distinct. A pair of adjacent options must never resemble one large clickable area.
 - Tables: one header format; consistent row height, alignment, hover and zebra/separator semantics; narrow screens deliberately scroll horizontally in *the table container only*.
 
 ### Form controls
-- One \`osw-field\` wrapper per value: visible label, optional description, control, inline validation/error. Validation never relies only on color. Focus ring and disabled appearance are uniform across all themes.
-- **Switch = binary setting only** (On/Off), accessible \`role="switch"\`, native checked state. Track approximately 44×24px, 16px thumb, checked thumb moves approximately 20px, full 44px touch target. Text label placed consistently to the right. Disabled state visibly and programmatically disabled.
-- **Checkbox = independent multi-selection**. Use a standard square checkbox with check mark for domain scopes, import/export selections and any other multi-select. Remove the current visual conflation with \`osw-switch--multi\`.
+- One `osw-field` wrapper per value: visible label, optional description, control, inline validation/error. Validation never relies only on color. Focus ring and disabled appearance are uniform across all themes.
+- **Switch = binary setting only** (On/Off), accessible `role="switch"`, native checked state. Track approximately 44×24px, 16px thumb, checked thumb moves approximately 20px, full 44px touch target. Text label placed consistently to the right. Disabled state visibly and programmatically disabled.
+- **Checkbox = independent multi-selection**. Use a standard square checkbox with check mark for domain scopes, import/export selections and any other multi-select. Remove the current visual conflation with `osw-switch--multi`.
 - Radio buttons / segmented options = mutually exclusive choices, each with a separate visible border, padding and active indicator.
 - Selects show a clear dropdown icon and boundary. Two side-by-side selects keep at least 16px gap and explicit labels. Native and custom dropdowns must not inherit illegible light/dark foreground.
 - Primary action: contrast-safe brand color; secondary: raised neutral; destructive: semantic red; tertiary: text-only with visible focus. Equal heights/paddings, one common disabled/loading design.
 
 ### Overlays and dialog behavior
-- One structure for **all** dialogs: root/backdrop -> placement -> shell -> fixed header -> one scrollable body -> fixed action footer. Reuse \`osw-modal-*\` classes and \`initOswDialogs()\`; no second fixed-position system.
+- One structure for **all** dialogs: root/backdrop -> placement -> shell -> fixed header -> one scrollable body -> fixed action footer. Reuse `osw-modal-*` classes and `initOswDialogs()`; no second fixed-position system.
 - Width presets: small 480px, medium 864px, large 1024px, always capped to viewport width minus safe margins.
-- Max height: \`calc(100dvh - 32px)\` desktop; \`calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))\` on mobile. Shell and every flex ancestor must have \`min-height: 0\`. Body alone uses \`overflow-y: auto\` and \`overscroll-behavior: contain\`; footer never disappears behind scrolling content.
-- **Never change modal body overflow to \`visible\` on CKEditor menu open.** Existing \`:has(.ck-dropdown__panel-visible)\` override is a clipping/scroll regression risk. Use a viewport-constrained editor menu/portal overlay with an independent scroll and suitable stacking context instead.
+- Max height: `calc(100dvh - 32px)` desktop; `calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom))` on mobile. Shell and every flex ancestor must have `min-height: 0`. Body alone uses `overflow-y: auto` and `overscroll-behavior: contain`; footer never disappears behind scrolling content.
+- **Never change modal body overflow to `visible` on CKEditor menu open.** Existing `:has(.ck-dropdown__panel-visible)` override is a clipping/scroll regression risk. Use a viewport-constrained editor menu/portal overlay with an independent scroll and suitable stacking context instead.
 - Keep toolbar overlays above modal content but below confirmation dialogs, and flip/shift dropdowns near viewport edges. Do not allow menus to exceed mobile viewport.
 - Initial focus, Tab trapping, Escape close, background scrolling lock, focus return and unsaved-change confirmation are mandatory. Native keyboard and touch scrolling both work.
 
 ## 5. Single editor implementation
 
-\`static/js/rich-editor.js\` stays the sole owner of CKEditor 5 configuration. The personal editor, admin user override and signature catalog all call the same \`OpenSigWeaveEditor.create\` adapter. \`static/js/portal.js\` only provides permissions and model bindings.
+`static/js/rich-editor.js` stays the sole owner of CKEditor 5 configuration. The personal editor, admin user override and signature catalog all call the same `OpenSigWeaveEditor.create` adapter. `static/js/portal.js` only provides permissions and model bindings.
 
 Shared toolbar order and behavior: font family search/scroll; numeric font size entry with autocomplete and validated 6–96pt (preserve existing px); text formatting; font color/background color; link; list and alignment; tables and horizontal rules; source/HTML capability. All have identical sizing/spacing/keyboard support. This is the existing CKEditor-only decision; do not reintroduce Quill.
 
@@ -99,28 +99,28 @@ Keep these separate in both APIs and UI:
 
 | Level | Probe | Green means | Do **not** claim |
 |---|---|---|---|
-| Container liveness | HTTP \`GET /livez\` from inside container | HTTP server event loop responds | Database/mail adapter works |
-| Application readiness | HTTP \`GET /readyz\` | Core DB and required signature/image storage can be used | Outbound mail was modified |
-| Admin system diagnostics | Authenticated \`GET /api/admin/system-status\` | Current explicit DB/storage/support-alert results | External controller reachable |
+| Container liveness | HTTP `GET /livez` from inside container | HTTP server event loop responds | Database/mail adapter works |
+| Application readiness | HTTP `GET /readyz` | Core DB and required signature/image storage can be used | Outbound mail was modified |
+| Admin system diagnostics | Authenticated `GET /api/admin/system-status` | Current explicit DB/storage/support-alert results | External controller reachable |
 | Mail adapter monitor | Read-only adapter-specific probe | Module registration / expected config verified | Successful end-to-end message rewrite |
 | SMTP acceptance | Authenticated disposable test message + inspection | Signature is present in delivered MIME and final DKIM is valid | Continuous ongoing health |
 
 **Current observed issues (dev source):**
-- \`compose.yaml\` container healthcheck only opens a TCP socket; it cannot detect application-level readiness. Replace with explicit HTTP liveness check and expose independent readiness. Readiness failures should be diagnosable without turning temporary *external* Rspamd outages into container restart loops.
-- \`core/adapter_monitor.py\` \`_find_symbols()\` checks only \`symbols\` and certain top-level keys; Rspamd \`GET /symbols\` may return grouped \`rules\` with \`symbol\` properties. Parse these narrowly and safely; add realistic fixture tests. No malformed/unavailable/unauthenticated response may turn green.
+- `compose.yaml` container healthcheck only opens a TCP socket; it cannot detect application-level readiness. Replace with explicit HTTP liveness check and expose independent readiness. Readiness failures should be diagnosable without turning temporary *external* Rspamd outages into container restart loops.
+- `core/adapter_monitor.py` `_find_symbols()` checks only `symbols` and certain top-level keys; Rspamd `GET /symbols` may return grouped `rules` with `symbol` properties. Parse these narrowly and safely; add realistic fixture tests. No malformed/unavailable/unauthenticated response may turn green.
 - The Rspamd controller is often bound to localhost and its protected read-only endpoints can require authentication from non-trusted clients. Do not expose port 11334 publicly to make the check pass. Implement a documented safe strategy for private connectivity and read-only credentials (if needed); keep SSRF restrictions, avoid redirects, log only safe status codes/reason categories.
-- The scheduler already starts during FastAPI startup, but the result needs visible \`last_checked\`, \`next_check\`, \`status\`, \`reason\`, \`probe type\` and a user-triggered **Check now** action. Distinguish \`not configured\`, \`not checked\`, \`unsupported\`, \`unknown\`, \`missing\`, \`configured\`, \`degraded\`, \`unreachable\`, \`auth required\` and \`stale\`. Never show \`configured\` as “signature successfully inserted”.
+- The scheduler already starts during FastAPI startup, but the result needs visible `last_checked`, `next_check`, `status`, `reason`, `probe type` and a user-triggered **Check now** action. Distinguish `not configured`, `not checked`, `unsupported`, `unknown`, `missing`, `configured`, `degraded`, `unreachable`, `auth required` and `stale`. Never show `configured` as “signature successfully inserted”.
 - The UI displays no sensitive controller URL credentials or email bodies. Make manual probe results explain failure without exposing secrets. Browser errors 401/403/500 from the admin status endpoint must produce distinct, understandable user feedback.
 
 Verification: unit-test nested Rspamd response formats, missing one/both symbols, invalid content, refusal, auth failure, inaccessible endpoint, scheduler timing, stale results and role enforcement. Separately test Docker live/ready endpoints through real HTTP, with database/storage broken. The final SMTP test remains an explicit integration test, not a fake “health” status.
 
 ## 7. Known implementation targets and causes
 
-- \`templates/index.html\`: normalize heading/header markup and classes, switch vs checkbox semantics, selected groups, personal/admin editor containers, modal shell nesting and control labels.
-- \`static/css/portal.css\`: consolidate semantic tokens, remove redundant hard-coded color overrides, standardize all headings/forms/cards and control dimensions, correct switches and multi-checkboxes, eliminate \`:has(...): overflow: visible\` on scrollable dialog body.
-- \`static/js/branding.js\` and \`static/js/theme.js\`: preserve exact selected color in settings; separate effective contrast-safe action/text variants; update immediately on theme/branding changes and reset.
-- \`static/js/rich-editor.js\` / \`static/js/portal.js\`: share all formatting/editor chrome, permission-gate asset actions, fix viewport-aware editor overlays, show clear status labels.
-- \`core/adapter_monitor.py\`, \`core/monitor_scheduler.py\`, \`main.py\`, \`compose.yaml\`: implement trustworthy health layers, Rspamd response parsing and UI diagnostics without exposing controllers.
+- `templates/index.html`: normalize heading/header markup and classes, switch vs checkbox semantics, selected groups, personal/admin editor containers, modal shell nesting and control labels.
+- `static/css/portal.css`: consolidate semantic tokens, remove redundant hard-coded color overrides, standardize all headings/forms/cards and control dimensions, correct switches and multi-checkboxes, eliminate `:has(...): overflow: visible` on scrollable dialog body.
+- `static/js/branding.js` and `static/js/theme.js`: preserve exact selected color in settings; separate effective contrast-safe action/text variants; update immediately on theme/branding changes and reset.
+- `static/js/rich-editor.js` / `static/js/portal.js`: share all formatting/editor chrome, permission-gate asset actions, fix viewport-aware editor overlays, show clear status labels.
+- `core/adapter_monitor.py`, `core/monitor_scheduler.py`, `main.py`, `compose.yaml`: implement trustworthy health layers, Rspamd response parsing and UI diagnostics without exposing controllers.
 - Do not introduce additional branches or new JavaScript/CSS frameworks. Use existing Alpine, self-hosted CKEditor and the project CSS stack.
 
 ## 8. Acceptance and regression criteria
@@ -134,7 +134,7 @@ A change is done only when all conditions below hold:
 5. Personal, admin-override and signature-catalog editors produce equivalent HTML for equivalent shared formatting actions. Permission differences are deliberate, documented and tested. White preview canvas and raw HTML/Outlook safeguards remain.
 6. Visual regression in Playwright compares consistent properties (tokens, bounding boxes, typography and semantic states), screenshots against reviewed baselines where feasible; screenshots alone are not considered a pass.
 7. Health probes differentiate TCP/HTTP liveness, DB/storage readiness, authenticated admin diagnostic, adapter symbol registration and SMTP integration. Failures are explicit and cannot produce false healthy results.
-8. Python tests, real-browser smoke tests, syntax/security checks and GitHub Actions on **dev** pass. Only then consider \`dev\` -> \`beta\` by existing promotion policy; do not touch \`main\` in this design phase.
+8. Python tests, real-browser smoke tests, syntax/security checks and GitHub Actions on **dev** pass. Only then consider `dev` -> `beta` by existing promotion policy; do not touch `main` in this design phase.
 
 ## 9. Execution sequence
 
@@ -144,4 +144,4 @@ A change is done only when all conditions below hold:
 4. **Cross-tab polish:** audit all admin and personal views for spacing, group separation, text casing, selected state and brand color application.
 5. **Regression and rollout:** automated browser checks with manual screenshot approval, full CI and security CI on dev, beta deployment test, release approval to main.
 
-This document is the **source of truth for the intended UI**. Existing scattered docs (\`DIALOG_SYSTEM.md\`, \`LIGHT_MODE_QA.md\`, \`EDITOR_DECISION.md\`) record earlier technical decisions and should be linked back here when implementation is completed.
+This document is the **source of truth for the intended UI**. Existing scattered docs (`DIALOG_SYSTEM.md`, `LIGHT_MODE_QA.md`, `EDITOR_DECISION.md`) record earlier technical decisions and should be linked back here when implementation is completed.
