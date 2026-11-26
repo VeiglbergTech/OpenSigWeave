@@ -16,6 +16,35 @@
 - **Further functional live checks (24 November 2026, operator-reported, SOGo/Mailcow):** general rules, timed rules, CC/BCC, replies with nested quoted conversations (SOGo only), MIME/CID rendering, attachments, per-domain fallback behavior and Authentik-backed identity all worked in manual tests. These are **observed functional passes**, not exhaustive per-edge-case certification. LDAP integration was **not tested**. Outlook 2016 remained inconclusive after SMTP/TLS/transfer issues in the disposable self-signed-certificate environment; the operator chose to defer it.
 - Final external-recipient DKIM validation, attachment integrity and outage handling through other SMTP submission paths remain unverified. The Mailcow test logs also contain an unrelated `Unable to look up MX host` warning for the test recipient's domain; validate DNS separately before interpreting external-delivery tests.
 
+## Failure-policy implementation update (26 November 2026)
+
+The three selectable Rspamd `failure_policy` values are now `disabled`,
+`standard` and `strict`; legacy `fail_open`/`tempfail` aliases remain.
+`strict` adds an independent, **second Postfix EOM Milter** plus a short-lived,
+one-time receipt service, as specified in
+[Mailcow failure policies](MAILCOW_FAILURE_POLICIES.md). The optional strict
+mode is **source/CI staging only**. No live strict Milter proof, complete
+Mailcow EOM ordering evidence or production approval exists yet.
+
+**Newly supplied operator evidence (26 November 2026):** After intentionally
+disabling both OpenSigWeave Lua modules while Rspamd remained healthy, two
+authenticated test messages were accepted by Postfix Submission and saved via
+Dovecot LMTP. Queue IDs `668ED80108` and `9DA6580108` both have
+`dsn=2.0.0 status=sent` and were removed from the queue. This is a
+reproducible **old-mode bypass** demonstrating why the second independent
+Milter is required. The operator subsequently restored both Lua modules.
+The operator additionally reported successful live tests on SMTP ports
+587 and 465, external DKIM verification and attachment integrity; exact
+redacted output for those assertions is not archived in this file. Thunderbird
+was observed to show the temporary SMTP error with a correlation ID.
+
+The new strict acceptance criterion is unambiguous: after enabling the
+independent second Milter on a disposable Mailcow Submission listener,
+**healthy signed messages and intentional policy skips must succeed, and
+disabling both Lua modules must return SMTP 451 without queue acceptance**.
+Repeat across all active listener variants; ensure inbound port 25 is not
+affected. Do not infer this result from unit fixtures alone.
+
 ## Status notation and evidence
 
 - **CI:** automated Python/Lua/MIME test exists and passed for the baseline (fixture/code behavior, **not** live SMTP).
