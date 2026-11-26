@@ -33,9 +33,9 @@
             {% if app_name %}<div class="text-xl font-bold tracking-wider app-brand">{{ app_name }}</div>{% endif %}
         </div>
         <div class="flex items-center space-x-6">
-            <div class="flex space-x-2 bg-gray-900 rounded-lg p-1">
-                <button @click="openPersonal()" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
-                {% if is_admin %}<button @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
+            <div class="osw-tabs flex space-x-2 bg-gray-900 rounded-lg p-1" role="navigation" aria-label="Main application sections">
+                <button :aria-pressed="tab === 'personal'" @click="openPersonal()" :class="tab === 'personal' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition">My Signature</button>
+                {% if is_admin %}<button :aria-pressed="tab === 'admin'" @click="openAdmin()" :class="tab === 'admin' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-1.5 rounded-md text-sm font-medium transition flex items-center gap-2">Admin</button>{% endif %}
             </div>
             <button id="theme-toggle" type="button" aria-label="Switch to light mode" aria-pressed="false" class="rounded-md border border-gray-600 bg-gray-900 px-3 py-1.5 text-sm font-medium text-gray-300 hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500">Light mode</button>
             <div class="h-6 w-px bg-gray-600"></div>
@@ -555,7 +555,7 @@
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                     <h3 class="font-semibold">Application identity</h3>
                     <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div></label>
+                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div><span class="osw-field-hint">The selected swatch is saved exactly. Buttons and links may use a contrast-adjusted shade for accessibility.</span></label>
                     <label class="flex items-center gap-3 text-sm text-gray-300"><input type="checkbox" x-model="settings.large_image_uploads" class="osw-switch" role="switch"> Allow large images (12 MiB instead of 6 MiB)</label>
                     <p class="text-xs text-gray-400">This setting applies to signature images, web interface logos and favicons. Existing uploaded images are unaffected if disabled later.</p>
                     </div>
@@ -1044,9 +1044,9 @@
                     <div class="flex items-center gap-4">
                         <div><h3 class="text-lg font-bold text-white">Domain Management</h3><p class="text-sm text-blue-400" x-text="domain ? domain.domain_name : ''"></p></div>
                         <div class="h-8 w-px bg-gray-700 ml-4"></div>
-                        <div class="flex gap-2 ml-4">
-                            <button @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings</button>
-                            <button @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Users & Overrides</button>
+                        <div class="osw-tabs flex gap-2 ml-4" role="navigation" aria-label="Domain management sections">
+                            <button :aria-pressed="modalTab === 'settings'" @click="modalTab = 'settings'" :class="modalTab === 'settings' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Settings</button>
+                            <button :aria-pressed="modalTab === 'users'" @click="openUsers()" :class="modalTab === 'users' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-3 py-1 rounded text-sm transition">Users & Overrides</button>
                         </div>
                     </div>
                     <button type="button" data-osw-dialog-close aria-label="Close dialog" class="osw-modal-dismiss"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
