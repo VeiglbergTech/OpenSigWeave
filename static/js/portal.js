@@ -2122,7 +2122,26 @@ function systemStatusManager() {
         mailServer: "unconfigured", monitoringEnabled: false,
         monitoringInterval: 300, controllerUrl: "",
         adapterMonitorStatus: "Not checked", adapterMonitorDetail: "",
+        adapterMonitorCheckedAt: "—", adapterChecking: false,
         adapterInstructions: {},
+        setAdapterMonitorState(adapter) {
+            const statuses = {
+                configured: "Registered (not a mail test)", missing: "Modules missing",
+                auth_required: "Authentication required", unknown: "Unknown",
+                unsupported: "Not supported", unconfigured: "Not configured",
+                not_checked: "Not checked"
+            };
+            const lastCheck = adapter.last_monitored_at ? new Date(adapter.last_monitored_at) : null;
+            const interval = Math.max(30, Number(adapter.monitoring_interval) || 300);
+            const stale = Boolean(adapter.monitoring_enabled && lastCheck &&
+                Date.now() - lastCheck.getTime() > (interval * 2 + 15) * 1000);
+            this.adapterMonitorStatus = stale ? "Outdated" :
+                (statuses[adapter.last_monitor_status] || "Not checked");
+            this.adapterMonitorDetail = stale ? "The latest adapter check is too old." :
+                (adapter.last_monitor_detail || "");
+            this.adapterMonitorCheckedAt = lastCheck && !Number.isNaN(lastCheck.getTime())
+                ? lastCheck.toLocaleString() : "Never";
+        },
         statusPoll: null, activationListener: null, visibilityListener: null,
         isPanelVisible() {
             const panel = document.getElementById("osw-system-status-panel");
@@ -2162,8 +2181,7 @@ function systemStatusManager() {
                 this.monitoringInterval = data.monitoring_interval;
                 this.controllerUrl = data.controller_url || "";
                 this.adapterSetupCompleted = !!data.setup_completed;
-                this.adapterMonitorStatus = data.last_monitor_status || "Not checked";
-                this.adapterMonitorDetail = data.last_monitor_detail || "";
+                this.setAdapterMonitorState(data);
                 this.adapterInstructions = data.instructions || {};
                 this.adapterSettingsError = "";
             } catch (error) {
@@ -2190,8 +2208,7 @@ function systemStatusManager() {
                 if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid settings");
                 this.adapterSetupCompleted = !!data.setup_completed;
                 this.adapterInstructions = data.instructions || {};
-                this.adapterMonitorStatus = data.last_monitor_status || "not_checked";
-                this.adapterMonitorDetail = data.last_monitor_detail || "";
+                this.setAdapterMonitorState(data);
                 this.adapterSettingsError = "";
                 notify("Mail-server settings saved.");
             } catch (error) {
@@ -2199,6 +2216,28 @@ function systemStatusManager() {
                 notify("Mail-server settings were not saved.", "error");
             } finally {
                 this.savingAdapterSettings = false;
+            }
+        },
+        async checkAdapterNow() {
+            if (this.adapterChecking || this.savingAdapterSettings) return;
+            this.adapterChecking = true;
+            this.adapterSettingsError = "";
+            try {
+                const response = await fetch("/api/admin/mail-adapter-check", {
+                    method: "POST", credentials: "same-origin", cache: "no-store",
+                    headers: { Accept: "application/json" }
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === "string" ?
+                    data.detail : "Adapter health check failed");
+                this.setAdapterMonitorState(data);
+                notify("Adapter check completed.");
+                void this.refresh();
+            } catch (error) {
+                this.adapterSettingsError = error instanceof Error ? error.message : "Adapter check failed";
+                notify("Adapter check failed.", "error");
+            } finally {
+                this.adapterChecking = false;
             }
         },
         async copyAdapterCommands() {
@@ -2239,8 +2278,7 @@ function systemStatusManager() {
                     ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
                 this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
                 const adapter = data.mail_adapter || {};
-                this.adapterMonitorStatus = adapter.last_monitor_status || this.adapterMonitorStatus;
-                this.adapterMonitorDetail = adapter.last_monitor_detail || this.adapterMonitorDetail;
+                this.setAdapterMonitorState(adapter);
                 this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
                     key, label: labels[key] || key, count
                 }));
