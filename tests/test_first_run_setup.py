@@ -89,6 +89,22 @@ class BrowserBootstrapTests(unittest.TestCase):
             self.assertNotEqual(admin.password_hash, fields["password"])
         self.assertEqual(self.client.get("/setup").headers.get("location"), "/login")
 
+    def test_legacy_admin_keeps_personal_editor_on_first_login(self):
+        # A legacy deployment with no mail-server preferences must not
+        # unexpectedly hide its personal signature editor on login.
+        with patch.object(main, "LOCAL_ADMIN_CONFIGURED", True):
+            login = self.client.get("/login")
+            self.assertEqual(login.status_code, 200)
+            result = self.client.post("/login", data={
+                "csrf_token": self.csrf(login),
+                "email": "admin@example.org",
+                "password": "correct horse battery staple",
+            })
+            self.assertEqual(result.status_code, 303)
+            response = self.client.get("/")
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('data-mail-setup-required="false"', response.text)
+
     def test_monitoring_preferences_require_admin(self):
         self.assertEqual(self.client.get("/api/admin/mail-adapter-setup").status_code, 403)
 

@@ -1203,7 +1203,12 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
             lock_reason = ""
     
     setup_config = db.get(SystemSetupDB, 1)
-    first_run_wizard = is_admin and (setup_config is None or not setup_config.setup_completed)
+    # Only web-bootstrapped deployments should force first-run navigation.
+    # Established .env/OIDC administrators must retain their existing landing page.
+    first_run_wizard = (
+        is_admin and db.get(LocalAdminDB, 1) is not None
+        and (setup_config is None or not setup_config.setup_completed)
+    )
     return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin,
