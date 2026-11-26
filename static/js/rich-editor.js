@@ -150,7 +150,8 @@
                             tag: "input",
                             attributes: {
                                 type: "text",
-                                // Use a plain input: CKEditor input classes carry native\n                                // labeled-field decoration which conflicts with\n                                // the single placeholder and themed background.\n                                class: ["osw-font-text-field"],
+                                // Plain input avoids CKEditor's duplicate floating label.
+                                class: ["osw-font-text-field"],
                                 "aria-label": label,
                                 placeholder,
                                 autocomplete: "off",
@@ -180,7 +181,10 @@
                         // Keep the search field focused while selecting items;
                         // only individual option pointerdowns are suppressed so
                         // the native scrollbar still supports pointer dragging.
-                        this.element.appendChild(listbox);
+                        // A body-level portal prevents the listbox from disabling
+                        // the scrollable signature dialog or being clipped by it.
+                        listbox.classList.add("osw-font-listbox-portal");
+                        document.body.appendChild(listbox);
                         input.setAttribute("role", "combobox");
                         input.setAttribute("aria-controls", listbox.id);
                         input.setAttribute("aria-autocomplete", "list");
@@ -193,6 +197,21 @@
                         // and would only format subsequent typed text.
                         selectedRange = lastEditableRange ||
                             editor.model.document.selection.getFirstRange();
+                    };
+                    const positionMenu = () => {
+                        if (!listbox || listbox.hidden) return;
+                        const rect = input.getBoundingClientRect();
+                        const availableBelow = window.innerHeight - rect.bottom - 12;
+                        const openAbove = availableBelow < 150 && rect.top > availableBelow;
+                        const maxHeight = Math.min(210, Math.max(64,
+                            (openAbove ? rect.top : availableBelow) - 8));
+                        const width = Math.min(Math.max(rect.width, 210), window.innerWidth - 16);
+                        listbox.style.position = "fixed";
+                        listbox.style.width = width + "px";
+                        listbox.style.maxHeight = maxHeight + "px";
+                        listbox.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+                        listbox.style.top = (openAbove ?
+                            Math.max(8, rect.top - maxHeight - 4) : Math.min(window.innerHeight - 8, rect.bottom + 4)) + "px";
                     };
                     const closeMenu = () => {
                         if (!listbox) return;
@@ -276,6 +295,7 @@
                         // A chosen family is not a search: show all fonts on focus.
                         renderOptions(filterTypedValue ? input.value : "");
                         listbox.hidden = false;
+                        positionMenu();
                         input.setAttribute("aria-expanded", "true");
                     };
 
@@ -353,7 +373,22 @@
                     });
                     input.disabled = !this.isEnabled;
                     this.listenTo(command, "change:value", update);
+                    const dismissOnViewportChange = () => closeMenu();
+                    if (listbox) {
+                        window.addEventListener("scroll", dismissOnViewportChange, true);
+                        window.addEventListener("resize", dismissOnViewportChange);
+                        this._oswListboxCleanup = () => {
+                            window.removeEventListener("scroll", dismissOnViewportChange, true);
+                            window.removeEventListener("resize", dismissOnViewportChange);
+                            listbox.remove();
+                        };
+                    }
                     update();
+                }
+
+                destroy() {
+                    if (this._oswListboxCleanup) this._oswListboxCleanup();
+                    super.destroy();
                 }
             }
 
