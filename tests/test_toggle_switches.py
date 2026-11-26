@@ -12,11 +12,11 @@ MULTI = ('x-model="selected"', ':checked="form.domain_ids.includes(')
 
 
 class SharedToggleSwitchTests(unittest.TestCase):
-    def test_all_checkbox_inputs_share_one_switch_style(self):
+    def test_binary_switches_and_multi_checkboxes_share_the_component_system(self):
         self.assertGreaterEqual(len(INPUTS), 20, "new binary settings may add switches")
         for field in INPUTS:
             with self.subTest(field=field):
-                self.assertRegex(field, r'class="[^"]*\bosw-switch\b')
+                self.assertRegex(field, r'class="[^"]*\b(osw-switch|osw-checkbox)\b')
                 self.assertNotIn("sr-only", field)
 
     def test_accessibility_roles_distinguish_binary_and_multi_selection(self):
@@ -24,12 +24,12 @@ class SharedToggleSwitchTests(unittest.TestCase):
         for field in INPUTS:
             if any(marker in field for marker in MULTI):
                 multi += 1
-                self.assertIn("osw-switch--multi", field)
+                self.assertIn("osw-checkbox--multi", field)
                 self.assertNotIn('role="switch"', field)
             else:
                 binary += 1
                 self.assertIn('role="switch"', field)
-                self.assertNotIn("osw-switch--multi", field)
+                self.assertNotIn("osw-checkbox--multi", field)
         self.assertGreaterEqual(binary, 13)
         self.assertGreaterEqual(multi, 7)
 
@@ -49,6 +49,7 @@ class SharedToggleSwitchTests(unittest.TestCase):
 
     def test_shared_styles_cover_states_and_accessibility(self):
         for selector in ('input[type="checkbox"].osw-switch',
+                         'input[type="checkbox"].osw-checkbox::after',
                          'input[type="checkbox"].osw-switch::before',
                          'input[type="checkbox"].osw-switch:checked',
                          'input[type="checkbox"].osw-switch:disabled',
