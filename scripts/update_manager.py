@@ -312,8 +312,8 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         ensure_no_incomplete_update()
         env = preflight()
         installed = current_sha()
-        if installed == remote and current_channel() == channel and channel == "main":
-            ok("Already at the published main release")
+        if installed == remote and current_channel() == channel and channel != "beta":
+            ok("Already at the requested source revision")
             return
         if installed == remote and channel == "beta":
             # A matching checkout may still run the old main/alpha GHCR image.
