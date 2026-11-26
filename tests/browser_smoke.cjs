@@ -360,7 +360,7 @@ async function main() {
       throw error;
     }
     await personalFontSize.waitFor({ state: "visible" });
-    const personalFontList = page.locator("#user-rich-editor .osw-font-listbox");
+    const personalFontList = page.locator("#" + await personalFontFamily.getAttribute("aria-controls"));
     assert.equal(await page.locator("#user-rich-editor .osw-ckeditor-font-input .ck-label").count(), 0,
       "font fields must not add a floating label over the placeholder");
     assert.equal(await personalFontFamily.getAttribute("aria-label"), "Font family");
@@ -844,6 +844,7 @@ async function main() {
     const fontSizeControl = fontToolbar.locator(".osw-signature-size-input input");
     await fontFamilyControl.waitFor({ state: "visible" });
     await fontSizeControl.waitFor({ state: "visible" });
+    const fontMenu = page.locator("#" + await fontFamilyControl.getAttribute("aria-controls"));
     assert.equal(await fontToolbar.getByRole("button", { name: /Paragraph|Heading/ }).count(), 0,
       "heading presets must not appear in the signature toolbar");
     assert.equal(await signatureDialog.locator(".osw-editor-font-toolbar").count(), 0,
@@ -851,18 +852,18 @@ async function main() {
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
     await fontFamilyControl.click();
-    const lightFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
+    const lightFontMenuBg = await fontMenu.evaluate(element => getComputedStyle(element).backgroundColor);
     await fontFamilyControl.press("Escape");
     assert.equal(await signatureDialog.isVisible(), true, "Escape in the font popup must not close the editor dialog");
     await captureTheme("signature-editor-light");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
     await fontFamilyControl.click();
-    const darkFontMenuBg = await fontToolbar.locator(".osw-font-listbox").evaluate(element => getComputedStyle(element).backgroundColor);
+    const darkFontMenuBg = await fontMenu.evaluate(element => getComputedStyle(element).backgroundColor);
     await fontFamilyControl.press("Escape");
     assert.equal(await signatureDialog.isVisible(), true, "Escape must dismiss only the font list, not the dialog");
     await fontFamilyControl.click();
-    assert.equal(await fontToolbar.locator(".osw-font-listbox").isVisible(), true,
+    assert.equal(await fontMenu.isVisible(), true,
       "clicking a focused font input must reopen the menu after Escape");
     await fontFamilyControl.press("Escape");
     assert.notEqual(lightFontMenuBg, darkFontMenuBg,
@@ -882,7 +883,7 @@ async function main() {
       "Palatino Linotype", "Segoe UI", "Tahoma", "Times New Roman",
       "Trebuchet MS", "Verdana"
     ]) {
-      assert.ok((await fontToolbar.locator(".osw-signature-family-input [role='option']").allTextContents()).includes(name),
+      assert.ok((await fontMenu.locator("[role='option']").allTextContents()).includes(name),
         "CKEditor must offer email-safe font " + name);
     }
     for (const theme of ["dark", "light"]) {
@@ -912,10 +913,10 @@ async function main() {
     await signatureCreateEditor.fill("Browser smoke version 1");
     await signatureCreateEditor.press("Control+A");
     await fontFamilyControl.fill("Camb");
-    assert.deepEqual(await fontToolbar.locator(".osw-font-listbox [role='option']").allTextContents(), ["Cambria"]);
-    await fontToolbar.getByRole("option", { name: "Cambria" }).click();
+    assert.deepEqual(await fontMenu.locator("[role='option']").allTextContents(), ["Cambria"]);
+    await fontMenu.getByRole("option", { name: "Cambria" }).click();
     await fontFamilyControl.click();
-    assert.equal(await fontToolbar.locator(".osw-font-listbox [role='option']").count(), 15,
+    assert.equal(await fontMenu.locator("[role='option']").count(), 15,
       "opening a field with an existing family must show all choices");
     await fontFamilyControl.press("Escape");
     // Focusing via .press() alone can race with CKEditor's selection sync.
@@ -2338,7 +2339,7 @@ async function main() {
     // when CKEditor mounts. Check the real user interaction in this third
     // editor instance rather than expecting a hidden pre-rendered list.
     await adminFontFamily.click();
-    const adminFontList = domainSettings.locator("#admin-rich-editor .osw-font-listbox");
+    const adminFontList = page.locator("#" + await adminFontFamily.getAttribute("aria-controls"));
     await adminFontList.waitFor({ state: "visible" });
     assert.equal(await adminFontList.getByRole("option", { name: "Georgia", exact: true }).count(), 1,
       "admin CKEditor must share the searchable family list");
