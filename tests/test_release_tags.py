@@ -66,7 +66,10 @@ class VersionTests(unittest.TestCase):
         self.assertNotIn("    build:", release)
         overlay = (root / "compose.build.yaml").read_text()
         self.assertIn("    build:", overlay)
-        self.assertIn("pull_policy: build", overlay)
+        # Local builds are explicit (compose build / up --build); Alembic
+        # one-off containers must not start another image build.
+        self.assertIn("pull_policy: never", overlay)
+        self.assertIn("org.opencontainers.image.revision:", overlay)
 
     def test_publish_only_self_hosted_without_artifacts(self):
         workflow = (Path(__file__).resolve().parents[1] /
