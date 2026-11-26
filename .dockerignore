@@ -26,3 +26,6 @@ backups
 *.age
 *.tar.gz
 *.dump
+
+.admin-recovery-credentials
+.admin-setup-token

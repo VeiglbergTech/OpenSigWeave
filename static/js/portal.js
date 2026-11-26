@@ -247,12 +247,15 @@ window.fetch = async (resource, options = {}) => {
     const initialUrl = new URL(window.location.href);
     const directSection = normalizeAdminTab(initialUrl.searchParams.get("section"));
     const directView = initialUrl.searchParams.get("view");
-    const initialAdminTab = allowedAdminTabs.has(directSection) ? directSection
-        : (allowedAdminTabs.has(normalizeAdminTab(saved.adminTab)) ? normalizeAdminTab(saved.adminTab) : "identity-providers");
+    const initialAdminTab = document.body.dataset.mailSetupRequired === "true"
+        ? "system"
+        : (allowedAdminTabs.has(directSection) ? directSection
+            : (allowedAdminTabs.has(normalizeAdminTab(saved.adminTab)) ? normalizeAdminTab(saved.adminTab) : "identity-providers"));
     const initialView = isAdmin && (
         directView === "admin" || (directView !== "personal" && !directView && (
             allowedAdminTabs.has(directSection) || saved.tab === "admin" ||
-            document.body.dataset.idpSetupRequired === "true"
+            document.body.dataset.idpSetupRequired === "true" ||
+            document.body.dataset.mailSetupRequired === "true"
         ))
     ) ? "admin" : "personal";
     return {
@@ -2114,6 +2117,12 @@ function systemStatusManager() {
         alertStatus: "Not configured", alertPending: 0, alertActive: 0,
         alertLastUpdate: "—", alertIncidents: [],
         records: [],
+        loadingAdapterSettings: false, savingAdapterSettings: false,
+        adapterSettingsError: "", adapterSetupCompleted: false,
+        mailServer: "unconfigured", monitoringEnabled: false,
+        monitoringInterval: 300, controllerUrl: "",
+        adapterMonitorStatus: "Not checked", adapterMonitorDetail: "",
+        adapterInstructions: {},
         statusPoll: null, activationListener: null, visibilityListener: null,
         isPanelVisible() {
             const panel = document.getElementById("osw-system-status-panel");
@@ -2123,6 +2132,7 @@ function systemStatusManager() {
             if (document.visibilityState === "visible" && this.isPanelVisible()) this.refresh();
         },
         start() {
+            void this.loadAdapterSettings();
             // The initial x-init runs even when Alpine x-show hides the system tab.
             // Wait for the first render and only poll while it is actually visible.
             this.activationListener = () => this.refresh();
@@ -2136,6 +2146,69 @@ function systemStatusManager() {
             if (this.statusPoll !== null) window.clearInterval(this.statusPoll);
             if (this.activationListener) window.removeEventListener("osw-system-tab-active", this.activationListener);
             if (this.visibilityListener) document.removeEventListener("visibilitychange", this.visibilityListener);
+        },
+        async loadAdapterSettings() {
+            if (this.loadingAdapterSettings) return;
+            this.loadingAdapterSettings = true;
+            try {
+                const response = await fetch("/api/admin/mail-adapter-setup", {
+                    headers: { Accept: "application/json" },
+                    credentials: "same-origin", cache: "no-store"
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(data.detail || "Failed to fetch adapter configuration");
+                this.mailServer = data.mail_server;
+                this.monitoringEnabled = !!data.monitoring_enabled;
+                this.monitoringInterval = data.monitoring_interval;
+                this.controllerUrl = data.controller_url || "";
+                this.adapterSetupCompleted = !!data.setup_completed;
+                this.adapterMonitorStatus = data.last_monitor_status || "Not checked";
+                this.adapterMonitorDetail = data.last_monitor_detail || "";
+                this.adapterInstructions = data.instructions || {};
+                this.adapterSettingsError = "";
+            } catch (error) {
+                this.adapterSettingsError = error instanceof Error ? error.message : "Adapter settings unavailable";
+            } finally {
+                this.loadingAdapterSettings = false;
+            }
+        },
+        async saveAdapterSettings() {
+            if (this.savingAdapterSettings) return;
+            this.savingAdapterSettings = true;
+            try {
+                const response = await fetch("/api/admin/mail-adapter-setup", {
+                    method: "PUT", headers: { "Content-Type": "application/json" },
+                    credentials: "same-origin",
+                    body: JSON.stringify({
+                        mail_server: this.mailServer,
+                        monitoring_enabled: this.monitoringEnabled,
+                        monitoring_interval: Number(this.monitoringInterval),
+                        controller_url: this.controllerUrl
+                    })
+                });
+                const data = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid settings");
+                this.adapterSetupCompleted = !!data.setup_completed;
+                this.adapterInstructions = data.instructions || {};
+                this.adapterMonitorStatus = data.last_monitor_status || "not_checked";
+                this.adapterMonitorDetail = data.last_monitor_detail || "";
+                this.adapterSettingsError = "";
+                notify("Mail-server settings saved.");
+            } catch (error) {
+                this.adapterSettingsError = error instanceof Error ? error.message : "Failed to save settings";
+                notify("Mail-server settings were not saved.", "error");
+            } finally {
+                this.savingAdapterSettings = false;
+            }
+        },
+        async copyAdapterCommands() {
+            if (!this.adapterInstructions.commands) return;
+            try {
+                await navigator.clipboard.writeText(this.adapterInstructions.commands);
+                notify("Server instructions copied.");
+            } catch (_error) {
+                notify("Clipboard unavailable; select and copy the commands manually.", "error");
+            }
         },
         async refresh() {
             if (this.loading) return;
@@ -2165,6 +2238,9 @@ function systemStatusManager() {
                 this.alertLastUpdate = Number.isInteger(alerts.generated_at)
                     ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
                 this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
+                const adapter = data.mail_adapter || {};
+                this.adapterMonitorStatus = adapter.last_monitor_status || this.adapterMonitorStatus;
+                this.adapterMonitorDetail = adapter.last_monitor_detail || this.adapterMonitorDetail;
                 this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
                     key, label: labels[key] || key, count
                 }));

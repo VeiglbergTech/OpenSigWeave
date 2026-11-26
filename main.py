@@ -42,7 +42,9 @@ from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
 from core.domain_fallbacks import validate_fallback_values
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
-from models import IdentityProviderDB
+from models import IdentityProviderDB, SystemSetupDB, LocalAdminDB
+from core.adapter_monitor import MAIL_SERVERS, validate_controller_url, adapter_instructions
+from core.monitor_scheduler import start as start_mail_adapter_monitor, stop as stop_mail_adapter_monitor
 from core.group_selection_repository import get_group_preview_signature
 from core.slug import slugify
 from core.engine_contract import (
@@ -90,6 +92,7 @@ logger = logging.getLogger(__name__)
 LOCAL_ADMIN_EMAIL = os.environ.get("LOCAL_ADMIN_EMAIL", "").strip().casefold()
 LOCAL_ADMIN_PASSWORD_HASH = os.environ.get("LOCAL_ADMIN_PASSWORD_HASH", "")
 LOCAL_ADMIN_CONFIGURED = bool(LOCAL_ADMIN_EMAIL or LOCAL_ADMIN_PASSWORD_HASH)
+LOCAL_ADMIN_BOOTSTRAP_HASH = os.environ.get("LOCAL_ADMIN_BOOTSTRAP_HASH", "").strip().lower()
 # Fail-closed is opt-in for legacy compatibility; only actual provider faults trigger it.
 IDENTITY_LOOKUP_FAIL_CLOSED = os.environ.get("IDENTITY_LOOKUP_FAIL_CLOSED", "false").strip().casefold() in {"1", "true", "yes", "on"}
 
@@ -340,6 +343,21 @@ class BrandingUpdateRequest(BaseModel):
     reset_favicon: bool = False
 
 
+class MailAdapterSystemSettings(BaseModel):
+    mail_server: Literal["unconfigured", "mailcow_rspamd", "rspamd", "stalwart", "other"]
+    monitoring_enabled: bool = False
+    monitoring_interval: int = Field(default=300, ge=30, le=3600)
+    controller_url: str = Field(default="", max_length=255)
+
+    @field_validator("controller_url")
+    @classmethod
+    def validate_controller(cls, value: str) -> str:
+        try:
+            return validate_controller_url(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from None
+
+
 class SignatureScheduleRequest(NoLegacySignatureSelectionRequest):
     name: str = Field(min_length=1, max_length=255)
     target_type: Literal["SIGNATURE", "GROUP"]
@@ -401,6 +419,16 @@ def disable_legacy_profile_attribute_fallback():
     """After migration, profile lookups use domain-assigned providers only."""
     global attribute_provider
     attribute_provider = None
+
+@app.on_event("startup")
+def launch_mail_adapter_monitor():
+    start_mail_adapter_monitor(SessionLocal)
+
+
+@app.on_event("shutdown")
+def halt_mail_adapter_monitor():
+    stop_mail_adapter_monitor()
+
 
 @app.on_event("startup")
 def launch_backup_rule_scheduler():
@@ -500,6 +528,8 @@ app.add_middleware(
     PathAwareRequestBodyLimitMiddleware,
     default_max_body_size=1024 * 1024,
     path_limits={
+        "/setup": 4096,
+        "/api/admin/mail-adapter-setup": 2048,
         "/api/admin/imports/preview": MAX_EXPORT_BYTES,
         "/api/admin/imports/apply": MAX_EXPORT_BYTES,
         # Branding uploads are base64-encoded in JSON; keep a bounded budget
@@ -538,8 +568,8 @@ if LOCAL_ADMIN_CONFIGURED:
         raise RuntimeError("LOCAL_ADMIN_EMAIL must be a valid email address when local administrator access is configured")
     if not is_valid_password_hash(LOCAL_ADMIN_PASSWORD_HASH):
         raise RuntimeError("LOCAL_ADMIN_PASSWORD_HASH must be a valid scrypt hash when local administrator access is configured")
-else:
-    raise RuntimeError("Configure local administrator credentials; managed identity providers are configured in the administrator portal")
+elif not re.fullmatch(r"[a-f0-9]{64}", LOCAL_ADMIN_BOOTSTRAP_HASH):
+    raise RuntimeError("Configure a local administrator or a valid LOCAL_ADMIN_BOOTSTRAP_HASH for one-time browser setup")
 
 # Host validation runs before rate limiting so invalid Host requests cannot consume buckets.
 app.add_middleware(RateLimitMiddleware)
@@ -783,10 +813,86 @@ def _valid_oidc_identity(user: object, expected_email: str | None = None):
     return normalized_email, groups
 
 
+def _web_admin_setup_pending(db: Session) -> bool:
+    # Old deployments with working .env local admin credentials keep their
+    # existing login. A token never resets an established administrator.
+    return (not LOCAL_ADMIN_CONFIGURED
+            and bool(LOCAL_ADMIN_BOOTSTRAP_HASH)
+            and db.get(LocalAdminDB, 1) is None)
+
+
+def _setup_response(request: Request, db: Session, *, error: bool = False, status_code: int = 200):
+    csrf = request.session.setdefault("login_csrf", secrets.token_urlsafe(32))
+    return templates.TemplateResponse(request, "setup.html", {
+        "request": request, "csrf_token": csrf, "error": error,
+        **branding_context(db)
+    }, status_code=status_code)
+
+
+@app.get("/setup")
+def browser_admin_setup(request: Request, db: Session = Depends(get_db)):
+    if not _web_admin_setup_pending(db):
+        return RedirectResponse("/login", status_code=303)
+    return _setup_response(request, db)
+
+
+@app.post("/setup")
+async def submit_browser_admin_setup(request: Request, db: Session = Depends(get_db)):
+    if not _web_admin_setup_pending(db):
+        raise HTTPException(status_code=404, detail="Setup unavailable")
+    if request.headers.get("content-type", "").split(";", 1)[0].strip().lower() != "application/x-www-form-urlencoded":
+        raise HTTPException(status_code=415, detail="Setup form must be URL encoded")
+    if len(request.headers.get("content-length", "")) > 12:
+        raise HTTPException(status_code=413, detail="Form too large")
+    body = await request.body()
+    if len(body) > 4096:
+        raise HTTPException(status_code=413, detail="Form too large")
+    try:
+        submitted = parse_qs(body.decode("utf-8"), max_num_fields=8, keep_blank_values=True)
+    except (UnicodeDecodeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid form")
+    form = {key: values[0] for key, values in submitted.items() if values}
+    csrf = request.session.pop("login_csrf", None)
+    if (not isinstance(csrf, str) or not isinstance(form.get("csrf_token"), str)
+            or not hmac.compare_digest(csrf, form["csrf_token"])):
+        raise HTTPException(status_code=403, detail="CSRF validation failed")
+    email = str(form.get("email", "")).strip().casefold()
+    pw = form.get("password", "")
+    confirm = form.get("confirm_password", "")
+    token = form.get("setup_token", "")
+    if (not is_valid_email(email) or not isinstance(pw, str) or
+            not 12 <= len(pw) <= 1024 or not isinstance(confirm, str) or
+            not hmac.compare_digest(pw, confirm) or not isinstance(token, str)
+            or not 32 <= len(token) <= 128 or
+            not hmac.compare_digest(hashlib.sha256(token.encode("utf-8")).hexdigest(),
+                                    LOCAL_ADMIN_BOOTSTRAP_HASH)):
+        return _setup_response(request, db, error=True, status_code=400)
+    from auth_config import hash_local_admin_password
+    account = LocalAdminDB(id=1, email=email, password_hash=hash_local_admin_password(pw))
+    try:
+        db.add(account)
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        # Concurrent first-run submission must never replace a created admin.
+        raise HTTPException(status_code=409, detail="Setup already completed") from None
+    request.session.clear()
+    request.session["user"] = {
+        "sub": f"local-admin:{email}", "email": email,
+        "name": email.split("@", 1)[0],
+        "groups": ["signature-admins", "signature-users"],
+        "attributes": {}, "auth_source": "local",
+    }
+    request.session["csrf_token"] = secrets.token_urlsafe(32)
+    return RedirectResponse(url="/?view=admin&section=system", status_code=303)
+
+
 @app.get("/login")
 async def login(request: Request, db: Session = Depends(get_db)):
     if request.session.get("user"):
         return RedirectResponse(url="/", status_code=303)
+    if _web_admin_setup_pending(db):
+        return RedirectResponse("/setup", status_code=303)
     return login_page(
         request,
         request.query_params.get("error") in {"invalid_credentials", "authentication_failed"},
@@ -836,16 +942,20 @@ async def login_submit(request: Request, db: Session = Depends(get_db)):
         request.session.clear()
         return login_page(request, True, 401, db)
 
-    # The local administrator remains available as an independent emergency path.
-    if LOCAL_ADMIN_CONFIGURED and hmac.compare_digest(submitted_email, LOCAL_ADMIN_EMAIL):
-        if not verify_local_admin_password(submitted_password, LOCAL_ADMIN_PASSWORD_HASH):
+    # The web-provisioned account overrides only the former local .env login;
+    # previously configured .env credentials remain valid until migration.
+    web_admin = db.get(LocalAdminDB, 1) if hasattr(db, "get") else None
+    local_email = web_admin.email if web_admin is not None else LOCAL_ADMIN_EMAIL
+    local_hash = web_admin.password_hash if web_admin is not None else LOCAL_ADMIN_PASSWORD_HASH
+    if local_hash and hmac.compare_digest(submitted_email, local_email):
+        if not verify_local_admin_password(submitted_password, local_hash):
             request.session.clear()
             return login_page(request, True, 401, db)
         request.session.clear()
         request.session["user"] = {
-            "sub": f"local-admin:{LOCAL_ADMIN_EMAIL}",
-            "email": LOCAL_ADMIN_EMAIL,
-            "name": LOCAL_ADMIN_EMAIL.split("@", 1)[0],
+            "sub": f"local-admin:{local_email}",
+            "email": local_email,
+            "name": local_email.split("@", 1)[0],
             "groups": ["signature-admins", "signature-users"],
             "attributes": {},
             "auth_source": "local",
@@ -1092,12 +1202,15 @@ async def read_root(request: Request, db: Session = Depends(get_db)):
             can_edit = True
             lock_reason = ""
     
+    setup_config = db.get(SystemSetupDB, 1)
+    first_run_wizard = is_admin and (setup_config is None or not setup_config.setup_completed)
     return templates.TemplateResponse(request, "index.html", {
         "request": request, "has_logo": has_logo, "has_favicon": has_favicon, "app_name": app_name, "app_color": app_color,
         "user": user, "is_admin": is_admin,
         "phone": phone, "title": title, "first_name": first_name, "last_name": last_name,
         "can_edit": can_edit, "lock_reason": lock_reason, "csrf_token": csrf_token,
-        "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0
+        "idp_setup_required": is_admin and db.query(IdentityProviderDB).count() == 0,
+        "mail_setup_required": first_run_wizard
     })
 
 # --- API Endpoints ---
@@ -1451,6 +1564,60 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
 
 
 
+def _public_system_settings(row: SystemSetupDB | None) -> dict:
+    if row is None:
+        return {
+            "mail_server": "unconfigured", "monitoring_enabled": False,
+            "monitoring_interval": 300, "controller_url": "",
+            "setup_completed": False, "last_monitor_status": "not_checked",
+            "last_monitor_detail": "", "last_monitored_at": None,
+        }
+    return {
+        "mail_server": row.mail_server,
+        "monitoring_enabled": row.monitoring_enabled,
+        "monitoring_interval": row.monitoring_interval,
+        "controller_url": row.controller_url,
+        "setup_completed": row.setup_completed,
+        "last_monitor_status": row.last_monitor_status,
+        "last_monitor_detail": row.last_monitor_detail,
+        "last_monitored_at": row.last_monitored_at.isoformat() if row.last_monitored_at else None,
+    }
+
+
+@app.get("/api/admin/mail-adapter-setup")
+def get_mail_adapter_setup(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    row = db.get(SystemSetupDB, 1)
+    result = _public_system_settings(row)
+    result["instructions"] = adapter_instructions(result["mail_server"])
+    return result
+
+
+@app.put("/api/admin/mail-adapter-setup")
+def save_mail_adapter_setup(payload: MailAdapterSystemSettings, request: Request,
+                            db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    row = db.get(SystemSetupDB, 1)
+    if row is None:
+        row = SystemSetupDB(id=1)
+        db.add(row)
+    row.mail_server = payload.mail_server
+    row.monitoring_enabled = payload.monitoring_enabled
+    row.monitoring_interval = payload.monitoring_interval
+    row.controller_url = payload.controller_url
+    row.setup_completed = payload.mail_server != "unconfigured"
+    # All saved configuration changes invalidate the previously checked status.
+    row.last_monitor_status = "not_checked"
+    row.last_monitor_detail = ""
+    row.last_monitored_at = None
+    db.commit()
+    result = _public_system_settings(row)
+    result["instructions"] = adapter_instructions(result["mail_server"])
+    return result
+
+
 @app.get("/api/admin/system-status")
 def admin_system_status(request: Request, db: Session = Depends(get_db)):
     """Safe, read-only diagnostics for an authorized application administrator."""
@@ -1495,8 +1662,9 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
         "storage": {"status": storage_status, "signature_files": signatures, "image_assets": assets},
         "counts": counts,
         "support_alerts": support_alerts,
+        "mail_adapter": _public_system_settings(db.get(SystemSetupDB, 1)),
         "configuration": {
-            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED,
+            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED or db.get(LocalAdminDB, 1) is not None,
             "management_api_enabled": bool(MANAGEMENT_API_KEY),
             "backup_management": "in-application",
             "mail_adapters": "external",

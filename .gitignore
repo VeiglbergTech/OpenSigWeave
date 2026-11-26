@@ -27,3 +27,6 @@ backups/
 
 # Generated first-login password (move to offline storage)
 .admin-recovery-credentials
+
+# Protected one-time web-administrator bootstrap secret
+.admin-setup-token

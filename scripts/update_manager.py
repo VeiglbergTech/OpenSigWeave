@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import tempfile
 from pathlib import Path
 import re
 import sys
@@ -15,6 +16,7 @@ from deploy_common import (
     verify_release_image,
 )
 from config_manager import ENV, migrate_config
+from release_target import latest_release, release_tag_sha
 
 CRITICAL_PATHS = (
     "migrations/", "adapters/", "rspamd/", "core/engine_contract.py",
@@ -217,6 +219,61 @@ def recovery_guidance(backup: dict) -> str:
             "after a schema migration; investigate and recover manually.")
 
 
+def pin_release_image_tag(tag: str) -> None:
+    """Atomically persist the exact published image tag, never a moving alias."""
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
+        raise DeploymentError("Invalid image tag", 4)
+    if ENV.is_symlink() or not ENV.is_file():
+        raise DeploymentError("Missing or symlinked .env", 4)
+    original = ENV.read_text(encoding="utf-8")
+    lines = original.splitlines()
+    result = []
+    replaced = 0
+    for line in lines:
+        if re.match(r"^\s*OSW_IMAGE_TAG\s*=", line):
+            result.append(f'OSW_IMAGE_TAG="{tag}"')
+            replaced += 1
+        else:
+            result.append(line)
+    if replaced > 1:
+        raise DeploymentError("Duplicate OSW_IMAGE_TAG entries", 4)
+    if not replaced:
+        result.append(f'OSW_IMAGE_TAG="{tag}"')
+    new_text = "\n".join(result) + "\n"
+    if new_text == original:
+        return
+    descriptor, temporary = tempfile.mkstemp(prefix=".env.release-", dir=ENV.parent)
+    try:
+        os.fchmod(descriptor, 0o600)
+        with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+            file.write(new_text)
+            file.flush()
+            os.fsync(file.fileno())
+        validate_config(parse_env(Path(temporary)))
+        if ENV.is_symlink():
+            raise DeploymentError("Refusing to overwrite symlinked configuration", 4)
+        os.replace(temporary, ENV)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def checkout_target_channel(channel: str, target: str) -> None:
+    """Switch only when the target is reachable without rewriting branch history."""
+    if current_channel() == channel:
+        return
+    if channel != "beta":
+        raise DeploymentError("Cross-channel main updates require a separate release checkout", 4)
+    branches = git("branch", "--list", "beta").strip()
+    if branches:
+        local_beta = git("rev-parse", "refs/heads/beta")
+        if git("merge-base", "beta", target) != local_beta:
+            raise DeploymentError("Existing beta branch cannot fast-forward; use an isolated test checkout", 4)
+        git("switch", "beta")
+    else:
+        git("switch", "--create", "beta", "--track", "origin/beta")
+
+
 def validate_target(target: str) -> list[str]:
     if not re.fullmatch("[0-9a-f]{40,64}", target):
         raise DeploymentError("Invalid remote Git object ID", 4)
@@ -249,30 +306,46 @@ def show_plan(channel: str, installed: str, remote: str, critical: list[str] | N
 
 def apply_update(channel: str, remote: str, *, yes: bool,
                  approve_breaking: bool, skip_start: bool,
-                 continue_without_backup: bool = False) -> None:
+                 continue_without_backup: bool = False,
+                 release_tag: str | None = None) -> None:
     with exclusive_lock():
         ensure_no_incomplete_update()
         env = preflight()
         installed = current_sha()
-        if installed == remote:
+        if installed == remote and current_channel() == channel:
             ok("Already up-to-date")
             return
         info(f"Fetching authorized {channel} source without executing downloaded scripts")
-        git("fetch", "--no-tags", "origin", f"refs/heads/{channel}:refs/remotes/origin/{channel}")
-        fetched = git("rev-parse", f"refs/remotes/origin/{channel}")
+        if release_tag:
+            if channel != "main":
+                raise DeploymentError("A published release tag can only be used on main", 4)
+            git("fetch", "--no-tags", "origin",
+                f"refs/tags/{release_tag}:refs/tags/{release_tag}")
+            fetched = git("rev-parse", f"refs/tags/{release_tag}^{{commit}}")
+            # Verify that a release tag is an ancestor of the authorized main.
+            git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
+            main_head = git("rev-parse", "refs/remotes/origin/main")
+            if git("merge-base", fetched, main_head) != fetched:
+                raise DeploymentError("Published tag is not on the authorized main history", 4)
+        else:
+            git("fetch", "--no-tags", "origin", f"refs/heads/{channel}:refs/remotes/origin/{channel}")
+            fetched = git("rev-parse", f"refs/remotes/origin/{channel}")
         if fetched != remote:
-            raise DeploymentError("Remote moved during update; rerun --check", 4)
+            raise DeploymentError("Remote moved or release tag changed; recheck before applying", 4)
         critical = validate_target(fetched)
         show_plan(channel, installed, fetched, critical)
-        if critical and not approve_breaking:
-            raise DeploymentError("Critical changes need --approve-breaking after manual review", 4)
-        if not yes and input("Update this checkout? [y/N]: ").strip().lower() != "y":
+        if critical:
+            warn("Critical changes detected; migration and backup safeguards remain active")
+        if not yes and input("Apply this update? [y/N]: ").strip().lower() != "y":
             raise DeploymentError("Update cancelled", 4)
         if channel == "main":
-            # Download and check the exact next image BEFORE mutating source/DB.
-            info("Pre-pulling and verifying published image before source changes")
+            # Pin the exact published version BEFORE changing source or schema.
+            if not release_tag:
+                raise DeploymentError("Main updates require an approved published release tag", 4)
+            info("Pre-pulling and verifying the exact published release image")
+            os.environ["OSW_IMAGE_TAG"] = release_tag
             compose("pull", "opensigweave", timeout=1800)
-            verify_release_image(env, fetched)
+            verify_release_image({**env, "OSW_IMAGE_TAG": release_tag}, fetched)
         backup = select_backup_for_update(
             yes=yes, continue_without_backup=continue_without_backup,
         )
@@ -280,13 +353,16 @@ def apply_update(channel: str, remote: str, *, yes: bool,
             info("No verified pre-update recovery point exists for this update.")
         write_update_journal(channel=channel, installed=installed, target=fetched,
                              backup=backup, stage="source-switch")
-        info("Fast-forwarding only the current local branch")
+        info("Checking out the authorized channel and fast-forwarding its source")
+        checkout_target_channel(channel, fetched)
         git("merge", "--ff-only", fetched)
         if current_channel() != channel:
             raise DeploymentError("Checkout channel changed unexpectedly; inspect deployment", 8)
         env = parse_env(ENV)
         validate_config(env)
         migrate_config(yes=True)
+        if release_tag:
+            pin_release_image_tag(release_tag)
         compose("config", "--quiet")
         if channel == "main":
             info("Using pre-pulled, SHA-verified GHCR image (no build)")
@@ -338,6 +414,8 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--check", action="store_true", help="Read-only remote version check")
     mode.add_argument("--dry-run", action="store_true", help="Read-only preflight and local diff preview")
     mode.add_argument("--prefetch", action="store_true", help="Fetch Git commits without switching code or services")
+    parser.add_argument("--beta", action="store_true",
+                        help="Update to latest beta branch commit and build the image locally")
     parser.add_argument("--skip-start", action="store_true", help="Apply update/migrations but leave app stopped")
     parser.add_argument("--version", action="store_true", help="Print checkout version, SHA and channel")
     parser.add_argument("--yes", action="store_true", help="Confirm ordinary update without prompting")
@@ -348,14 +426,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.continue_without_backup and not args.yes:
             raise DeploymentError("--continue-without-backup requires --yes", 4)
-        channel = current_channel()
+        installed_channel = current_channel()
+        channel = "beta" if args.beta else ("main" if not (args.check or args.dry_run or args.prefetch or args.version) else installed_channel)
         installed = current_sha()
         if args.version:
-            print(f"OpenSigWeave version: {git('describe', '--tags', '--always', '--dirty')} | channel: {channel} | commit: {installed}")
+            print(f"OpenSigWeave version: {git('describe', '--tags', '--always', '--dirty')} | channel: {installed_channel} | commit: {installed}")
             return 0
         ensure_no_incomplete_update()
         pristine()
-        remote = remote_sha(channel)
+        release_tag = latest_release() if channel == "main" else None
+        remote = release_tag_sha(release_tag) if release_tag else remote_sha(channel)
         if args.check:
             critical = [] if remote == installed else None
             try:
@@ -388,7 +468,8 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         apply_update(channel, remote, yes=args.yes,
                      approve_breaking=args.approve_breaking, skip_start=args.skip_start,
-                     continue_without_backup=args.continue_without_backup)
+                     continue_without_backup=args.continue_without_backup,
+                     release_tag=release_tag)
         return 0
     except (DeploymentError, OSError, ValueError, KeyboardInterrupt, EOFError) as exc:
         code = exc.code if isinstance(exc, DeploymentError) else 4

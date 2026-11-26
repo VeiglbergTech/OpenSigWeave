@@ -25,10 +25,10 @@ The application runs with **Docker Compose**, **PostgreSQL** and **Python / Fast
 On Mailcow/Rspamd, `failure_policy = "enabled"` temporarily rejects
 technical signature-processing failures, while `disabled` does not. The
 former `standard` and `tempfail` options remain supported as aliases.
-A [host-side module health check](docs/MAILCOW_FAILURE_POLICIES.md) verifies
-module files and configuration after restarts/updates without granting
-the web application Docker daemon access. A successful health check does
-not replace an SMTP signing test.
+The admin-managed, optional monitoring in **Admin → System** queries an
+existing private Rspamd controller endpoint when configured; a separate
+[host-side diagnostic check](docs/MAILCOW_FAILURE_POLICIES.md) remains available.
+Neither method replaces an actual SMTP signing test.
 
 OpenSigWeave **does not replace an SMTP/IMAP server**, authorize mail senders or guarantee signatures when mail-server filters are bypassed. Review the [Mailcow/Rspamd integration guide](docs/MAILCOW_RSPAMD_INTEGRATION.md) before changing live mail flow.
 
@@ -60,26 +60,61 @@ Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architec
 
 ## Install OpenSigWeave on Linux with Docker Compose
 
-**Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose 2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB available disk space. Your mail server and TLS reverse proxy must be configured separately.
+**Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose
+2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free
+space. DNS, TLS reverse proxy, firewall and the mail server are prerequisites
+that are **not configured by the installer**.
 
-**The approved `2026.11-alpha` package is published.** For the verified release source on `main`, install with:
-
-```bash
-git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
-cd OpenSigWeave
-./install.sh
-./generate_config.sh --check
-```
-
-The interactive installer asks for the hostname, administrator account, bind address, allowed hosts and trusted proxies. It creates a protected `.env`, generates the required application and database secrets, provisions PostgreSQL and starts the service. The published `main` release **pulls the prebuilt application image from GitHub Container Registry** rather than building it on the deployment host. Development branches (`dev` and `beta`) use a separate source-build Compose overlay.
-
-**Published Docker image:** `ghcr.io/veiglbergtech/opensigweave:2026.11-alpha` (immutable release version) or `ghcr.io/veiglbergtech/opensigweave:alpha` (moving alpha alias). To verify that you can access the package, run:
+**Installation, terminal step 1 (copy once):**
 
 ```bash
-docker pull ghcr.io/veiglbergtech/opensigweave:2026.11-alpha
+git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git && cd OpenSigWeave && ./install.sh
 ```
 
-The default Docker Compose tag is `alpha`. After generating the protected `.env`, you can pin the exact version with `OSW_IMAGE_TAG=2026.11-alpha`. The installer verifies that the image's embedded source revision matches the **exact Git commit checked out on `main`**. The first alpha image was built from commit `29f43e9c5df70fa09576422b86f55c2e4d5c9e3c`; newer `main` commits require their own approved, source-matched published image. If GHCR returns an authentication error, check the package visibility or authenticate with an authorized read-only GitHub token.
+The installer selects the newest **published main release**, checks out its
+matching Git tag, pins the exact GHCR image version and creates a protected
+`.env`. It never builds the main application image locally. A new web-setup
+deployment writes a one-time administrator setup code to `.admin-setup-token`
+(permissions `0600`).
+
+**Browser step:** Open `https://<your-app-host>/setup` through your protected
+reverse proxy. Enter that one-time code, administrator email and password.
+Then open **Admin → System**, choose the mail server (Mailcow/Rspamd, other
+Rspamd, Stalwart, or other) and copy the displayed server-side instructions.
+The onboarding and Mailcow integration must fit the documented total of
+at most **four terminal copy/paste blocks**. Extra external prerequisites
+such as DNS or Docker are stated separately.
+
+**Normal update (one terminal copy/paste step):**
+
+```bash
+./update.sh
+```
+
+This targets the latest published main GitHub Release (including prereleases
+when no stable release exists), using the matching Git commit and GHCR tag.
+
+**Beta test update (one terminal copy/paste step):**
+
+```bash
+./update.sh --beta
+```
+
+This targets the latest `beta` branch commit, safely switches the checkout
+where possible and builds the application image locally. Neither path removes
+the database or signature volumes. Updates are **refused rather than forced**
+when safe fast-forward ancestry, validated image provenance or recovery checks
+cannot be established.
+
+For optional adapter health checks, configure **enabled/disabled** and the
+check interval under **Admin → System**. The optional Rspamd check uses its
+already-existing private controller API and requires no new Rspamd Lua module.
+A successful symbol check does not prove live email signing.
+
+**Release warning:** These new installer/setup/update workflows are
+implemented in the `dev` branch, not in the published
+`2026.11-alpha` image. They must pass CI and be released before production
+installations receive the changes.
 
 ### Configure the listening address and reverse proxy
 

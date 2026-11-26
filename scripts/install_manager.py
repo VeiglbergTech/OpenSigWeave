@@ -8,10 +8,12 @@ import sys
 
 from deploy_common import (
     ROOT, DeploymentError, CHANNELS, compose, current_channel, current_sha,
-    exclusive_lock, healthcheck, info, ok, parse_env, pristine, service_state,
+    exclusive_lock, healthcheck, info, ok, parse_env, pristine, service_state, git,
     system_checks, validate_config, warn, verify_release_image,
 )
 from config_manager import ENV, create_config, migrate_config, _available
+from release_target import latest_release, release_tag_sha
+from update_manager import pin_release_image_tag
 
 
 def port_available(bind: str, port: int) -> bool:
@@ -35,6 +37,22 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         if selected != "main":
             warn(f"{selected} is not a production-stable release channel")
         system_checks()
+        release_tag = None
+        if selected == "main" and not ENV.exists():
+            release_tag = latest_release()
+            target = release_tag_sha(release_tag)
+            git("fetch", "--no-tags", "origin", f"refs/tags/{release_tag}:refs/tags/{release_tag}")
+            fetched = git("rev-parse", f"refs/tags/{release_tag}^{{commit}}")
+            if fetched != target:
+                raise DeploymentError("Release tag moved during installation", 4)
+            git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
+            if git("merge-base", target, "refs/remotes/origin/main") != target:
+                raise DeploymentError("Published tag is not on approved main history", 4)
+            if current_sha() != target:
+                info(f"Aligning clean first-install main source with published release {release_tag}")
+                # Allowed only before .env and its persistent deployment exist.
+                # --keep refuses overwriting tracked or untracked working files.
+                git("reset", "--keep", target)
         if ENV.is_symlink():
             raise DeploymentError("Refusing symlinked .env", 4)
         if ENV.exists():
@@ -52,7 +70,11 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         else:
             create_config(hostname=hostname, admin_email=admin_email,
                           allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
-                          generate_admin_password=generate_admin_password)
+                          generate_admin_password=generate_admin_password,
+                          web_setup=admin_email is None and not generate_admin_password)
+            env = parse_env(ENV)
+        if release_tag:
+            pin_release_image_tag(release_tag)
             env = parse_env(ENV)
         validate_config(env)
         os.chmod(ENV, 0o600)
@@ -97,6 +119,8 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
             print(f"Reverse-proxy upstream: http://<server-private-ip>:{port} (binds {bind})")
         else:
             print(f"Reverse-proxy upstream: http://{bind}:{port}")
+        if env.get("LOCAL_ADMIN_BOOTSTRAP_HASH") and not env.get("LOCAL_ADMIN_PASSWORD_HASH"):
+            print("First login: open /setup in your browser and use the one-time token in .admin-setup-token (chmod 600)")
         print("Commands: ./generate_config.sh --check | ./update.sh --check | ./update.sh")
         info("Backups are optional. Configure Backup Locations and Rules in the portal if required.")
 

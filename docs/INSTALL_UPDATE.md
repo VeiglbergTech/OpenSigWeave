@@ -11,45 +11,40 @@ The checkout must be a clean, non-shallow clone from the approved Git origin.
 
 ## First installation: no manual key creation
 
-```bash
-git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
-cd OpenSigWeave
-./install.sh
-```
-
-The wizard proposes the host FQDN (or `localhost`), a local administrator
-email, **allowed portal hostnames** (`APP_ALLOWED_HOSTS`) and
-**trusted reverse proxy IPs/CIDRs** (`TRUSTED_PROXY_CIDRS`). Hosts are a
-comma-separated allowlist without `https://`, ports, or wildcards.
-Trusted proxies are optional and default to none; configure **only the
-immediately connected reverse proxy IP(s) or narrow networks**, never `0.0.0.0/0`
-or `::/0`. The wizard also asks for `APP_BIND_ADDRESS` (default `0.0.0.0`,
-all IPv4 interfaces) and picks the first available port in 8085–8105 on
-that interface. It asks for a hidden administrator password and confirmation;
-the saved value is a salted scrypt
-hash, not plaintext. Non-interactive installation requires an explicit
-`--generate-admin-password` option; this creates a **0600** local file
-`.admin-recovery-credentials` with the one-time initial password. Move this
-file to a protected offline password manager promptly, then delete its local
-copy. It is ignored by Git.
+**Terminal block 1:**
 
 ```bash
-./install.sh --hostname signatures.example.com --admin-email admin@example.com
-# Headless first install (explicit opt-in to generated admin password):
-./install.sh --generate-admin-password --hostname signatures.example.com \
-  --allowed-hosts "signatures.example.com,localhost" \
-  --trusted-proxy-cidrs "192.0.2.8/32"
-# First-time configuration without starting the stack:
-./generate_config.sh --hostname signatures.example.com
+git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git && cd OpenSigWeave && ./install.sh
 ```
 
-Installation generates independent `POSTGRES_PASSWORD`, `SECRET_KEY`,
-`ENGINE_API_KEY` and Fernet-compatible `BACKUP_LOCATIONS_KEY`. It writes
-a protected `.env` with atomic create, validates Compose, starts and checks
-PostgreSQL, **pulls and SHA-verifies the GHCR app image on `main`**, starts it with no local build, applies Alembic on startup and performs a
-final healthcheck. Docker creates the persistent PostgreSQL, signature,
-identity-provider and backup named volumes. No backup location, encryption
-identity, OIDC, LDAP, Stalwart or other optional integration is required.
+The installer asks for hostname, allowed hosts, trusted reverse proxies and
+bind address. It creates independent database, engine and application secrets.
+The main checkout is aligned to the **latest published main release Git tag**
+before the first database deployment. The exact GHCR version is pinned in the
+protected local `.env` and its embedded revision is compared to Git.
+
+Fresh installations default to **browser administrator setup**. On the host,
+read the one-time token in `.admin-setup-token` (file permissions `0600`).
+Use `https://<hostname>/setup` via a restricted HTTPS reverse proxy;
+enter the code, administrator email and a strong password. The code only works
+while no web administrator exists. Remove the token file after setup. Never
+publish the token, store it in version control or expose the management port
+without protection.
+
+After login open **Admin → System** to select your mail-server adapter and
+display the minimum needed server configuration. Any further required terminal
+blocks count toward the **four-block installation limit**. Selecting a server
+is not itself proof of a functioning mail flow. Finish with an authenticated
+test message and verify the inserted signature before going live.
+
+Existing installations retain their local .env administrator login and
+secrets. The legacy `--admin-email` or `--generate-admin-password`
+installer options remain available if a console-provisioned account is
+specifically required. Default CLI password provisioning is deprecated.
+
+Installation does not install Docker, create DNS records, change the firewall,
+configure HTTPS, or automatically edit a remote mail server. For other mail
+servers see [adapter documentation](ADAPTERS.md).
 
 **Security:** by default `APP_BIND_ADDRESS=0.0.0.0` listens on **all IPv4
 interfaces**. **Do not publicly expose the management port.** Restrict access
@@ -132,30 +127,43 @@ recovery escrow. Existing explicit `BACKUP_AGE_RECIPIENT` with exactly one
 `BACKUP_AGE_IDENTITY` or `BACKUP_AGE_IDENTITY_FILE` remains supported;
 incomplete legacy configuration fails instead of generating a mismatched key.
 
-## Updates
+## Updates — one terminal block
+
+**Stable/main release channel:**
 
 ```bash
-./update.sh --version
-./update.sh --check
-./update.sh --prefetch
-./update.sh --dry-run
 ./update.sh
-./update.sh --yes
-# Only after reviewing critical source/schema changes:
-./update.sh --yes --approve-breaking
-# Unattended explicit acceptance of backup failures:
-./update.sh --yes --continue-without-backup
 ```
 
-`--check`, `--prefetch` and `--dry-run` do not require or create backups.
-`--check` is a read-only remote comparison. `--prefetch` fetches Git
-objects but does not change the checked-out source, services or data.
-`--dry-run` validates the current deployment without mutation. The actual
-update checks Git fast-forward ancestry, existing Docker/Compose health,
-PostgreSQL and Alembic, persistent named volumes, and critical paths (which
-require independent `--approve-breaking`). It does not auto-switch branches.
+This resolves the newest published main GitHub Release, including an alpha
+or beta prerelease if no newer stable release has been published, verifies its
+Git tag/commit against the approved main history, then pulls and verifies
+the matching GHCR image before changing source or database. It records the
+immutable version tag in `.env`, preserving local secrets.
 
-On `main`, the updater first pulls the GHCR image and verifies its `org.opencontainers.image.revision` label against the **exact Git target commit**. If the package is not published or the tag points to the wrong SHA, the update stops **before changing source, volumes or schema**. `OSW_IMAGE_TAG` defaults to `alpha`, or can be pinned to an immutable version such as `2026.11-alpha1` (update a pin intentionally before upgrading). Only dev/beta staging uses a local build overlay. See [release process](RELEASE_PROCESS.md).
+**Latest beta development channel:**
+
+```bash
+./update.sh --beta
+```
+
+This fetches the latest beta **commit**, checks out the existing or new
+`beta` branch without rewriting divergent history and builds the source
+locally using the Compose build overlay. The `main` release is never built
+locally.
+
+Optional diagnostic flags remain `--check`, `--dry-run`, `--prefetch`
+and `--version`; `--yes` supports noninteractive execution. The ordinary
+update no longer requires separately copying an `--approve-breaking`
+command. Critical files are still highlighted; migrations, data-volume,
+backup-selection and post-start checks remain mandatory.
+
+**Limits of "always works":** Updates must be idempotent on a healthy,
+compatible, clean checkout. They must **not** falsely succeed after network
+outages, failed image validation, diverged Git histories, interrupted
+migrations or missing privileges. For safety they stop without automatic
+history rewrites or schema rollback, and explain required recovery. Do not
+silently downgrade a newer beta schema to an older main release.
 
 After the backup decision, the updater writes a protected 0600 journal under
 `.git/opensigweave-update-state.json` with structured `backup.status`:

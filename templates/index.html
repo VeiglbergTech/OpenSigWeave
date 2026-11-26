@@ -16,7 +16,7 @@
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
+<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-mail-setup-required="{{ 'true' if mail_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
     <div id="osw-modal-backdrop" class="osw-dialog-backdrop" aria-hidden="true"></div>
 
     <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
@@ -930,6 +930,52 @@
 
         </div>
         <div id="osw-system-status-panel" x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="start()" class="osw-admin-section space-y-5">
+            <section class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4" aria-labelledby="mail-adapter-config-title">
+              <div>
+                <h3 id="mail-adapter-config-title" class="text-xl font-semibold">Mail server & adapter health monitoring</h3>
+                <p class="text-sm text-gray-400 mt-1">First-time setup: choose your mail server and review the exact integration instructions. Monitoring is optional and does not block email.</p>
+              </div>
+              <p x-show="!adapterSetupCompleted" class="text-sm text-amber-300" role="status">Mail-server onboarding is not finished. Select an adapter and save the settings.</p>
+              <div class="grid md:grid-cols-2 gap-4">
+                <label class="block text-sm">Mail server
+                  <select x-model="mailServer" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                    <option value="unconfigured">Choose a mail server</option>
+                    <option value="mailcow_rspamd">Mailcow / Rspamd</option>
+                    <option value="rspamd">Rspamd (other MTA)</option>
+                    <option value="stalwart">Stalwart</option>
+                    <option value="other">Other (adapter not yet configured)</option>
+                  </select>
+                </label>
+                <label class="block text-sm">Check interval (seconds: 30–3600)
+                  <input type="number" x-model.number="monitoringInterval" min="30" max="3600" step="1" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                </label>
+              </div>
+              <label class="flex items-center gap-3 text-sm">
+                <input type="checkbox" class="osw-switch" role="switch" x-model="monitoringEnabled">
+                Enable automatic adapter health checks
+              </label>
+              <label x-show="mailServer === 'mailcow_rspamd' || mailServer === 'rspamd'" class="block text-sm">
+                Optional private Rspamd controller URL (numeric private IP only, e.g. http://10.35.12.29:11334)
+                <input type="url" x-model.trim="controllerUrl" maxlength="255" placeholder="http://10.0.0.10:11334" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                <span class="text-xs text-gray-400">Uses the existing Rspamd /symbols endpoint. No new Lua plugin required. The endpoint must be reachable and accessible from OpenSigWeave.</span>
+              </label>
+              <div class="flex flex-wrap gap-4 items-center">
+                <button type="button" @click="saveAdapterSettings()" :disabled="savingAdapterSettings || loadingAdapterSettings" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm">Save mail-server settings</button>
+                <span class="text-sm text-gray-300">Last module check: <span x-text="adapterMonitorStatus"></span></span>
+                <span class="text-xs text-gray-400" x-text="adapterMonitorDetail"></span>
+              </div>
+              <p x-show="adapterSettingsError" x-text="adapterSettingsError" role="alert" class="text-sm text-red-300"></p>
+              <div class="border-t border-gray-700 pt-4 space-y-3">
+                <h4 class="text-base font-semibold" x-text="adapterInstructions.title || 'Integration instructions'"></h4>
+                <p class="text-sm text-gray-300" x-text="adapterInstructions.description || 'Save a mail-server selection to see its installation instructions.'"></p>
+                <div x-show="adapterInstructions.commands" class="space-y-2">
+                  <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.commands"></code></pre>
+                  <button type="button" @click="copyAdapterCommands()" class="rounded bg-gray-700 hover:bg-gray-600 px-3 py-2 text-sm">Copy commands</button>
+                </div>
+                <p class="text-xs text-amber-300">A successful module check confirms registration, not that an outgoing email was signed. Verify an authenticated test message after changing adapters.</p>
+              </div>
+            </section>
+
             <div class="osw-section-header">
                 <div><h2 class="text-2xl font-semibold">System Status</h2><p class="mt-1 text-xs text-gray-400">Automatically refreshes every 10 seconds while this tab is visible.</p></div>
                 <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh Status'">Refresh Status</button>

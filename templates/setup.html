@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" class="dark" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>First-run administrator setup · {{ app_name }}</title>
+  <link rel="stylesheet" href="/static/css/tailwind.css">
+  <link rel="stylesheet" href="/static/css/portal.css">
+  {% if has_favicon %}<link rel="icon" href="/branding/favicon">{% endif %}
+  <script src="/static/js/theme.js"></script>
+</head>
+<body class="min-h-screen bg-gray-900 text-gray-100 flex items-center justify-center p-6" data-app-color="{{ app_color|e }}">
+  <main class="w-full max-w-lg rounded-xl border border-gray-700 bg-gray-800 p-8 shadow-xl">
+    {% if has_logo %}<img src="/branding/logo.png" alt="{{ app_name }} logo" class="max-h-24 mx-auto mb-5">{% endif %}
+    <h1 class="text-2xl font-semibold mb-3">Create your administrator account</h1>
+    <p class="text-sm text-gray-300 mb-5">This one-time setup requires the protected code saved on your OpenSigWeave host in <code>.admin-setup-token</code>. Use HTTPS or a restricted local connection.</p>
+    {% if error %}<p role="alert" class="mb-4 border border-red-700 bg-red-950 rounded p-3 text-sm">Setup details are invalid. Check the code, email address and matching passwords.</p>{% endif %}
+    <form method="post" action="/setup" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <label class="block text-sm" for="setup-token">One-time setup code
+        <input id="setup-token" name="setup_token" type="password" autocomplete="off" required minlength="32" maxlength="128" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-3">
+      </label>
+      <label class="block text-sm" for="email">Administrator email
+        <input id="email" name="email" type="email" required maxlength="254" autocomplete="username" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-3">
+      </label>
+      <label class="block text-sm" for="password">Password (at least 12 characters)
+        <input id="password" name="password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-3">
+      </label>
+      <label class="block text-sm" for="confirm-password">Repeat password
+        <input id="confirm-password" name="confirm_password" type="password" required minlength="12" maxlength="1024" autocomplete="new-password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-3">
+      </label>
+      <button type="submit" class="w-full rounded bg-blue-600 hover:bg-blue-500 py-3 font-semibold">Create administrator</button>
+    </form>
+    <p class="mt-5 text-xs text-gray-400">After setup, you will choose the mail server and see its integration instructions in Admin → System. Remove the bootstrap-code file from the host after successful setup.</p>
+  </main>
+</body>
+</html>

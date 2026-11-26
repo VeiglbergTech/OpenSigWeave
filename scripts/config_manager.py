@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import ipaddress
 from getpass import getpass
 import os
@@ -26,6 +27,7 @@ if str(ROOT) not in sys.path:
 
 ENV = ROOT / ".env"
 GENERATED_PASSWORD_FILE = ROOT / ".admin-recovery-credentials"
+ADMIN_BOOTSTRAP_FILE = ROOT / ".admin-setup-token"
 DEFAULTS = {
     "POSTGRES_DB": "opensigweave",
     "POSTGRES_USER": "opensigweave",
@@ -127,7 +129,7 @@ def _fernet_key() -> str:
 
 def create_values(*, hostname: str | None = None, admin_email: str | None = None,
                   allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
-                  generate_admin_password: bool = False) -> dict[str, str]:
+                  generate_admin_password: bool = False, web_setup: bool = False) -> dict[str, str]:
     from auth_config import hash_local_admin_password, is_valid_email
 
     host = hostname or prompt("Hostname (localhost for local-only use)", _hostname_default())
@@ -135,8 +137,8 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
     if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,252}", host):
         raise DeploymentError("Invalid application hostname", 4)
     email_default = "admin@" + (host if "." in host else "localhost.localdomain")
-    email = admin_email or prompt("Administrator email", email_default)
-    if not is_valid_email(email):
+    email = "" if web_setup else (admin_email or prompt("Administrator email", email_default))
+    if email and not is_valid_email(email):
         raise DeploymentError("Invalid administrator email", 4)
     allowlist = _allowed_hosts(
         allowed_hosts if allowed_hosts is not None else
@@ -154,7 +156,10 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
         ipaddress.ip_address(bind)
     except ValueError as exc:
         raise DeploymentError("Bind address must be one valid IPv4 or IPv6 address", 4) from exc
-    if generate_admin_password:
+    if web_setup:
+        password = ""
+        bootstrap_token = secrets.token_urlsafe(48)
+    elif generate_admin_password:
         password = secrets.token_urlsafe(32)
     else:
         if not sys.stdin.isatty():
@@ -168,7 +173,7 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
             raise DeploymentError("Administrator passwords do not match", 4)
         del confirm
     try:
-        local_hash = hash_local_admin_password(password)
+        local_hash = "" if web_setup else hash_local_admin_password(password)
     except ValueError as exc:
         raise DeploymentError(str(exc), 4) from exc
     values = dict(DEFAULTS)
@@ -183,6 +188,7 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
         "APP_PORT": str(_free_port(bind)),
         "LOCAL_ADMIN_EMAIL": email,
         "LOCAL_ADMIN_PASSWORD_HASH": local_hash,
+        "LOCAL_ADMIN_BOOTSTRAP_HASH": hashlib.sha256(bootstrap_token.encode("ascii")).hexdigest() if web_setup else "",
     })
     values["DATABASE_URL"] = (
         "postgresql+psycopg://" + values["POSTGRES_USER"] + ":" +
@@ -191,6 +197,8 @@ def create_values(*, hostname: str | None = None, admin_email: str | None = None
     )
     if generate_admin_password:
         values["_GENERATED_ADMIN_PASSWORD"] = password
+    if web_setup:
+        values["_ADMIN_BOOTSTRAP_TOKEN"] = bootstrap_token
     del password
     validate_config(values)
     return values
@@ -225,32 +233,48 @@ def _save_generated_password(password: str) -> None:
 
 def create_config(*, hostname: str | None = None, admin_email: str | None = None,
                   allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
-                  generate_admin_password: bool = False) -> None:
+                  generate_admin_password: bool = False, web_setup: bool = False) -> None:
     values = create_values(hostname=hostname, admin_email=admin_email,
                            allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
-                           generate_admin_password=generate_admin_password)
+                           generate_admin_password=generate_admin_password, web_setup=web_setup)
     content = "# OpenSigWeave protected local configuration (never commit)\n"
     for key in ("POSTGRES_DB", "POSTGRES_USER", "POSTGRES_PASSWORD",
                 "DATABASE_URL", "SIGNATURE_STORAGE_PATH", "APP_BIND_ADDRESS",
                 "APP_PORT", "SECRET_KEY", "ENGINE_API_KEY", "BACKUP_LOCATIONS_KEY",
                 "APP_ALLOWED_HOSTS", "TRUSTED_PROXY_CIDRS",
-                "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH"):
+                "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH",
+                "LOCAL_ADMIN_BOOTSTRAP_HASH"):
         # Compose interpolates $ in double quotes; preserve the literal scrypt separators.
         value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
         content += f"{key}={value}\n"
     if generate_admin_password:
         _save_generated_password(values["_GENERATED_ADMIN_PASSWORD"])
+    if web_setup:
+        try:
+            fd = os.open(ADMIN_BOOTSTRAP_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(values["_ADMIN_BOOTSTRAP_TOKEN"] + "\n")
+                file.flush()
+                os.fsync(file.fileno())
+        except BaseException:
+            ADMIN_BOOTSTRAP_FILE.unlink(missing_ok=True)
+            raise
     try:
         _atomic_create(content)
     except BaseException:
         if generate_admin_password:
             GENERATED_PASSWORD_FILE.unlink(missing_ok=True)
+        if web_setup:
+            ADMIN_BOOTSTRAP_FILE.unlink(missing_ok=True)
         raise
     ok("Created .env with mode 0600 and independent cryptographic secrets")
     if values["APP_BIND_ADDRESS"] in ("0.0.0.0", "::"):  # nosec B104 - security warning for wide bind
         info("WARNING: Application binds on all interfaces; restrict its port with a firewall and use an HTTPS reverse proxy.")
     if generate_admin_password:
         info(f"Initial administrator password stored in {GENERATED_PASSWORD_FILE} (0600); move it offline")
+    if web_setup:
+        info(f"One-time browser administrator setup code stored in {ADMIN_BOOTSTRAP_FILE} (0600).")
+        info("Open /setup over HTTPS, complete setup, then securely delete the setup code file.")
 
 
 def missing_options(env: dict[str, str]) -> dict[str, str]:

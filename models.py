@@ -228,6 +228,32 @@ class SignatureScheduleDB(Base):
     )
 
 
+
+class SystemSetupDB(Base):
+    """Administrator-managed mail adapter and monitoring settings."""
+    __tablename__ = "system_setup"
+    id = Column(Integer, primary_key=True)
+    mail_server = Column(String(32), nullable=False, default="unconfigured")
+    monitoring_enabled = Column(Boolean, nullable=False, default=False)
+    monitoring_interval = Column(Integer, nullable=False, default=300)
+    controller_url = Column(String(255), nullable=False, default="")
+    setup_completed = Column(Boolean, nullable=False, default=False)
+    last_monitor_status = Column(String(32), nullable=False, default="not_checked")
+    last_monitor_detail = Column(String(255), nullable=False, default="")
+    last_monitored_at = Column(DateTime(timezone=True), nullable=True)
+    updated_at = Column(DateTime(timezone=True), nullable=False,
+                        server_default=func.now(), onupdate=func.now())
+
+
+class LocalAdminDB(Base):
+    """Web-provisioned recovery administrator; one active account."""
+    __tablename__ = "local_admin"
+    id = Column(Integer, primary_key=True)
+    email = Column(String(254), nullable=False, unique=True)
+    password_hash = Column(String(255), nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class BrandingSettingsDB(Base):
     """Single-row administrator-managed application branding."""
     __tablename__ = "branding_settings"
