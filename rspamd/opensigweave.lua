@@ -775,7 +775,7 @@ local function inject_signature(task)
             local full_msg = new_headers_str .. "\r\n\r\n" .. new_multipart_body
             if not set_checked_message(full_msg) then return end
             
-            local reply_ok = pcall(task.set_milter_reply, task, {
+            local reply_ok, applied = pcall(task.set_milter_reply, task, {
                 remove_headers = {
                     ['Content-Type'] = 0,
                     ['Content-Transfer-Encoding'] = 0
@@ -785,7 +785,7 @@ local function inject_signature(task)
                     ['Content-Transfer-Encoding'] = { value = '7bit', order = 1 }
                 }
             })
-            if not reply_ok then fail("MILTER_REPLY_FAILED") end
+            if not reply_ok or applied == false then fail("MILTER_REPLY_FAILED") end
             
         elseif is_flat_html then
             local enc_raw = task:get_header_raw('Content-Transfer-Encoding')
@@ -811,14 +811,14 @@ local function inject_signature(task)
             local new_headers = table.concat(kept_headers):gsub("[\r\n]+$", "")
             if not set_checked_message(new_headers .. "\r\nContent-Type: text/html; charset=utf-8\r\n"
                 .. "Content-Transfer-Encoding: quoted-printable\r\n\r\n" .. encoded_html) then return end
-            local reply_ok = pcall(task.set_milter_reply, task, {
+            local reply_ok, applied = pcall(task.set_milter_reply, task, {
                 remove_headers = { ['Content-Type'] = 0, ['Content-Transfer-Encoding'] = 0 },
                 add_headers = {
                     ['Content-Type'] = { value = cid_related_type or 'text/html; charset=utf-8', order = 1 },
                     ['Content-Transfer-Encoding'] = { value = cid_related_type and '7bit' or 'quoted-printable', order = 1 }
                 }
             })
-            if not reply_ok then fail("MILTER_REPLY_FAILED") end
+            if not reply_ok or applied == false then fail("MILTER_REPLY_FAILED") end
         elseif is_multipart then
             -- Rspamd parses MIME boundaries; only decoded text is passed to the
             -- existing reply-placement algorithm. Attachments are unchanged.
