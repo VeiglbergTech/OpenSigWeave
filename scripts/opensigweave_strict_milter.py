@@ -69,12 +69,10 @@ class StrictReceiptMilter(Milter.Base):
         return Milter.CONTINUE
 
     def eom(self):
-        # A trusted Postfix daemon marker distinguishes authenticated
-        # submission from inbound SMTP even if authentication is broken.
-        # Any authenticated SMTP must still be checked without the marker.
+        # This Milter must be installed ONLY on authenticated submission
+        # listeners. Never silently bypass strict when SASL or daemon macros
+        # are missing: that would allow unsigned mail if Postfix is miswired.
         username = self.getsymval("{auth_authen}") or self.username
-        if not username and not self.submission:
-            return Milter.CONTINUE
         if not username:
             self.setreply("451", "4.7.1", REPLY)
             return Milter.TEMPFAIL
