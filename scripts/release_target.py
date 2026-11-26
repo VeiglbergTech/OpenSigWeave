@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import re
-from urllib.request import Request, urlopen
+from http.client import HTTPSConnection
 
 try:
     from deploy_common import DeploymentError, git
@@ -23,14 +23,19 @@ def latest_release(*, fetch=None) -> str:
     """Get most recently published non-draft OpenSigWeave release tag."""
     if fetch is None:
         def fetch():
-            req = Request(URL, headers={
-                "User-Agent": "OpenSigWeave-installer",
-                "Accept": "application/vnd.github+json",
-            })
-            with urlopen(req, timeout=15) as result:
-                if result.status != 200:
+            # Fixed GitHub host/path: no redirects or arbitrary URL schemes.
+            connection = HTTPSConnection("api.github.com", timeout=15)
+            try:
+                connection.request("GET", "/repos/" + REPO + "/releases?per_page=100", headers={
+                    "User-Agent": "OpenSigWeave-installer",
+                    "Accept": "application/vnd.github+json",
+                })
+                response = connection.getresponse()
+                if response.status != 200:
                     raise RuntimeError("GitHub release API unavailable")
-                return result.read(1024 * 1024)
+                return response.read(1024 * 1024)
+            finally:
+                connection.close()
     try:
         releases = json.loads(fetch())
         if not isinstance(releases, list):
