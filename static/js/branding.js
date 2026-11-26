@@ -1,14 +1,17 @@
 document.addEventListener("DOMContentLoaded", () => {
     const root = document.documentElement;
     const applyBrandingColor = color => {
-    if (!window.CSS || !CSS.supports("color", color)) return;
+    // Persisted branding is a hex color. Invalid or empty transient values
+    // must reset computed accents instead of leaving the previous theme stale.
+    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || ""));
+    if (!hex) color = "#ff7043";
+    const selected = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
     root.style.setProperty("--osw-accent", color);
+    root.style.setProperty("--osw-brand-chosen", color);
 
-    // Adjust the displayed shade, not the saved branding choice, for WCAG AA.
-    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
-    if (!hex) return;
-    const value = hex[1].length === 3
-        ? hex[1].split("").map(part => part + part).join("") : hex[1];
+    // Preserve the saved swatch exactly; accessible action/text shades differ.
+    const value = selected[1].length === 3
+        ? selected[1].split("").map(part => part + part).join("") : selected[1];
     const rgb = [0, 2, 4].map(index => parseInt(value.slice(index, index + 2), 16));
     const luminance = channels => channels.reduce((sum, channel, index) => {
         const scaled = channel / 255;
