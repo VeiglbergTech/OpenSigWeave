@@ -245,7 +245,7 @@ def create_config(*, hostname: str | None = None, admin_email: str | None = None
                 "LOCAL_ADMIN_EMAIL", "LOCAL_ADMIN_PASSWORD_HASH",
                 "LOCAL_ADMIN_BOOTSTRAP_HASH"):
         # Compose interpolates $ in double quotes; preserve the literal scrypt separators.
-        value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values[key])
+        value = ("'" + values[key] + "'") if key == "LOCAL_ADMIN_PASSWORD_HASH" else dotenv_quote(values.get(key, ""))
         content += f"{key}={value}\n"
     if generate_admin_password:
         _save_generated_password(values["_GENERATED_ADMIN_PASSWORD"])
