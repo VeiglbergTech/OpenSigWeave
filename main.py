@@ -44,7 +44,7 @@ from core.domain_fallbacks import validate_fallback_values
 from identity.registry import IdentityProviderRegistry, ProviderConfigError
 from models import IdentityProviderDB, SystemSetupDB, LocalAdminDB
 from core.adapter_monitor import MAIL_SERVERS, validate_controller_url, adapter_instructions
-from core.monitor_scheduler import start as start_mail_adapter_monitor, stop as stop_mail_adapter_monitor
+from core.monitor_scheduler import start as start_mail_adapter_monitor, stop as stop_mail_adapter_monitor, check_once as check_mail_adapter_now
 from core.group_selection_repository import get_group_preview_signature
 from core.slug import slugify
 from core.engine_contract import (
@@ -581,6 +581,28 @@ app.add_middleware(BackupSnapshotGateMiddleware)
 
 templates = Jinja2Templates(directory="templates")
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/livez", include_in_schema=False)
+def health_liveness():
+    """HTTP liveness (not readiness): only proves that the ASGI service responds."""
+    return {"status": "alive"}
+
+
+@app.get("/readyz", include_in_schema=False)
+def health_readiness():
+    """Required internal dependencies, excluding deliberately external mail adapters."""
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        roots = (signature_file_store.signatures_root, signature_file_store.assets_root)
+        if not all(directory.is_dir() and not directory.is_symlink() and os.access(
+                directory, os.R_OK | os.W_OK | os.X_OK) for directory in roots):
+            return JSONResponse({"status": "not_ready"}, status_code=503)
+    except (SQLAlchemyError, OSError):
+        return JSONResponse({"status": "not_ready"}, status_code=503)
+    return {"status": "ready"}
+
 
 
 @app.get("/signature-assets/{asset_name}")
@@ -1623,6 +1645,23 @@ def save_mail_adapter_setup(payload: MailAdapterSystemSettings, request: Request
     return result
 
 
+@app.post("/api/admin/mail-adapter-check")
+async def check_mail_adapter_manual(request: Request, db: Session = Depends(get_db)):
+    """Run a bounded read-only probe; a configured symbol is not a delivered signature."""
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    settings = db.get(SystemSetupDB, 1)
+    if settings is None or settings.mail_server == "unconfigured":
+        raise HTTPException(status_code=409, detail="Configure a mail adapter before checking it")
+    try:
+        await asyncio.to_thread(check_mail_adapter_now, SessionLocal, force=True)
+    except (SQLAlchemyError, OSError):
+        logger.warning("Manual mail adapter probe could not persist its result")
+        raise HTTPException(status_code=503, detail="Could not complete the adapter check")
+    db.expire_all()
+    return _public_system_settings(db.get(SystemSetupDB, 1))
+
+
 @app.get("/api/admin/system-status")
 def admin_system_status(request: Request, db: Session = Depends(get_db)):
     """Safe, read-only diagnostics for an authorized application administrator."""
@@ -1658,6 +1697,13 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
     assets = accessible(signature_file_store.assets_root)
     storage_status = "ok" if signatures and assets else "unavailable"
     support_alerts = read_support_alert_status(os.environ.get("OSW_ALERT_STATUS_FILE", ""))
+    try:
+        setup_row = db.get(SystemSetupDB, 1) if database_status == "ok" else None
+        has_local_admin = bool(db.get(LocalAdminDB, 1)) if database_status == "ok" else False
+    except SQLAlchemyError:
+        db.rollback()
+        database_status = "unavailable"
+        setup_row, has_local_admin = None, False
     return {
         "status": "healthy" if (database_status == "ok" and storage_status == "ok"
             and support_alerts["status"] in {"not_configured", "ok"}) else "degraded",
@@ -1667,9 +1713,9 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
         "storage": {"status": storage_status, "signature_files": signatures, "image_assets": assets},
         "counts": counts,
         "support_alerts": support_alerts,
-        "mail_adapter": _public_system_settings(db.get(SystemSetupDB, 1)),
+        "mail_adapter": _public_system_settings(setup_row),
         "configuration": {
-            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED or db.get(LocalAdminDB, 1) is not None,
+            "local_admin_enabled": LOCAL_ADMIN_CONFIGURED or has_local_admin,
             "management_api_enabled": bool(MANAGEMENT_API_KEY),
             "backup_management": "in-application",
             "mail_adapters": "external",
