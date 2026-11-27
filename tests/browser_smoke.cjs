@@ -177,21 +177,28 @@ async function main() {
     const tables = section.locator(".osw-table-scroll");
     for (let i = 0; i < await tables.count(); i++) {
       const layout = await tables.nth(i).evaluate(container => {
-        container.scrollLeft = container.scrollWidth;
         const table = container.querySelector("table");
-        const last = table && table.querySelector("thead th:last-child");
-        const outer = container.getBoundingClientRect();
-        const edge = last && last.getBoundingClientRect();
+        const outside = container.getBoundingClientRect();
+        const cells = [...container.querySelectorAll("tbody td")]
+          .filter(cell => cell.getClientRects().length && getComputedStyle(cell).visibility !== "hidden");
+        const offscreen = cells.filter(cell => {
+          const rect = cell.getBoundingClientRect();
+          return rect.left < outside.left - 2 || rect.right > outside.right + 2;
+        }).map(cell => (cell.dataset.label || cell.textContent).trim().slice(0, 55));
         return {
-          overflowX: getComputedStyle(container).overflowX,
           containerWidth: container.clientWidth,
+          scrollWidth: container.scrollWidth,
           tableWidth: table?.getBoundingClientRect().width,
-          lastActionVisible: !edge || (edge.left >= outer.left - 2 && edge.right <= outer.right + 2),
+          overflowX: getComputedStyle(container).overflowX,
+          offscreen,
         };
       });
-      assert.equal(layout.overflowX, "auto", label + " table must support horizontal scrolling");
-      assert.ok(layout.tableWidth >= layout.containerWidth - 2, label + " table width: " + JSON.stringify(layout));
-      assert.ok(layout.lastActionVisible, label + " Actions column must be reachable: " + JSON.stringify(layout));
+      assert.ok(layout.scrollWidth <= layout.containerWidth + 2,
+        label + " table must never require horizontal scrolling: " + JSON.stringify(layout));
+      assert.ok(layout.tableWidth <= layout.containerWidth + 2,
+        label + " table must fit the viewport: " + JSON.stringify(layout));
+      assert.deepEqual(layout.offscreen, [],
+        label + " all table cells and actions must remain visible: " + JSON.stringify(layout));
     }
   }
 
@@ -1965,6 +1972,35 @@ async function main() {
         columns: getComputedStyle(card).gridTemplateColumns, row, parts };
     });
     assert.equal(memberLayout.display, "grid", "group member must have a fixed four-column layout");
+    // Narrow mobile: the full group row must fit without any horizontal pan.
+    const originalViewport = page.viewportSize();
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      const mobile = await memberCard.evaluate(card => {
+        const container = card.closest(".osw-table-scroll");
+        const rect = card.getBoundingClientRect();
+        const bounds = container.getBoundingClientRect();
+        const controls = [...card.children].map(element => {
+          const r = element.getBoundingClientRect();
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+        });
+        return { documentWidth: document.documentElement.scrollWidth,
+          viewportWidth: innerWidth, scrollWidth: container.scrollWidth, clientWidth: container.clientWidth,
+          cardLeft: rect.left, cardRight: rect.right, left: bounds.left, right: bounds.right, controls };
+      });
+      assert.ok(mobile.documentWidth <= mobile.viewportWidth + 2
+        && mobile.scrollWidth <= mobile.clientWidth + 2,
+        "group list must not require side scrolling on mobile: " + JSON.stringify(mobile));
+      assert.ok(mobile.cardLeft >= mobile.left - 2 && mobile.cardRight <= mobile.right + 2,
+        "member row must fit its card on mobile: " + JSON.stringify(mobile));
+      for (let i = 1; i < mobile.controls.length; i++) {
+        assert.ok(mobile.controls[i].left >= mobile.controls[i - 1].right - 1
+          && Math.abs(mobile.controls[i].top - mobile.controls[0].top) <= 5,
+          "mobile signature, weight, switch and remove must stay on one row: " + JSON.stringify(mobile));
+      }
+    } finally {
+      await page.setViewportSize(originalViewport);
+    }
     for (let i = 1; i < memberLayout.parts.length; i++) {
       assert.ok(memberLayout.parts[i].left >= memberLayout.parts[i - 1].right - 1,
         "group controls must follow the signature name without overlap: " + JSON.stringify(memberLayout));
@@ -2562,6 +2598,13 @@ async function main() {
           await nav(tab);
           const section = shell(selector);
           await assertAdminSectionLayout(section, prefix + tab);
+          const viewportFit = await visualPage.evaluate(() => ({
+            viewport: innerWidth,
+            doc: document.documentElement.scrollWidth,
+            body: document.body.scrollWidth,
+          }));
+          assert.ok(viewportFit.doc <= viewportFit.viewport + 2 && viewportFit.body <= viewportFit.viewport + 2,
+            prefix + tab + " must not cause horizontal page scrolling: " + JSON.stringify(viewportFit));
           if (tab === "Branding") await assertCompactBrandingPreviews(section, prefix + tab);
         }
         const close = async sel => {

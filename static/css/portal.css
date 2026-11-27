@@ -117,11 +117,11 @@ body { background: var(--osw-bg) !important; color: var(--osw-text); }
     white-space: normal; overflow-wrap: anywhere;
 }
 
-/* Table actions remain reachable even where the static Tailwind bundle has no
-   overflow-x-auto utility. Horizontal scroll is intentional on narrow screens. */
-.osw-table-scroll { box-sizing: border-box; max-width: 100%; overflow-x: auto; }
-.osw-table-scroll > table { min-width: 42rem; }
-.osw-table-scroll--wide > table { min-width: 54rem; }
+/* Every management table fits its container. Responsive cards replace horizontal
+   scrolling when columns no longer fit; no content is clipped off-screen. */
+.osw-table-scroll { box-sizing: border-box; width: 100%; max-width: 100%; overflow-x: visible; }
+.osw-table-scroll > table { min-width: 0; width: 100%; }
+.osw-table-scroll--wide > table { min-width: 0; }
 
 @media (max-width: 900px) {
     nav { flex-wrap: wrap; gap: .75rem; }
@@ -1042,12 +1042,10 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     font-family: inherit !important;
     font-weight: 400;
 }
-/* Signature members are true one-line rows, even on narrow viewports.
-   The table scrolls horizontally rather than stacking group controls. */
-.osw-admin-section .osw-table-scroll > table.osw-groups-table { min-width: 86rem; }
+/* Group members keep their four controls together on every viewport. */
+.osw-admin-section .osw-table-scroll > table.osw-groups-table { min-width: 0; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) {
-    min-width: 35rem;
-    width: 42%;
+    min-width: 0;
 }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody td {
     vertical-align: top;
@@ -1104,4 +1102,177 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
         padding: .75rem 1rem !important;
     }
     .osw-group-member { padding: .75rem; }
+}
+
+/* No horizontal scrolling: responsive cards preserve every field and action.
+   data-label values mirror the actual table headers and are only visible in card mode. */
+.osw-admin-section .osw-table-scroll {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: visible;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table {
+    table-layout: fixed;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0 !important;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table :is(th,td) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody td {
+    white-space: normal !important;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody td :is(input, select) {
+    max-width: 100%;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody td .osw-actions,
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody td > .flex {
+    flex-wrap: wrap;
+}
+.osw-group-member-remove-icon { display: none; }
+/* Group rows use a card surface even on desktop. This leaves an entire
+   line for the member's signature, weight, switch and remove control. */
+.osw-admin-section .osw-table-scroll > table.osw-groups-table,
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody {
+    display: block;
+    width: 100%;
+    min-width: 0 !important;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > thead {
+    display: none;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody {
+    padding: .75rem;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    margin-bottom: .75rem;
+    border: 1px solid var(--osw-border);
+    border-radius: .5rem;
+    background: var(--osw-panel);
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr:last-child {
+    margin-bottom: 0;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td {
+    display: grid;
+    grid-template-columns: minmax(9rem, 19%) minmax(0, 1fr);
+    gap: .75rem;
+    align-items: start;
+    min-width: 0;
+    padding: .75rem 1rem !important;
+    border-bottom: 1px solid var(--osw-border);
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:last-child {
+    border-bottom: 0;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[data-label]::before {
+    content: attr(data-label);
+    font-size: .75rem;
+    line-height: 1.5;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--osw-muted);
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[colspan] {
+    display: block;
+    text-align: center;
+}
+/* Other long multi-column lists turn into labelled cards at narrower widths.
+   This avoids forcing the user to pan sideways to reach action buttons. */
+@media (max-width: 1250px) {
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table),
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody {
+        display: block;
+        width: 100%;
+        min-width: 0 !important;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > thead {
+        display: none;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody {
+        padding: .5rem;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr {
+        display: block;
+        min-width: 0;
+        width: 100%;
+        margin: 0 0 .75rem;
+        border: 1px solid var(--osw-border);
+        border-radius: .5rem;
+        background: var(--osw-panel);
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr:last-child {
+        margin-bottom: 0;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td {
+        display: grid;
+        width: 100%;
+        grid-template-columns: minmax(8rem, 33%) minmax(0, 1fr);
+        gap: .75rem;
+        align-items: start;
+        min-width: 0;
+        padding: .75rem 1rem !important;
+        border-bottom: 1px solid var(--osw-border);
+        text-align: start;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td:last-child {
+        border-bottom: 0;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td[data-label]::before {
+        content: attr(data-label);
+        font-size: .75rem;
+        line-height: 1.5;
+        font-weight: 600;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        color: var(--osw-muted);
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td[colspan] {
+        display: block;
+        text-align: center;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td > :is(div, label, input, select) {
+        min-width: 0;
+        max-width: 100%;
+    }
+}
+@media (max-width: 620px) {
+    .osw-admin-section .osw-table-scroll > table.osw-data-table > tbody > tr > td[data-label] {
+        grid-template-columns: minmax(0, 1fr);
+        gap: .375rem;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-data-table > tbody > tr > td {
+        padding: .625rem .75rem !important;
+    }
+    .osw-group-member {
+        grid-template-columns: minmax(0, 1fr) 3.25rem 2.75rem 2rem;
+        gap: .375rem;
+        padding: .5rem;
+    }
+    .osw-group-member-label, .osw-group-member-remove-text { display: none; }
+    .osw-group-member-remove-icon {
+        display: block;
+        font-size: 1.5rem;
+        line-height: 1;
+    }
+    .osw-group-member-weight input[type="number"] {
+        width: 3.25rem;
+        min-width: 3.25rem;
+        padding-inline: .25rem;
+    }
+    .osw-group-member-remove {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2rem;
+        min-height: 2rem;
+        padding: 0;
+    }
 }
