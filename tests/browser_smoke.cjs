@@ -2093,7 +2093,10 @@ async function main() {
     await dismissAndDiscard(previewCleanupEditor);
 
     await page.getByRole("button", { name: "Signature Groups", exact: true }).click();
-    assert.equal(await groupPanel.locator("#group-preview-domain").count(), 0);
+    assert.equal(await groupPanel.locator("#group-preview-domain").count(), 1,
+      "the preview domain selector must exist inside the on-demand dialog");
+    assert.equal(await groupPanel.locator("#group-preview-domain").isVisible(), false,
+      "the preview domain selector must remain hidden while the dialog is closed");
     let activePreviewDomains = (await (await page.request.get(baseURL + "/domains/")).json())
       .filter(domain => domain.is_active);
     if (!activePreviewDomains.length) {
