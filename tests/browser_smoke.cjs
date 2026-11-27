@@ -2641,7 +2641,7 @@ async function main() {
             const border = parseFloat(track.borderLeftWidth);
             const left = parseFloat(thumb.left), top = parseFloat(thumb.top);
             const thumbWidth = parseFloat(thumb.width), thumbHeight = parseFloat(thumb.height);
-            const translation = new DOMMatrixReadOnly(thumb.transform).m41;
+            const translation = thumb.transform === "none" ? 0 : new DOMMatrixReadOnly(thumb.transform).m41;
             return {
               borderColor: track.borderTopColor,
               fillColor: track.backgroundColor,
@@ -2671,7 +2671,7 @@ async function main() {
           assert.ok(geometry.leftGap >= 3 && geometry.rightGap >= 3,
             prefix + " switch knob needs equal edge clearance in " + state);
         }
-        const neutral = (switchGeometry.off.borderColor.match(/\\d+/g) || []).slice(0, 3).map(Number);
+        const neutral = (switchGeometry.off.borderColor.match(/\d+/g) || []).slice(0, 3).map(Number);
         assert.ok(neutral.length === 3 && neutral[0] >= neutral[1] && neutral[1] >= neutral[2],
           prefix + " unchecked outline must use neutral warm gray, not blue");
         assert.notEqual(switchGeometry.off.borderColor, "rgb(255, 255, 255)",
