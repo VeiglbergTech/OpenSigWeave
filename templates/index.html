@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=switch-link-spacing-20261127d" rel="stylesheet">
+    <link href="/static/css/portal.css?v=table-domain-parity-20261127" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -124,7 +124,7 @@
                 <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
             </div>
             <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll mb-6">
-                <table class="w-full text-left"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+                <table class="w-full text-left osw-data-table"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
                         <td class="px-4 py-3"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
                         <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')"></td>
@@ -191,7 +191,7 @@
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
             </div>
             <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left border-collapse osw-data-table">
                     <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Profile Provider</th><th class="px-6 py-4 font-medium">Login Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="domain in domains" :key="domain.id">
@@ -235,7 +235,7 @@
             </div>
             <p class="text-xs text-gray-400 mb-3" role="status" x-text="signatureResultLabel"></p>
             <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left border-collapse osw-data-table">
                     <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700">
                         <th class="px-6 py-4 font-medium">Name &amp; Marker</th>
                         <th class="px-6 py-4 font-medium">Scope</th>
@@ -357,9 +357,9 @@
                 <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
             </div>
-            <p class="mb-4 text-xs text-gray-400">Group previews use an eligible domain and never advance rotation history. Use Advanced Preview to choose a specific domain.</p>
-            <div class="osw-table-scroll">
-                <table class="w-full min-w-[54rem] text-left text-sm">
+            <p class="mb-4 text-sm text-gray-400">Assign signatures to a group and adjust their rotation weights. Previews never advance rotation history; Advanced Preview lets you choose a domain.</p>
+            <div class="osw-table-scroll osw-table-scroll--wide">
+                <table class="w-full min-w-[54rem] text-left text-sm osw-data-table osw-groups-table">
                     <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="group in groups" :key="group.id">
@@ -372,15 +372,15 @@
                                 <td class="align-top">
                                     <div class="space-y-2">
                                         <template x-for="member in group.members" :key="member.signature_id">
-                                            <div class="flex flex-wrap items-center gap-3 rounded border border-gray-700 p-2">
-                                                <span class="min-w-[7rem] flex-1 break-words" x-text="signatureName(member.signature_id)"></span>
-                                                <label class="flex items-center gap-2 text-xs text-gray-300">Weight
-                                                    <input type="number" min="1" max="1000" class="w-20 rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)">
+                                            <div class="osw-group-member">
+                                                <span class="osw-group-member-name" x-text="signatureName(member.signature_id)"></span>
+                                                <label class="osw-group-member-weight">Rotation weight
+                                                    <input type="number" min="1" max="1000" class="rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)" :aria-label="'Rotation weight for ' + signatureName(member.signature_id)">
                                                 </label>
-                                                <label class="flex items-center gap-2 text-xs text-gray-300">
+                                                <label class="osw-group-member-enabled">
                                                     <input type="checkbox" x-model="member.is_enabled" @change="saveMember(group, member)" class="osw-switch" role="switch"> Enabled
                                                 </label>
-                                                <button type="button" @click="removeMember(group, member)" class="text-xs text-red-400 hover:text-red-300">Remove</button>
+                                                <button type="button" @click="removeMember(group, member)" class="osw-group-member-remove text-red-400 hover:text-red-300">Remove</button>
                                             </div>
                                         </template>
                                         <p x-show="group.members.length === 0" class="text-xs text-gray-400">No signatures assigned.</p>
@@ -464,7 +464,7 @@
                 <button @click="newRule()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Rule</button>
             </div>
             <div class="bg-gray-800 rounded-lg border border-gray-700 osw-table-scroll">
-                <table class="w-full text-left">
+                <table class="w-full text-left osw-data-table">
                     <thead class="bg-gray-900 text-gray-400 text-xs uppercase">
                         <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Priority</th><th class="px-4 py-3">Action</th><th class="px-4 py-3">Conditions</th><th class="px-4 py-3">Time window</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
                     </thead>
@@ -663,7 +663,7 @@
                     <button type="button" @click="openLocation()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500">+ Add Backup Location</button>
                 </div>
                 <div class="osw-table-scroll border border-gray-700 rounded">
-                    <table class="w-full min-w-[38rem] text-left text-sm">
+                    <table class="w-full min-w-[38rem] text-left text-sm osw-data-table">
                         <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
                             <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Destination</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
                         </thead>
@@ -736,7 +736,7 @@
                     <input type="search" aria-label="Search backup rules" x-model="ruleFilter" placeholder="Search rules…" class="rounded border border-gray-600 bg-gray-900 px-3 py-2 text-sm min-w-[14rem]">
                 </div>
                 <div class="osw-table-scroll rounded border border-gray-700">
-                    <table class="w-full min-w-[60rem] text-left text-sm">
+                    <table class="w-full min-w-[60rem] text-left text-sm osw-data-table">
                         <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
                             <tr><th class="px-4 py-3">Name</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Schedule</th><th class="px-4 py-3">Retention</th><th class="px-4 py-3">Next Run (Local Time)</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr>
                         </thead>
@@ -876,7 +876,7 @@
                     </select>
                 </div>
                 <div class="osw-table-scroll rounded border border-gray-700">
-                    <table class="w-full min-w-[55rem] text-left text-sm">
+                    <table class="w-full min-w-[55rem] text-left text-sm osw-data-table">
                         <thead class="border-b border-gray-700 bg-gray-900 text-gray-300 uppercase text-xs">
                             <tr><th class="px-4 py-3">Rule</th><th class="px-4 py-3">Location</th><th class="px-4 py-3">Started</th><th class="px-4 py-3">Duration</th><th class="px-4 py-3">Size</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Details</th></tr>
                         </thead>
@@ -1205,8 +1205,8 @@
                         </div>
                         <p x-show="userWarning" x-text="userWarning" role="status" class="rounded border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-100"></p>
                         <p x-show="userError" x-text="userError" role="alert" class="text-sm text-red-300"></p>
-                        <div class="osw-table-scroll rounded border border-gray-700 bg-gray-900">
-                            <table class="w-full min-w-[32rem] text-left text-sm">
+                        <div class="osw-table-scroll rounded border border-gray-700">
+                            <table class="w-full min-w-[32rem] text-left text-sm osw-data-table">
                                 <thead class="border-b border-gray-700 text-gray-300"><tr><th class="px-4 py-2">Email</th><th class="px-4 py-2">Display name</th><th class="px-4 py-2">Source</th><th class="px-4 py-2">Override</th><th class="px-4 py-2 text-right">Action</th></tr></thead>
                                 <tbody class="divide-y divide-gray-700">
                                     <template x-for="user in users" :key="user.email">

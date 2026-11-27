@@ -148,6 +148,32 @@ async function main() {
         }).map(button => button.textContent.trim().slice(0, 80));
     });
     assert.deepEqual(badButtons, [], label + " action labels must fit their buttons");
+    // All list tables must render exactly like the Domain Management reference,
+    // regardless of the old text-xs/text-sm and px-* utility classes in markup.
+    const parity = await section.evaluate(root => {
+      const domain = document.querySelector('[x-data="domainManager"] .osw-table-scroll > table');
+      const style = table => {
+        const thead = table.querySelector("thead th");
+        const td = table.querySelector("tbody td");
+        const prop = node => {
+          const s = getComputedStyle(node);
+          return [s.fontFamily, s.fontSize, s.fontWeight, s.lineHeight,
+            s.textTransform, s.letterSpacing, s.paddingTop, s.paddingLeft];
+        };
+        return { table: prop(table), head: prop(thead), cell: prop(td) };
+      };
+      return {
+        reference: style(domain),
+        tables: [...root.querySelectorAll(".osw-table-scroll > table")].map(table => ({
+          className: table.className, data: style(table)
+        })),
+      };
+    });
+    for (const candidate of parity.tables) {
+      assert.ok(candidate.className.includes("osw-data-table"), label + " table requires shared style class");
+      assert.deepEqual(candidate.data, parity.reference,
+        label + " typography/padding must match Domain Management: " + JSON.stringify(candidate));
+    }
     const tables = section.locator(".osw-table-scroll");
     for (let i = 0; i < await tables.count(); i++) {
       const layout = await tables.nth(i).evaluate(container => {
@@ -1916,6 +1942,13 @@ async function main() {
     await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
     await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
     await groupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" }).waitFor();
+    const memberCard = groupCard.locator(".osw-group-member").first();
+    assert.ok(await memberCard.getByRole("spinbutton", { name: /Rotation weight for Browser Smoke Signature/ }).isVisible(),
+      "group rotation weight input must be clearly labelled");
+    assert.ok(await memberCard.getByRole("switch", { name: "Enabled" }).isVisible(),
+      "group membership switch must remain accessible");
+    assert.ok(await memberCard.getByRole("button", { name: "Remove" }).isVisible(),
+      "member removal must remain inside the member card");
 
     checkpoint("group create/membership: complete");
 
