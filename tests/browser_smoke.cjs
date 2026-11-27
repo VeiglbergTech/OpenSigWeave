@@ -2221,8 +2221,12 @@ async function main() {
     const updatedGroupCard = groupPanel.locator(".osw-table-scroll tbody tr")
       .filter({ has: page.getByRole("heading", { name: "Browser Smoke Group Updated", exact: true }) });
     await updatedGroupCard.getByText("Browser Smoke Group Updated", { exact: true }).waitFor();
-    const updatedMemberLabel = updatedGroupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" });
+    const updatedMemberLabel = updatedGroupCard.locator(".osw-group-member-name").first();
     await updatedMemberLabel.waitFor();
+    assert.equal(await updatedMemberLabel.textContent(), "Bro...",
+      "shortened signature name must remain visible after editing a group");
+    assert.equal(await updatedMemberLabel.getAttribute("title"), "Browser Smoke Signature",
+      "full signature name must remain available on hover after editing a group");
 
     // Update a group member's weight and verify the UI remains operational.
     const memberWeight = updatedGroupCard.locator('input[type="number"]').first();
