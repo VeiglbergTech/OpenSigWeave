@@ -939,15 +939,10 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 /* Spacing belongs to portal links, not HTML email signatures inside CKEditor.
    Sibling inline links must not touch; stacked sign-in links keep vertical space. */
 :where(.osw-admin-section, .osw-personal-layout, .osw-auth-card)
-  a[href]:not(.block) + a[href]:not(.block) {
+  :not(.ck-content, .ck-content *) > a[href]:not(.block) + a[href]:not(.block) {
     display: inline-block;
     vertical-align: baseline;
     margin-inline-start: .875rem;
-}
-/* Editor content keeps the author's original inline-link spacing. */
-:is(#signature-template-editor, #user-rich-editor, #admin-rich-editor)
-  .ck-content a[href] + a[href] {
-    margin-inline-start: 0;
 }
 .osw-auth-card .space-y-3 > a.block + a.block { margin-block-start: .75rem; }
 /* Preserve a readable inset between bordered cards and their text. The table

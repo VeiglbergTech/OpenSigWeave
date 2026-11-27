@@ -2596,10 +2596,15 @@ async function main() {
         await discardTimedRule.getByRole("button", { name: "Confirm", exact: true }).click();
         await shell(ruleSelector).waitFor({ state: "hidden" });
         await nav("Domains");
+        // Alpine's tab change is asynchronous. Measuring a hidden tab yields
+        // zero-sized client rects even while getComputedStyle reports 14px.
+        // Wait for the active section before testing rendered spacing.
+        const domainSpacingSection = shell('[x-data="domainManager"]');
+        await domainSpacingSection.waitFor({ state: "visible" });
         // Exercise real portal layout rather than relying on Tailwind utilities:
         // adjacent inline links need a visible gap, and bordered cards need
         // text insets without modifying tables or CKEditor email HTML.
-        const spacing = await visualPage.locator('[x-data="domainManager"]').evaluate(section => {
+        const spacing = await domainSpacingSection.evaluate(section => {
           const fixture = document.createElement("div");
           fixture.className = "bg-gray-800 rounded-lg border border-gray-700";
           fixture.innerHTML = '<span>Inset sample</span><div><a href="#first">First</a><a href="#second">Second</a></div>';
@@ -2611,12 +2616,19 @@ async function main() {
             paddingRight: parseFloat(css.paddingRight),
             inlineLinkGap: second.getBoundingClientRect().left - first.getBoundingClientRect().right,
             computedLinkMargin: getComputedStyle(second).marginInlineStart,
+            sectionVisible: section.getBoundingClientRect().width > 0,
+            fixtureWidth: fixture.getBoundingClientRect().width,
+            firstLinkWidth: first.getBoundingClientRect().width,
+            secondLinkWidth: second.getBoundingClientRect().width,
           };
           fixture.remove();
           return result;
         });
         assert.ok(spacing.paddingLeft >= 16 && spacing.paddingRight >= 16,
           prefix + " bordered card needs an inset for text: " + JSON.stringify(spacing));
+        assert.ok(spacing.sectionVisible && spacing.fixtureWidth > 0
+          && spacing.firstLinkWidth > 0 && spacing.secondLinkWidth > 0,
+          prefix + " link-spacing fixture must be rendered: " + JSON.stringify(spacing));
         assert.ok(spacing.inlineLinkGap >= 12,
           prefix + " adjacent links must remain separated: " + JSON.stringify(spacing));
         await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
