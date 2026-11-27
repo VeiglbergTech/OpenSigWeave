@@ -1179,8 +1179,8 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 19%; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: 18%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) { width: 28%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 11%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) { width: 32%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 7%; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(5) { width: 24%; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[data-label]::before {
     content: none;
