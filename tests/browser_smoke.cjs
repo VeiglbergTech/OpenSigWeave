@@ -2596,6 +2596,28 @@ async function main() {
         await discardTimedRule.getByRole("button", { name: "Confirm", exact: true }).click();
         await shell(ruleSelector).waitFor({ state: "hidden" });
         await nav("Domains");
+        // Exercise real portal layout rather than relying on Tailwind utilities:
+        // adjacent inline links need a visible gap, and bordered cards need
+        // text insets without modifying tables or CKEditor email HTML.
+        const spacing = await visualPage.locator('[x-data="domainManager"]').evaluate(section => {
+          const fixture = document.createElement("div");
+          fixture.className = "bg-gray-800 rounded-lg border border-gray-700";
+          fixture.innerHTML = '<span>Inset sample</span><div><a href="#first">First</a><a href="#second">Second</a></div>';
+          section.appendChild(fixture);
+          const css = getComputedStyle(fixture);
+          const [first, second] = fixture.querySelectorAll("a");
+          const result = {
+            paddingLeft: parseFloat(css.paddingLeft),
+            paddingRight: parseFloat(css.paddingRight),
+            inlineLinkGap: second.getBoundingClientRect().left - first.getBoundingClientRect().right,
+          };
+          fixture.remove();
+          return result;
+        });
+        assert.ok(spacing.paddingLeft >= 16 && spacing.paddingRight >= 16,
+          prefix + " bordered card needs an inset for text: " + JSON.stringify(spacing));
+        assert.ok(spacing.inlineLinkGap >= 12,
+          prefix + " adjacent links must remain separated: " + JSON.stringify(spacing));
         await visualPage.getByRole("button", { name: "+ Add Domain" }).click();
         const addDomainSelector = '[x-data="addDomainModal"] [role="dialog"]';
         await inspect(addDomainSelector, "add-domain");
@@ -2605,6 +2627,57 @@ async function main() {
         await row.getByRole("button", { name: "Manage Domain" }).click();
         const domainSelector = '[x-data="domainSettingsModal"] [role="dialog"]';
         await inspect(domainSelector, "domain-settings");
+        // Inspect both switch states in the actual dialog at every viewport
+        // and appearance. A throwaway unbound input prevents Alpine form dirtiness.
+        const switchGeometry = await shell(domainSelector).locator("input.osw-switch").first().evaluate(async source => {
+          const probe = document.createElement("input");
+          probe.type = "checkbox";
+          probe.className = "osw-switch";
+          source.parentElement.appendChild(probe);
+          const sample = () => {
+            const track = getComputedStyle(probe);
+            const thumb = getComputedStyle(probe, "::before");
+            const width = parseFloat(track.width), height = parseFloat(track.height);
+            const border = parseFloat(track.borderLeftWidth);
+            const left = parseFloat(thumb.left), top = parseFloat(thumb.top);
+            const thumbWidth = parseFloat(thumb.width), thumbHeight = parseFloat(thumb.height);
+            const translation = new DOMMatrixReadOnly(thumb.transform).m41;
+            return {
+              borderColor: track.borderTopColor,
+              fillColor: track.backgroundColor,
+              thumbColor: thumb.backgroundColor,
+              leftGap: border + left + translation,
+              rightGap: width - border - left - thumbWidth - translation,
+              topGap: border + top,
+              bottomGap: height - border - top - thumbHeight,
+            };
+          };
+          try {
+            probe.checked = false;
+            await new Promise(resolve => setTimeout(resolve, 220));
+            const off = sample();
+            probe.checked = true;
+            await new Promise(resolve => setTimeout(resolve, 220));
+            return { off, on: sample() };
+          } finally {
+            probe.remove();
+          }
+        });
+        for (const [state, geometry] of Object.entries(switchGeometry)) {
+          assert.ok(Math.abs(geometry.leftGap - geometry.rightGap) <= 1,
+            prefix + " switch thumb must be horizontally centered in " + state + ": " + JSON.stringify(geometry));
+          assert.ok(Math.abs(geometry.topGap - geometry.bottomGap) <= 1,
+            prefix + " switch thumb must be vertically centered in " + state + ": " + JSON.stringify(geometry));
+          assert.ok(geometry.leftGap >= 3 && geometry.rightGap >= 3,
+            prefix + " switch knob needs equal edge clearance in " + state);
+        }
+        const neutral = (switchGeometry.off.borderColor.match(/\\d+/g) || []).slice(0, 3).map(Number);
+        assert.ok(neutral.length === 3 && neutral[0] >= neutral[1] && neutral[1] >= neutral[2],
+          prefix + " unchecked outline must use neutral warm gray, not blue");
+        assert.notEqual(switchGeometry.off.borderColor, "rgb(255, 255, 255)",
+          prefix + " unchecked outline must not have a white halo");
+        assert.equal(switchGeometry.on.borderColor, switchGeometry.on.fillColor,
+          prefix + " checked outline must use the same warm accent as its track");
         await shell(domainSelector).getByRole("button", { name: "Users & Overrides" }).click();
         // The Users view fetches asynchronously. Wait for its content to settle
         // before measuring footer position across a body scroll.
