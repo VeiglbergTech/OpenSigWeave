@@ -1,6 +1,7 @@
 """Regression checks for Signatures/Domain Management UI parity."""
 
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,11 +21,14 @@ class SignatureManagementParityTests(unittest.TestCase):
             with self.subTest(view="signatures" if markup == SIGNATURES else "domains"):
                 self.assertIn('class="osw-section-header mb-6"', markup)
                 self.assertIn('class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700"', markup)
-                self.assertIn('class="w-full text-left border-collapse"', markup)
+                self.assertRegex(markup, r'<table class="[^"]*\\bosw-data-table\\b[^"]*"',
+                                 "The shared table component must be used")
                 self.assertIn('class="divide-y divide-gray-700"', markup)
                 self.assertIn('class="hover:bg-gray-750 transition duration-150"', markup)
         self.assertIn("osw-admin-status", SIGNATURES)
         self.assertIn("var(--osw-panel-raised)", CSS)
+        self.assertIn("table.osw-data-table > thead th", CSS)
+        self.assertIn("table.osw-data-table > tbody td", CSS)
 
     def test_search_status_scope_and_empty_states(self):
         for binding in ('x-model="searchQuery"', 'x-model="statusFilter"', 'x-model="domainFilter"',
