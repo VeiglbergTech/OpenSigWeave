@@ -2432,7 +2432,7 @@ function initOswDialogs() {
         if (dialog.closest('[x-data="confirmModal"]')) data.close();
         else if (dialog.getAttribute('x-show') === 'imageImportOpen') data.closeImageImportDialog();
         else if (dialog.getAttribute('x-show') === 'memberEditor') data.memberEditor = false;
-        else if (dialog.getAttribute('x-show') === 'advancedPreviewOpen') data.advancedPreviewOpen = false;
+        else if (dialog.getAttribute('x-show') === 'previewPickerOpen') data.previewPickerOpen = false;
         else if (dialog.classList.contains('form-dialog')) data.editing = false;
         else data.show = false;
     };

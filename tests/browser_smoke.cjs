@@ -2125,6 +2125,10 @@ async function main() {
     } else {
       await groupCard.getByRole("button", { name: "Preview", exact: true }).click();
       await groupPreviewPicker.waitFor({ state: "visible" });
+      await groupPreviewPicker.getByRole("button", { name: "Cancel", exact: true }).click();
+      await groupPreviewPicker.waitFor({ state: "hidden" });
+      await groupCard.getByRole("button", { name: "Preview", exact: true }).click();
+      await groupPreviewPicker.waitFor({ state: "visible" });
       await groupPreviewPicker.getByLabel("Preview domain")
         .selectOption(String(eligiblePreviewDomainIds.at(-1)));
       [groupPreviewResponse] = await Promise.all([
