@@ -44,6 +44,21 @@ window.fetch = async (resource, options = {}) => {
 };
 
         var userRichEditor, adminRichEditor, signatureRichEditor;
+        let personalEffective = null;
+        async function reloadPersonalEffective() {
+            const raw = document.getElementById("raw-html-editor");
+            if (!raw) return null;
+            const response = await fetch("/api/my-signature/effective", {
+                credentials: "same-origin", cache: "no-store"
+            });
+            if (!response.ok) throw new Error("Could not load the effective signature (" + response.status + ").");
+            const data = await response.json();
+            personalEffective = data;
+            raw.value = data.html_content || "";
+            if (userRichEditor) userRichEditor.setData(raw.value);
+            checkAllLocks();
+            return data;
+        }
         const notify = (msg, type = 'success') => window.dispatchEvent(new CustomEvent('notify', { detail: { msg, type } }));
 
         // The HTML source must remain editable if a CKEditor asset or plugin
@@ -196,12 +211,10 @@ window.fetch = async (resource, options = {}) => {
             userRichEditor = await mountRichEditor('user-rich-editor', 'raw-html-editor', {
                 readOnly: document.body.dataset.canEdit !== "true"
             });
-            const res = await fetch('/api/my-signature');
-            if (res.ok) {
-                const data = await res.json();
-                userRawEditor.value = data.html_content || "";
-                if (userRichEditor) userRichEditor.setData(userRawEditor.value);
-                checkAllLocks();
+            try {
+                await reloadPersonalEffective();
+            } catch (error) {
+                notify(error.message, "error");
             }
         });
 
@@ -229,7 +242,10 @@ window.fetch = async (resource, options = {}) => {
         async function saveUserSignature() {
             const finalHtml = document.getElementById('raw-html-editor').value;
             const res = await fetch('/api/my-signature', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ html_content: finalHtml }) });
-            if(res.ok) notify("Signature saved."); else notify("Could not save signature.", "error");
+            if (res.ok) {
+                await reloadPersonalEffective();
+                notify("Signature saved.");
+            } else notify("Could not save signature.", "error");
         }
 
         function portalShell() {
@@ -325,7 +341,17 @@ window.fetch = async (resource, options = {}) => {
         confirmDomainToggle(domain) { this.emit("open-confirm", { domain, action: "toggle" }); },
         confirmDomainDelete(domain) { this.emit("open-confirm", { domain, action: "delete" }); },
         confirmClearAdmin(targetId) { this.emit("open-confirm", { action: "clear-admin", targetId }); },
-        previewUserSignature() { this.emit("open-preview", { html: document.getElementById("raw-html-editor")?.value || "" }); },
+        async previewUserSignature() {
+            const raw = document.getElementById("raw-html-editor")?.value || "";
+            if (personalEffective && raw === (personalEffective.html_content || "")) {
+                try {
+                    const current = await reloadPersonalEffective();
+                    this.emit("open-preview", { html: current.preview_html, rendered: true });
+                } catch (error) { notify(error.message, "error"); }
+            } else {
+                this.emit("open-preview", { html: raw });
+            }
+        },
         previewAdminSignature(email) { this.emit("open-preview", { html: document.getElementById("admin-raw-html-editor")?.value || "", previewEmail: email }); }
     };
 }
@@ -463,16 +489,13 @@ function identityProviderManager() { return {
                 },
                 async previewSignature(signature) {
                     try {
-                        const baseUrl = '/api/admin/signatures/' + encodeURIComponent(signature.id) + '/versions';
-                        const versionsResponse = await fetch(baseUrl);
-                        if (!versionsResponse.ok) throw new Error(await versionsResponse.text());
-                        const versions = await versionsResponse.json();
-                        const version = versions.find(item => item.is_current) || versions[0];
-                        if (!version) throw new Error('No version is available for preview.');
-                        const versionResponse = await fetch(baseUrl + '/' + encodeURIComponent(version.id));
-                        if (!versionResponse.ok) throw new Error(await versionResponse.text());
-                        const selected = await versionResponse.json();
-                        window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: selected.html_content || '' } }));
+                        const response = await fetch('/api/admin/signatures/' +
+                            encodeURIComponent(signature.id) + '/preview', { cache: 'no-store' });
+                        if (!response.ok) throw new Error(await response.text());
+                        const rendered = await response.json();
+                        window.dispatchEvent(new CustomEvent('open-preview', {
+                            detail: { html: rendered.html || '', rendered: true }
+                        }));
                     } catch (error) {
                         notify('Could not preview signature: ' + error.message, 'error');
                     }
@@ -793,7 +816,7 @@ function identityProviderManager() { return {
                         return false;
                     }
                     this.advancedPreviewOpen = false;
-                    window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: result.html } }));
+                    window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: result.html, rendered: true } }));
                     notify('Preview for ' + domain.domain_name + ' does not change rotation history.');
                     return true;
                 },
@@ -1469,7 +1492,17 @@ function identityProviderManager() { return {
                         this.editingUserDisabled = isDisabled;
                     } else {
                         const existingUser = this.userOverrides.find(u => u.user_email === email);
-                        const content = existingUser ? existingUser.html_content : '';
+                        let content = existingUser ? existingUser.html_content : '';
+                        if (!existingUser) {
+                            try {
+                                const res = await fetch('/api/admin/users/' +
+                                    encodeURIComponent(email) + '/effective-signature', { cache: 'no-store' });
+                                if (!res.ok) throw new Error('HTTP ' + res.status);
+                                content = (await res.json()).html_content || '';
+                            } catch (error) {
+                                notify('Could not load active rule for this user: ' + error.message, 'error');
+                            }
+                        }
                         document.getElementById('admin-raw-html-editor').value = content;
                         if (adminRichEditor) adminRichEditor.setData(content);
                         this.editingUserDisabled = existingUser ? existingUser.is_disabled : false;
@@ -1502,10 +1535,10 @@ function identityProviderManager() { return {
             } else if (action === 'clear-user') {
                 const res = await fetch('/api/my-signature', { method: 'DELETE' });
                 if(res.ok) {
-                    document.getElementById('raw-html-editor').value = '';
-                    if (userRichEditor) userRichEditor.setData(''); 
-                    checkAllLocks();
-                    notify("Signature cleared.");
+                    try {
+                        await reloadPersonalEffective();
+                        notify("Override cleared. The active rule is now shown.");
+                    } catch (error) { notify(error.message, "error"); }
                 } else { notify("Failed to clear signature.", "error"); }
             } else if (action === 'clear-admin') {
                 const res = await fetch(`/api/admin/overrides/${targetId}`, { method: 'DELETE' });
@@ -1548,31 +1581,38 @@ function sanitizerModal() {
 function previewModal() {
     return {
         show: false,
-        open(event) {
+        requestToken: 0,
+        async open(event) {
             this.show = true;
+            const token = ++this.requestToken;
             const detail = event.detail || {};
-            const email = detail.previewEmail || userData.email;
-            const domain = detail.previewDomain || email.split('@')[1] || '';
-            let first = userData.first_name;
-            let last = userData.last_name;
-            let title = userData.title;
-            let phone = userData.phone;
-            if (detail.previewEmail) {
-                const nameParts = email.split('@')[0].split('.');
-                first = nameParts[0] ? nameParts[0].charAt(0).toUpperCase() + nameParts[0].slice(1) : 'User';
-                last = nameParts[1] ? nameParts[1].charAt(0).toUpperCase() + nameParts[1].slice(1) : '';
-                title = 'Title (Preview)';
-                phone = 'Phone (Preview)';
-            }
-            const html = String(detail.html || '')
-                .replace(/\{\{\s*first_name\s*\}\}/g, first)
-                .replace(/\{\{\s*last_name\s*\}\}/g, last)
-                .replace(/\{\{\s*title\s*\}\}/g, title)
-                .replace(/\{\{\s*phone\s*\}\}/g, phone)
-                .replace(/\{\{\s*email\s*\}\}/g, email)
-                .replace(/\{\{\s*domain_name\s*\}\}/g, domain);
             const frame = document.getElementById('signature-preview-frame');
-            if (frame) frame.srcdoc = html;
+            if (!frame) return;
+            if (detail.rendered === true) {
+                frame.srcdoc = String(detail.html || "");
+                return;
+            }
+            // Render with the backend's identity, fallback and group logic.
+            // Never interpolate user-controlled HTML with regex in the browser.
+            frame.srcdoc = "";
+            try {
+                const isAdminPreview = Boolean(detail.previewEmail);
+                const endpoint = isAdminPreview
+                    ? "/api/admin/signature-preview" : "/api/my-signature/preview";
+                const body = isAdminPreview
+                    ? { user_email: detail.previewEmail, html_content: detail.html || "" }
+                    : { html_content: detail.html || "" };
+                const response = await fetch(endpoint, {
+                    method: "POST", credentials: "same-origin", cache: "no-store",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body)
+                });
+                if (!response.ok) throw new Error("HTTP " + response.status);
+                const data = await response.json();
+                if (token === this.requestToken && this.show) frame.srcdoc = data.html || "";
+            } catch (error) {
+                notify("Could not render signature preview: " + error.message, "error");
+            }
         }
     };
 }

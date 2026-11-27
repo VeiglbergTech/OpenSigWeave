@@ -53,18 +53,21 @@ main, section { min-width: 0; }
     --osw-text: #f4f4f5;
     --osw-heading: #fff;
     --osw-input: #121215;
-    --osw-link: #ffad87;
-    --osw-readable-accent: #ffad87;
+    --osw-link: #90d2ff;
+    --osw-readable-accent: #90d2ff;
     --osw-action-accent: #a63b1b;
     --osw-action-hover: #8f3016;
     --osw-bg: var(--osw-black);
     --osw-surface: var(--osw-panel);
     --osw-surface-raised: var(--osw-panel-raised);
     --osw-input-bg: var(--osw-input);
+    --osw-ui-accent: #e77843;
+    --osw-switch-off: #414652;
+    --osw-toggle-outline: #c3ced9;
     --osw-brand-chosen: var(--osw-accent);
-    --osw-brand-action: var(--osw-action-accent);
-    --osw-brand-text: var(--osw-readable-accent);
-    --osw-focus: var(--osw-action-accent);
+    --osw-brand-action: var(--osw-ui-accent);
+    --osw-brand-text: var(--osw-heading);
+    --osw-focus: var(--osw-ui-accent);
 }
 body { background: var(--osw-bg) !important; color: var(--osw-text); }
 .bg-gray-900 { background-color: var(--osw-charcoal) !important; }
@@ -268,8 +271,11 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
   --osw-text: #1e293b;
   --osw-heading: #111827;
   --osw-input: #ffffff;
-  --osw-link: #923b1d;
-  --osw-readable-accent: #923b1d;
+  --osw-ui-accent: #9c3d21;
+  --osw-switch-off: #e2e8f0;
+  --osw-toggle-outline: #516174;
+  --osw-link: #125c99;
+  --osw-readable-accent: #125c99;
   --osw-action-accent: #a63b1b;
   --osw-action-hover: #852d14;
   --osw-hover: #e4eaf2;
@@ -287,10 +293,10 @@ body { color: var(--osw-text) !important; }
 .hover\:bg-blue-500:hover, .hover\:bg-blue-700:hover { background-color: var(--osw-action-hover) !important; }
 .text-blue-300, .text-blue-400, .text-blue-500 { color: var(--osw-link) !important; }
 .hover\:text-blue-300:hover, .hover\:text-blue-400:hover { color: var(--osw-readable-accent) !important; }
-.border-blue-500, .border-blue-600, .border-green-600 { border-color: var(--osw-action-accent) !important; }
+.border-blue-500, .border-blue-600, .border-green-600 { border-color: var(--osw-ui-accent) !important; }
 .focus\:border-blue-500:focus, .focus\:ring-blue-500:focus {
-  --tw-ring-color: var(--osw-action-accent) !important;
-  border-color: var(--osw-action-accent) !important;
+  --tw-ring-color: var(--osw-ui-accent) !important;
+  border-color: var(--osw-ui-accent) !important;
 }
 .app-brand { color: var(--osw-readable-accent) !important; }
 
@@ -304,7 +310,7 @@ body select, body textarea {
 }
 body select option, body select optgroup { background-color: var(--osw-input); color: var(--osw-text); }
 body input::placeholder, body textarea::placeholder { color: var(--osw-muted); opacity: 1; }
-body :is(input, select, textarea, button):focus-visible { outline-color: var(--osw-action-accent); }
+body :is(input, select, textarea, button):focus-visible { outline-color: var(--osw-ui-accent); }
 #theme-toggle { white-space: nowrap; }
 
 /* Light surfaces: navigation, content cards, list headers, rows and dialogs.
@@ -378,14 +384,14 @@ html[data-theme="light"] .bg-blue-900\/30 { background-color: #eff6ff !important
 html[data-theme="light"] .border-amber-700 { border-color: #d7ac59 !important; }
 html[data-theme="light"] .border-green-700 { border-color: #86b89b !important; }
 html[data-theme="light"] :is(.border-blue-800, .border-blue-900) { border-color: #c5d7ec !important; }
-html[data-theme="light"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--osw-action-accent); }
+html[data-theme="light"] :is(input[type="checkbox"], input[type="radio"]) { accent-color: var(--osw-ui-accent); }
 html[data-theme="light"] :is(button, a, input, select, textarea):focus-visible {
-  outline: 2px solid var(--osw-action-accent);
+  outline: 2px solid var(--osw-ui-accent);
   outline-offset: 2px;
 }
 html[data-theme="light"] :is(input:not([type="checkbox"]):not([type="radio"]), select, textarea):focus {
-  border-color: var(--osw-action-accent) !important;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--osw-action-accent) 18%, transparent);
+  border-color: var(--osw-ui-accent) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--osw-ui-accent) 18%, transparent);
 }
 html[data-theme="light"] :is(button, input, textarea, select):disabled {
   cursor: not-allowed;
@@ -397,7 +403,7 @@ html[data-theme="light"] :is(.form-dialog, .osw-modal-shell) {
 /* CKEditor chrome follows light tokens; the email editing canvas itself is
    intentionally kept white in both modes (see shared rule below). */
 html[data-theme="light"] .ck {
-  --ck-color-focus-border: var(--osw-action-accent);
+  --ck-color-focus-border: var(--osw-ui-accent);
   --ck-color-button-default-disabled-background: var(--osw-charcoal);
   --ck-color-toolbar-background: var(--osw-panel);
   --ck-color-toolbar-border: var(--osw-border);
@@ -453,9 +459,9 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 .ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
 .ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
 
-/* Allow every CKEditor toolbar to wrap instead of cutting off controls. */
+/* Keep a single toolbar row; CKEditor places overflow in its accessible More menu. */
 .osw-rich-editor .ck-toolbar__items {
-    flex-wrap: wrap !important;
+    flex-wrap: nowrap !important;
     max-width: 100%;
     min-width: 0;
 }
@@ -469,7 +475,7 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
     display: none;
 }
 #signature-template-editor .osw-editor-import-url-button:focus-visible {
-    outline: 2px solid var(--osw-action-accent);
+    outline: 2px solid var(--osw-ui-accent);
     outline-offset: 1px;
 }
 #signature-template-editor .osw-editor-import-url-button:disabled {
@@ -606,9 +612,9 @@ input[type="checkbox"].osw-switch {
     height: 1.5rem;
     margin: 0;
     vertical-align: middle;
-    border: 2px solid var(--osw-border);
+    border: 2px solid var(--osw-toggle-outline);
     border-radius: 9999px;
-    background-color: var(--osw-panel-raised);
+    background-color: var(--osw-switch-off);
     cursor: pointer;
     transition: background-color .18s ease, border-color .18s ease;
 }
@@ -625,14 +631,14 @@ input[type="checkbox"].osw-switch::before {
     transition: transform .18s ease;
 }
 input[type="checkbox"].osw-switch:checked {
-    background-color: var(--osw-action-accent);
-    border-color: var(--osw-action-accent);
+    background-color: var(--osw-ui-accent);
+    border-color: var(--osw-toggle-outline);
 }
 input[type="checkbox"].osw-switch:checked::before {
     transform: translateX(1.5rem);
 }
 input[type="checkbox"].osw-switch:focus-visible {
-    outline: 3px solid var(--osw-action-accent) !important;
+    outline: 3px solid var(--osw-ui-accent) !important;
     outline-offset: 3px;
 }
 input[type="checkbox"].osw-switch:disabled {
@@ -688,8 +694,8 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     opacity: 1;
 }
 .ck-toolbar .osw-ckeditor-font-input input.osw-font-text-field:focus {
-    border-color: var(--osw-action-accent) !important;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-action-accent) 20%, transparent);
+    border-color: var(--osw-ui-accent) !important;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--osw-ui-accent) 20%, transparent);
     outline: none;
 }
 .osw-font-listbox {
@@ -729,7 +735,7 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
 .osw-font-option.osw-font-option-active,
 .osw-font-option:focus-visible {
     background: var(--osw-panel-raised);
-    outline: 1px solid var(--osw-action-accent);
+    outline: 1px solid var(--osw-ui-accent);
     outline-offset: -1px;
 }
 .osw-font-empty {
@@ -787,7 +793,7 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
 .osw-tabs button[aria-pressed="true"]::after {
     content: ""; position: absolute; bottom: -.375rem;
     left: .75rem; right: .75rem; height: 2px;
-    background: var(--osw-brand-action);
+    background: var(--osw-ui-accent);
 }
 .osw-tabs button:hover:not([aria-pressed="true"]) {
     color: var(--osw-text); background: var(--osw-panel-raised);
@@ -819,8 +825,8 @@ input[type="checkbox"].osw-checkbox {
     cursor: pointer; vertical-align: middle;
 }
 input[type="checkbox"].osw-checkbox:checked {
-    background: var(--osw-action-accent);
-    border-color: var(--osw-action-accent);
+    background: var(--osw-ui-accent);
+    border-color: var(--osw-ui-accent);
 }
 input[type="checkbox"].osw-checkbox:checked::after {
     content: ""; width: .55rem; height: .32rem;
@@ -906,3 +912,57 @@ input[type="checkbox"].osw-checkbox:disabled {
 /* Consistent helper text under all branded form fields. */
 .osw-field-hint { display: block; margin-top: .375rem; font-size: .75rem;
     line-height: 1.5; color: var(--osw-muted); }
+
+/* Unified portal primitives — brand color only applies to primary button fills. */
+:root { --osw-control-radius: .375rem; }
+body a[href]:not(.bg-blue-600):not(.bg-blue-700),
+body .ck-content a[href] {
+    color: var(--osw-link) !important;
+    text-decoration: underline !important;
+    text-decoration-thickness: 1.5px !important;
+    text-underline-offset: .18em;
+}
+body a[href]:not(.bg-blue-600):not(.bg-blue-700):hover,
+body .ck-content a[href]:hover {
+    color: var(--osw-readable-accent) !important;
+    text-decoration-thickness: 2px !important;
+}
+body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset: 3px; }
+.app-brand { color: var(--osw-heading) !important; }
+/* All sections use identical table structure, typography, spacing and row rhythm. */
+.osw-admin-section table { width: 100%; border-collapse: collapse; font-family: inherit !important;
+    font-size: .875rem !important; line-height: 1.5 !important; color: var(--osw-text); }
+.osw-admin-section table > thead { background: var(--osw-charcoal);
+    border-bottom: 1px solid var(--osw-border); color: var(--osw-muted); }
+.osw-admin-section table > thead th { padding: .875rem 1rem !important;
+    font-size: .75rem !important; font-weight: 600 !important; line-height: 1.4;
+    text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
+.osw-admin-section table > tbody td { padding: .875rem 1rem !important;
+    font-size: .875rem !important; font-weight: 400; vertical-align: middle; }
+.osw-admin-section table > tbody td.font-medium { font-weight: 500 !important; }
+.osw-admin-section table > tbody tr { border-bottom: 1px solid var(--osw-border); }
+.osw-admin-section table > tbody tr:last-child { border-bottom: 0; }
+/* Uniform on/off outline remains readable even when surrounding fills match. */
+input[type="checkbox"].osw-switch {
+    box-shadow: 0 0 0 1px var(--osw-panel), 0 0 0 2px var(--osw-toggle-outline);
+}
+input[type="checkbox"].osw-switch::before { background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.24); }
+input[type="checkbox"].osw-switch:checked { box-shadow: 0 0 0 1px var(--osw-panel), 0 0 0 2px var(--osw-toggle-outline); }
+/* Modals take only the height they need and scroll internally only on overflow. */
+.osw-modal-shell { min-height: 0; overflow: hidden; max-height: calc(100dvh - 2rem); }
+.osw-modal-form { flex: 0 1 auto; max-height: 100%; overflow: hidden; }
+.osw-modal-body { flex: 0 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.osw-modal-placement { min-height: 0; max-height: 100%; }
+.osw-modal-root { overflow: hidden; }
+.osw-modal-shell .osw-editor-host { flex: 0 1 auto; min-height: 0; }
+.osw-editor-host .ck-editor__editable { min-height: min(12rem, 27dvh) !important;
+    max-height: min(24rem, 39dvh) !important; overflow-y: auto; }
+.osw-signature-preview-frame { display: block; min-height: 10rem;
+    height: min(25rem, 55dvh); max-height: calc(100dvh - 11rem); }
+@media (max-height: 580px) {
+    .osw-modal-root { padding: .5rem; }
+    .osw-modal-shell { max-height: calc(100dvh - 1rem); }
+    .osw-modal-header, .osw-modal-footer { padding: .5rem 1rem; }
+    .osw-modal-body { padding: .75rem 1rem; gap: .75rem; }
+    .osw-editor-host .ck-editor__editable { min-height: 7rem !important; max-height: 28dvh !important; }
+}

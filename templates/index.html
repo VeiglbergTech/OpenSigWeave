@@ -9,12 +9,12 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js?v=font-fields-20261124b"></script>
-    <script src="/static/js/rich-editor.js?v=font-fields-20261124b"></script>
+    <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=font-fields-20261124b" rel="stylesheet">
+    <link href="/static/css/portal.css?v=ui-unification-20261127" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
-    <script defer src="/static/js/branding.js?v=branding-reset-20261122"></script>
+    <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
 <body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-mail-setup-required="{{ 'true' if mail_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
     <div id="osw-modal-backdrop" class="osw-dialog-backdrop" aria-hidden="true"></div>
@@ -84,7 +84,7 @@
                             <p class="text-sm text-gray-300 mt-1 max-w-sm">This signature contains tables or advanced HTML. Visual editing is locked to prevent data loss.</p>
                             <p class="text-xs text-gray-500 mt-4">Use the Advanced HTML editor below to make changes.</p>
                         </div>
-                        <div id="user-rich-editor" class="h-[300px]"><div data-editor-target></div></div>
+                        <div id="user-rich-editor" class="osw-editor-host"><div data-editor-target></div></div>
                     </div>
                     
                     <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700">
@@ -282,7 +282,7 @@
                                 <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
                                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
                                     <template x-for="domain in domains" :key="domain.id">
-                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-checkbox osw-checkbox--multi"><span x-text="domain.domain_name"></span></label>
+                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch" role="switch"><span x-text="domain.domain_name"></span></label>
                                     </template>
                                     <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
                                 </div>
@@ -409,7 +409,7 @@
                             <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
                         </div>
                         <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">Group enabled</label>
-                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-checkbox osw-checkbox--multi"><span x-text="domain.domain_name"></span></label></template></div></div>
+                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch" role="switch"><span x-text="domain.domain_name"></span></label></template></div></div>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
                     </div>
@@ -555,7 +555,7 @@
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                     <h3 class="font-semibold">Application identity</h3>
                     <label class="block text-sm text-gray-300">Application name<input x-model="settings.app_name" maxlength="120" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                    <label class="block text-sm text-gray-300">Accent color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div><span class="osw-field-hint">The selected swatch is saved exactly. Buttons and links may use a contrast-adjusted shade for accessibility.</span></label>
+                    <label class="block text-sm text-gray-300">Button color<div class="mt-1 flex gap-3 items-center"><input type="color" x-model="settings.app_color" class="h-10 w-16 rounded bg-gray-900 border border-gray-600 p-1"><input x-model="settings.app_color" maxlength="7" class="flex-1 osw-branding-color-input bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white font-mono" placeholder="#ff7043"></div><span class="osw-field-hint">The selected swatch is saved exactly. Buttons and links may use a contrast-adjusted shade for accessibility.</span></label>
                     <label class="flex items-center gap-3 text-sm text-gray-300"><input type="checkbox" x-model="settings.large_image_uploads" class="osw-switch" role="switch"> Allow large images (12 MiB instead of 6 MiB)</label>
                     <p class="text-xs text-gray-400">This setting applies to signature images, web interface logos and favicons. Existing uploaded images are unaffected if disabled later.</p>
                     </div>
@@ -629,11 +629,11 @@
             <h3 id="osw-export-section" class="text-lg font-semibold text-white">Export</h3>
             <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="osw-checkbox osw-checkbox--multi"> Signatures and all HTML versions</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="osw-checkbox osw-checkbox--multi"> Domains and original templates</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="osw-checkbox osw-checkbox--multi"> Signature groups and memberships</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="osw-checkbox osw-checkbox--multi"> Rules and conditions</label>
-                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="osw-checkbox osw-checkbox--multi"> Identity-provider metadata</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="signatures" x-model="selected" class="osw-switch" role="switch"> Signatures and all HTML versions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="domains" x-model="selected" class="osw-switch" role="switch"> Domains and original templates</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="groups" x-model="selected" class="osw-switch" role="switch"> Signature groups and memberships</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="rules" x-model="selected" class="osw-switch" role="switch"> Rules and conditions</label>
+                    <label class="flex items-center gap-2"><input type="checkbox" value="identity_providers" x-model="selected" class="osw-switch" role="switch"> Identity-provider metadata</label>
                 </div>
                 <div class="rounded border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
                     Provider credentials, application secrets, personal user overrides and identity caches are never included. Rule conditions can still contain email addresses or other identifiers; review the archive before sharing. This is a selective configuration export, not a disaster-recovery backup.
@@ -1181,7 +1181,7 @@
                                     <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
                                     <p class="text-sm text-gray-300 mt-1 max-w-sm">Visual editing is locked to prevent data loss.</p>
                                 </div>
-                                <div id="admin-rich-editor" class="h-[200px]"><div data-editor-target></div></div>
+                                <div id="admin-rich-editor" class="osw-editor-host"><div data-editor-target></div></div>
                             </div>
                             <div x-data="htmlEditorToggle" class="bg-gray-800 border-t border-gray-700" :class="editingUserDisabled ? 'opacity-50 pointer-events-none' : ''">
                                 <div class="flex flex-wrap justify-between items-center gap-3 px-4 py-3">
@@ -1274,7 +1274,7 @@
                     <h3 class="text-lg font-bold text-white">Live Signature Preview</h3>
                     <button type="button" data-osw-dialog-close aria-label="Close dialog" class="osw-modal-dismiss"><svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
-                <div class="osw-modal-body"><iframe id="signature-preview-frame" title="Signature preview" sandbox="" class="w-full min-h-[320px] bg-white border-0"></iframe></div><div class="osw-modal-footer">
+                <div class="osw-modal-body"><iframe id="signature-preview-frame" title="Signature preview" sandbox="" class="osw-signature-preview-frame w-full bg-white border-0"></iframe></div><div class="osw-modal-footer">
                   <button type="button" data-osw-dialog-close class="px-4 py-2 bg-gray-700 rounded text-sm">Close</button>
                 </div>
             </div>
@@ -1311,6 +1311,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=alert-status-20261124"></script>
+    <script src="/static/js/portal.js?v=ui-unification-20261127"></script>
 </body>
 </html>

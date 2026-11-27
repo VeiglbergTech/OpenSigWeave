@@ -6,7 +6,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(color || ""));
     if (!hex) color = "#ff7043";
     const selected = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
-    root.style.setProperty("--osw-accent", color);
     root.style.setProperty("--osw-brand-chosen", color);
 
     // Preserve the saved swatch exactly; accessible action/text shades differ.
@@ -33,14 +32,12 @@ document.addEventListener("DOMContentLoaded", () => {
         return toHex([direction, direction, direction]);
     };
     const refresh = () => {
-        const light = root.dataset.theme === "light";
-        const background = light ? [255, 255, 255] : [23, 23, 25];
-        root.style.setProperty("--osw-readable-accent", shadeFor(background, light ? 0 : 255));
+        // All non-button UI colors are fixed theme tokens, never brand-derived.
         const actionColor = shadeFor([255, 255, 255], 0);
         root.style.setProperty("--osw-action-accent", actionColor);
         const action = [1, 3, 5].map(index => parseInt(actionColor.slice(index, index + 2), 16));
         root.style.setProperty("--osw-action-hover", toHex(action.map(channel => channel * 0.84)));
-        root.style.setProperty("--osw-link", shadeFor(background, light ? 0 : 255));
+        // Link colors are deliberately independent of the selected button color.
     };
     refresh();
     };

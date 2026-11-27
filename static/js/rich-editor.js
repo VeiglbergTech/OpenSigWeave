@@ -507,7 +507,7 @@
         const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar: { items: toolbar, shouldNotGroupWhenFull: true },
+            toolbar: { items: toolbar, shouldNotGroupWhenFull: false },
             // Numeric options plus supportAllValues preserve imported px/pt
             // formatting, even when the value is absent from the preset UI.
             fontSize: {
@@ -568,7 +568,7 @@
                 toolbar: {
                     items: toolbar.map(item => item === "signatureFontFamily" ? "fontFamily"
                         : item === "signatureFontSize" ? "fontSize" : item),
-                    shouldNotGroupWhenFull: true
+                    shouldNotGroupWhenFull: false
                 },
                 extraPlugins: config.imageUpload ? [signatureImageUploadPlugin(config)] : []
             };
