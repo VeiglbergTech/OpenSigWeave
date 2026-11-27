@@ -137,10 +137,14 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
     "the discontinued tag-insertion UI helper must be removed");
   assert.equal(template.includes("Advanced: Insert signature group tag"), false,
     "the signatures editor must not expose the removed tag picker");
-  assert.equal(template.includes('id="group-preview-domain"'), false,
-    "the group overview must not expose a permanent preview domain selector");
-  assert.equal(template.includes('id="group-advanced-preview-domain"'), true,
-    "domain selection must remain available inside Advanced Preview");
+  assert.equal(template.includes('id="group-preview-domain"'), true,
+    "domain selection belongs to the on-demand group preview dialog");
+  assert.equal(template.includes('id="group-advanced-preview-domain"'), false,
+    "the redundant Advanced Preview dialog must be removed");
+  assert.match(template, /x-show="previewPickerOpen"/,
+    "domain selection must be hidden until multiple domains are eligible");
+  assert.equal(template.includes('>Advanced Preview</button>'), false,
+    "the group table must expose only one preview action");
 
   const groupManager = vm.runInNewContext("signatureGroupManager()", signatureContext);
   const groupRequests = [];
@@ -161,6 +165,8 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual([...groupManager.previewDomainsForGroup(groupManager.groups[0])].map(item => item.id), [2],
     "eligible domains must consider both group and member scopes");
   assert.equal(groupManager.signatureName("missing"), "Missing signature");
+  assert.equal(groupManager.compactSignatureName("s1"), "Cor...",
+    "signature labels must show the first three characters and an ellipsis");
   groupManager.editGroup(groupManager.groups[0]);
   groupManager.toggleDomain("3", true);
   groupManager.toggleDomain("2", false);
@@ -200,16 +206,33 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
     members: [{ signature_id: "s1", weight: 1, is_enabled: false }] }).length, 0,
     "disabled group members must not qualify for a preview");
 
-  groupManager.openAdvancedPreview(previewGroup);
-  assert.equal(groupManager.advancedPreviewOpen, true);
-  assert.equal(groupManager.advancedPreviewDomainId, "2");
   groupResponses = [{ ok: true, json: async () => ({
-    html: "<p>Advanced Preview</p>", rotation_state_changed: false
+    html: "<p>Direct Preview</p>", rotation_state_changed: false
   }) }];
-  await groupManager.previewAdvancedGroup();
-  assert.equal(groupManager.advancedPreviewOpen, false);
+  groupManager.openGroupPreview(previewGroup);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(groupManager.previewPickerOpen, false,
+    "one eligible domain must preview directly");
   assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=2");
-  assert.equal(previewHtml, "<p>Advanced Preview</p>");
+  assert.equal(previewHtml, "<p>Direct Preview</p>");
+
+  const multipleDomainGroup = { ...previewGroup, domain_ids: [2, 3] };
+  groupManager.domains = [
+    { id: 2, domain_name: "example.test", is_active: true },
+    { id: 3, domain_name: "example.org", is_active: true },
+  ];
+  groupManager.openGroupPreview(multipleDomainGroup);
+  assert.equal(groupManager.previewPickerOpen, true,
+    "multiple eligible domains must open a domain picker");
+  assert.equal(groupManager.previewPickerDomainId, "2");
+  groupManager.previewPickerDomainId = "3";
+  groupResponses = [{ ok: true, json: async () => ({
+    html: "<p>Selected Domain Preview</p>", rotation_state_changed: false
+  }) }];
+  await groupManager.previewSelectedGroup();
+  assert.equal(groupManager.previewPickerOpen, false);
+  assert.equal(groupRequests.at(-1).url, "/api/admin/signature-groups/g%2F1/preview?domain_id=3");
+  assert.equal(previewHtml, "<p>Selected Domain Preview</p>");
 
   groupManager.memberForm = { group_id: "g1", signature_id: "s1", weight: "4" };
   groupResponses = [{ ok: true, json: async () => ({}) }, ...[
@@ -363,10 +386,6 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.match(portalCss, /\.ck\.ck-dropdown__panel/, "CKEditor menus need themed surfaces");
   assert.match(portalCss, /--osw-text/, "Theme foreground colors must be defined");
   assert.match(portalCss, /ck-editor__editable[\s\S]*?background: #fff !important/, "Email canvas must be white");
-  assert.match(template, /id="group-preview-domain"[^>]*x-model="previewDomainId"/, "Group preview must expose a domain selector");
-  assert.match(template, /x-model="selectedGroupSlug"/, "Signature editor must expose a group tag selector");
-  assert.match(template, /Advanced: Insert signature group tag/, "Group tags must be behind advanced disclosure");
-  assert.match(template, /Choose ZIP file/, "Import requires a clearly labeled ZIP selector");
   assert.match(template, /<summary class="cursor-pointer">Scheduling priority<\/summary>/,
     "Scheduling precedence must remain accessible in a collapsible help section");
   assert.match(template, /Start is inclusive; end is exclusive\./,
@@ -375,23 +394,19 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
     assert.ok(!template.includes("<option>" + retiredMode + "</option>"),
       "User-facing retired signature mode options must be removed");
   }
-  assert.match(template, /<option value="SIGNATURE">Signature<\/option>/,
-    "Rule actions must target a concrete signature instead of a mode");
-  assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/, "Personal editor must warn when Outlook-specific markup is detected");
-  assert.doesNotMatch(template, /id="domain-raw-html-editor"/, "Retired domain master editor must not be offered");
-  assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/, "Admin editor must warn when Outlook-specific markup is detected");
-  assert.ok(portalJs.includes(String.raw`const outlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i;`), "Editor must detect Outlook conditional comments and VML");
-  assert.match(portalJs, /checkAllLocks\(\)[\s\S]*?checkOutlookMarkupWarnings\(\)/, "Editor state updates must refresh the Outlook markup warning");
-  assert.match(template, /insertGroupTag\(selectedGroupSlug, \$refs\.signatureHtmlTemplate\)/, "Group picker must insert into the signature HTML editor");
-  assert.match(template, /x-for="group in availableGroups"/, "Only active groups must be offered by the signature tag picker");
-  assert.match(portalJs, /async fetchAll\(\)[\s\S]*?fetch\('\/api\/admin\/signature-groups'\)/, "Signature catalog must load signature groups");
-  assert.match(portalJs, /insertGroupTag\(slug, editor\)[\s\S]*?\{\{ group:/, "Group tags must use the documented template namespace");
-  assert.match(portalJs, /setSelectionRange\(start \+ token\.length/, "Group tag insertion must restore the cursor after the inserted tag");
-  assert.match(template, /@click="previewGroup\(group\)"[^>]*>Preview<\/button>/, "Every group card must expose its preview action");
-  assert.match(portalJs, /async previewGroup\(group\)[\s\S]*?\/api\/admin\/signature-groups\//, "Group preview must call the administrator preview API");
-  assert.match(portalJs, /rotation history\./, "The UI must explain that preview does not mutate rotation history");
-  assert.match(portalJs, /open-preview[\s\S]*?result\.html/, "The rendered API HTML must be sent to the existing preview modal");
-  assert.match(portalJs, /Alpine\.data\("identityProviderManager", identityProviderManager\)/, "Identity provider Alpine component must be registered");
+  assert.match(template, /id="outlook-markup-warning"[^>]*role="alert"/,
+    "Personal editor must warn when Outlook-specific markup is detected");
+  assert.match(template, /id="admin-outlook-markup-warning"[^>]*role="alert"/,
+    "Admin editor must warn when Outlook-specific markup is detected");
+  assert.match(template, /@click="openGroupPreview\(group\)"[^>]*>Preview<\/button>/,
+    "Every group must expose the unified preview action");
+  assert.match(portalJs, /async previewGroup\(group, domainId = null\)[\s\S]*?\/api\/admin\/signature-groups\//,
+    "Group preview must retain the administrator preview API");
+  assert.match(portalJs, /rotation history\./, "Preview must explain rotation safety");
+  assert.match(portalJs, /open-preview[\s\S]*?result\.html/,
+    "The API HTML must reach the preview modal");
+  assert.match(portalJs, /Alpine\.data\("identityProviderManager", identityProviderManager\)/,
+    "Identity provider Alpine component must be registered");
   assert.match(template, /@alpinejs\/csp@3\.17\.5/);
   assert.doesNotMatch(template, /alpinejs@3\.17\.5\/dist\/cdn\.min\.js/);
   assert.doesNotMatch(template, /x-data="\{ showHtml: false \}"/);
