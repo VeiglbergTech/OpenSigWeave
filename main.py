@@ -28,6 +28,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from authlib.integrations.starlette_client import OAuth
 from jinja2 import TemplateError
+from markupsafe import Markup
 
 load_dotenv()
 
@@ -36,7 +37,7 @@ from database import get_db, SessionLocal
 from models import DomainDB, UserOverrideDB, SignatureDB, SignatureDomainDB, SignatureVersionDB, SignatureRuleDB, SignatureRuleConditionDB, IdentityCacheDB, SignatureGroupDB, SignatureGroupDomainDB, SignatureGroupMemberDB, GroupSelectionStateDB, SignatureScheduleDB, BrandingSettingsDB
 from rate_limiter import RateLimitMiddleware
 
-from signature_renderer import render_signature_template
+from signature_renderer import render_signature_template, prepare_group_placeholders, strip_group_placeholders
 from identity.providers.authentik import AuthentikAttributeProvider
 from identity.providers.base import IdentityProviderUnavailable
 from identity.attributes import IdentityAttributes
@@ -1350,6 +1351,81 @@ def get_my_signature(request: Request, db: Session = Depends(get_db)):
     override = db.query(UserOverrideDB).filter(func.lower(UserOverrideDB.user_email) == email).first()
     return {"html_content": (override.html_content_source if override.html_content_source is not None else sanitize_signature_html(override.html_content)) if override else ""}
 
+async def _portal_effective_signature(db: Session, email: str) -> dict:
+    # A preview never changes the sender's group-rotation history.
+    try:
+        result = await resolve_signature_engine(
+            db, normalize_engine_request(email),
+            commit_selection=False, preview_only=True,
+        )
+    except SignatureEngineError as exc:
+        raise _engine_http_exception(exc) from exc
+    override = db.query(UserOverrideDB).filter(
+        func.lower(UserOverrideDB.user_email) == email
+    ).first()
+    custom = override is not None and not override.is_disabled
+    editor_source = (
+        (override.html_content_source if override.html_content_source is not None
+         else override.html_content)
+        if custom else result.template_html
+    )
+    return {
+        "html_content": editor_source,
+        "preview_html": result.html,
+        "has_override": custom,
+        "source": "override" if custom else ("rule" if result.template_html else "none"),
+    }
+
+
+@app.get("/api/my-signature/effective")
+async def get_effective_my_signature(request: Request, db: Session = Depends(get_db)):
+    email = normalized_user_email(require_signature_user(request))
+    return await _portal_effective_signature(db, email)
+
+
+@app.get("/api/admin/users/{email}/effective-signature")
+async def get_effective_admin_signature(email: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        normalized = normalize_engine_request(email).sender_email
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return await _portal_effective_signature(db, normalized)
+
+
+@app.post("/api/my-signature/preview")
+async def preview_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
+    email = normalized_user_email(require_signature_user(request))
+    try:
+        result = await resolve_signature_engine(
+            db, normalize_engine_request(email),
+            commit_selection=False, preview_only=True,
+            preview_template_html=req.html_content,
+        )
+    except SignatureEngineError as exc:
+        raise _engine_http_exception(exc) from exc
+    return {"html": result.html, "rotation_state_changed": False}
+
+
+@app.post("/api/admin/signature-preview")
+async def preview_admin_user_signature(req: AdminOverrideSave, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        engine_request = normalize_engine_request(req.user_email)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    try:
+        result = await resolve_signature_engine(
+            db, engine_request, commit_selection=False, preview_only=True,
+            preview_template_html=req.html_content,
+        )
+    except SignatureEngineError as exc:
+        raise _engine_http_exception(exc) from exc
+    return {"html": result.html, "rotation_state_changed": False}
+
+
 @app.post("/api/my-signature")
 def save_my_signature(req: OverrideUpdate, request: Request, db: Session = Depends(get_db)):
     user = require_signature_user(request)
@@ -2430,6 +2506,75 @@ def restore_signature_version_endpoint(
     }
 
 
+def _render_catalog_preview(db: Session, raw_html: str, domain_id: int | None, values: dict) -> str:
+    """Preview stored signature HTML with safe sample values and stable group members."""
+    source, group_slots = prepare_group_placeholders(sanitize_signature_html(raw_html))
+    group_values = {}
+    for slug, token in group_slots.items():
+        group_values[token] = Markup("")
+        if domain_id is None:
+            continue
+        group = db.query(SignatureGroupDB).filter(
+            SignatureGroupDB.slug == slug, SignatureGroupDB.is_active.is_(True)
+        ).first()
+        if group is None:
+            continue
+        selected = get_group_preview_signature(db, group.id, domain_id)
+        if selected is None:
+            continue
+        version = db.query(SignatureVersionDB).filter(
+            SignatureVersionDB.signature_id == selected.id
+        ).order_by(SignatureVersionDB.version_number.desc()).first()
+        if version is None:
+            raise HTTPException(status_code=503, detail="Group signature version is unavailable")
+        try:
+            nested = signature_file_store.read(
+                selected.name, uuid.UUID(hex=version.id), version.sha256
+            )
+        except (SignatureStorageError, ValueError, TypeError):
+            raise HTTPException(status_code=503, detail="Group signature asset unavailable")
+        nested = strip_group_placeholders(sanitize_signature_html(nested))
+        group_values[token] = Markup(render_signature_template(nested, values))
+    return render_signature_template(source, {**values, **group_values})
+
+
+@app.get("/api/admin/signatures/{signature_id}/preview")
+def preview_catalog_signature(signature_id: str, request: Request, db: Session = Depends(get_db)):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    signature = db.get(SignatureDB, signature_id)
+    if signature is None:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    version = db.query(SignatureVersionDB).filter(
+        SignatureVersionDB.signature_id == signature.id
+    ).order_by(SignatureVersionDB.version_number.desc()).first()
+    if version is None:
+        raise HTTPException(status_code=503, detail="Signature version metadata is missing")
+    try:
+        raw = signature_file_store.read(
+            signature.name, uuid.UUID(hex=version.id), version.sha256
+        )
+    except (SignatureStorageError, ValueError, TypeError):
+        raise HTTPException(status_code=503, detail="Signature asset unavailable")
+    assigned = db.query(SignatureDomainDB).filter(
+        SignatureDomainDB.signature_id == signature.id
+    ).order_by(SignatureDomainDB.domain_id).first()
+    domain = db.get(DomainDB, assigned.domain_id) if assigned else db.query(DomainDB).filter(
+        DomainDB.is_active.is_(True)
+    ).order_by(DomainDB.id).first()
+    domain_name = domain.domain_name if domain else "example.org"
+    values = {
+        "first_name": "Alex", "last_name": "Example",
+        "title": "Position (Preview)", "phone": "+49 123 456789",
+        "email": f"alex@{domain_name}", "domain_name": domain_name,
+    }
+    try:
+        html = _render_catalog_preview(db, raw, domain.id if domain else None, values)
+    except TemplateError:
+        raise HTTPException(status_code=422, detail="Invalid signature template")
+    return {"html": html, "signature_id": signature.id, "rotation_state_changed": False}
+
+
 @app.get("/api/admin/signature-groups/{group_id}/preview")
 def preview_signature_group(
     group_id: str,
@@ -2470,7 +2615,7 @@ def preview_signature_group(
         "domain_name": domain.domain_name,
     }
     try:
-        html = render_signature_template(sanitize_signature_html(raw_html), preview_values)
+        html = _render_catalog_preview(db, raw_html, domain_id, preview_values)
     except TemplateError:
         raise HTTPException(status_code=422, detail="Invalid signature template")
     return {
@@ -2972,6 +3117,8 @@ async def resolve_signature_engine(
     engine_request: SignatureEngineRequest,
     *,
     commit_selection: bool = True,
+    preview_only: bool = False,
+    preview_template_html: str | None = None,
 ) -> SignatureEngineResult:
     """Run synchronous SQLAlchemy and rendering work outside the ASGI event loop.
 
@@ -2984,14 +3131,17 @@ async def resolve_signature_engine(
     # to a worker can corrupt request isolation or fail to find its tables.
     # Keep SQLite session work on its originating event loop; PostgreSQL is
     # the supported scalable production path with worker offloading.
+    preview_options = {"preview_only": True} if preview_only else {}
+    if preview_template_html is not None:
+        preview_options["preview_template_html"] = preview_template_html
     if isinstance(db, Session) and db.get_bind().dialect.name == "sqlite":
         return await _signature_engine_service().resolve(
-            db, engine_request, commit_selection=commit_selection
+            db, engine_request, commit_selection=commit_selection, **preview_options
         )
 
     def process():
         return asyncio.run(_signature_engine_service().resolve(
-            db, engine_request, commit_selection=commit_selection
+            db, engine_request, commit_selection=commit_selection, **preview_options
         ))
 
     try:

@@ -14,7 +14,7 @@ from core.engine_contract import (
     SignatureEngineRequest,
     SignatureEngineResult,
 )
-from core.group_selection_repository import select_and_record_group_signature
+from core.group_selection_repository import select_and_record_group_signature, get_group_preview_signature
 from core.domain_fallbacks import signature_profile_values
 from core.rule_repository import load_signature_rules
 from core.rules import RuleContext, evaluate_rules
@@ -54,6 +54,8 @@ class SignatureEngineService:
         request: SignatureEngineRequest,
         *,
         commit_selection: bool = True,
+        preview_only: bool = False,
+        preview_template_html: str | None = None,
     ) -> SignatureEngineResult:
         normalized_email = request.sender_email
         domain_part = normalized_email.rsplit("@", 1)[-1]
@@ -94,7 +96,14 @@ class SignatureEngineService:
         if not marker_requested:
             active_schedule = load_active_schedule(db, domain_obj.id)
 
-        if marker_requested:
+        if preview_template_html is not None:
+            # An authenticated portal draft is rendered with the same identity,
+            # fallback, sanitization and group-placeholder pipeline as delivery.
+            identity_attributes = await self.identity_resolver(
+                db, normalized_email, domain_obj.identity_provider_id
+            )
+            raw_template = preview_template_html
+        elif marker_requested:
             # A text marker is a selector, not an authentication mechanism. It is
             # accepted only when its four-character SHA-256 check matches exactly.
             marker_name = (signature_name or "").strip()
@@ -182,11 +191,14 @@ class SignatureEngineService:
             if active_schedule.target_type == "GROUP":
                 if not active_schedule.group_id or not (identity_attributes.principal_id or fallback_rotation_principal):
                     return empty_result
-                selected_signature = select_and_record_group_signature(
-                    db,
-                    principal_id=identity_attributes.principal_id or fallback_rotation_principal,
-                    group_id=active_schedule.group_id,
-                    domain_id=domain_obj.id,
+                selected_signature = (
+                    get_group_preview_signature(db, active_schedule.group_id, domain_obj.id)
+                    if preview_only else select_and_record_group_signature(
+                        db,
+                        principal_id=identity_attributes.principal_id or fallback_rotation_principal,
+                        group_id=active_schedule.group_id,
+                        domain_id=domain_obj.id,
+                    )
                 )
                 if selected_signature is None:
                     return empty_result
@@ -255,11 +267,14 @@ class SignatureEngineService:
             elif matched_rule and matched_rule.action == "GROUP":
                 if not matched_rule.group_id or not (identity_attributes.principal_id or fallback_rotation_principal):
                     return empty_result
-                selected_signature = select_and_record_group_signature(
-                    db,
-                    principal_id=identity_attributes.principal_id or fallback_rotation_principal,
-                    group_id=matched_rule.group_id,
-                    domain_id=domain_obj.id,
+                selected_signature = (
+                    get_group_preview_signature(db, matched_rule.group_id, domain_obj.id)
+                    if preview_only else select_and_record_group_signature(
+                        db,
+                        principal_id=identity_attributes.principal_id or fallback_rotation_principal,
+                        group_id=matched_rule.group_id,
+                        domain_id=domain_obj.id,
+                    )
                 )
                 if selected_signature is None:
                     return empty_result
@@ -336,6 +351,7 @@ class SignatureEngineService:
 
         if not raw_template:
             return empty_result
+        source_template = raw_template
 
         profile_values = signature_profile_values(
             identity_attributes, normalized_email, domain_part, domain_obj.fallback_values
@@ -354,11 +370,14 @@ class SignatureEngineService:
                     if group.id == selected_group_id:
                         selected = selected_group_signature
                     else:
-                        selected = select_and_record_group_signature(
-                            db,
-                            principal_id=identity_attributes.principal_id or fallback_rotation_principal,
-                            group_id=group.id,
-                            domain_id=domain_obj.id,
+                        selected = (
+                            get_group_preview_signature(db, group.id, domain_obj.id)
+                            if preview_only else select_and_record_group_signature(
+                                db,
+                                principal_id=identity_attributes.principal_id or fallback_rotation_principal,
+                                group_id=group.id,
+                                domain_id=domain_obj.id,
+                            )
                         )
                         if selected is not None:
                             selected_from_group = True
@@ -411,4 +430,5 @@ class SignatureEngineService:
             inject_on_replies=domain_obj.inject_on_replies,
             trim_whitespace=domain_obj.trim_whitespace,
             strip_device_signatures=domain_obj.strip_device_signatures,
+            template_html=source_template,
         )

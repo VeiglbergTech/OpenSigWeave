@@ -44,6 +44,8 @@ class SignatureEngineResult:
     inject_on_replies: bool
     trim_whitespace: bool
     strip_device_signatures: bool
+    # Server-only source for the portal's rule-derived editor draft. Never exposed by to_payload().
+    template_html: str = ""
 
     def to_payload(self) -> dict[str, object]:
         """Serialize the stable public engine response without transport types."""
