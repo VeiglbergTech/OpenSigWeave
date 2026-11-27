@@ -637,13 +637,26 @@ class UpdateTests(unittest.TestCase):
             compose.assert_not_called()
 
     def test_no_update_never_attempts_backup(self):
-        with patch.object(update, "exclusive_lock", return_value=nullcontext()), \
-             patch.object(update, "preflight", return_value={}), \
-             patch.object(update, "current_sha", return_value="a" * 40), \
-             patch.object(update, "select_backup_for_update") as backup:
-            update.apply_update("dev", "a" * 40, yes=True,
-                                approve_breaking=False, skip_start=False)
-            backup.assert_not_called()
+        # The test must not depend on the CI checkout branch: the same
+        # deployment suite runs on dev, beta and main. An unchanged beta
+        # installation is current only when its running image is current.
+        for channel in ("dev", "beta"):
+            with self.subTest(channel=channel), \
+                 patch.object(update, "exclusive_lock", return_value=nullcontext()), \
+                 patch.object(update, "preflight", return_value={}), \
+                 patch.object(update, "current_sha", return_value="a" * 40), \
+                 patch.object(update, "current_channel", return_value=channel), \
+                 patch.object(update, "beta_image_current", return_value=True) as image_current, \
+                 patch.object(update, "select_backup_for_update") as backup, \
+                 patch.object(update, "git") as git:
+                update.apply_update(channel, "a" * 40, yes=True,
+                                    approve_breaking=False, skip_start=False)
+                backup.assert_not_called()
+                git.assert_not_called()
+                if channel == "beta":
+                    image_current.assert_called_once_with("a" * 40)
+                else:
+                    image_current.assert_not_called()
 
     def test_migration_failure_disallows_unsafe_rollback(self):
         self.assertIn("No verified recovery point", update.recovery_guidance(
