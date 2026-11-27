@@ -2610,6 +2610,7 @@ async function main() {
             paddingLeft: parseFloat(css.paddingLeft),
             paddingRight: parseFloat(css.paddingRight),
             inlineLinkGap: second.getBoundingClientRect().left - first.getBoundingClientRect().right,
+            computedLinkMargin: getComputedStyle(second).marginInlineStart,
           };
           fixture.remove();
           return result;
