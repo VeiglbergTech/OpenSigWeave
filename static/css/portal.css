@@ -946,8 +946,9 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 /* Preserve a readable inset between bordered cards and their text. The table
    and email-editor shells manage their own internal padding separately. */
 :where(.osw-admin-section, .osw-personal-layout)
-  .bg-gray-800.rounded-lg:not(.osw-table-scroll):not(.osw-modal-shell):not(:has(.ck-editor))
-  :not([class*="p-"]):not([class*="px-"]):not([class*="py-"]) { padding: 1.25rem; }
+  .bg-gray-800.rounded-lg:not(.osw-table-scroll):not(.osw-modal-shell):not(:has(.ck-editor)):not([class^="p-"]):not([class*=" p-"]):not([class^="px-"]):not([class*=" px-"]):not([class^="py-"]):not([class*=" py-"]) {
+    padding: 1.25rem;
+}
 .app-brand { color: var(--osw-heading) !important; }
 /* All sections use identical table structure, typography, spacing and row rhythm. */
 .osw-admin-section .osw-table-scroll > table { width: 100%; border-collapse: collapse; font-family: inherit !important;
