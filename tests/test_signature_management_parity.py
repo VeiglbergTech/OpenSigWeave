@@ -50,16 +50,17 @@ class SignatureManagementParityTests(unittest.TestCase):
         self.assertIn('async toggleSignatureStatus(signature)', JS)
         self.assertIn('signature-catalog-updated', JS)
 
-    def test_legacy_group_picker_removed_and_advanced_preview_scoped(self):
+    def test_legacy_group_picker_removed_and_unified_preview_scoped(self):
         self.assertNotIn("Advanced: Insert signature group tag", SIGNATURES)
         self.assertNotIn("insertGroupTag(", JS)
         self.assertNotIn("selectedGroupSlug", JS)
-        self.assertNotIn('id="group-preview-domain"', HTML)
         groups = HTML.split('x-show="adminTab === \'signature-groups\'"')[1].split(
             'x-show="adminTab === \'rules\'"')[0]
-        for required in ('openAdvancedPreview(group)', 'id="group-advanced-preview-domain"',
-                         'x-show="advancedPreviewOpen"', 'previewGroup(group)'):
-            self.assertIn(required, groups)
+        for required in ('openGroupPreview(group)', 'id="group-preview-domain"',
+                         'x-show="previewPickerOpen"', 'previewSelectedGroup()'):
+            with self.subTest(required=required):
+                self.assertIn(required, groups)
+        self.assertNotIn('id="group-advanced-preview-domain"', groups)
         self.assertIn("previewDomainsForGroup(group)", JS)
         self.assertIn("result.rotation_state_changed !== false", JS)
 
