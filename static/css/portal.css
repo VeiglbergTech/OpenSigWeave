@@ -1276,3 +1276,13 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
         padding: 0;
     }
 }
+
+/* Width includes padding and borders; cards must not overflow by their insets. */
+.osw-admin-section .osw-table-scroll > table.osw-data-table,
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody,
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody > tr,
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody > tr > td,
+.osw-group-member {
+    box-sizing: border-box;
+    max-width: 100%;
+}
