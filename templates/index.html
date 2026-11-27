@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=table-domain-parity-20261127" rel="stylesheet">
+    <link href="/static/css/portal.css?v=group-member-one-line-20261127" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -373,8 +373,8 @@
                                     <div class="space-y-2">
                                         <template x-for="member in group.members" :key="member.signature_id">
                                             <div class="osw-group-member">
-                                                <span class="osw-group-member-name" x-text="signatureName(member.signature_id)"></span>
-                                                <label class="osw-group-member-weight">Rotation weight
+                                                <span class="osw-group-member-name" x-text="signatureName(member.signature_id)" :title="signatureName(member.signature_id)"></span>
+                                                <label class="osw-group-member-weight">Weight
                                                     <input type="number" min="1" max="1000" class="rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)" :aria-label="'Rotation weight for ' + signatureName(member.signature_id)">
                                                 </label>
                                                 <label class="osw-group-member-enabled">

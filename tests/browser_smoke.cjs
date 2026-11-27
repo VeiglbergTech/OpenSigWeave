@@ -1949,6 +1949,29 @@ async function main() {
       "group membership switch must remain accessible");
     assert.ok(await memberCard.getByRole("button", { name: "Remove" }).isVisible(),
       "member removal must remain inside the member card");
+    // Signature, weight, switch and action must occupy one horizontal row.
+    const memberLayout = await memberCard.evaluate(card => {
+      const row = card.getBoundingClientRect();
+      const parts = [
+        card.querySelector(".osw-group-member-name"),
+        card.querySelector(".osw-group-member-weight"),
+        card.querySelector(".osw-group-member-enabled"),
+        card.querySelector(".osw-group-member-remove"),
+      ].map(el => {
+        const rect = el.getBoundingClientRect();
+        return { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right };
+      });
+      return { display: getComputedStyle(card).display,
+        columns: getComputedStyle(card).gridTemplateColumns, row, parts };
+    });
+    assert.equal(memberLayout.display, "grid", "group member must have a fixed four-column layout");
+    for (let i = 1; i < memberLayout.parts.length; i++) {
+      assert.ok(memberLayout.parts[i].left >= memberLayout.parts[i - 1].right - 1,
+        "group controls must follow the signature name without overlap: " + JSON.stringify(memberLayout));
+      assert.ok(Math.abs((memberLayout.parts[i].top + memberLayout.parts[i].bottom) / 2
+        - (memberLayout.parts[0].top + memberLayout.parts[0].bottom) / 2) <= 3,
+        "group controls must stay vertically centered in the same row: " + JSON.stringify(memberLayout));
+    }
 
     checkpoint("group create/membership: complete");
 
