@@ -2769,7 +2769,16 @@ async function main() {
       assert.equal((await expiredPage.request.get(baseURL + "/api/session/status")).status(), 204);
       // Simulates expiration/logout in another tab while this page stays open.
       await expiredContext.clearCookies();
-      await expiredPage.getByRole("button", { name: "Signatures", exact: true }).click();
+      // The session guard may redirect proactively before the user manages
+      // to click another tab. A Playwright click racing that redirect must not
+      // be mistaken for an application failure.
+      if (new URL(expiredPage.url()).pathname !== "/login") {
+        try {
+          await expiredPage.getByRole("button", { name: "Signatures", exact: true }).click({ timeout: 5000 });
+        } catch (error) {
+          if (new URL(expiredPage.url()).pathname !== "/login") throw error;
+        }
+      }
       await expiredPage.waitForURL("**/login");
       await expiredPage.getByLabel("Email address").waitFor();
     } finally {
