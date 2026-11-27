@@ -62,8 +62,10 @@ main, section { min-width: 0; }
     --osw-surface-raised: var(--osw-panel-raised);
     --osw-input-bg: var(--osw-input);
     --osw-ui-accent: #e77843;
-    --osw-switch-off: #414652;
-    --osw-toggle-outline: #c3ced9;
+    --osw-switch-off: #48433f;
+    --osw-toggle-outline: #84796f;
+    --osw-switch-thumb: #d3ccc4;
+    --osw-switch-thumb-on: #2a211e;
     --osw-brand-chosen: var(--osw-accent);
     --osw-brand-action: var(--osw-ui-accent);
     --osw-brand-text: var(--osw-heading);
@@ -272,8 +274,10 @@ body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
   --osw-heading: #111827;
   --osw-input: #ffffff;
   --osw-ui-accent: #9c3d21;
-  --osw-switch-off: #e2e8f0;
-  --osw-toggle-outline: #516174;
+  --osw-switch-off: #e8e3dd;
+  --osw-toggle-outline: #82766c;
+  --osw-switch-thumb: #595047;
+  --osw-switch-thumb-on: #fff4ea;
   --osw-link: #125c99;
   --osw-readable-accent: #125c99;
   --osw-action-accent: #a63b1b;
@@ -598,8 +602,10 @@ html[data-theme="light"] .osw-admin-status.text-amber-300 {
 }
 
 /* Shared toggle control for binary settings and independent multi-selection.
-   Native checkbox inputs keep Alpine's checked/change bindings, labels and
-   keyboard semantics. Only binary controls use role="switch" in the template. */
+   Native checkbox inputs keep Alpine's checked/change bindings and keyboard
+   semantics; all checkbox inputs are rendered as switches in the portal.
+   A 44x24px track with 2px border/insets and a 16px thumb travels 20px:
+   equal 4px visual clearance on both sides in either state. */
 input[type="checkbox"].osw-switch {
     -webkit-appearance: none;
     appearance: none;
@@ -615,6 +621,7 @@ input[type="checkbox"].osw-switch {
     border: 2px solid var(--osw-toggle-outline);
     border-radius: 9999px;
     background-color: var(--osw-switch-off);
+    box-shadow: none;
     cursor: pointer;
     transition: background-color .18s ease, border-color .18s ease;
 }
@@ -626,16 +633,17 @@ input[type="checkbox"].osw-switch::before {
     width: 1rem;
     height: 1rem;
     border-radius: 50%;
-    background-color: #ffffff;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
-    transition: transform .18s ease;
+    background-color: var(--osw-switch-thumb);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .22);
+    transition: transform .18s ease, background-color .18s ease;
 }
 input[type="checkbox"].osw-switch:checked {
     background-color: var(--osw-ui-accent);
-    border-color: var(--osw-toggle-outline);
+    border-color: var(--osw-ui-accent);
 }
 input[type="checkbox"].osw-switch:checked::before {
-    transform: translateX(1.5rem);
+    background-color: var(--osw-switch-thumb-on);
+    transform: translateX(1.25rem);
 }
 input[type="checkbox"].osw-switch:focus-visible {
     outline: 3px solid var(--osw-ui-accent) !important;
@@ -928,26 +936,34 @@ body .ck-content a[href]:hover {
     text-decoration-thickness: 2px !important;
 }
 body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset: 3px; }
+/* Spacing belongs to portal links, not HTML email signatures inside CKEditor.
+   Sibling inline links must not touch; stacked sign-in links keep vertical space. */
+:where(.osw-admin-section, .osw-personal-layout, .osw-auth-card)
+  :not(.ck-content) > a[href]:not(.block) + a[href]:not(.block) {
+    margin-inline-start: .875rem;
+}
+.osw-auth-card .space-y-3 > a.block + a.block { margin-block-start: .75rem; }
+/* Preserve a readable inset between bordered cards and their text. The table
+   and email-editor shells manage their own internal padding separately. */
+:where(.osw-admin-section, .osw-personal-layout)
+  .bg-gray-800.rounded-lg:not(.osw-table-scroll):not(.osw-modal-shell):not(:has(.ck-editor))
+  :not([class*="p-"]):not([class*="px-"]):not([class*="py-"]) { padding: 1.25rem; }
 .app-brand { color: var(--osw-heading) !important; }
 /* All sections use identical table structure, typography, spacing and row rhythm. */
 .osw-admin-section .osw-table-scroll > table { width: 100%; border-collapse: collapse; font-family: inherit !important;
     font-size: .875rem !important; line-height: 1.5 !important; color: var(--osw-text); }
 .osw-admin-section .osw-table-scroll > table > thead { background: var(--osw-charcoal);
     border-bottom: 1px solid var(--osw-border); color: var(--osw-muted); }
-.osw-admin-section .osw-table-scroll > table > thead th { padding: .875rem 1rem !important;
+.osw-admin-section .osw-table-scroll > table > thead th { padding: 1rem 1.25rem !important;
     font-size: .75rem !important; font-weight: 600 !important; line-height: 1.4;
     text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
-.osw-admin-section .osw-table-scroll > table > tbody td { padding: .875rem 1rem !important;
+.osw-admin-section .osw-table-scroll > table > tbody td { padding: 1rem 1.25rem !important;
     font-size: .875rem !important; font-weight: 400; vertical-align: middle; }
 .osw-admin-section .osw-table-scroll > table > tbody td.font-medium { font-weight: 500 !important; }
 .osw-admin-section .osw-table-scroll > table > tbody tr { border-bottom: 1px solid var(--osw-border); }
 .osw-admin-section .osw-table-scroll > table > tbody tr:last-child { border-bottom: 0; }
-/* Uniform on/off outline remains readable even when surrounding fills match. */
-input[type="checkbox"].osw-switch {
-    box-shadow: 0 0 0 1px var(--osw-panel), 0 0 0 2px var(--osw-toggle-outline);
-}
-input[type="checkbox"].osw-switch::before { background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.24); }
-input[type="checkbox"].osw-switch:checked { box-shadow: 0 0 0 1px var(--osw-panel), 0 0 0 2px var(--osw-toggle-outline); }
+/* Switch track uses its own neutral off-outline and the same warm accent
+   for both the checked track and border; no pale halo on dark surfaces. */
 /* Modals take only the height they need and scroll internally only on overflow. */
 .osw-modal-shell { min-height: 0; overflow: hidden; max-height: calc(100dvh - 2rem); }
 .osw-modal-form { flex: 0 1 auto; max-height: 100%; overflow: hidden; }
