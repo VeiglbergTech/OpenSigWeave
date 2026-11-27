@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=responsive-no-horizontal-scroll-20261127b" rel="stylesheet">
+    <link href="/static/css/portal.css?v=group-rows-fit-width-20261127" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -363,7 +363,7 @@
                     <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="group in groups" :key="group.id">
-                            <tr>
+                            <tr class="osw-group-row">
                                 <td class="align-top" data-label="Name">
                                     <h3 class="font-medium" x-text="group.name"></h3>
                                     
@@ -387,7 +387,7 @@
                                     </div>
                                 </td>
                                 <td class="align-top" data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span></td>
-                                <td class="align-top" data-label="Actions"><div class="flex flex-wrap justify-end gap-3">
+                                <td class="align-top" data-label="Actions"><div class="osw-group-actions">
                                     <button type="button" @click="previewGroup(group)" class="text-green-400 hover:text-green-300">Preview</button>
                                     <button type="button" @click="openAdvancedPreview(group)" class="text-green-400 hover:text-green-300">Advanced Preview</button>
                                     <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>

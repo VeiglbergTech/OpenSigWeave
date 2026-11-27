@@ -1973,6 +1973,31 @@ async function main() {
       "group membership switch must remain accessible");
     assert.ok(await memberCard.getByRole("button", { name: "Remove" }).isVisible(),
       "member removal must remain inside the member card");
+    // Signature Groups: each group occupies a table row, not one card per field.
+    const groupRowLayout = await groupCard.evaluate(row => {
+      const table = row.closest("table");
+      const head = table.querySelector("thead");
+      const cells = [...row.querySelectorAll(":scope > td")];
+      return {
+        tableDisplay: getComputedStyle(table).display,
+        rowDisplay: getComputedStyle(row).display,
+        headerDisplay: getComputedStyle(head).display,
+        cellDisplays: cells.map(cell => getComputedStyle(cell).display),
+        groupCount: [...table.querySelectorAll("tbody > tr.osw-group-row")].length,
+        horizontalOverflow: table.closest(".osw-table-scroll").scrollWidth
+          - table.closest(".osw-table-scroll").clientWidth,
+      };
+    });
+    assert.equal(groupRowLayout.tableDisplay, "table",
+      "desktop signature groups must use a real table rather than standalone cards");
+    assert.equal(groupRowLayout.rowDisplay, "table-row",
+      "each signature group must be one full-width table row");
+    assert.equal(groupRowLayout.headerDisplay, "table-header-group",
+      "group table must show the same header as Domains");
+    assert.ok(groupRowLayout.cellDisplays.every(display => display === "table-cell"),
+      "all group columns must share the same row: " + JSON.stringify(groupRowLayout));
+    assert.ok(groupRowLayout.horizontalOverflow <= 2,
+      "group table must fit the available width: " + JSON.stringify(groupRowLayout));
     // Signature, weight, switch and action must occupy one horizontal row.
     const memberLayout = await memberCard.evaluate(card => {
       const row = card.getBoundingClientRect();
@@ -2001,15 +2026,29 @@ async function main() {
           const r = element.getBoundingClientRect();
           return { left: r.left, right: r.right, top: r.top, bottom: r.bottom };
         });
+        const tr = card.closest("tr.osw-group-row");
+        const groupCells = [...tr.querySelectorAll(":scope > td")];
         return { documentWidth: document.documentElement.scrollWidth,
           viewportWidth: innerWidth, scrollWidth: container.scrollWidth, clientWidth: container.clientWidth,
-          cardLeft: rect.left, cardRight: rect.right, left: bounds.left, right: bounds.right, controls };
+          cardLeft: rect.left, cardRight: rect.right, left: bounds.left, right: bounds.right, controls,
+          groupRowDisplay: getComputedStyle(tr).display,
+          groupCellCount: groupCells.length,
+          groupRowMarginBottom: getComputedStyle(tr).marginBottom,
+          groupRowRadius: getComputedStyle(tr).borderRadius,
+          groupRowRight: tr.getBoundingClientRect().right };
       });
       assert.ok(mobile.documentWidth <= mobile.viewportWidth + 2
         && mobile.scrollWidth <= mobile.clientWidth + 2,
         "group list must not require side scrolling on mobile: " + JSON.stringify(mobile));
       assert.ok(mobile.cardLeft >= mobile.left - 2 && mobile.cardRight <= mobile.right + 2,
-        "member row must fit its card on mobile: " + JSON.stringify(mobile));
+        "member row must fit its group on mobile: " + JSON.stringify(mobile));
+      assert.equal(mobile.groupRowDisplay, "grid",
+        "mobile group data must remain in a single responsive row: " + JSON.stringify(mobile));
+      assert.equal(mobile.groupCellCount, 5, "all group fields must stay in the same row");
+      assert.equal(mobile.groupRowMarginBottom, "0px", "group rows must not be separated as cards");
+      assert.equal(mobile.groupRowRadius, "0px", "group rows must not have card styling");
+      assert.ok(mobile.groupRowRight <= mobile.right + 2,
+        "a signature group must not extend outside its table: " + JSON.stringify(mobile));
       for (let i = 1; i < mobile.controls.length; i++) {
         const middle = item => (item.top + item.bottom) / 2;
         assert.ok(mobile.controls[i].left >= mobile.controls[i - 1].right - 1
