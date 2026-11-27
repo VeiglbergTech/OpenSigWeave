@@ -1763,8 +1763,43 @@ async function main() {
     await page.locator('#theme-toggle').click();
     await awaitNavigationLogo('/branding/logo-dark.png');
     checkpoint("branding: navigation assets decoded in both themes");
-    const appliedColor = await page.locator(".app-brand").first().evaluate(el => getComputedStyle(el).color);
-    assert.equal(appliedColor, "rgb(249, 115, 22)", "saved accent color must affect the actual UI");
+    // Branding changes only primary button fills, not headings or hyperlinks.
+    // The accessible button shade may be darker than the stored color to
+    // preserve white-text contrast in both appearance modes.
+    const appliedColors = await page.evaluate(() => {
+      const root = getComputedStyle(document.documentElement);
+      const button = document.querySelector("button.bg-blue-600");
+      const heading = document.querySelector(".app-brand");
+      const link = document.createElement("a");
+      link.href = "/branding-color-regression";
+      link.textContent = "Link visibility test";
+      document.body.appendChild(link);
+      const colors = {
+        stored: root.getPropertyValue("--osw-brand-chosen").trim(),
+        buttonFill: getComputedStyle(button).backgroundColor,
+        expectedButtonFill: root.getPropertyValue("--osw-action-accent").trim(),
+        linkColor: getComputedStyle(link).color,
+        expectedLinkColor: root.getPropertyValue("--osw-link").trim(),
+        headingColor: getComputedStyle(heading).color,
+      };
+      link.remove();
+      return colors;
+    });
+    const rgbFromHex = color => {
+      const hex = color.slice(1);
+      return "rgb(" + [0, 2, 4].map(index => parseInt(hex.slice(index, index + 2), 16)).join(", ") + ")";
+    };
+    assert.equal(appliedColors.stored, "#f97316", "branding must retain the user's chosen swatch");
+    assert.equal(appliedColors.buttonFill, rgbFromHex(appliedColors.expectedButtonFill),
+      "branding must visibly control primary button fill");
+    assert.notEqual(appliedColors.buttonFill, rgbFromHex("#a63b1b"),
+      "custom button branding must differ from the default action color");
+    assert.equal(appliedColors.linkColor, rgbFromHex(appliedColors.expectedLinkColor),
+      "links must use their own theme color, never branding color");
+    assert.notEqual(appliedColors.linkColor, appliedColors.buttonFill,
+      "links must remain visually distinguishable from buttons");
+    assert.notEqual(appliedColors.headingColor, appliedColors.buttonFill,
+      "the application heading must not inherit the branding button fill");
     const loginBranding = await page.request.get(baseURL + "/login");
     assert.match(await loginBranding.text(), /OpenSigWeave Browser Smoke/);
     assert.match(await loginBranding.text(), /data-osw-brand-logo/, "login page must support mode-aware logos");
