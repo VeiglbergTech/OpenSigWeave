@@ -930,18 +930,18 @@ body .ck-content a[href]:hover {
 body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset: 3px; }
 .app-brand { color: var(--osw-heading) !important; }
 /* All sections use identical table structure, typography, spacing and row rhythm. */
-.osw-admin-section table { width: 100%; border-collapse: collapse; font-family: inherit !important;
+.osw-admin-section .osw-table-scroll > table { width: 100%; border-collapse: collapse; font-family: inherit !important;
     font-size: .875rem !important; line-height: 1.5 !important; color: var(--osw-text); }
-.osw-admin-section table > thead { background: var(--osw-charcoal);
+.osw-admin-section .osw-table-scroll > table > thead { background: var(--osw-charcoal);
     border-bottom: 1px solid var(--osw-border); color: var(--osw-muted); }
-.osw-admin-section table > thead th { padding: .875rem 1rem !important;
+.osw-admin-section .osw-table-scroll > table > thead th { padding: .875rem 1rem !important;
     font-size: .75rem !important; font-weight: 600 !important; line-height: 1.4;
     text-transform: uppercase; letter-spacing: .04em; vertical-align: middle; }
-.osw-admin-section table > tbody td { padding: .875rem 1rem !important;
+.osw-admin-section .osw-table-scroll > table > tbody td { padding: .875rem 1rem !important;
     font-size: .875rem !important; font-weight: 400; vertical-align: middle; }
-.osw-admin-section table > tbody td.font-medium { font-weight: 500 !important; }
-.osw-admin-section table > tbody tr { border-bottom: 1px solid var(--osw-border); }
-.osw-admin-section table > tbody tr:last-child { border-bottom: 0; }
+.osw-admin-section .osw-table-scroll > table > tbody td.font-medium { font-weight: 500 !important; }
+.osw-admin-section .osw-table-scroll > table > tbody tr { border-bottom: 1px solid var(--osw-border); }
+.osw-admin-section .osw-table-scroll > table > tbody tr:last-child { border-bottom: 0; }
 /* Uniform on/off outline remains readable even when surrounding fills match. */
 input[type="checkbox"].osw-switch {
     box-shadow: 0 0 0 1px var(--osw-panel), 0 0 0 2px var(--osw-toggle-outline);
