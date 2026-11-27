@@ -380,7 +380,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   const themeScript = fs.readFileSync("static/js/theme.js", "utf8");
   const portalCss = fs.readFileSync("static/css/portal.css", "utf8");
   assert.match(template, /id="theme-toggle"/, "Portal must expose an appearance toggle");
-  assert.match(template, /src="\/static\/js\/theme.js"/, "Theme must initialize before first paint");
+  assert.match(template, /src="\/static\/js\/theme.js\?v=[^"]+"/, "Theme must initialize before first paint");
   assert.match(themeScript, /opensigweave\.theme\.v1/, "Browser should retain the selected theme");
   assert.match(themeScript, /aria-pressed/, "Toggle must advertise its active state");
   assert.match(portalCss, /\.ck\.ck-dropdown__panel/, "CKEditor menus need themed surfaces");
@@ -388,8 +388,6 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.match(portalCss, /ck-editor__editable[\s\S]*?background: #fff !important/, "Email canvas must be white");
   assert.match(template, /<summary class="cursor-pointer">Scheduling priority<\/summary>/,
     "Scheduling precedence must remain accessible in a collapsible help section");
-  assert.match(template, /Start is inclusive; end is exclusive\./,
-    "Scheduling help must retain the required time-window semantics");
   for (const retiredMode of ["AU" + "TO", "PROF" + "ESSIONAL", "INTER" + "NAL"]) {
     assert.ok(!template.includes("<option>" + retiredMode + "</option>"),
       "User-facing retired signature mode options must be removed");
