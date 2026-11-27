@@ -467,6 +467,59 @@ class SignatureEngineServiceTests(unittest.TestCase):
         self.db.rollback()
         self.assertEqual(self.db.query(GroupSelectionStateDB).count(), 0)
 
+    def test_rule_derived_preview_does_not_touch_group_rotation_history(self):
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        signature = self._add_versioned_signature(
+            "Preview group member", "<p>Hello {{ first_name }}</p>"
+        )
+        group = SignatureGroupDB(
+            id=uuid.uuid4().hex, name="Preview group",
+            slug="preview-group", is_active=True,
+        )
+        self.db.add_all([
+            group,
+            SignatureGroupMemberDB(
+                group_id=group.id, signature_id=signature.id,
+                weight=1, is_enabled=True,
+            ),
+            SignatureRuleDB(
+                id=uuid.uuid4().hex, name="Preview group rule",
+                priority=10, action_mode="GROUP",
+                group_id=group.id, is_enabled=True,
+            ),
+        ])
+        self.db.commit()
+        store = Mock()
+        store.read.return_value = "<p>Hello {{ first_name }}</p>"
+        service, _, _ = self._service(file_store=store)
+
+        with patch.object(self.db, "commit", wraps=self.db.commit) as commit:
+            preview = asyncio.run(service.resolve(
+                self.db, normalize_engine_request("ada@example.org"),
+                commit_selection=False, preview_only=True,
+            ))
+
+        self.assertEqual(preview.html, "<p>Hello Ada</p>")
+        self.assertEqual(preview.template_html, "<p>Hello {{ first_name }}</p>")
+        commit.assert_not_called()
+        self.assertEqual(self.db.query(GroupSelectionStateDB).count(), 0)
+
+    def test_unsaved_override_draft_preview_uses_same_template_renderer(self):
+        self.db.add(DomainDB(domain_name="example.org", is_active=True))
+        self.db.commit()
+        service, _, _ = self._service()
+        preview = asyncio.run(service.resolve(
+            self.db, normalize_engine_request("ada@example.org"),
+            commit_selection=False, preview_only=True,
+            preview_template_html="<p>{{ first_name }} {{ last_name }}</p>",
+        ))
+        self.assertEqual(preview.html, "<p>Ada Lovelace</p>")
+        self.assertEqual(preview.template_html, "<p>{{ first_name }} {{ last_name }}</p>")
+        production = asyncio.run(service.resolve(
+            self.db, normalize_engine_request("ada@example.org"),
+        ))
+        self.assertEqual(production.html, "")
+
     def test_failed_group_render_does_not_commit_rotation_state(self):
         domain = DomainDB(domain_name="example.org", is_active=True)
         self.db.add(domain)

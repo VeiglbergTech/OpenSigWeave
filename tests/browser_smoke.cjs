@@ -1061,7 +1061,7 @@ async function main() {
     const signaturePreviewModal = page.locator('[x-data="previewModal"]');
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent("open-preview", {
-        detail: { html: "<p>Browser smoke preview overlay</p>" + document.querySelector("#signature-html-source").value }
+        detail: { html: "<p>Browser smoke preview overlay</p>" + document.querySelector("#signature-html-source").value, rendered: true }
       }));
     });
     await signaturePreviewModal.waitFor({ state: "visible" });
@@ -1328,7 +1328,7 @@ async function main() {
       "URL-imported image must be persisted as a managed absolute URL");
     await page.evaluate(() => {
       window.dispatchEvent(new CustomEvent("open-preview", {
-        detail: { html: document.querySelector("#signature-html-source").value }
+        detail: { html: document.querySelector("#signature-html-source").value, rendered: true }
       }));
     });
     const importedPreview = page.locator('[x-data="previewModal"]');
@@ -2577,7 +2577,7 @@ async function main() {
         const importSelector = '[x-data="sanitizerModal"] [role="dialog"]';
         await inspect(importSelector, "html-import");
         await close(importSelector);
-        await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-preview", { detail: { html: "<p>Preview</p>" } })));
+        await visualPage.evaluate(() => window.dispatchEvent(new CustomEvent("open-preview", { detail: { html: "<p>Preview</p>", rendered: true } })));
         const previewSelector = '[x-data="previewModal"] [role="dialog"]';
         await inspect(previewSelector, "preview");
         await close(previewSelector);
