@@ -939,7 +939,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 /* Spacing belongs to portal links, not HTML email signatures inside CKEditor.
    Sibling inline links must not touch; stacked sign-in links keep vertical space. */
 :where(.osw-admin-section, .osw-personal-layout, .osw-auth-card)
-  :not(.ck-content) > a[href]:not(.block) + a[href]:not(.block) {
+  :not(.ck-content, .ck-content *) > a[href]:not(.block) + a[href]:not(.block) {
     margin-inline-start: .875rem;
 }
 .osw-auth-card .space-y-3 > a.block + a.block { margin-block-start: .75rem; }
