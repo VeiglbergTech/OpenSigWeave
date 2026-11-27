@@ -2409,10 +2409,16 @@ async function main() {
       "administrator override API must return the formatted HTML");
     await domainSettings.getByRole("button", { name: "Close", exact: true }).click();
     await domainRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
-    const allowOverridesLabel = domainSettings.locator("label").filter({ hasText: "Allow Personal Signature Overrides" });
-    await allowOverridesLabel.click();
-    const replyInjectionLabel = domainSettings.locator("label").filter({ hasText: "Apply Signatures to Replies (Experimental)" });
-    await replyInjectionLabel.click();
+    // State-setting operations are deterministic: repeated test runs may start
+    // with an enabled policy and clicking its label would invert it incorrectly.
+    const allowOverridesControl = domainSettings.getByRole("switch", { name: "Allow Personal Signature Overrides" });
+    const replyInjectionControl = domainSettings.getByRole("switch", { name: "Apply Signatures to Replies" });
+    await allowOverridesControl.uncheck();
+    await replyInjectionControl.check();
+    assert.equal(await allowOverridesControl.isChecked(), false,
+      "personal overrides switch must show its disabled state");
+    assert.equal(await replyInjectionControl.isChecked(), true,
+      "reply injection switch must show its enabled state");
     const saveDomainSettingsResponse = page.waitForResponse(response =>
       response.request().method() === "PUT"
       && response.url().endsWith("/domains/" + createdDomain.id)
