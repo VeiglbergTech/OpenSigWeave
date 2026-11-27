@@ -697,7 +697,7 @@ function identityProviderManager() { return {
 
         function signatureGroupManager() {
             return {
-                groups: [], signatures: [], domains: [], editing: false, memberEditor: false, advancedPreviewOpen: false, advancedPreviewGroup: null, advancedPreviewDomainId: '',
+                groups: [], signatures: [], domains: [], editing: false, memberEditor: false, previewPickerOpen: false, previewPickerGroup: null, previewPickerDomainId: '',
                 form: { id: null, name: '', slug: '', domain_ids: [], is_active: true },
                 memberForm: { group_id: '', signature_id: '', weight: 1 },
                 async fetchAll() {
@@ -712,6 +712,10 @@ function identityProviderManager() { return {
                 signatureName(id) {
                     const item = this.signatures.find(signature => signature.id === id);
                     return item ? item.name : 'Missing signature';
+                },
+                compactSignatureName(id) {
+                    const name = Array.from(this.signatureName(id));
+                    return name.length > 3 ? name.slice(0, 3).join('') + '...' : name.join('');
                 },
                 toggleDomain(id, checked) {
                     const value = Number(id);
@@ -789,14 +793,25 @@ function identityProviderManager() { return {
                         });
                     });
                 },
-                get advancedPreviewDomains() { return this.previewDomainsForGroup(this.advancedPreviewGroup); },
-                openAdvancedPreview(group) {
-                    this.advancedPreviewGroup = group;
-                    this.advancedPreviewDomainId = String(this.advancedPreviewDomains[0]?.id || '');
-                    this.advancedPreviewOpen = true;
+                get previewPickerDomains() { return this.previewDomainsForGroup(this.previewPickerGroup); },
+                openGroupPreview(group) {
+                    const eligible = this.previewDomainsForGroup(group);
+                    if (!eligible.length) {
+                        notify('No active domain has an eligible signature for this group.', 'error');
+                        return;
+                    }
+                    if (eligible.length === 1) {
+                        void this.previewGroup(group, eligible[0].id);
+                        return;
+                    }
+                    this.previewPickerGroup = group;
+                    this.previewPickerDomainId = String(eligible[0].id);
+                    this.previewPickerOpen = true;
                 },
-                async previewAdvancedGroup() {
-                    if (this.advancedPreviewGroup) await this.previewGroup(this.advancedPreviewGroup, this.advancedPreviewDomainId);
+                async previewSelectedGroup() {
+                    if (this.previewPickerGroup && this.previewPickerDomainId) {
+                        await this.previewGroup(this.previewPickerGroup, this.previewPickerDomainId);
+                    }
                 },
                 async previewGroup(group, domainId = null) {
                     const eligible = this.previewDomainsForGroup(group);
@@ -815,7 +830,7 @@ function identityProviderManager() { return {
                         notify('Group preview did not confirm rotation safety.', 'error');
                         return false;
                     }
-                    this.advancedPreviewOpen = false;
+                    this.previewPickerOpen = false;
                     window.dispatchEvent(new CustomEvent('open-preview', { detail: { html: result.html, rendered: true } }));
                     notify('Preview for ' + domain.domain_name + ' does not change rotation history.');
                     return true;

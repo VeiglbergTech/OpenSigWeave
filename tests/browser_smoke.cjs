@@ -1965,7 +1965,12 @@ async function main() {
     await memberDialog.locator('select[x-model="memberForm.group_id"]').selectOption({ label: "Browser Smoke Group" });
     await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
     await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
-    await groupCard.locator('span[x-text="signatureName(member.signature_id)"]').filter({ hasText: "Browser Smoke Signature" }).waitFor();
+    const compactGroupName = groupCard.locator(".osw-group-member-name").first();
+    await compactGroupName.waitFor();
+    assert.equal(await compactGroupName.textContent(), "Bro...",
+      "signature names display only their first three characters and an ellipsis");
+    assert.equal(await compactGroupName.getAttribute("title"), "Browser Smoke Signature",
+      "hovering over a shortened name must show the full signature name");
     const memberCard = groupCard.locator(".osw-group-member").first();
     assert.ok(await memberCard.getByRole("spinbutton", { name: /Rotation weight for Browser Smoke Signature/ }).isVisible(),
       "group rotation weight input must be clearly labelled");
@@ -1998,6 +2003,18 @@ async function main() {
       "all group columns must share the same row: " + JSON.stringify(groupRowLayout));
     assert.ok(groupRowLayout.horizontalOverflow <= 2,
       "group table must fit the available width: " + JSON.stringify(groupRowLayout));
+    const groupActions = await groupCard.locator(".osw-group-actions > button").evaluateAll(buttons =>
+      buttons.map(button => {
+        const rect = button.getBoundingClientRect();
+        return { label: button.textContent.trim(), left: rect.left, top: rect.top, right: rect.right };
+      }));
+    assert.deepEqual(groupActions.map(action => action.label), ["Preview", "Edit", "Delete"],
+      "redundant Advanced Preview button must be removed");
+    for (let i = 1; i < groupActions.length; i++) {
+      assert.ok(Math.abs(groupActions[i].top - groupActions[0].top) <= 2
+        && groupActions[i].left >= groupActions[i - 1].right,
+        "group actions must appear side by side without wrapping: " + JSON.stringify(groupActions));
+    }
     // Signature, weight, switch and action must occupy one horizontal row.
     const memberLayout = await memberCard.evaluate(card => {
       const row = card.getBoundingClientRect();
@@ -2088,29 +2105,38 @@ async function main() {
       activePreviewDomains = (await (await page.request.get(baseURL + "/domains/")).json())
         .filter(domain => domain.is_active);
     }
-    const [basicPreviewResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
-        && response.url().includes("/preview?domain_id=")),
-      groupCard.getByRole("button", { name: "Preview", exact: true }).click()
-    ]);
-    assert.equal(basicPreviewResponse.status(), 200, "simple group preview needs no domain picker");
+    const eligiblePreviewDomainIds = await groupPanel.evaluate(element => {
+      const component = window.Alpine.$data(element);
+      const group = component.groups.find(item => item.name === "Browser Smoke Group");
+      return component.previewDomainsForGroup(group).map(domain => domain.id);
+    });
+    assert.ok(eligiblePreviewDomainIds.length > 0, "group preview needs an eligible domain");
     const groupLivePreview = page.locator('[x-data="previewModal"]');
-    await groupLivePreview.waitFor({ state: "visible" });
-    await groupLivePreview.getByRole("button", { name: "Close", exact: true }).click();
-    await groupLivePreview.waitFor({ state: "hidden" });
-
-    await groupCard.getByRole("button", { name: "Advanced Preview", exact: true }).click();
-    const advancedGroupDialog = groupPanel.getByRole("dialog", { name: "Advanced Group Preview" });
-    await advancedGroupDialog.waitFor({ state: "visible" });
-    await advancedGroupDialog.getByLabel("Preview domain")
-      .selectOption(String(activePreviewDomains[0].id));
-    const [advancedPreviewResponse] = await Promise.all([
-      page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
-        && response.url().includes("/preview?domain_id=")),
-      advancedGroupDialog.getByRole("button", { name: "Preview", exact: true }).click()
-    ]);
-    assert.equal(advancedPreviewResponse.status(), 200, "domain-scoped group preview must work");
-    await advancedGroupDialog.waitFor({ state: "hidden" });
+    const groupPreviewPicker = groupPanel.getByRole("dialog", { name: "Group Preview" });
+    let groupPreviewResponse;
+    if (eligiblePreviewDomainIds.length === 1) {
+      [groupPreviewResponse] = await Promise.all([
+        page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
+          && response.url().includes("/preview?domain_id=")),
+        groupCard.getByRole("button", { name: "Preview", exact: true }).click()
+      ]);
+      assert.equal(await groupPreviewPicker.isVisible(), false,
+        "one eligible domain must preview directly");
+    } else {
+      await groupCard.getByRole("button", { name: "Preview", exact: true }).click();
+      await groupPreviewPicker.waitFor({ state: "visible" });
+      await groupPreviewPicker.getByLabel("Preview domain")
+        .selectOption(String(eligiblePreviewDomainIds.at(-1)));
+      [groupPreviewResponse] = await Promise.all([
+        page.waitForResponse(response => response.url().includes("/api/admin/signature-groups/")
+          && response.url().includes("/preview?domain_id=")),
+        groupPreviewPicker.getByRole("button", { name: "Preview", exact: true }).click()
+      ]);
+      assert.ok(groupPreviewResponse.url().includes("domain_id=" + eligiblePreviewDomainIds.at(-1)),
+        "domain picker must preview the selected domain");
+      await groupPreviewPicker.waitFor({ state: "hidden" });
+    }
+    assert.equal(groupPreviewResponse.status(), 200, "group preview must be domain-aware");
     await groupLivePreview.waitFor({ state: "visible" });
     await groupLivePreview.getByRole("button", { name: "Close", exact: true }).click();
     await groupLivePreview.waitFor({ state: "hidden" });

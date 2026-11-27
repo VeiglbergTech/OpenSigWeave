@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=group-rows-fit-width-20261127" rel="stylesheet">
+    <link href="/static/css/portal.css?v=group-compact-actions-20261127" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -357,9 +357,9 @@
                 <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
             </div>
-            <p class="mb-4 text-sm text-gray-400">Assign signatures to a group and adjust their rotation weights. Previews never advance rotation history; Advanced Preview lets you choose a domain.</p>
+            <p class="mb-4 text-sm text-gray-400">Assign signatures to a group and adjust their rotation weights. Previews never advance rotation history. When several domains are eligible, Preview lets you choose one.</p>
             <div class="osw-table-scroll osw-table-scroll--wide">
-                <table class="w-full min-w-[54rem] text-left text-sm osw-data-table osw-groups-table">
+                <table class="w-full text-left text-sm osw-data-table osw-groups-table">
                     <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="group in groups" :key="group.id">
@@ -373,7 +373,7 @@
                                     <div class="space-y-2">
                                         <template x-for="member in group.members" :key="member.signature_id">
                                             <div class="osw-group-member">
-                                                <span class="osw-group-member-name" x-text="signatureName(member.signature_id)" :title="signatureName(member.signature_id)"></span>
+                                                <span class="osw-group-member-name" x-text="compactSignatureName(member.signature_id)" :title="signatureName(member.signature_id)" :aria-label="signatureName(member.signature_id)"></span>
                                                 <label class="osw-group-member-weight"><span class="osw-group-member-label">Weight</span>
                                                     <input type="number" min="1" max="1000" class="rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)" :aria-label="'Rotation weight for ' + signatureName(member.signature_id)">
                                                 </label>
@@ -388,8 +388,7 @@
                                 </td>
                                 <td class="align-top" data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span></td>
                                 <td class="align-top" data-label="Actions"><div class="osw-group-actions">
-                                    <button type="button" @click="previewGroup(group)" class="text-green-400 hover:text-green-300">Preview</button>
-                                    <button type="button" @click="openAdvancedPreview(group)" class="text-green-400 hover:text-green-300">Advanced Preview</button>
+                                    <button type="button" @click="openGroupPreview(group)" class="text-green-400 hover:text-green-300">Preview</button>
                                     <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>
                                     <button type="button" @click="deleteGroup(group)" class="text-red-400 hover:text-red-300">Delete</button>
                                 </div></td>
@@ -436,19 +435,19 @@
             </div>
             <div class="osw-modal-root">
                 <div class="osw-modal-placement">
-                    <div x-show="advancedPreviewOpen" x-cloak role="dialog" aria-modal="true" aria-labelledby="group-advanced-preview-title" class="osw-modal-shell osw-modal-width-small osw-group-preview-dialog">
-                        <div class="osw-modal-header"><h3 id="group-advanced-preview-title" class="text-lg font-bold">Advanced Group Preview</h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+                    <div x-show="previewPickerOpen" x-cloak role="dialog" aria-modal="true" aria-labelledby="group-preview-picker-title" class="osw-modal-shell osw-modal-width-small osw-group-preview-dialog">
+                        <div class="osw-modal-header"><h3 id="group-preview-picker-title" class="text-lg font-bold">Group Preview</h3><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
                         <div class="osw-modal-body">
-                            <p class="text-sm text-gray-300" x-text="advancedPreviewGroup ? advancedPreviewGroup.name : ''"></p>
-                            <label for="group-advanced-preview-domain" class="block text-sm text-gray-300">Preview domain
-                                <select id="group-advanced-preview-domain" x-model="advancedPreviewDomainId" class="mt-1 block w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
-                                    <template x-for="domain in advancedPreviewDomains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
+                            <p class="text-sm text-gray-300" x-text="previewPickerGroup ? previewPickerGroup.name : ''"></p>
+                            <label for="group-preview-domain" class="block text-sm text-gray-300">Preview domain
+                                <select id="group-preview-domain" x-model="previewPickerDomainId" class="mt-1 block w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
+                                    <template x-for="domain in previewPickerDomains" :key="domain.id"><option :value="domain.id" x-text="domain.domain_name"></option></template>
                                 </select>
                             </label>
-                            <p x-show="!advancedPreviewDomains.length" class="text-sm text-amber-300">No active domain has an eligible signature for this group.</p>
+                            <p x-show="!previewPickerDomains.length" class="text-sm text-amber-300">No active domain has an eligible signature for this group.</p>
                             <p class="text-xs text-gray-400">Preview is deterministic and does not advance rotation history.</p>
                         </div>
-                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="px-3 py-2 rounded bg-gray-700 text-gray-200">Cancel</button><button type="button" @click="previewAdvancedGroup()" :disabled="!advancedPreviewDomainId" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white">Preview</button></div>
+                        <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="px-3 py-2 rounded bg-gray-700 text-gray-200">Cancel</button><button type="button" @click="previewSelectedGroup()" :disabled="!previewPickerDomainId" class="px-3 py-2 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white">Preview</button></div>
                     </div>
                 </div>
             </div>
@@ -1311,6 +1310,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=ui-unification-20261127"></script>
+    <script src="/static/js/portal.js?v=group-unified-preview-20261127"></script>
 </body>
 </html>

@@ -1177,11 +1177,11 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > thead th {
     padding: .875rem .75rem !important;
 }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 15%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: 13%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) { width: 43%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 10%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(5) { width: 19%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 19%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: 18%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) { width: 28%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 11%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(5) { width: 24%; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[data-label]::before {
     content: none;
     display: none;
@@ -1189,7 +1189,11 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-group-member {
     gap: .375rem;
     padding: .375rem .5rem;
-    grid-template-columns: minmax(0, 1fr) max-content 2.75rem max-content;
+    grid-template-columns: minmax(0, 1fr) 3.25rem 2.75rem max-content;
+}
+.osw-groups-table .osw-group-member-name {
+    display: block;
+    max-width: 4.25rem;
 }
 .osw-group-member + .osw-group-member { margin-top: .5rem; }
 .osw-group-member-weight input[type="number"] {
@@ -1201,10 +1205,11 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-group-member-remove { font-size: .75rem; }
 .osw-group-actions {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: flex-end;
-    gap: .375rem .75rem;
+    gap: .625rem;
     min-width: 0;
+    white-space: nowrap;
 }
 .osw-group-actions > button {
     overflow-wrap: normal;
@@ -1285,7 +1290,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     }
     .osw-group-actions {
         justify-content: flex-start;
-        gap: .5rem 1rem;
+        gap: .625rem;
     }
     .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[colspan] {
         grid-column: 1 / -1;
