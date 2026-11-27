@@ -2534,7 +2534,8 @@ def _render_catalog_preview(db: Session, raw_html: str, domain_id: int | None, v
         except (SignatureStorageError, ValueError, TypeError):
             raise HTTPException(status_code=503, detail="Group signature asset unavailable")
         nested = strip_group_placeholders(sanitize_signature_html(nested))
-        group_values[token] = Markup(render_signature_template(nested, values))
+        # Nested HTML is allowlist-sanitized; profile values stay Jinja-autoescaped.
+        group_values[token] = Markup(render_signature_template(nested, values))  # nosec B704
     return render_signature_template(source, {**values, **group_values})
 
 
