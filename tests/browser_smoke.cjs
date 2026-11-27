@@ -722,9 +722,9 @@ async function main() {
     // Exercise the actual administrator export UI and verify a ZIP download is produced.
     const exportPanel = page.locator('[x-data="adminExportManager"]');
     const exportButton = exportPanel.getByRole("button", { name: "Download selected components" });
-    // Visual switch styling must not turn multi-select export fields into binary ARIA switches.
-    const exportGroupSelection = exportPanel.getByRole("checkbox", { name: "Signature groups and memberships" });
-    assert.equal(await exportGroupSelection.getAttribute("role"), null);
+    // Import/export selections use the same accessible switches as all settings.
+    const exportGroupSelection = exportPanel.getByRole("switch", { name: "Signature groups and memberships" });
+    assert.equal(await exportGroupSelection.getAttribute("role"), "switch");
     assert.equal(await exportGroupSelection.isChecked(), true);
     await exportGroupSelection.uncheck();
     assert.equal(await exportGroupSelection.isChecked(), false);
