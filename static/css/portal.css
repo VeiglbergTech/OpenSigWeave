@@ -940,6 +940,8 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
    Sibling inline links must not touch; stacked sign-in links keep vertical space. */
 :where(.osw-admin-section, .osw-personal-layout, .osw-auth-card)
   a[href]:not(.block) + a[href]:not(.block) {
+    display: inline-block;
+    vertical-align: baseline;
     margin-inline-start: .875rem;
 }
 /* Editor content keeps the author's original inline-link spacing. */

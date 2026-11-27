@@ -2664,14 +2664,23 @@ async function main() {
             probe.remove();
           }
         });
+        // A two-state switch is centered *vertically* in each state. Its
+        // horizontal symmetry is mirrored between OFF and ON, not within a
+        // single state: the thumb must be at the opposite end of the track.
         for (const [state, geometry] of Object.entries(switchGeometry)) {
-          assert.ok(Math.abs(geometry.leftGap - geometry.rightGap) <= 1,
-            prefix + " switch thumb must be horizontally centered in " + state + ": " + JSON.stringify(geometry));
           assert.ok(Math.abs(geometry.topGap - geometry.bottomGap) <= 1,
             prefix + " switch thumb must be vertically centered in " + state + ": " + JSON.stringify(geometry));
           assert.ok(geometry.leftGap >= 3 && geometry.rightGap >= 3,
-            prefix + " switch knob needs equal edge clearance in " + state);
+            prefix + " switch knob needs clearance from both track edges in " + state);
         }
+        assert.ok(Math.abs(switchGeometry.off.leftGap - switchGeometry.on.rightGap) <= 1,
+          prefix + " OFF left inset must equal ON right inset: " + JSON.stringify(switchGeometry));
+        assert.ok(Math.abs(switchGeometry.off.rightGap - switchGeometry.on.leftGap) <= 1,
+          prefix + " switch travel must be mirrored between states: " + JSON.stringify(switchGeometry));
+        assert.ok(Math.abs(switchGeometry.off.leftGap - switchGeometry.off.topGap) <= 1,
+          prefix + " switch thumb must have equal inset from left and top when OFF");
+        assert.ok(Math.abs(switchGeometry.on.rightGap - switchGeometry.on.bottomGap) <= 1,
+          prefix + " switch thumb must have equal inset from right and bottom when ON");
         const neutral = (switchGeometry.off.borderColor.match(/\d+/g) || []).slice(0, 3).map(Number);
         assert.ok(neutral.length === 3 && neutral[0] >= neutral[1] && neutral[1] >= neutral[2],
           prefix + " unchecked outline must use neutral warm gray, not blue");
