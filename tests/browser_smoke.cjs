@@ -193,12 +193,19 @@ async function main() {
           const rect = cell.getBoundingClientRect();
           return rect.left < outside.left - 2 || rect.right > outside.right + 2;
         }).map(cell => (cell.dataset.label || cell.textContent).trim().slice(0, 55));
+        const clippedControls = cells.flatMap(cell => [...cell.querySelectorAll("button, a[href], input, select")])
+          .filter(control => control.getClientRects().length > 0)
+          .filter(control => {
+            const rect = control.getBoundingClientRect();
+            return rect.left < outside.left - 2 || rect.right > outside.right + 2;
+          }).map(control => (control.getAttribute("aria-label") || control.textContent || control.tagName).trim().slice(0, 55));
         return {
           containerWidth: container.clientWidth,
           scrollWidth: container.scrollWidth,
           tableWidth: table?.getBoundingClientRect().width,
           overflowX: getComputedStyle(container).overflowX,
           offscreen,
+          clippedControls,
         };
       });
       assert.ok(layout.scrollWidth <= layout.containerWidth + 2,
@@ -206,7 +213,9 @@ async function main() {
       assert.ok(layout.tableWidth <= layout.containerWidth + 2,
         label + " table must fit the viewport: " + JSON.stringify(layout));
       assert.deepEqual(layout.offscreen, [],
-        label + " all table cells and actions must remain visible: " + JSON.stringify(layout));
+        label + " all table cells must remain visible: " + JSON.stringify(layout));
+      assert.deepEqual(layout.clippedControls, [],
+        label + " table actions and form controls must remain reachable without horizontal scrolling: " + JSON.stringify(layout));
     }
   }
 

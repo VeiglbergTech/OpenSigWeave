@@ -1286,3 +1286,16 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     box-sizing: border-box;
     max-width: 100%;
 }
+
+/* Multi-line cell contents, such as a signature marker or provider ID,
+   stay grouped in the value column instead of falling under the label. */
+@media (max-width: 1250px) and (min-width: 621px) {
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td[data-label] > * {
+        grid-column: 2;
+    }
+}
+@media (max-width: 620px) {
+    .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td[data-label] > * {
+        grid-column: 1;
+    }
+}
