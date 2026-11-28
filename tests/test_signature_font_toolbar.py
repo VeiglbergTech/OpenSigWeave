@@ -57,6 +57,8 @@ class SignatureFontToolbarTests(unittest.TestCase):
         self.assertIn('listbox.setAttribute("role", "listbox")', JS)
         self.assertIn('matches = options.filter(name => name.toLowerCase().includes(query))', JS)
         self.assertIn('input.setAttribute("aria-expanded", "true")', JS)
+        self.assertIn('placeholder: "Font"', JS)
+        self.assertNotIn('placeholder: "Search font', JS)
         self.assertIn(".osw-font-listbox", CSS)
         self.assertIn("overflow-y: auto;", CSS)
         self.assertNotIn('document.createElement("datalist")', JS)

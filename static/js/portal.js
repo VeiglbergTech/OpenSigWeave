@@ -286,9 +286,11 @@ const portalRealtime = (() => {
             const rawElement = document.getElementById(rawId);
             const lockEl = document.getElementById(lockId);
             if (!rawElement || !lockEl) return;
-            const rawVal = rawElement.value.toLowerCase();
-            if (rawVal.includes('<table')) lockEl.classList.remove('hidden');
-            else lockEl.classList.add('hidden');
+            // CKEditor supports normal HTML tables. Only block visual edits for
+            // Outlook-specific markup the editor cannot safely round-trip.
+            // Raw HTML remains available and untouched until an actual edit.
+            const hasUnsupportedOutlookMarkup = /<!--\s*\[if\s+mso\b|<\s*v:[a-z][\w-]*/i.test(rawElement.value);
+            lockEl.classList.toggle('hidden', !hasUnsupportedOutlookMarkup);
         }
         function checkOutlookMarkupWarnings() {
             const editors = [

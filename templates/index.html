@@ -9,10 +9,10 @@
     <link href="/static/css/tailwind.css" rel="stylesheet">
     <link href="/static/vendor/ckeditor5/49.1.0/ckeditor5.css" rel="stylesheet">
     <script src="/static/vendor/ckeditor5/49.1.0/ckeditor5.js?v=font-fields-20261124b"></script>
-    <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
+    <script src="/static/js/rich-editor.js?v=responsive-editor-20261128"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=identity-management-20261128" rel="stylesheet">
+    <link href="/static/css/portal.css?v=responsive-editor-20261128" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -45,7 +45,7 @@
 
     <div class="osw-app-content max-w-7xl mx-auto p-6 mt-4">
 
-        <div x-show="tab === 'personal'" x-cloak class="osw-personal-layout grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div x-show="tab === 'personal'" x-cloak class="osw-personal-layout grid grid-cols-1 gap-6">
             <div class="space-y-6">
                 <div class="bg-gray-800 rounded-lg p-5 shadow border border-gray-700">
                     <h2 class="text-lg font-semibold text-white mb-4">Your Profile</h2>
@@ -60,7 +60,7 @@
                 </div>
             </div>
 
-            <div class="lg:col-span-2 space-y-6">
+            <div class="osw-personal-editor-column space-y-6">
                 <div class="relative bg-gray-800 rounded-lg shadow border border-gray-700 flex flex-col overflow-hidden">
                     {% if not can_edit %}
                     <div class="absolute inset-0 z-10 bg-gray-900/80 backdrop-blur-sm flex flex-col items-center justify-center p-8 text-center rounded-lg">
@@ -81,7 +81,7 @@
                         <div id="user-rich-editor-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
                             <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                             <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
-                            <p class="text-sm text-gray-300 mt-1 max-w-sm">This signature contains tables or advanced HTML. Visual editing is locked to prevent data loss.</p>
+                            <p class="text-sm text-gray-300 mt-1 max-w-sm">This signature contains Outlook-specific markup that cannot be safely edited visually.</p>
                             <p class="text-xs text-gray-500 mt-4">Use the Advanced HTML editor below to make changes.</p>
                         </div>
                         <div id="user-rich-editor" class="osw-editor-host"><div data-editor-target></div></div>
@@ -1225,7 +1225,7 @@
                                 <div id="admin-rich-editor-lock" class="hidden absolute inset-4 z-20 bg-gray-900/95 backdrop-blur flex flex-col items-center justify-center text-center rounded shadow-lg border border-gray-700">
                                     <svg class="w-10 h-10 text-yellow-500 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
                                     <h3 class="text-lg font-bold text-white">Advanced Layout Detected</h3>
-                                    <p class="text-sm text-gray-300 mt-1 max-w-sm">Visual editing is locked to prevent data loss.</p>
+                                    <p class="text-sm text-gray-300 mt-1 max-w-sm">This signature contains Outlook-specific markup that cannot be safely edited visually.</p>
                                 </div>
                                 <div id="admin-rich-editor" class="osw-editor-host"><div data-editor-target></div></div>
                             </div>

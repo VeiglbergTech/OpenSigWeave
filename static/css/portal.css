@@ -484,9 +484,11 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
 .ck.ck-editor__editable_inline { background: #fff !important; color: #111827 !important; }
 .ck.ck-editor__main > .ck-editor__editable a { color: #1d4ed8; }
 
-/* Keep a single toolbar row; CKEditor places overflow in its accessible More menu. */
+/* Native multi-row CKEditor toolbar: keep all actions visible at narrow widths.
+   The editor is configured with shouldNotGroupWhenFull so controls wrap instead
+   of being clipped or requiring horizontal page scrolling. */
 .osw-rich-editor .ck-toolbar__items {
-    flex-wrap: nowrap !important;
+    flex-wrap: wrap;
     max-width: 100%;
     min-width: 0;
 }
@@ -995,8 +997,11 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-modal-placement { min-height: 0; max-height: 100%; }
 .osw-modal-root { overflow: hidden; }
 .osw-modal-shell .osw-editor-host { flex: 0 1 auto; min-height: 0; }
-.osw-editor-host .ck-editor__editable { min-height: min(12rem, 27dvh) !important;
-    max-height: min(24rem, 39dvh) !important; overflow-y: auto; }
+.osw-editor-host .ck-editor__editable {
+    min-height: min(18rem, 40dvh) !important;
+    max-height: min(36rem, 60dvh) !important;
+    overflow-y: auto;
+}
 .osw-signature-preview-frame { display: block; min-height: 10rem;
     height: min(25rem, 55dvh); max-height: calc(100dvh - 11rem); }
 @media (max-height: 580px) {
@@ -1624,4 +1629,47 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-overrides-table th:nth-child(3) { width: auto; }
     .osw-overrides-table td { padding: .625rem .5rem; }
     .osw-overrides-table .osw-idp-actions { gap: .35rem; }
+}
+
+/* User override gets a genuinely usable canvas on desktops while profile
+   details stay readable. The CKEditor toolbar can wrap at tablet/phone widths. */
+.osw-personal-layout > div,
+.osw-personal-editor-column,
+.osw-rich-editor,
+.osw-rich-editor .ck-editor,
+.osw-rich-editor .ck-editor__top,
+.osw-rich-editor .ck-toolbar {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+}
+.osw-rich-editor .ck-toolbar__items {
+    box-sizing: border-box;
+    width: 100%;
+}
+.osw-rich-editor .ck-editor__editable {
+    box-sizing: border-box;
+    max-width: 100%;
+    overflow-x: auto;
+}
+.ck-body-wrapper .ck.ck-balloon-panel {
+    max-width: calc(100vw - 1rem);
+}
+.osw-rich-editor .ck.ck-dropdown__panel {
+    max-width: calc(100vw - 1rem);
+}
+@media (min-width: 1024px) {
+    .osw-personal-layout {
+        grid-template-columns: minmax(14rem, 1fr) minmax(0, 3.25fr);
+    }
+}
+@media (max-width: 640px) {
+    .osw-personal-editor-column .osw-editor-host,
+    .osw-modal-body .osw-rich-editor {
+        width: 100%;
+        min-width: 0;
+    }
+    .osw-rich-editor .ck-toolbar__items {
+        flex-wrap: wrap;
+    }
 }

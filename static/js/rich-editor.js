@@ -407,7 +407,7 @@
                 commandName: "fontFamily",
                 label: "Font family",
                 className: "osw-signature-family-input",
-                placeholder: "Search font…",
+                placeholder: "Font",
                 options: SIGNATURE_FONT_FAMILIES.map(([name]) => name),
                 formatValue(value) {
                     const first = String(value || "").split(",")[0].trim().replace(/^(['"])(.*)\1$/, "$2");
@@ -507,7 +507,7 @@
         const editorConfig = {
             licenseKey: "GPL",
             plugins,
-            toolbar: { items: toolbar, shouldNotGroupWhenFull: false },
+            toolbar: { items: toolbar, shouldNotGroupWhenFull: true },
             // Numeric options plus supportAllValues preserve imported px/pt
             // formatting, even when the value is absent from the preset UI.
             fontSize: {
@@ -568,7 +568,7 @@
                 toolbar: {
                     items: toolbar.map(item => item === "signatureFontFamily" ? "fontFamily"
                         : item === "signatureFontSize" ? "fontSize" : item),
-                    shouldNotGroupWhenFull: false
+                    shouldNotGroupWhenFull: true
                 },
                 extraPlugins: config.imageUpload ? [signatureImageUploadPlugin(config)] : []
             };

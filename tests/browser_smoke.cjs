@@ -426,6 +426,8 @@ async function main() {
     });
     assert.ok(lightContrast >= 4.5, "light theme body text must meet WCAG AA contrast");
     const personalFontFamily = page.locator("#user-rich-editor .osw-signature-family-input input");
+    assert.equal(await personalFontFamily.getAttribute("placeholder"), "Font",
+      "shared CKEditor font control must use the concise visible Font label");
     const personalFontSize = page.locator("#user-rich-editor .osw-signature-size-input input");
     try {
       await personalFontFamily.waitFor({ state: "visible" });
@@ -3101,6 +3103,37 @@ async function main() {
     }));
     assert.ok(mobileLayout.documentWidth <= mobileLayout.viewportWidth + 2,
       "mobile administrative view must not scroll horizontally: " + JSON.stringify(mobileLayout));
+    // User and Admin overrides share the same CKEditor toolbar. Exercise it
+    // at phone/tablet widths rather than only testing the admin tables.
+    await mobilePage.goto(baseURL + "/user");
+    const mobileEditor = mobilePage.locator("#user-rich-editor .ck-editor__editable");
+    await mobileEditor.waitFor({ state: "visible" });
+    const responsiveEditor = await mobilePage.evaluate(() => {
+      const host = document.querySelector("#user-rich-editor");
+      const items = host.querySelector(".ck-toolbar__items");
+      const fields = [...host.querySelectorAll(".osw-ckeditor-font-input input")];
+      return {
+        viewport: innerWidth,
+        documentWidth: document.documentElement.scrollWidth,
+        toolbarWrap: getComputedStyle(items).flexWrap,
+        hostWidth: host.getBoundingClientRect().width,
+        fieldBounds: fields.map(field => {
+          const rect = field.getBoundingClientRect();
+          return { left: rect.left, right: rect.right };
+        })
+      };
+    });
+    assert.ok(responsiveEditor.documentWidth <= responsiveEditor.viewport + 2,
+      "personal editor must not cause horizontal page scrolling: " + JSON.stringify(responsiveEditor));
+    assert.equal(responsiveEditor.toolbarWrap, "wrap",
+      "personal CKEditor toolbar must wrap instead of clipping controls");
+    assert.equal(responsiveEditor.fieldBounds.length, 2,
+      "both shared font controls must be present in narrow user editor");
+    assert.ok(responsiveEditor.fieldBounds.every(rect => rect.left >= -2
+      && rect.right <= responsiveEditor.viewport + 2),
+      "font controls must remain reachable without horizontal page scrolling");
+    await mobilePage.goto(baseURL + "/admin/domains");
+    await mobilePage.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     const mobileRow = mobilePage.locator('[x-data="domainManager"] tbody tr').filter({ hasText: "browser-smoke-domain.test" });
     await mobileRow.getByRole("button", { name: "Manage Domain", exact: true }).click();
     await mobilePage.locator('[x-data="domainSettingsModal"]').getByRole("button", { name: "Users & Overrides", exact: true }).click();
