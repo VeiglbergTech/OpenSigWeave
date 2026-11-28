@@ -1287,7 +1287,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 1%; white-space: nowrap; }
 .osw-groups-table .osw-group-title {
     width: max-content;
-    max-width: clamp(9ch, 18cqi, 17rem);
+    max-width: clamp(8ch, 14cqi, 14rem);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

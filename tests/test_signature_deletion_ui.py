@@ -40,7 +40,7 @@ class SignatureDeletionUiTests(unittest.TestCase):
 
     def test_group_table_keeps_compact_name_and_flexible_member_column(self):
         self.assertIn("container-name: osw-groups", CSS)
-        self.assertIn("max-width: clamp(9ch, 18cqi, 17rem)", CSS)
+        self.assertIn("max-width: clamp(8ch, 14cqi, 14rem)", CSS)
         self.assertIn("flex: 1 1 11ch;", CSS)
         self.assertIn("justify-content: space-between;", CSS)
         self.assertIn("vertical-align: middle;", CSS)
