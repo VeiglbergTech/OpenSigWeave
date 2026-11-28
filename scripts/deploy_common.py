@@ -336,10 +336,13 @@ def healthcheck(env: dict[str, str]) -> None:
     # HTTPConnection only supports HTTP; no URL scheme or redirect may be injected.
     connection = HTTPConnection(address, port, timeout=10)
     try:
-        connection.request("GET", "/login", headers={"Host": env["APP_ALLOWED_HOSTS"].split(",")[0]})
+        # /login redirects to /setup before the first administrator exists;
+        # use the dependency-readiness endpoint for both first installs and
+        # subsequent updates instead of treating a valid redirect as failure.
+        connection.request("GET", "/readyz", headers={"Host": env["APP_ALLOWED_HOSTS"].split(",")[0]})
         response = connection.getresponse()
         if response.status != 200:
-            raise DeploymentError("Application login endpoint is not healthy", 6)
+            raise DeploymentError("Application readiness endpoint is not healthy", 6)
         response.read(512)
     except (OSError, ValueError) as exc:
         raise DeploymentError("Cannot reach the application login endpoint", 6) from exc

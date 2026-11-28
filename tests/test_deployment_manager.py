@@ -299,6 +299,36 @@ class ConfigTests(unittest.TestCase):
             common.validate_config({"SECRET_KEY": "REPLACE_WITH_ANYTHING"})
 
 
+class FirstInstallHealthcheckTests(unittest.TestCase):
+    def test_setup_redirect_does_not_break_install_readiness_probe(self):
+        # A fresh browser-bootstrap install redirects /login to /setup.
+        # The deployment manager must use /readyz, not /login.
+        healthy = Mock(status=200)
+        connection = Mock()
+        connection.getresponse.return_value = healthy
+        with patch.object(common, "service_state"), \
+             patch.object(common, "check_migration", return_value="0020_system_setup"), \
+             patch.object(common, "compose"), \
+             patch.object(common, "HTTPConnection", return_value=connection):
+            common.healthcheck(sample_env())
+        connection.request.assert_called_once_with(
+            "GET", "/readyz", headers={"Host": "localhost"}
+        )
+        healthy.read.assert_called_once_with(512)
+        connection.close.assert_called_once()
+
+    def test_readiness_redirect_is_not_accepted_as_healthy(self):
+        redirected = Mock(status=303)
+        connection = Mock()
+        connection.getresponse.return_value = redirected
+        with patch.object(common, "service_state"), \
+             patch.object(common, "check_migration", return_value="0020_system_setup"), \
+             patch.object(common, "compose"), \
+             patch.object(common, "HTTPConnection", return_value=connection), \
+             self.assertRaises(common.DeploymentError):
+            common.healthcheck(sample_env())
+
+
 class ReleaseImageTests(unittest.TestCase):
     def test_published_image_ref_validation(self):
         env = sample_env()
