@@ -135,7 +135,25 @@ def dotenv_quote(value: str) -> str:
     return '"' + value + '"'
 
 
+def bundle_mode() -> bool:
+    """A verified minimal main installer has no Git checkout."""
+    return (ROOT / ".opensigweave-release.json").exists()
+
+
+def _bundle_manifest() -> dict:
+    try:
+        from release_bundle import read_manifest
+    except ModuleNotFoundError:
+        from scripts.release_bundle import read_manifest
+    try:
+        return read_manifest(ROOT)
+    except (ValueError, OSError, KeyError) as exc:
+        raise DeploymentError("Unverified or damaged minimal release package", 4) from exc
+
+
 def current_channel() -> str:
+    if bundle_mode():
+        return "main"
     branch = git("symbolic-ref", "--quiet", "--short", "HEAD")
     if branch not in CHANNELS:
         raise DeploymentError(f"Unsupported checkout channel: {branch}", 4)
@@ -143,10 +161,15 @@ def current_channel() -> str:
 
 
 def current_sha() -> str:
+    if bundle_mode():
+        return _bundle_manifest()["revision"]
     return git("rev-parse", "--verify", "HEAD")
 
 
 def pristine() -> None:
+    if bundle_mode():
+        _bundle_manifest()
+        return
     if git("status", "--porcelain", "--untracked-files=no"):
         raise DeploymentError("Tracked Git changes exist; commit or move them before updating", 4)
     if git("rev-parse", "--is-shallow-repository") == "true":
@@ -173,7 +196,8 @@ def remote_sha(channel: str) -> str:
 def system_checks() -> None:
     if platform.system() != "Linux" or platform.machine() not in ("x86_64", "aarch64"):
         raise DeploymentError("A supported Linux x86_64/aarch64 host is required", 4)
-    for program in ("git", "python3", "docker"):
+    required_programs = ("python3", "docker") if bundle_mode() else ("git", "python3", "docker")
+    for program in required_programs:
         if not shutil.which(program):
             raise DeploymentError(f"Missing dependency: {program}", 4)
     for label, command, minimum in (
@@ -196,7 +220,8 @@ def system_checks() -> None:
                 break
     if memory_kib < 2 * 1024**2:
         raise DeploymentError("At least 2 GiB RAM required", 4)
-    ok("Linux, Docker, Compose, Git, Python, permissions, memory and disk checks passed")
+    ok("Linux, Docker, Compose, Python, permissions, memory and disk checks passed"
+       + (" (Git-free verified release package)" if bundle_mode() else " (Git source checkout)"))
 
 
 def validate_config(env: dict[str, str]) -> None:
@@ -247,7 +272,14 @@ def validate_config(env: dict[str, str]) -> None:
 
 @contextmanager
 def exclusive_lock():
-    lock_path = ROOT / ".git" / "opensigweave-deployment.lock"
+    lock_directory = ROOT / (".opensigweave" if bundle_mode() else ".git")
+    if bundle_mode():
+        if lock_directory.is_symlink():
+            raise DeploymentError("Unsafe release state directory", 5)
+        lock_directory.mkdir(mode=0o700, exist_ok=True)
+        if lock_directory.stat().st_mode & 0o077:
+            raise DeploymentError("Release state directory must have permissions 0700", 5)
+    lock_path = lock_directory / "opensigweave-deployment.lock"
     if lock_path.is_symlink():
         raise DeploymentError("Unsafe deployment lock path", 4)
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
