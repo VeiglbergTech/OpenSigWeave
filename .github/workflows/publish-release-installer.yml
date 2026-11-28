@@ -116,6 +116,7 @@ jobs:
           GITHUB_DIGEST=""
           UPLOADED_ID=""
           for attempt in 1 2 3 4 5; do
+            echo "Validating GitHub asset digest (attempt $attempt/5)"
             GITHUB_DIGEST="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest // empty')"
             UPLOADED_ID="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .id')"
             if [[ "$GITHUB_DIGEST" == "sha256:$LOCAL_DIGEST" ]]; then
