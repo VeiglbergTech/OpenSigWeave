@@ -85,7 +85,7 @@ class BrowserBootstrapTests(unittest.TestCase):
         fields["setup_token"] = self.token
         ok = self.client.post("/setup", data=fields)
         self.assertEqual(ok.status_code, 303, ok.text)
-        self.assertIn("section=system", ok.headers.get("location", ""))
+        self.assertEqual(ok.headers.get("location"), "/admin/system")
         with self.Session() as db:
             admin = db.get(LocalAdminDB, 1)
             self.assertEqual(admin.email, "newadmin@example.org")
@@ -104,7 +104,10 @@ class BrowserBootstrapTests(unittest.TestCase):
                 "password": "correct horse battery staple",
             })
             self.assertEqual(result.status_code, 303)
-            response = self.client.get("/")
+            redirect = self.client.get("/")
+            self.assertEqual(redirect.status_code, 303)
+            self.assertEqual(redirect.headers["location"], "/user")
+            response = self.client.get("/user")
             self.assertEqual(response.status_code, 200)
             self.assertIn('data-mail-setup-required="false"', response.text)
 
@@ -136,7 +139,7 @@ class BrowserBootstrapTests(unittest.TestCase):
                 "password": "correct horse battery staple",
             })
             self.assertEqual(result.status_code, 303)
-            csrf = re.search(r'data-csrf-token="([^"]+)"', self.client.get("/").text).group(1)
+            csrf = re.search(r'data-csrf-token="([^"]+)"', self.client.get("/admin/system").text).group(1)
             saved = self.client.put("/api/admin/mail-adapter-setup", json={
                 "mail_server": "rspamd", "monitoring_enabled": False,
                 "monitoring_interval": 60, "controller_url": "http://10.35.12.29:11334"
@@ -165,7 +168,10 @@ class BrowserBootstrapTests(unittest.TestCase):
             "confirm_password": "another correct horse battery",
         }
         self.assertEqual(self.client.post("/setup", data=fields).status_code, 303)
-        response = self.client.get("/")
+        redirect = self.client.get("/")
+        self.assertEqual(redirect.status_code, 303)
+        self.assertEqual(redirect.headers["location"], "/user")
+        response = self.client.get("/admin/system")
         self.assertEqual(response.status_code, 200, response.text[:500])
         self.assertIn('data-mail-setup-required="true"', response.text)
         match = re.search(r'data-csrf-token="([^"]+)"', response.text)

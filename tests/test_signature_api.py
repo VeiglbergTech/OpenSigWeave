@@ -933,7 +933,7 @@ class SignatureCatalogApiTests(unittest.TestCase):
     def test_canonical_host_is_accepted(self):
         client = TestClient(main.app, base_url="https://app.example.org", follow_redirects=False)
         response = client.get("/")
-        self.assertEqual(response.status_code, 307)
+        self.assertEqual(response.status_code, 303)
         self.assertEqual(response.headers["strict-transport-security"], "max-age=31536000")
         self.assertEqual(response.headers["x-permitted-cross-domain-policies"], "none")
 
