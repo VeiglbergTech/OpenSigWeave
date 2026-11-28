@@ -1,5 +1,15 @@
 # Mailcow failure policy and module health checks
 
+> **Domain-specific policy v2:** A trusted local Off exemption remains
+> usable beyond 24 hours and overrides global enabled when OpenSigWeave is
+> unreachable. Required/unknown/invalid policy temporarily rejects even
+> with global disabled, when domain-policy opt-in is configured. A saved
+> Off → On change is **pending** until each mailserver acknowledges the
+> desired version using the host helper --expect-version; use the local
+> domain_policy_force_required override if immediate strictness is needed.
+> See [durable offline policy](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
+
+
 > Domain-specific offline enforcement is **opt-in**. Configure the local
 > policy file and synchronize it on the mailserver before relying on
 > per-domain exemptions. See [Domain-specific offline policy](MAILCOW_DOMAIN_FAILURE_POLICIES.md).

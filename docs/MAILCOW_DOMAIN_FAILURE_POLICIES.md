@@ -1,151 +1,108 @@
-# Mailcow/Rspamd: offline domain-specific signature requirements
+# Mailcow/Rspamd: durable offline domain signature requirements
 
-**Scope:** Authenticated outbound submissions processed by the installed
-OpenSigWeave Rspamd adapter. This is specifically about **OpenSigWeave
-API/processing outages**, not complete Rspamd downtime or broken Milter wiring.
-No new service, permanent agent or extra Docker container is installed.
+**Scope:** Authenticated outbound submissions when OpenSigWeave is unavailable but **Mailcow/Rspamd and the Milter remain healthy**. This feature does not handle complete Rspamd failures. It needs no new permanent daemon or Docker container.
 
-## Domain setting
+## Domain behavior
 
-In **Admin → Domains → Manage Domain → General Settings**, set
-**Signature required** (default **Off** for new or migrated domains).
-
-| Domain setting | Normal engine availability | Engine timeout, unavailable, auth/5xx or malformed response |
+| Domain setting | Engine healthy | Technical API failure, timeout, 401/403/5xx, invalid response |
 | --- | --- | --- |
-| **On** | Apply existing signature rules and rotation | Rspamd soft reject (temporary SMTP failure) |
-| **Off** | Apply existing signature rules and rotation | Permit unsigned mail **only with a verified, current local exemption** |
-| Unknown domain / missing, stale or invalid local policy | Normal behavior remains subject to existing rules | Soft reject in opted-in policy mode |
+| **Signature required: On** | Normal rules and signature insertion | SMTP 4xx temporary rejection requested through Rspamd |
+| **Signature required: Off** | Normal rules and signature insertion | Accept without an OpenSigWeave signature **if a trusted local exemption exists** |
+| Unknown sender domain / missing, corrupt or untrusted policy | Normal rules | Temporary rejection if offline-policy mode is enabled |
 
-The domain is selected using the trusted **authenticated SMTP envelope
-sender**, not the potentially forged message `From:` header. Names are
-normalized to lower-case; domain matching is exact with no parent-domain
-wildcards and no implied subdomain exemption. No per-user exceptions.
+The setting is domain-wide. The lookup uses only the authenticated SMTP envelope-sender domain; a spoofable message From header is not consulted. Domain matching is exact and case-insensitive; a parent domain does not exempt subdomains. Mailcow sender authorization, aliases and delegated send-as remain independently enforced. Unauthenticated inbound traffic is unaffected.
 
-An intentional rule result that selects no signature is different from a
-technical API failure. The requirement concerns technical failures; normal
-rule selection remains unchanged.
+An intentionally empty signature, a disabled reply signature or a deliberate MIME skip is not a technical outage. During API failure, the adapter must leave message bodies, original selector markers, headers and MIME unchanged.
 
-## Before enabling the policy
+## V2 snapshot: durable last known good
 
-1. Install the standard Mailcow/Rspamd adapter files on the **Mailcow host**,
-   and additionally install `rspamd/opensigweave_domain_policy.lua` under
-   `/opt/mailcow-dockerized/data/conf/rspamd/lua/` along with
-   `opensigweave.lua`, `opensigweave_mime.lua`,
-   `opensigweave_cid.lua` and the optional guard. Avoid modifying Mailcow's
-   bundled `rspamd.local.lua`.
-2. Configure `data/conf/rspamd/rspamd.conf.local` with the existing engine
-   HTTPS URL, key, global Failure Policy and the **absolute path visible from
-   inside the Rspamd container**:
+The authenticated HTTPS endpoint **GET /api/v1/mail/domain-policy** now exports this schema:
 
-   ```ucl
-   opensigweave {
-       api_url = "https://signature.example.org/api/v1/engine/signatures/";
-       engine_api_key = "<your-existing-engine-key>";
-       failure_policy = "enabled";
-       domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";
-   }
-   opensigweave_guard {
-       enabled = true;
-   }
-   ```
+~~~json
+{
+  "format": "opensigweave-domain-policy-v2",
+  "generated_at": 1000000000,
+  "policy_version": "<64 lowercase hex characters>",
+  "domains": {"example.test": false, "required.test": true}
+}
+~~~
 
-3. Generate an authenticated policy snapshot with
-   `GET https://signature.example.org/api/v1/mail/domain-policy` and
-   `X-Engine-Key`, or **Admin → Domains → Download mailserver policy**.
-   Copy it onto the **Mailcow host** as
-   `/opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json`
-   using an atomic replace. Do not use partial copies; protect the source
-   and destination permissions against untrusted modification.
-4. Validate the JSON file and module configuration, reload/restart Rspamd
-   safely and test authenticated submission using a disposable Mailcow.
-   **Changing a toggle does not automatically synchronize an existing
-   mailserver snapshot**.
+The version is SHA-256 of the canonical ASCII JSON domain map (sorted keys, compact separators, ASCII escapes); unlike generation time, this fingerprint remains stable between polls unless a domain decision changes. **The digest is an identifier, not a digital signature or independent proof of server authenticity.**
 
-### Optional automatic synchronization (no daemon)
+The host helper downloads only via authenticated HTTPS with valid TLS and the existing Engine API key. It refuses redirects, malformed responses, duplicate keys, old/replayed network results and digest mismatches. It atomically installs an fsync-protected mode-0644 snapshot in a root-owned, non-group-writable Mailcow directory, using a root-only key file. The Rspamd worker can read but cannot write the file. Restrict access to all administrative paths and scripts; this trust model does not detect a malicious administrator/root compromise.
 
-Run on the **Mailcow host** as root using an installed copy of
-`scripts/sync_domain_policy.py` from the approved matching integration
-revision. No Docker socket or OpenSigWeave container is required.
-Create a protected file containing only the existing Engine API key:
+A securely installed **v2 policy has no rolling 24-hour expiry**. A previously verified Off exemption remains effective after days of API downtime and Rspamd restarts. On failure Rspamd evaluates the protected local snapshot without asking OpenSigWeave again. Invalid structure, unknown domains and missing/untrusted data are never treated as exemptions.
 
-```bash
-install -m 600 /dev/null /root/.opensigweave-engine-api-key
-# Populate this file using your secure secret manager, not a literal command argument.
-python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py \
-  --url https://signature.example.org/api/v1/mail/domain-policy \
-  --key-file /root/.opensigweave-engine-api-key \
-  --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json \
-  --dry-run
+Old v1 snapshots remain readable only during their original bounded lifetime and can expire after 24 hours. Before relying on long outages, upgrade the API, sync helper and Rspamd Lua module and install/confirm a v2 snapshot. A failed upgrade/sync must not replace the last known good.
+
+## Installation and reliable synchronization
+
+**Task 8** is responsible for installing this mechanism from the Mailcow integration workflow. Saving a domain toggle alone does NOT install it.
+
+Install the matching adapter revision's opensigweave_domain_policy.lua under the Mailcow host path /opt/mailcow-dockerized/data/conf/rspamd/lua/ alongside the normal Rspamd modules. Add options to the existing single Mailcow Rspamd opensigweave section:
+
+~~~ucl
+opensigweave {
+    api_url = "https://signature.example.org/api/v1/engine/signatures/";
+    engine_api_key = "<the-existing-secret-engine-key>";
+    failure_policy = "enabled";
+    domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";
+}
+opensigweave_guard {
+    enabled = true;
+}
+~~~
+
+The guard is optional and only protects against a missing injector when the guard itself loads. Do not expose Rspamd controller to the public Internet or insert an independent Postfix Milter.
+
+On the Mailcow host as root, securely populate a key file:
+
+~~~bash
+install -m 0600 /dev/null /root/.opensigweave-engine-api-key
+# Populate with the existing key through a secret manager, not a command argument.
 python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py \
   --url https://signature.example.org/api/v1/mail/domain-policy \
   --key-file /root/.opensigweave-engine-api-key \
   --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json
-```
+~~~
 
-For continuous synchronization add a **deliberate operator-managed root cron**
-entry (e.g. every five minutes):
+Install a deliberate root-managed cron or systemd timer to repeat this command, e.g. every five minutes; prevent overlapping executions. **No persistent service/container is required.** A successful run prints the complete confirmed version and an ACK indicating installed or unchanged, with a UTC check timestamp. An unchanged policy is rechecked over HTTPS but not rewritten. Read-only offline status works during an outage:
 
-```cron
-*/5 * * * * /usr/bin/python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py --url https://signature.example.org/api/v1/mail/domain-policy --key-file /root/.opensigweave-engine-api-key --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json
-```
+~~~bash
+python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py \
+  --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json \
+  --status
+~~~
 
-The helper enforces HTTPS/TLS validation, disallows redirects, authenticates
-with a protected key file, bounds download size, checks all domain values and
-the expiry window, and uses an atomic file replacement with `fsync`. Failed
-syncs leave the **last-known-good file** in place. Rspamd reads and validates
-the policy when a technical failure occurs; a restart or reload does not
-require contacting OpenSigWeave to load an existing valid snapshot.
+Inspect logs: status **0** means validated/acknowledged, **1** means sync, file or trust failure, **3** means the required version is not yet acknowledged. Synchronization errors retain the current local snapshot. This local status is not proof of actual SMTP acceptance.
 
-**Expiration and revocation:** Snapshots are valid for at most 24 hours.
-After that, *all* authenticated technical failures are temporarily rejected
-until a new valid snapshot is installed. Disabling required signatures only
-takes effect offline after the new policy reaches the mailserver. Conversely,
-if an administrator turns a domain from **Off** to **On** while the API is down
-or sync is failing, an *older, still-valid* `Off` snapshot can continue
-allowing unsigned mail until it expires. This is an unavoidable bounded
-staleness window in this agentless, asynchronously synchronized model.
-Require synchronous policy propagation/acknowledgment or a mailserver-side
-strict override for immediate emergency enforcement; this implementation
-does not claim instant atomic cross-host revocation.
+## Changes, version acknowledgment and emergency strictness
+
+1. Save a domain change, then obtain the **desired version** from Admin → Domains (or Download mailserver policy).
+2. On **each Mailcow host**, perform authenticated synchronization using the command above plus **--expect-version FULL_64_CHARACTER_HASH**. Verify an ACK with exit code 0. For a purely offline read of installed state, use **--status --expect-version FULL_64_CHARACTER_HASH**.
+3. If the desired version is not served or installed, the helper reports a prominent WARNING and exit code 3. Treat the stricter change as **pending**, not enforced. Archive the host-side version/ACK and review scheduled sync failures.
+4. Only regard the new policy as operational after every affected mailserver acknowledges the intended version. A version is content-based and can recur if toggles are reversed; compare to the current desired map.
+
+**Security limitation:** An Off → On change during a loss of OpenSigWeave or the sync path cannot revoke an already trusted old Off exemption. The mailserver may continue allowing that domain indefinitely, until a trusted update or operator intervention. This is the unavoidable tradeoff of durable agentless snapshots. No immediate cross-host revocation, cryptographic proof of an offline local file, or automatic web UI confirmation of mailserver state is claimed.
+
+For an urgent stricter requirement, set a **Mailcow-host-owned emergency override** in the same Rspamd opensigweave configuration section and restart/reload Rspamd after config validation:
+
+~~~ucl
+domain_policy_force_required = ["example.test", "sub.example.test"];
+~~~
+
+These exact local On overrides take priority over a stale Off snapshot. A malformed override fails closed. Remove it only after the desired v2 policy has reached every mailserver and was acknowledged. Strict-domain overrides do not change legitimate sender authorization.
 
 ## Existing global Failure Policy
 
-When `domain_policy_file` is **omitted**, the existing
-`failure_policy = "enabled"` (reject technical failure) or
-`"disabled"` (allow) behavior is unchanged; legacy `tempfail` /
-`standard` / `fail_open` aliases remain recognized.
+With the domain_policy_file option omitted, legacy behavior is unchanged: disabled (or fail_open) accepts unsigned after a technical failure, enabled (or standard/tempfail) requests temporary rejection. The retired strict mode is not restored.
 
-When **domain_policy_file is set**, the local domain policy takes precedence
-for OpenSigWeave technical failures:
-- Explicit, valid **Off** exemption → allow unsigned regardless of global
-  `enabled`.
-- **On**, unknown or no trusted snapshot → soft reject regardless of global
-  `disabled`.
+With the domain_policy_file option set, trusted Off takes precedence even if the global mode is enabled; On/unknown/missing/invalid local policy takes precedence even if global mode is disabled. Neither this policy nor the optional guard can reject mail if both Rspamd Lua modules are absent, Rspamd itself is down, or the Milter is bypassed. Changes to Postfix inbound port 25 are outside this task.
 
-Neither the Rspamd injector nor the optional guard can enforce mail rejection
-if **both modules are absent, Rspamd itself is down, or the mailserver bypasses
-the Rspamd Milter**. The guard checks missing injector registration only when
-the guard is itself installed and enabled. Do not claim independent
-enforcement or silently modify Postfix `milter_default_action` for inbound
-mail. See [Failure Policies](MAILCOW_FAILURE_POLICIES.md) for audit tooling.
+## Troubleshooting, rollback and mandatory SMTP evidence
 
-## Same-host and remote-host deployment
+If optional mail suddenly defers, verify the v2 file, root directory and file permissions, matching envelope sender domain, optional strict overrides, loaded Rspamd modules and the actual host-side ACK. A 401/403 suggests API key/permissions issues; 500/503 or timeout suggests backend/network issues. Failed downloads, malformed JSON and version mismatch do not replace the last-known-good snapshot. Correct a bad toggle in OpenSigWeave, synchronize and acknowledge on each mailserver. Remove emergency overrides only after confirming the new policy. A rollback to global-only mode changes delivery guarantees and needs an explicit administrative decision, not a silent fallback.
 
-The Rspamd plugin must reach the HTTPS engine URL from its own container.
-For same-host deployments this can be a private reverse proxy even if the
-OpenSigWeave and Mailcow Compose stacks have different networks. For remote
-deployments use a properly authenticated HTTPS route restricted to the
-mailserver. **Local JSON policy always lives on the Mailcow host**, regardless
-of where OpenSigWeave itself runs; only policy download/sync crosses hosts.
-Do not expose a public Rspamd controller or install an extra monitoring agent.
+On a **disposable Mailcow only**, verify actual authenticated SMTP acceptance for Off and temporary rejection for On on engine outages; assert no required-domain mail is accepted or queued. Repeat with API 401/403/500/503, timeouts, malformed JSON, unknown/corrupt policies, exact subdomains, >24h outage, Rspamd restart, local strict overrides and both toggle directions with version ACK. After recovery validate signature rules and exactly one signature, original attachments and MIME, sender authorization, inbound isolation, and externally **valid DKIM**. Do not induce outages on production. Lua mocks and green CI are **not** full Mailcow/Milter acceptance evidence.
 
-## Validation checklist
-
-Before production use verify successful normal signature insertion for both
-types of domains, SMTP temporary rejection for required domains under API
-outage / timeout / invalid response, unsigned acceptance for verified Off
-domains, unknown domain strictness, restart during outage, and real SMTP
-`4xx` outcomes. Cover exact subdomains, policy expiration, malformed JSON,
-failed syncs and attachment preservation. Lua unit/mocked-adapter tests are
-**not** proof of full Mailcow/Milter SMTP behavior; an isolated SMTP end-to-end
-test is required. Never perform destructive outage tests on production Mailcow.
+See [global failure policy](MAILCOW_FAILURE_POLICIES.md) and [Rspamd integration](MAILCOW_RSPAMD_INTEGRATION.md).

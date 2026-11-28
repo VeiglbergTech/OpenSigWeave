@@ -9,6 +9,16 @@ install the additional `opensigweave_domain_policy.lua` module and synchronize
 the local JSON policy file on the **Mailcow host**. See
 [offline domain failure policies](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
 This policy does not take effect by only changing the toggle in the web UI.
+The mailserver-local v2 snapshot remains trusted across >24-hour outages and
+Rspamd restarts, provided it was securely installed. The host sync helper
+uses authenticated HTTPS and atomic writes and is intended for a root-managed
+timer installed through Task 8, not another permanent container. Saving a
+stricter Off → On requirement is **pending** until the desired policy_version
+has been acknowledged by each Mailcow host (sync with --expect-version).
+A Mailcow-host-owned domain_policy_force_required strict override can
+override a stale Off exemption during an emergency. Long-lived snapshots
+cannot otherwise revoke policy while the sync path is unavailable. Actual
+SMTP acceptance, queue behavior, MIME and DKIM still require Mailcow tests.
 
 ## Minimal Mailcow integration — same host or remote
 

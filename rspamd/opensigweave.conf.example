@@ -6,12 +6,14 @@ opensigweave {
     timeout = 5.0;
     # CID engine responses include base64 inline images; 64 KiB is insufficient.
     max_response_size = 6291456;
-    # Backwards compatible default; experimental strict rejection is opt-in.
-    failure_policy = "fail_open";
+    # Existing installations default to disabled; enabled requests 4xx on technical errors.
+    failure_policy = "disabled";
     # Opt in to domain-aware offline decisions. The JSON snapshot must be
     # installed under Mailcow's mounted data/conf/rspamd/local.d directory.
-    # An absent/expired/malformed snapshot temporarily rejects authenticated
-    # submissions instead of treating unknown domains as exempt.
+    # A trusted v2 snapshot remains usable after long outages.
+    # Missing/malformed snapshots and unknown domains still temporarily reject.
+    # Host emergency override, exact domains only:
+    # domain_policy_force_required = ["critical.example.org"];
     domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";
     # Enable CID for managed signature images; install opensigweave_cid.lua.
     # Existing deployments without this setting still use external links.
