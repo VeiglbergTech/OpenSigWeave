@@ -213,6 +213,7 @@ class DomainFallbackSettings(BaseModel):
 class DomainCreate(DomainFallbackSettings):
     domain_name: str = Field(min_length=3, max_length=253)
     is_active: bool = True
+    signature_required: bool = False
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
     authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
 
@@ -222,6 +223,7 @@ class DomainUpdate(DomainFallbackSettings):
     inject_on_replies: bool
     trim_whitespace: bool
     strip_device_signatures: bool
+    signature_required: Optional[bool] = None  # Older API clients may omit this setting.
     template_html: Optional[str] = Field(default=None, max_length=65536)  # Retired, accepted for old clients only
     identity_provider_id: Optional[str] = Field(default=None, max_length=64)
     authentication_provider_id: Optional[str] = Field(default=None, max_length=64)
@@ -1326,6 +1328,7 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
             "inject_on_replies": item.inject_on_replies,
             "trim_whitespace": item.trim_whitespace,
             "strip_device_signatures": item.strip_device_signatures,
+            "signature_required": item.signature_required,
             "identity_provider_id": item.identity_provider_id,
             "authentication_provider_id": item.authentication_provider_id,
             "fallback_values": item.fallback_values or {},
@@ -1333,6 +1336,23 @@ def read_domains(request: Request, db: Session = Depends(get_db)):
         }
         for item in domains
     ]
+
+@app.get("/api/v1/mail/domain-policy")
+def download_domain_failure_policy(
+    request: Request,
+    response: Response,
+    x_engine_key: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Authenticated, no-store snapshot for mailserver-local fail-open exemptions."""
+    authorized_adapter = bool(ENGINE_API_KEY) and hmac.compare_digest(x_engine_key or "", ENGINE_API_KEY)
+    if not authorized_adapter and not is_admin_user(request):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    from core.domain_failure_policy import build_snapshot
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return build_snapshot(db.query(DomainDB).all())
+
 
 @app.post("/domains/")
 def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(get_db)):
@@ -1342,7 +1362,7 @@ def create_domain(domain: DomainCreate, request: Request, db: Session = Depends(
     for provider_id in (domain.identity_provider_id, domain.authentication_provider_id):
         if provider_id and db.get(IdentityProviderDB, provider_id) is None:
             raise HTTPException(status_code=422, detail="Identity provider not found")
-    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, identity_provider_id=domain.identity_provider_id, authentication_provider_id=domain.authentication_provider_id, fallback_values=domain.fallback_values or {})
+    db_domain = DomainDB(domain_name=normalized_domain, is_active=domain.is_active, signature_required=domain.signature_required, identity_provider_id=domain.identity_provider_id, authentication_provider_id=domain.authentication_provider_id, fallback_values=domain.fallback_values or {})
     db.add(db_domain)
     db.commit()
     db.refresh(db_domain)
@@ -1359,6 +1379,8 @@ def update_domain(domain_id: int, domain_update: DomainUpdate, request: Request,
     db_domain.inject_on_replies = domain_update.inject_on_replies
     db_domain.trim_whitespace = domain_update.trim_whitespace
     db_domain.strip_device_signatures = domain_update.strip_device_signatures
+    if "signature_required" in domain_update.model_fields_set and domain_update.signature_required is not None:
+        db_domain.signature_required = domain_update.signature_required
     if "fallback_values" in domain_update.model_fields_set:
         db_domain.fallback_values = domain_update.fallback_values or {}
     # Legacy master-template data is retained for rollback, but no longer edited by the UI.

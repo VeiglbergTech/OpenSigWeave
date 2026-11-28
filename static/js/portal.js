@@ -489,6 +489,24 @@ function domainProviderLabel(providers, providerId, kind) {
 function domainManager() { return {
     domains: [], providers: [],
     providerLabel(providerId, kind) { return domainProviderLabel(this.providers, providerId, kind); },
+    async downloadPolicy() {
+        try {
+            const response = await fetch('/api/v1/mail/domain-policy', { cache: 'no-store', credentials: 'same-origin' });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'opensigweave-domain-policy.json';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            notify('Download complete. Install this policy on your mailserver; changes are not synchronized automatically.');
+        } catch (error) {
+            notify('Could not export domain policy: ' + error.message, 'error');
+        }
+    },
     async fetchDomains() {
         const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
         if (domainsResponse.ok) this.domains = await domainsResponse.json();
@@ -1545,7 +1563,7 @@ function identityProviderManager() { return {
 
         function domainSettingsModal() {
             return {
-                show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
+                show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, signatureRequired: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
                 selectedOverrideIds: [], overrideQuery: '', overridePage: 1, overridesLoading: false, overridesError: '', deletingOverrides: false,
                 providers: [], identityProviderId: '', authenticationProviderId: '', providerLoading: false, providerError: '', providerRequestId: 0, saving: false,
                 fallbackValues: {},
@@ -1585,6 +1603,7 @@ function identityProviderManager() { return {
                     this.injectOnReplies = domainData.inject_on_replies;
                     this.trimWhitespace = domainData.trim_whitespace;
                     this.stripDeviceSignatures = domainData.strip_device_signatures;
+                    this.signatureRequired = !!domainData.signature_required;
                     this.identityProviderId = domainData.identity_provider_id || '';
                     this.authenticationProviderId = domainData.authentication_provider_id || '';
                     this.fallbackValues = {
@@ -1657,6 +1676,7 @@ function identityProviderManager() { return {
                         inject_on_replies: this.injectOnReplies,
                         trim_whitespace: this.trimWhitespace,
                         strip_device_signatures: this.stripDeviceSignatures,
+                        signature_required: this.signatureRequired,
                         fallback_values: { ...this.fallbackValues }
                     };
                     if (profileChanged) payload.identity_provider_id = this.identityProviderId || null;

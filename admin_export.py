@@ -152,6 +152,7 @@ def build_admin_export(
                 "inject_on_replies": item.inject_on_replies,
                 "trim_whitespace": item.trim_whitespace,
                 "strip_device_signatures": item.strip_device_signatures,
+                "signature_required": item.signature_required,
                 "template_html": item.template_html_source if item.template_html_source is not None else item.template_html,
                 "identity_provider_id": item.identity_provider_id,
                 "authentication_provider_id": item.authentication_provider_id,

@@ -194,7 +194,7 @@ def _domain_signature(domain: DomainDB) -> tuple:
     source = domain.template_html_source if domain.template_html_source is not None else domain.template_html
     return (
         domain.is_active, domain.allow_overrides, domain.inject_on_replies,
-        domain.trim_whitespace, domain.strip_device_signatures, source,
+        domain.trim_whitespace, domain.strip_device_signatures, domain.signature_required, source,
         domain.identity_provider_id, domain.authentication_provider_id,
         domain.fallback_values or {},
     )
@@ -298,6 +298,7 @@ def inspect_admin_import(
                 _boolean(row.get("inject_on_replies"), "domain reply policy"),
                 _boolean(row.get("trim_whitespace"), "domain whitespace policy"),
                 _boolean(row.get("strip_device_signatures"), "domain device-signature policy"),
+                _boolean(row.get("signature_required", False), "domain signature-required policy"),
                 _string(row.get("template_html"), "domain template", 65536, empty=True),
                 row.get("identity_provider_id"), row.get("authentication_provider_id"),
                 _domain_fallback_values(row),
@@ -590,6 +591,7 @@ def apply_admin_import(
                     inject_on_replies=row["inject_on_replies"],
                     trim_whitespace=row["trim_whitespace"],
                     strip_device_signatures=row["strip_device_signatures"],
+                    signature_required=row.get("signature_required", False),
                     template_html=sanitize_signature_html(template),
                     template_html_source=template,
                     identity_provider_id=row["identity_provider_id"],

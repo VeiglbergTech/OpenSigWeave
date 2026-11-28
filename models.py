@@ -80,6 +80,7 @@ class DomainDB(Base):
     inject_on_replies = Column(Boolean, default=False)
     trim_whitespace = Column(Boolean, default=True)
     strip_device_signatures = Column(Boolean, default=False)
+    signature_required = Column(Boolean, nullable=False, default=False, server_default="false")
     template_html = Column(Text, default="<p>Best Regards,</p><p><br></p><p><strong>{{ first_name }} {{ last_name }}</strong></p><p>{{ title }} | {{ domain_name }}</p>")
     template_html_source = Column(Text, nullable=True)
     identity_provider_id = Column(String(64), ForeignKey("identity_providers.id", ondelete="SET NULL"), nullable=True, index=True)

@@ -254,7 +254,7 @@
         <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" @osw-live-domains.window="fetchDomains()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
-                <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
+                <div class="flex flex-wrap gap-2"><button @click="downloadPolicy()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded shadow transition text-sm">Download mailserver policy</button><button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button></div>
             </div>
             <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
                 <table class="w-full text-left border-collapse osw-data-table">
@@ -1145,6 +1145,12 @@
                         <div class="bg-gray-900 p-4 rounded-lg border border-gray-700">
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
                             
+                            <label class="flex items-center cursor-pointer mb-4">
+                                <input type="checkbox" x-model="signatureRequired" class="osw-switch" role="switch">
+                                <div class="ml-3 text-sm font-medium text-gray-300">Signature required</div>
+                            </label>
+                            <p class="mb-4 text-xs text-gray-400">On: temporarily reject mail if OpenSigWeave fails. Off: allow unsigned mail only when this domain is explicitly exempted by the valid policy installed on the mailserver. Normal signature insertion is unchanged. Sync the mailserver policy after every change.</p>
+
                             <label class="flex items-center cursor-pointer mb-4">
                                 <input type="checkbox" x-model="allowOverrides" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Allow Personal Signature Overrides</div>
