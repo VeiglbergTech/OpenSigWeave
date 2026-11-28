@@ -208,7 +208,11 @@ def fetch_verified_bundle(tag: str, directory: Path) -> tuple[Path, dict]:
     archive_data = _download(url, MAX_ARCHIVE_BYTES, accept="application/octet-stream")
     if _file_hash(archive_data) != matched.group(1):
         raise ValueError("GitHub release asset SHA-256 mismatch")
+    if directory.is_symlink() or (directory.exists() and not directory.is_dir()):
+        raise ValueError("Unsafe release download directory")
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if stat.S_IMODE(directory.stat().st_mode) & 0o077:
+        raise ValueError("Release download directory must be private (0700)")
     staging = Path(tempfile.mkdtemp(prefix="release-", dir=directory))
     try:
         # Never use extractall(): archives cannot create links, devices, or

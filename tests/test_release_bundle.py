@@ -3,6 +3,8 @@ import hashlib
 import io
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tarfile
 import tempfile
 import unittest
@@ -189,6 +191,63 @@ class MinimalReleaseBundleTests(unittest.TestCase):
                 bundle.install_files(staging, target)
             self.assertEqual(list(external.iterdir()), [])
             self.assertFalse((target / "install.sh").exists())
+
+    def test_actual_repository_package_is_small_and_host_side_stdlib_only(self):
+        # Use the real project file set, not just generated fake files.
+        repository = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as work:
+            output = Path(work) / "bundle.tar.gz"
+            bundle.build(repository, self.VERSION, self.SHA, output)
+            self.assertLess(output.stat().st_size, bundle.MAX_ARCHIVE_BYTES)
+            extracted = Path(work) / "real-package"
+            extracted.mkdir()
+            with tarfile.open(output) as archive:
+                self.assertEqual({m.name for m in archive}, set(bundle.FILES) | {bundle.MANIFEST})
+                for member in archive:
+                    path = extracted / member.name
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(archive.extractfile(member).read())
+            self.assertEqual(bundle.read_manifest(extracted)["revision"], self.SHA)
+            services = (extracted / "compose.yaml").read_text().split("volumes:\\n", 1)[0]
+            self.assertEqual(set(__import__("re").findall(r"(?m)^  ([a-z0-9-]+):$", services)),
+                             {"postgres", "opensigweave"})
+            # Python isolated mode with site-packages disabled: package host
+            # modules must import without extra pip-installed dependencies.
+            imports = (
+                f"import sys; sys.path[:0] = [{str(extracted / 'scripts')!r}, {str(extracted)!r}]; "
+                "import release_bundle, release_target, deploy_common, config_manager, "
+                "install_manager, update_manager, auth_config"
+            )
+            process = subprocess.run(
+                [sys.executable, "-I", "-S", "-c", imports],
+                capture_output=True, text=True, timeout=30
+            )
+            self.assertEqual(process.returncode, 0, process.stderr)
+
+    def test_bundle_rejects_symlinked_archive_download_directory(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "source"
+            root.mkdir()
+            self._source(root)
+            output = Path(work) / "good.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, output)
+            raw = output.read_bytes()
+            release = {
+                "draft": False, "prerelease": False, "tag_name": self.VERSION,
+                "assets": [{
+                    "name": bundle.asset_name(self.VERSION),
+                    "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                    "browser_download_url": "https://github.com/VeiglbergTech/OpenSigWeave/releases/download/"
+                        + self.VERSION + "/" + bundle.asset_name(self.VERSION),
+                }],
+            }
+            external = Path(work) / "external"
+            external.mkdir()
+            link = Path(work) / "redirect"
+            link.symlink_to(external, target_is_directory=True)
+            with patch.object(bundle, "release_commit_sha", return_value=self.SHA), patch.object(bundle, "_api", return_value=release), patch.object(bundle, "_download", return_value=raw), self.assertRaises(ValueError):
+                bundle.fetch_verified_bundle(self.VERSION, link)
+            self.assertEqual(list(external.iterdir()), [])
 
     def test_bundle_without_git_is_recognized_but_unverified_changes_rejected(self):
         with tempfile.TemporaryDirectory() as work:

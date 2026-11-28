@@ -95,6 +95,12 @@ def preflight() -> dict[str, str]:
     pristine()
     env = parse_env(ENV)
     validate_config(env)
+    if bundle_mode():
+        from release_bundle import read_manifest
+        published = read_manifest(ROOT)
+        if env.get("OSW_IMAGE_TAG") != published["tag"]:
+            raise DeploymentError("Installed bundle and OSW_IMAGE_TAG differ; do not use a moving or unrelated image", 4)
+        verify_release_image(env, published["revision"])
     compose("config", "--quiet")
     for service in ("postgres", "opensigweave"):
         service_state(service)
@@ -105,9 +111,15 @@ def preflight() -> dict[str, str]:
     )
     app_id = compose("ps", "-q", "opensigweave")
     mounts = json.loads(docker("inspect", "--format", "{{json .Mounts}}", app_id))
-    for destination in ("/data/signatures", "/app/.idp"):
+    destinations = ("/data/signatures", "/app/.idp", "/app/backups") if bundle_mode() else ("/data/signatures", "/app/.idp")
+    for destination in destinations:
         if not any(x.get("Destination") == destination and x.get("Type") == "volume" for x in mounts):
             raise DeploymentError(f"Persistent data volume missing: {destination}", 6)
+    if bundle_mode():
+        database_id = compose("ps", "-q", "postgres")
+        db_mounts = json.loads(docker("inspect", "--format", "{{json .Mounts}}", database_id))
+        if not any(x.get("Destination") == "/var/lib/postgresql/data" and x.get("Type") == "volume" for x in db_mounts):
+            raise DeploymentError("Persistent PostgreSQL data volume missing", 6)
     info(f"PostgreSQL={db_version} Alembic={revision}; persistent mounts verified")
     return env
 
