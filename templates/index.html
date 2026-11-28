@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=responsive-editor-20261128"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=mail-status-20261128b" rel="stylesheet">
+    <link href="/static/css/portal.css?v=release2-design-20261128" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -43,7 +43,7 @@
         </div>
     </nav>
 
-    <div class="osw-app-content max-w-7xl mx-auto p-6 mt-4">
+    <div class="osw-app-content mx-auto mt-4">
 
         <div x-show="tab === 'personal'" x-cloak class="osw-personal-layout grid grid-cols-1 gap-6">
             <div class="space-y-6">
@@ -121,7 +121,7 @@
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" @osw-live-providers.window="fetchAll()" class="osw-admin-section">
   <div class="osw-section-header mb-6"><h1 class="text-2xl font-semibold">Identity Providers</h1></div>
   <div class="space-y-8">
-    <section class="osw-idp-section" aria-label="Web Interface">
+    <section class="osw-idp-section osw-card" aria-label="Web Interface">
   <div class="osw-section-header mb-3">
     <div><h2 class="text-xl font-semibold">Web Interface</h2><p class="mt-1 text-sm text-gray-400">Login providers for the web interface. LDAP also supports password sign-in; Authentik uses optional OIDC settings.</p></div>
     <button type="button" @click="newWebProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Login Provider</button>
@@ -134,7 +134,7 @@
           <tr>
             <td data-label="Name"><span class="font-medium" x-text="provider.display_name"></span></td>
             <td data-label="Type" x-text="providerTypeLabel(provider)"></td>
-            <td data-label="Status"><span class="osw-admin-status" :class="webProviderReady(provider) ? 'text-green-400' : 'text-gray-400'" x-text="webProviderStatus(provider)"></span></td>
+            <td data-label="Status"><span class="osw-admin-status" :class="webProviderReady(provider) ? 'text-green-400' : (!provider.is_enabled ? 'text-gray-500' : 'text-amber-300')" x-text="webProviderStatus(provider)"></span></td>
             <td data-label="Actions" class="text-right"><div class="osw-idp-actions">
               <button type="button" @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button>
               <button type="button" @click="editProvider(provider, 'web')" class="text-blue-400 text-sm">Edit</button>
@@ -147,7 +147,7 @@
     </table>
   </div>
 </section>
-    <section class="osw-idp-section" aria-label="User Provisioning">
+    <section class="osw-idp-section osw-card" aria-label="User Provisioning">
   <div class="osw-section-header mb-3">
     <div><h2 class="text-xl font-semibold">User Provisioning</h2><p class="mt-1 text-sm text-gray-400">Sources of identity attributes and user-directory synchronization. LDAP and Authentik can also be used for web sign-in when configured.</p></div>
     <button type="button" @click="newProvisioningProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Provisioning Provider</button>
@@ -160,7 +160,7 @@
           <tr>
             <td data-label="Name"><span class="font-medium" x-text="provider.display_name"></span></td>
             <td data-label="Type" x-text="providerTypeLabel(provider)"></td>
-            <td data-label="Status"><span class="osw-admin-status" :class="provisioningProviderReady(provider) ? 'text-green-400' : 'text-gray-400'" x-text="provisioningProviderStatus(provider)"></span></td>
+            <td data-label="Status"><span class="osw-admin-status" :class="provisioningProviderReady(provider) ? 'text-green-400' : (!provider.is_enabled ? 'text-gray-500' : 'text-amber-300')" x-text="provisioningProviderStatus(provider)"></span></td>
             <td data-label="Actions" class="text-right"><div class="osw-idp-actions">
               <button type="button" @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button>
               <button type="button" @click="editProvider(provider, 'provisioning')" class="text-blue-400 text-sm">Edit</button>
@@ -315,7 +315,7 @@
                                 </td>
                                 <td class="px-6 py-4 tabular-nums" x-text="signature.versions" data-label="Versions"></td>
                                 <td class="px-6 py-4" data-label="Status">
-                                    <button type="button" class="osw-admin-status cursor-pointer" :class="signature.is_active ? 'text-green-400' : 'text-red-400'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
+                                    <button type="button" class="osw-admin-status cursor-pointer" :aria-pressed="signature.is_active" :class="signature.is_active ? 'text-green-400' : 'text-gray-500'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
                                 </td>
                                 <td class="px-6 py-4 text-right" data-label="Actions">
                                     <div class="osw-actions justify-end">
@@ -653,7 +653,7 @@
             </div>
             <div x-show="hasPreview" x-cloak class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
                 <h3 class="font-semibold text-white">Import preview</h3>
-                <p class="text-sm" :class="preview.can_apply ? 'text-green-300' : 'text-red-300'" x-text="preview.can_apply ? 'Archive validated. No conflicts detected.' : 'Import blocked until conflicts are resolved.'"></p>
+                <p class="text-sm" :class="preview.can_apply ? 'text-green-300' : 'text-gray-500'" x-text="preview.can_apply ? 'Archive validated. No conflicts detected.' : 'Import blocked until conflicts are resolved.'"></p>
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
                     <template x-for="component in preview ? preview.components : []" :key="component">
                         <div class="rounded bg-gray-900 p-3">
@@ -704,11 +704,11 @@
             <p x-show="message" x-text="message" role="status" class="text-sm text-green-300"></p>
             <p class="text-xs text-gray-400">Encrypted application backups run inside OpenSigWeave using Backup Rules, without a host operator or mounted SMB shares. Configure age recovery settings before enabling backups.</p>
 
-            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+            <section class="osw-card space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
                     <div>
                         <h3 class="text-lg font-semibold">Backup Locations</h3>
-                        <p class="text-xs text-gray-400 mt-1">Manage Local and SMB storage destinations.</p>
+                        
                     </div>
                     <button type="button" @click="openLocation()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500">+ Add Backup Location</button>
                 </div>
@@ -723,7 +723,7 @@
                                     <td class="px-4 py-3 font-medium" x-text="item.name" data-label="Name"></td>
                                     <td class="px-4 py-3 uppercase" x-text="item.type" data-label="Type"></td>
                                     <td class="px-4 py-3 break-all text-gray-300" x-text="locationDescription(item)" data-label="Destination"></td>
-                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleLocation(item)" class="osw-admin-status" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Active' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
+                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleLocation(item)" class="osw-admin-status" :aria-pressed="item.enabled" :class="item.enabled ? 'text-green-300' : 'text-gray-500'" x-text="item.enabled ? 'Active' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
                                     <td class="px-4 py-3 text-right" data-label="Actions"><div class="flex flex-wrap gap-3 justify-end">
                                         <button type="button" class="text-blue-400 hover:text-blue-300" @click="openLocation(item)">Edit</button>
                                         <button type="button" class="text-cyan-300 hover:text-cyan-200 disabled:opacity-40" :disabled="locationTesting !== ''" @click="testLocation(item)">Test Connection</button>
@@ -777,7 +777,7 @@
                 </div>
             </template>
 
-            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+            <section class="osw-card space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
                     <h3 class="text-lg font-semibold">Backup Rules</h3>
                     <button type="button" @click="openRule()" class="rounded bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500" :disabled="!hasEnabledLocations">+ Add Backup Rule</button>
@@ -798,7 +798,7 @@
                                     <td class="px-4 py-3 capitalize" x-text="item.schedule_kind === 'interval' ? 'Every ' + item.interval_minutes + ' min' : item.schedule_kind + ' (UTC)'" data-label="Schedule"></td>
                                     <td class="px-4 py-3 text-gray-300" x-text="ruleRetentionText(item)" data-label="Retention"></td>
                                     <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'" data-label="Next Run (Local Time)"></td>
-                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Active' : 'Disabled'"></button></td>
+                                    <td class="px-4 py-3" data-label="Status"><button type="button" class="osw-admin-status" :aria-pressed="item.enabled" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-gray-500'" x-text="item.enabled ? 'Active' : 'Disabled'"></button></td>
                                     <td class="px-4 py-3 text-right" data-label="Actions"><div class="osw-backup-rule-actions">
                                         <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !item.enabled" @click="runRule(item)">Run Backup</button>
                                         <button type="button" class="text-blue-400 hover:text-blue-300" @click="openRule(item)">Edit</button>
@@ -910,7 +910,7 @@
                 </div>
             </template>
 
-            <section class="rounded border border-gray-700 bg-gray-800 p-5 space-y-4">
+            <section class="osw-card space-y-4">
                 <div class="osw-section-header flex flex-wrap justify-between items-center gap-3">
                     <h3 class="text-lg font-semibold">Backup History</h3>
                     <button type="button" @click="fetchHistory()" class="rounded bg-gray-700 px-4 py-2 text-sm hover:bg-gray-600">Refresh</button>

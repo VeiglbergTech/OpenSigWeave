@@ -79,7 +79,22 @@ body.osw-application-page, body.osw-auth-page {
     min-height: 100vh;
     min-height: 100dvh;
 }
-.osw-app-content { flex: 1 0 auto; width: 100%; min-width: 0; }
+/* Let administration grids and the shared CKEditor use available desktop width,
+   including large CSS viewports produced by 50% browser zoom. */
+.osw-app-content {
+    box-sizing: border-box;
+    flex: 1 0 auto;
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    padding-inline: clamp(.875rem, 2vw, 2.5rem);
+    margin-inline: auto;
+}
+.osw-app-content > [x-show] { min-width: 0; max-width: 100%; }
+.osw-admin-section, .osw-personal-layout { min-width: 0; max-width: 100%; }
+.osw-admin-section > :not(.osw-modal-root),
+.osw-admin-section .grid > *,
+.osw-personal-layout > * { min-width: 0; }
 .osw-auth-page > .osw-auth-card { margin-block: auto; flex: 0 0 auto; }
 .osw-site-footer {
     box-sizing: border-box;
@@ -168,11 +183,8 @@ label > select, label > textarea { margin-top: .375rem; }
 }
 
 
-/* Keep portal and signature links clean; the sanitizer also inlines this for email. */
-a, a:hover, a:focus-visible,
-.ck-content a, .ck-content a:hover, .ck-content a:focus-visible {
-    text-decoration: none !important;
-}
+/* Portal links are underlined by the shared token rule below.
+   Do not reset CKEditor's email markup or suppress a visible link affordance. */
 
 /* Consistent air between separate administrator context cards and section blocks. */
 .osw-admin-section > :not(.osw-modal-root):not(.form-dialog) ~ :not(.osw-modal-root):not(.form-dialog) {
@@ -186,7 +198,14 @@ a, a:hover, a:focus-visible,
 /* All dialogs share one backdrop, viewport constraint, scroll region and action bar. */
 .osw-dialog-backdrop {
     position: fixed; inset: 0; z-index: 80;
-    background: rgba(3, 7, 18, .76); backdrop-filter: blur(3px);
+    background: rgba(3, 7, 18, .68);
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+/* One shared backdrop for the whole dialog stack; nested dialogs must not
+   each add another dimming or blur layer. */
+:root[data-theme="light"] .osw-dialog-backdrop {
+    background: rgba(15, 23, 42, .42);
 }
 body:not(.osw-overlay-open) .osw-dialog-backdrop { display: none; }
 .osw-modal-root {
@@ -572,40 +591,72 @@ html[data-theme="light"] :is(.ck.ck-toolbar, .ck.ck-dropdown__panel, .ck.ck-ball
     border-color: var(--osw-border);
     box-shadow: 0 2px 8px rgba(0, 0, 0, .06);
 }
-.osw-admin-status {
+/* Shared status primitive for provider, domain, signature, backup and mail
+   states. Gray = disabled/neutral, amber = pending/unverified, red = failure. */
+:root {
+    --osw-status-neutral-bg: #35353d;
+    --osw-status-neutral-fg: #e4e4e7;
+    --osw-status-success-bg: #14532d;
+    --osw-status-success-fg: #bbf7d0;
+    --osw-status-warning-bg: #78350f;
+    --osw-status-warning-fg: #fde68a;
+    --osw-status-error-bg: #7f1d1d;
+    --osw-status-error-fg: #fecaca;
+}
+:root[data-theme="light"] {
+    --osw-status-neutral-bg: #e9eef5;
+    --osw-status-neutral-fg: #334155;
+    --osw-status-success-bg: #dcfce7;
+    --osw-status-success-fg: #166534;
+    --osw-status-warning-bg: #fef3c7;
+    --osw-status-warning-fg: #92400e;
+    --osw-status-error-bg: #fee2e2;
+    --osw-status-error-fg: #991b1b;
+}
+.osw-admin-status, .osw-health-result {
+    box-sizing: border-box;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    padding: .25rem .5rem;
+    gap: .375rem;
+    min-height: 1.75rem;
+    max-width: 100%;
+    padding: .25rem .625rem;
+    border: 1px solid transparent;
     border-radius: 9999px;
+    background: var(--osw-status-neutral-bg);
+    color: var(--osw-status-neutral-fg) !important;
     font-size: .75rem;
     font-weight: 600;
-    line-height: 1.25rem;
-    white-space: nowrap;
+    line-height: 1.35;
+    font-family: inherit;
+    text-align: center;
+    vertical-align: middle;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
-.osw-admin-status:is(.text-green-400, .text-green-300) {
-    background-color: #14532d;
-    color: #bbf7d0 !important;
+.osw-admin-status:is(.text-green-300,.text-green-400),
+.osw-health-result.text-green-300 {
+    background: var(--osw-status-success-bg);
+    color: var(--osw-status-success-fg) !important;
 }
-.osw-admin-status:is(.text-gray-500, .text-red-300, .text-red-400) {
-    background-color: #7f1d1d;
-    color: #fecaca !important;
+.osw-admin-status.text-amber-300,
+.osw-health-result.text-amber-300 {
+    background: var(--osw-status-warning-bg);
+    color: var(--osw-status-warning-fg) !important;
 }
-.osw-admin-status.text-amber-300 {
-    background-color: #78350f;
-    color: #fde68a !important;
+.osw-admin-status:is(.text-red-300,.text-red-400),
+.osw-health-result.text-red-300 {
+    background: var(--osw-status-error-bg);
+    color: var(--osw-status-error-fg) !important;
 }
-html[data-theme="light"] .osw-admin-status:is(.text-green-400, .text-green-300) {
-    background-color: #dcfce7;
-    color: #166534 !important;
+.osw-admin-status:is(.text-gray-400,.text-gray-500) {
+    background: var(--osw-status-neutral-bg);
+    color: var(--osw-status-neutral-fg) !important;
 }
-html[data-theme="light"] .osw-admin-status:is(.text-gray-500, .text-red-300, .text-red-400) {
-    background-color: #fee2e2;
-    color: #991b1b !important;
-}
-html[data-theme="light"] .osw-admin-status.text-amber-300 {
-    background-color: #fef3c7;
-    color: #92400e !important;
+button.osw-admin-status { cursor: pointer; }
+button.osw-admin-status:is(:hover,:focus-visible) {
+    border-color: currentColor;
 }
 @media (max-width: 640px) {
     .osw-admin-section .osw-table-scroll table > :is(thead, tbody) :is(th, td) {
@@ -838,18 +889,7 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
 }
 .osw-button--secondary:hover:not(:disabled) { background: var(--osw-charcoal); }
 .osw-button:disabled { opacity: .48; cursor: not-allowed; }
-.osw-health-result { display: inline-flex; align-items: center; gap: .375rem;
-    padding: .5rem .75rem; border: 1px solid var(--osw-border);
-    border-radius: .375rem; background: var(--osw-panel-raised);
-    color: var(--osw-text); font-size: .875rem;
-}
-/* Mail-server status colors must win over the generic badge text token. */
-.osw-health-result.text-green-300 { color: #86efac; }
-.osw-health-result.text-amber-300 { color: #fcd34d; }
-.osw-health-result.text-red-300 { color: #fca5a5; }
-html[data-theme="light"] .osw-health-result.text-green-300 { color: #166534; }
-html[data-theme="light"] .osw-health-result.text-amber-300 { color: #854d0e; }
-html[data-theme="light"] .osw-health-result.text-red-300 { color: #9f1239; }
+/* Mail server health uses exactly the same badge geometry and palette. */
 
 /* A switch means a Boolean state. Multiple selections use square checkboxes. */
 input[type="checkbox"].osw-checkbox {
@@ -1171,7 +1211,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     overflow: clip;
 }
 .osw-admin-section .osw-table-scroll > table.osw-data-table {
-    table-layout: fixed;
+    table-layout: auto;
     width: 100%;
     max-width: 100%;
     min-width: 0 !important;
@@ -1575,15 +1615,18 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
    system, but their forms have dedicated, comfortably padded fields. */
 .osw-idp-section { min-width: 0; }
 .osw-idp-section .osw-section-header { gap: 1rem; }
-.osw-idp-table th:first-child { width: 32%; }
-.osw-idp-table th:nth-child(2) { width: 23%; }
-.osw-idp-table th:nth-child(3) { width: 19%; }
-.osw-idp-table th:last-child { width: 26%; }
+.osw-admin-section .osw-table-scroll > table.osw-idp-table { table-layout: auto; }
+.osw-idp-table th:first-child { width: 38%; }
+.osw-idp-table th:last-child { width: 1%; white-space: nowrap; }
 .osw-idp-actions {
     display: flex; justify-content: flex-end; align-items: center;
-    flex-wrap: wrap; gap: .5rem .85rem; min-width: 0;
+    flex-wrap: nowrap; gap: .75rem; min-width: 0;
 }
-.osw-idp-actions button { min-height: 2rem; white-space: normal; }
+.osw-idp-actions button { min-height: 2rem; white-space: nowrap; }
+@media (max-width: 1250px) {
+    .osw-idp-actions { flex-wrap: wrap; justify-content: flex-start; }
+    .osw-idp-table th:last-child { width: auto; }
+}
 .osw-idp-form-grid {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem 1.25rem; min-width: 0;
@@ -1679,4 +1722,55 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-rich-editor .ck-toolbar__items {
         flex-wrap: wrap;
     }
+}
+
+
+/* Release 2: Backup is the visual reference for management cards. Shared
+   primitives keep Identity Provider, Backup, and later tabs in sync. */
+.osw-card {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    padding: clamp(1rem, 1.5vw, 1.25rem);
+    color: var(--osw-text);
+    background: var(--osw-panel);
+    border: 1px solid var(--osw-border);
+    border-radius: .5rem;
+    box-shadow: var(--osw-card-shadow, 0 2px 8px rgba(0,0,0,.08));
+}
+.osw-card .osw-section-header { margin-bottom: 1rem; }
+.osw-card .osw-section-header :is(h2,h3) {
+    font-size: 1.125rem !important;
+    line-height: 1.5rem;
+    font-weight: 600 !important;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table > thead th.text-right,
+.osw-admin-section .osw-table-scroll > table.osw-data-table > tbody td.text-right {
+    text-align: right;
+}
+.osw-admin-section .osw-table-scroll > table.osw-data-table
+    > tbody td.text-right > :is(.flex,.osw-actions) { justify-content: flex-end; }
+:where(.osw-admin-section, .osw-personal-layout)
+    :is(button:not(.ck-button):not(.osw-font-option),input,select,textarea):focus-visible {
+    outline: 2px solid var(--osw-focus);
+    outline-offset: 2px;
+}
+:where(.osw-admin-section, .osw-personal-layout)
+    :is(button,input,select,textarea):disabled {
+    opacity: .6;
+    cursor: not-allowed;
+}
+/* Top navigation must wrap independently of its inner tab row at high zoom. */
+.osw-application-page > nav {
+    box-sizing: border-box;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: .75rem 1.5rem;
+}
+.osw-application-page > nav > div { min-width: 0; flex-wrap: wrap; gap: .5rem 1rem; }
+.osw-application-page > nav .osw-tabs { flex-wrap: wrap; max-width: 100%; }
+@media (max-width: 640px) {
+    .osw-app-content { padding-inline: .75rem; }
+    .osw-application-page > nav .h-6.w-px { display: none; }
+    .osw-idp-actions { gap: .5rem .75rem; }
 }
