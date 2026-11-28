@@ -5,11 +5,24 @@
 ## Host requirements
 
 Linux x86_64/aarch64, Docker Engine >= 24, Docker Compose v2 >= 2.20,
-Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free space.
-The scripts do not install Docker, modify the firewall or create remote accounts.
-The checkout must be a clean, non-shallow clone from the approved Git origin.
+Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free space.
+Git is required **only for source-checkout installations** (development, beta,
+or older main installations). A verified, published **minimal main release
+bundle** can run and update without Git. The scripts do not install Docker,
+modify the firewall or create remote accounts. Source installations must
+remain clean, non-shallow checkouts of the approved Git origin.
+
+For the minimal package format, authenticated download and release-asset
+verification, see [Minimal main release installation](MINIMAL_RELEASE_INSTALL.md).
 
 ## First installation: no manual key creation
+
+When the matching installation asset has been attached to an approved GitHub
+Release, prefer the verified minimal package instructions in
+[MINIMAL_RELEASE_INSTALL.md](MINIMAL_RELEASE_INSTALL.md). **Older releases do
+not necessarily have such an asset**; the Git-based instructions below remain
+supported for those releases and for source-based development.
+
 
 **Terminal block 1:**
 

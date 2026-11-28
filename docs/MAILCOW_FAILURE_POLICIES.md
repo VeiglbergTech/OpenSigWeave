@@ -1,5 +1,12 @@
 # Mailcow failure policy and module health checks
 
+> Domain-specific offline enforcement is **opt-in**. Configure the local
+> policy file and synchronize it on the mailserver before relying on
+> per-domain exemptions. See [Domain-specific offline policy](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
+> The global `enabled`/`disabled` mode remains compatible with existing
+> installations that have not enabled a local snapshot.
+
+
 OpenSigWeave supports two Rspamd failure policies.
 
 | Policy | Technical injection failure | Missing injector while guard loads | Both Rspamd modules missing |

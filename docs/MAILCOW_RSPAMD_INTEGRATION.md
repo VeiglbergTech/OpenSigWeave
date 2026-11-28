@@ -4,6 +4,12 @@
 
 OpenSigWeave runs in its own Compose stack. The adapter runs inside Mailcow's Rspamd. Do not merge or replace Mailcow's bundled `rspamd.local.lua`.
 
+For the optional per-domain **Signature required** fail-open/fail-closed behavior,
+install the additional `opensigweave_domain_policy.lua` module and synchronize
+the local JSON policy file on the **Mailcow host**. See
+[offline domain failure policies](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
+This policy does not take effect by only changing the toggle in the web UI.
+
 ## Minimal Mailcow integration — same host or remote
 
 Open **Admin → System → Mail Server** in OpenSigWeave and choose Mailcow / Rspamd.

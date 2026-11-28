@@ -61,7 +61,7 @@ Refer to [client compatibility](docs/CLIENT_COMPATIBILITY.md), [adapter architec
 ## Install OpenSigWeave on Linux with Docker Compose
 
 **Requirements:** Linux (x86_64/aarch64), Docker Engine 24+, Docker Compose
-2.20+, Git, Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free
+2.20+, Git (source installs only), Python 3, Docker daemon access, at least 2 GiB RAM and 6 GiB free
 space. DNS, TLS reverse proxy, firewall and the mail server are prerequisites
 that are **not configured by the installer**.
 
@@ -194,6 +194,13 @@ The original project's **Rspamd signature injection engine** drew heavily on the
 ## Development, security and license
 
 The project uses exactly three Git branches: **`dev`** for development, **`beta`** for CI-verified code and **`main`** for explicitly approved releases. Release versions follow `YYYY.MM-alpha`, `YYYY.MM-alpha1`, `YYYY.MM-beta` and `YYYY.MM`. Moving GHCR image aliases are `alpha`, `beta` and `latest` (stable only). The image publishing CI never automatically approves `main`.
+
+A separate, minimal main release installer format is under development. It
+removes the host Git requirement for **future releases with a verified release
+asset**, but retains Python 3 for safe configuration and update recovery.
+Do not assume the installer archive exists for older alpha tags. See
+[the minimal installer contract](docs/MINIMAL_RELEASE_INSTALL.md) and
+[Rspamd offline domain policy](docs/MAILCOW_DOMAIN_FAILURE_POLICIES.md).
 
 Before exposing any management service, configure HTTPS, an appropriate firewall and trusted proxy IPs. Never commit passwords, `.env` files or private keys. Report security concerns privately rather than posting credentials or customer data in public issues.
 

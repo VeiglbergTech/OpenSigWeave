@@ -52,6 +52,17 @@ An empty `html` means do not inject a signature. HTTP 401 means adapter credenti
 
 The legacy `GET /api/signature/{email}` endpoint remains an alias for existing Rspamd installations. External adapters MUST use the versioned path. An adapter running inside the OpenSigWeave application may call the same engine implementation in-process, but it must preserve the same sender normalization, selection semantics, response fields and error behavior; it must not implement a second selection or rendering path.
 
+## Domain failure-policy contract
+
+The Mailcow/Rspamd adapter supports an opt-in, locally synchronized,
+domain-specific outage policy. Its source of truth is the authenticated
+OpenSigWeave API; its *offline* decisions are made from an atomic, bounded-lifetime
+mailserver-local snapshot. An unknown domain never inherits a parent-domain
+exemption. This currently applies to the **Rspamd** adapter only; other
+mailserver adapters must implement and test the same offline contract before
+claiming equivalent behavior. See
+[Mailcow domain-specific failure policies](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
+
 ## Adapter lifecycle
 
 Every adapter implementation must document and test:
