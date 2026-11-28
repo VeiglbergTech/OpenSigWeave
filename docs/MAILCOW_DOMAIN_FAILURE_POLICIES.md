@@ -37,44 +37,39 @@ Old v1 snapshots remain readable only during their original bounded lifetime and
 
 ## Installation and reliable synchronization
 
-**Task 8** is responsible for installing this mechanism from the Mailcow integration workflow. Saving a domain toggle alone does NOT install it.
+The standard **Admin → System → Mail Server** Mailcow workflow now installs
+the domain policy module, valid first snapshot and five-minute systemd
+synchronization timer as part of its verified two-block host setup. Follow
+[Normal Mailcow installation](MAILCOW_RSPAMD_INTEGRATION.md)
+rather than copying an independently unversioned script.
 
-Install the matching adapter revision's opensigweave_domain_policy.lua under the Mailcow host path /opt/mailcow-dockerized/data/conf/rspamd/lua/ alongside the normal Rspamd modules. Add options to the existing single Mailcow Rspamd opensigweave section:
-
-~~~ucl
-opensigweave {
-    api_url = "https://signature.example.org/api/v1/engine/signatures/";
-    engine_api_key = "<the-existing-secret-engine-key>";
-    failure_policy = "enabled";
-    domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";
-}
-opensigweave_guard {
-    enabled = true;
-}
-~~~
-
-The guard is optional and only protects against a missing injector when the guard itself loads. Do not expose Rspamd controller to the public Internet or insert an independent Postfix Milter.
-
-On the Mailcow host as root, securely populate a key file:
+On Mailcow run:
 
 ~~~bash
-install -m 0600 /dev/null /root/.opensigweave-engine-api-key
-# Populate with the existing key through a secret manager, not a command argument.
-python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py \
-  --url https://signature.example.org/api/v1/mail/domain-policy \
-  --key-file /root/.opensigweave-engine-api-key \
-  --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json
+sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py status --mailcow-root "$PWD"
+sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py sync --mailcow-root "$PWD"
+systemctl status opensigweave-mailcow-policy.timer
 ~~~
 
-Install a deliberate root-managed cron or systemd timer to repeat this command, e.g. every five minutes; prevent overlapping executions. **No persistent service/container is required.** A successful run prints the complete confirmed version and an ACK indicating installed or unchanged, with a UTC check timestamp. An unchanged policy is rechecked over HTTPS but not rewritten. Read-only offline status works during an outage:
+The Python helper keeps the last known valid v2 snapshot across outages; its
+ACK includes the policy version. Compare that ACK to Admin → Domains' desired
+version on **each** Mailcow host. Any Off → On transition must remain
+**pending** until confirmed on every relevant host. An offline host can
+continue honoring its former Off exemption indefinitely.
 
-~~~bash
-python3 /opt/opensigweave-mail-adapter/sync_domain_policy.py \
-  --output /opt/mailcow-dockerized/data/conf/rspamd/local.d/opensigweave-domain-policy.json \
-  --status
-~~~
+To disable automatic updates explicitly use
+sudo systemctl disable --now opensigweave-mailcow-policy.timer.
+The snapshot is retained, and disabling sync does **not** magically revoke
+previous exemptions. Existing manual/legacy installations require a
+deliberate migration; the setup tool will not overwrite their unmanaged
+Rspamd section or customized Lua files. If the machine does not use systemd,
+configure an equivalent secured root cron schedule manually; activation
+will not falsely report automatic synchronization enabled.
 
-Inspect logs: status **0** means validated/acknowledged, **1** means sync, file or trust failure, **3** means the required version is not yet acknowledged. Synchronization errors retain the current local snapshot. This local status is not proof of actual SMTP acceptance.
+The managed Rspamd section enables domain-specific decisions and global
+failure_policy = "enabled". A domain without a valid explicit Off exemption
+temporarily rejects on an OpenSigWeave failure. This does **not** cover
+Rspamd/Milter outages or bypasses.
 
 ## Changes, version acknowledgment and emergency strictness
 

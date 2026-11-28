@@ -41,3 +41,23 @@ Use the full [Mailcow acceptance matrix](MAILCOW_RSPAMD_INTEGRATION.md#manual-ac
 ## Approval / evidence
 
 Record: exact `dev` SHA, exact `beta` SHA, CI links, test host, Mailcow/Rspamd and mail-client versions, test date, administrator, unresolved findings and mitigation. Obtain **explicit manual** approval before `beta -> main`. Do not infer permission from a checked box, green CI, merged PR or this document.
+
+
+## Release 2 Mailcow setup gate (2026-11-28)
+
+The dev setup generator now supports an immutable published-release
+revision, six SHA-256-checked adapter files, masked manual Engine key entry,
+four Lua modules, an authenticated initial domain policy, an idempotent
+managed Rspamd section, rspamadm configtest and a host-side systemd
+synchronization timer. This is **code/CI verification, not Mailcow SMTP
+certification**. Pre-existing unmanaged configuration requires deliberate
+migration. A real container check may reveal Mailcow version/layout
+differences requiring correction before release.
+
+**Blocking until documented on a disposable actual Mailcow**: fresh install,
+rerun, same-host/separate-host engine connection from the Rspamd container,
+sender authorization, HTTP/TLS/key failures, domain Off/On outages, SMTP
+temporary rejections, HTML/plain text, replies/forwards, CID and binary
+attachments, multi-domain rules, MIME inspection, final recipient DKIM,
+Rspamd/OpenSigWeave restarts, inbound isolation and rollback. Fixture tests
+are explicitly insufficient. Do not claim 100% Mailcow compatibility.

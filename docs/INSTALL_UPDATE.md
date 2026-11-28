@@ -44,11 +44,19 @@ while no web administrator exists. Remove the token file after setup. Never
 publish the token, store it in version control or expose the management port
 without protection.
 
-After login open **Admin → System** to select your mail-server adapter and
-display the minimum needed server configuration. Any further required terminal
-blocks count toward the **four-block installation limit**. Selecting a server
-is not itself proof of a functioning mail flow. Finish with an authenticated
-test message and verify the inserted signature before going live.
+After login open **Admin → System → Mail Server**, save the HTTPS engine URL,
+and copy the two release-pinned Mailcow-host terminal blocks. Run them from
+the Mailcow Compose checkout directory. The first validates the Git release
+and all six downloaded file hashes, then securely prompts for ENGINE_API_KEY
+and initializes the local domain policy. The second runs rspamadm configtest,
+activates Rspamd and enables a five-minute root systemd sync timer.
+No additional permanent container or public Rspamd controller is required.
+The normal first-installation flow now uses two additional Mailcow-host blocks,
+within the four-block installation target. Releases lacking OSW_RELEASE_TAG and
+OSW_RELEASE_SHA metadata do **not** produce unverifiable installation commands.
+See [Mailcow integration](MAILCOW_RSPAMD_INTEGRATION.md).
+Only a real authenticated SMTP test and examination of the received message
+can verify signature insertion, MIME integrity and DKIM.
 
 Existing installations retain their local .env administrator login and
 secrets. The legacy `--admin-email` or `--generate-admin-password`

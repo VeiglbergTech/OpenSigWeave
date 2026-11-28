@@ -4,46 +4,94 @@
 
 OpenSigWeave runs in its own Compose stack. The adapter runs inside Mailcow's Rspamd. Do not merge or replace Mailcow's bundled `rspamd.local.lua`.
 
-For the optional per-domain **Signature required** fail-open/fail-closed behavior,
-install the additional `opensigweave_domain_policy.lua` module and synchronize
-the local JSON policy file on the **Mailcow host**. See
-[offline domain failure policies](MAILCOW_DOMAIN_FAILURE_POLICIES.md).
-This policy does not take effect by only changing the toggle in the web UI.
-The mailserver-local v2 snapshot remains trusted across >24-hour outages and
-Rspamd restarts, provided it was securely installed. The host sync helper
-uses authenticated HTTPS and atomic writes and is intended for a root-managed
-timer installed through Task 8, not another permanent container. Saving a
-stricter Off → On requirement is **pending** until the desired policy_version
-has been acknowledged by each Mailcow host (sync with --expect-version).
-A Mailcow-host-owned domain_policy_force_required strict override can
-override a stale Off exemption during an emergency. Long-lived snapshots
-cannot otherwise revoke policy while the sync path is unavailable. Actual
-SMTP acceptance, queue behavior, MIME and DKIM still require Mailcow tests.
+## Normal release installation — one path for local and remote Mailcow
 
-## Minimal Mailcow integration — same host or remote
+1. Deploy an **approved, published OpenSigWeave release image** with embedded
+   release tag/revision metadata; development builds without that metadata
+   deliberately provide no production adapter download commands. Log into
+   **Admin → System → Mail Server**, select **Mailcow / Rspamd** and save an
+   HTTPS engine endpoint reachable **from inside** the Mailcow Rspamd container.
+   It can be an existing reverse proxy on the same host, another Docker
+   network or another host. Use a valid, trusted TLS certificate.
+2. On the Mailcow host, open a terminal **inside the existing Mailcow Compose
+   checkout directory** (not necessarily /opt/mailcow-dockerized).
+   Copy the **first** terminal block from the UI. It checks the published
+   GitHub Release tag against the exact image revision, downloads **six small
+   files** only from that immutable revision and independently validates the
+   SHA-256 digest of every file before running the installer. No Git clone,
+   new daemon, container or Docker port is needed.
+3. At the masked terminal prompt, enter the existing
+   **ENGINE_API_KEY from the protected OpenSigWeave .env on the application
+   host**. For separate hosts, transfer it using an administrator-controlled
+   encrypted channel or a secure password manager; do not copy all of .env,
+   paste the key into the UI, shell command, URL, chat, logs or issue tracker.
+   First-time preparation stores the key under
+   /etc/opensigweave-mailcow/engine.key (0600, root-owned).
+4. Preparation downloads the domain policy from
+   GET /api/v1/mail/domain-policy using verified HTTPS and that engine key.
+   A missing, invalid, unauthenticated or stale initial policy **blocks
+   activation**; no missing snapshot is reported as operational.
+   It installs four Lua modules and manages only a delimited section of the
+   existing Mailcow rspamd.conf.local, leaving unrelated sections unchanged.
+   For an existing **unmanaged** OpenSigWeave section, manually migrate it:
+   the installer will refuse to silently replace it or customized Lua files.
+   It checks rspamadm configtest before returning success.
+5. Copy the **second** terminal block. It repeats validation, restarts only
+   rspamd-mailcow, installs/enables a root-owned systemd timer to sync policy
+   every five minutes and prints an explicit **SMTP still untested** notice.
+   A host without systemd needs an equivalent root cron job and does not
+   silently report activation successful. No public controller port is needed.
 
-Open **Admin → System → Mail Server** in OpenSigWeave and choose Mailcow / Rspamd.
-Enter an OpenSigWeave engine HTTPS URL reachable **from the Rspamd container**.
-It may point to a trusted reverse proxy on the same host, a different Docker
-network or another server. You do not need to publish the Rspamd controller
-port or alter Mailcow's Docker host networking merely for monitoring.
+**Managed Rspamd files:**
+data/conf/rspamd/plugins.d/opensigweave.lua,
+data/conf/rspamd/lua/opensigweave_mime.lua,
+data/conf/rspamd/lua/opensigweave_cid.lua and
+data/conf/rspamd/lua/opensigweave_domain_policy.lua.
+The installation also creates a local
+data/conf/rspamd/local.d/opensigweave-domain-policy.json snapshot, a protected
+engine-key file, a root-managed installation state and a host-side Python
+synchronization helper/systemd timer. It does **not** overwrite
+rspamd.local.lua, Mailcow's Docker Compose, Postfix, networks, port mappings or
+unrelated Rspamd filters.
 
-Copy the three-file installation commands onto the *Mailcow host*. Set
-OSW_REF to the exact tested OpenSigWeave revision. Only
-opensigweave.lua, opensigweave_mime.lua and opensigweave_cid.lua
-are required by the standard Rspamd adapter. The independent
-opensigweave_guard.lua is optional, experimental and **not** part of the
-minimal setup. Place the generated opensigweave section into your existing
-rspamd.conf.local, replacing REPLACE_WITH_YOUR_ENGINE_API_KEY with the
-actual secret on the mail server only; this secret is never returned by the
-web interface. Validate and restart Rspamd only when the configuration is ready.
+The managed block uses global failure_policy = "enabled" with
+domain_policy_file set. For unavailable OpenSigWeave (Mailcow/Rspamd healthy),
+Signature required **Off** uses an authenticated local exemption to send
+unsigned. **On**, unknown or invalid/missing local policy requests a temporary
+SMTP 4xx rejection. A stale local Off exemption cannot be revoked while the
+sync path is offline. Inspect changes with the policy status command below
+and compare to Admin → Domains' desired policy_version before relying on
+any changed requirement.
 
-After the first successful API-key-authenticated adapter request OpenSigWeave
-remembers a connection timestamp, hides the setup instructions and displays the
-compact status plus Reconfigure Mail Server. The timer records API activity,
-**not successful signature injection or delivery**. No outgoing email for over
-eight hours displays Unverified, not an error. Read-only Rspamd controller
-module checks remain optional and separate from normal mail processing.
+From the same Mailcow directory, inspect with:
+
+~~~bash
+sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py status --mailcow-root "$PWD"
+sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py sync --mailcow-root "$PWD"
+systemctl status opensigweave-mailcow-policy.timer
+~~~
+
+Stop future synchronization with
+sudo systemctl disable --now opensigweave-mailcow-policy.timer.
+An intentional rollback is:
+sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py rollback --mailcow-root "$PWD".
+It first checks managed file hashes and refuses administrator edits. The
+protected engine secret and last-known-good local domain snapshot are retained
+for deliberate operator cleanup, not silently deleted.
+
+After the first real API-key-authenticated adapter request OpenSigWeave
+persists setup completion and collapses the configuration behind
+**Reconfigure Mail Server**. Active / Active Xm / Active Xh / Unverified are
+activity timestamps, not verified signature insertion. Optional advanced
+module checks may report Error when a required symbol is affirmatively absent;
+they require an existing private controller path, never a public endpoint.
+Real SMTP acceptance and final received HTML, plain text, MIME and DKIM
+verification remain separate release gates.
+
+The admin API never returns ENGINE_API_KEY.
+Do not infer SMTP delivery, inline CID rendering, valid DKIM or safety of
+production rollout from a successful HTTP request, mocked test or
+rspamadm configtest.
 
 ## Independent missing-plugin guard (experimental, opt-in; isolated Mailcow only)
 
@@ -77,7 +125,7 @@ docker compose logs --tail=80 rspamd-mailcow
 
 **Live acceptance:** (1) check normal authenticated SOGo delivery with a signature, (2) disable *only* `opensigweave.lua`, restart Rspamd, and verify SOGo's SMTP DATA returns a 4xx with `SIGNATURE_PLUGIN_NOT_LOADED` and **no accepted/queued message**, (3) verify unauthenticated inbound remains unchanged, (4) restore the module and retest a successful signed message. If the guard fails to load or is disabled too, this protection disappears: Postfix cannot detect a successfully responding but semantically incomplete Rspamd Milter. This is **not a production-certified independent Postfix enforcement gate**. Real fail-closed against arbitrary missing Rspamd checks requires a separate, fail-closed mechanism at the submission boundary.
 
-## Install in a disposable Mailcow instance
+## Legacy manual integration (advanced, not the normal release installer)
 
 For manual installation when the tested OpenSigWeave checkout is already available on the Mailcow host, run from the Mailcow checkout directory; substitute `/path/to/OpenSigWeave` for the checkout of the *same tested OpenSigWeave commit*.
 
@@ -129,7 +177,7 @@ MIME signed/encrypted parts, `message/rfc822` attachments, missing boundaries an
 7. Inspect the effective Rspamd plugin order and DKIM signing order. The **final received message must pass DKIM** and must not be changed after signing.
 8. Test engine errors, timeout, TLS failure and restart. Decide explicitly whether messages must be delivered without a signature or temporarily rejected; do not silently lose or corrupt mail.
 
-Rollback: remove `data/conf/rspamd/plugins.d/opensigweave.lua`, remove the matching config section and restart only the Rspamd service. Keep the helper file if other installations still reference it. Retest normal Mailcow delivery and DKIM.
+For the managed installer use its hash-checked rollback action above. For manually created, unmanaged configurations only, remove exactly the own plugin/configuration section, validate with rspamadm configtest and restart Rspamd. Preserve unrelated filters and verify DKIM and inbound mail.
 
 Official references: [Mailcow custom Rspamd modules](https://docs.mailcow.email/manual-guides/Rspamd/u-e-rspamd-add-additional-modules/), [Rspamd MIME API](https://docs.rspamd.com/lua/lua_mime/) and [Rspamd DKIM signing](https://docs.rspamd.com/modules/dkim_signing/).
 
