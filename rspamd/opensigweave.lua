@@ -46,13 +46,21 @@ if FAILURE_POLICY ~= "disabled" and FAILURE_POLICY ~= "enabled" then
     rspamd_logger.errx(rspamd_config, "OpenSigWeave: invalid failure_policy; use enabled or disabled")
     return
 end
-local function technical_failure(task, reason)
+local function should_tempfail(task)
+    if domain_policy_unavailable then return true end
+    if not domain_policy then return FAILURE_POLICY ~= "disabled" end
+    -- An invalid/unexpected policy implementation must never create an exemption.
+    local ok, required = pcall(domain_policy.must_tempfail, task, FAILURE_POLICY, module_options)
+    return not ok or required ~= false
+end
+
+local function technical_failure(task, reason, mutation_attempted)
     local failure_id = rspamd_util.random_hex(8)
     rspamd_logger.errx(task, "OpenSigWeave failure_id=%s reason=%s policy=%s",
         failure_id, reason, FAILURE_POLICY)
-    local defer = domain_policy_unavailable or
-        (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
-        (not domain_policy and FAILURE_POLICY ~= "disabled")
+    -- Once a message mutation was attempted, a technical failure cannot
+    -- safely accept a potentially partially rewritten email, even for Off.
+    local defer = mutation_attempted or should_tempfail(task)
     if defer then
         task:set_pre_result("soft reject",
             "OpenSigWeave: Your email could not be sent because the signature could not be applied. Please try again later. Error ID: "
@@ -182,8 +190,9 @@ local function find_signature_text_marker(task, is_reply)
 end
 
 local function inject_signature(task)
+    local mutation_attempted = false
     local function fail(reason)
-        technical_failure(task, reason)
+        technical_failure(task, reason, mutation_attempted)
     end
     local envfrom = task:get_from(1)
     local uname = task:get_user()
@@ -274,11 +283,8 @@ local function inject_signature(task)
 
 
     local function fail_api(reason)
-        if not (domain_policy_unavailable or
-            (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
-            (not domain_policy and FAILURE_POLICY ~= "disabled")) then
-            remove_text_marker_from_message()
-        end
+        -- Technical API failures must leave original headers, MIME and
+        -- user-authored selector markers unchanged for both On and Off.
         fail(reason)
     end
 
@@ -325,6 +331,7 @@ local function inject_signature(task)
             message = wrapped
             cid_related_type = related_type
         end
+        mutation_attempted = true
         local ok, applied = pcall(task.set_message, task, message)
         if not ok or applied ~= true then
             fail("MESSAGE_MUTATION_FAILED")
@@ -848,11 +855,6 @@ local function inject_signature(task)
     })
 
     if not request_ok or not scheduled then
-        if not (domain_policy_unavailable or
-            (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
-            (not domain_policy and FAILURE_POLICY ~= "disabled")) then
-            remove_text_marker_from_message()
-        end
         fail("ENGINE_REQUEST_NOT_SCHEDULED")
     end
     return true

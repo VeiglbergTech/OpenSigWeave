@@ -42,9 +42,11 @@ if options.enabled == true and
             return false
         end
 
-        local defer = domain_policy_unavailable or
-            (domain_policy and domain_policy.must_tempfail(task, failure_policy, adapter_options)) or
-            (not domain_policy and failure_policy ~= "disabled")
+        local defer = domain_policy_unavailable or failure_policy ~= "disabled"
+        if domain_policy then
+            local ok, required = pcall(domain_policy.must_tempfail, task, failure_policy, adapter_options)
+            defer = not ok or required ~= false
+        end
         if not defer then return false end
         local failure_id = rspamd_util.random_hex(8)
         rspamd_logger.errx(

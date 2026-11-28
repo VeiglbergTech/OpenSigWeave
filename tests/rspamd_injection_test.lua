@@ -412,7 +412,7 @@ io.stderr:write('Flat encoding, signature idempotency, reply/forward placement a
 -- Enabled must never cause a permanent rejection on a technical failure.
 failure_policy = 'tempfail'
 dofile('rspamd/opensigweave.lua')
-for _, http_status in ipairs({401, 422, 503}) do
+for _, http_status in ipairs({401, 403, 422, 500, 503}) do
   status = http_status
   local t, r = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
   assert(callback(t))
@@ -507,9 +507,9 @@ assert(callback(recovered) and result.modified and not result.pre_result, 'enabl
 local original_open = io.open
 policy_file = '/etc/rspamd/local.d/opensigweave-domain-policy.json'
 offline_policy_fixture = {
-  format='opensigweave-domain-policy-v1',
-  generated_at=os.time() - 10,
-  expires_at=os.time() + 1800,
+  format='opensigweave-domain-policy-v2',
+  generated_at=os.time() - 3 * 86400,
+  policy_version=string.rep('a',64),
   domains={ ['example.test']=false, ['required.test']=true },
 }
 io.open = function(path, mode)
@@ -542,10 +542,19 @@ assert(callback(healthy_exempt) and healthy_exempt_result.modified
   and not healthy_exempt_result.pre_result,
   'Off domain must still receive its normal signature while engine is healthy')
 status = 503
-offline_policy_fixture.expires_at = os.time() - 1
-local stale, stale_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
-assert(callback(stale) and stale_result.pre_result
-  and stale_result.pre_result.action == 'soft reject',
-  'expired Off exemption must never be treated as valid')
+-- Verify a 3-day outage does not expire a local v2 exemption.
+local persisted, persisted_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(persisted) and not persisted_result.pre_result and not persisted_result.modified,
+  'trusted Off must survive 24-hour outage')
+-- An API failure must never rewrite even a plain message containing a selector.
+local tagged = '<---[Sales]--[a1b2]--->'
+local marked, marked_result = task_case('text/html; charset=utf-8','7bit', tagged, tagged, true)
+assert(callback(marked) and not marked_result.pre_result and not marked_result.modified,
+  'exempt outage must retain exact original selector/body')
+offline_policy_fixture.policy_version='corrupt'
+local corrupted, corrupted_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(corrupted) and corrupted_result.pre_result
+  and corrupted_result.pre_result.action == 'soft reject',
+  'invalid local policy must never be treated as an exemption')
 io.open = original_open
 io.stderr:write('OpenSigWeave disabled/enabled/domain-specific fixtures passed\n')
