@@ -1,3 +1,4 @@
+package.path = 'rspamd/?.lua;' .. package.path
 -- CI fixture: the separately registered guard must reject authenticated mail
 -- when the injection callback is missing, but never affect incoming messages.
 local errors = {}
