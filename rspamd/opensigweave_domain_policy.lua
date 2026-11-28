@@ -1,11 +1,10 @@
--- Local, read-only domain failure policy. Never query OpenSigWeave in the
--- technical failure path: its API may be exactly what is unavailable.
--- The local snapshot is delivered by an authenticated TLS sync or by a
--- trusted administrator. No root-owned configuration is modified by Rspamd.
+-- Offline, read-only authenticated-submission domain policy.
+-- Trust comes from an authenticated HTTPS sync and a root-controlled file;
+-- policy_version is a fingerprint, NOT an independent digital signature.
 local ucl = require "ucl"
 local M = {}
 local MAX_BYTES = 65536
-local MAX_AGE = 86400
+local LEGACY_MAX_AGE = 86400
 
 local function normalized_domain(raw)
     if type(raw) ~= "string" or #raw < 3 or #raw > 253 then return nil end
@@ -20,8 +19,7 @@ local function normalized_domain(raw)
 end
 
 local function sender_domain(task)
-    -- Only trusted authenticated envelope sender information is used. Do not
-    -- use the human-readable, potentially forged From: message header.
+    -- Only authenticated SMTP envelope sender, never a message From: header.
     local ok_user, user = pcall(task.get_user, task)
     if not ok_user or type(user) ~= "string" or user == "" then return nil end
     local ok_from, envelope = pcall(task.get_from, task, 1)
@@ -30,8 +28,37 @@ local function sender_domain(task)
     end
     local addr = envelope[1].addr
     if type(addr) ~= "string" then return nil end
-    local domain = addr:match("^[^@]+@([^@]+)$")
-    return normalized_domain(domain)
+    return normalized_domain(addr:match("^[^@]+@([^@]+)$"))
+end
+
+local function check_envelope(data, now)
+    if type(data) ~= "table" or type(data.domains) ~= "table"
+        or type(data.generated_at) ~= "number"
+        or data.generated_at ~= math.floor(data.generated_at)
+        or data.generated_at <= 0 or data.generated_at > now + 300 then return false end
+    local expected = nil
+    if data.format == "opensigweave-domain-policy-v2" then
+        expected = {format=true, generated_at=true, policy_version=true, domains=true}
+        if type(data.policy_version) ~= "string" or #data.policy_version ~= 64
+            or data.policy_version:find("[^a-f0-9]") then return false end
+        -- Unlike v1, a verified local v2 exemption has no time expiry.
+    elseif data.format == "opensigweave-domain-policy-v1" then
+        expected = {format=true, generated_at=true, expires_at=true, domains=true}
+        if type(data.expires_at) ~= "number"
+            or data.expires_at <= now or data.expires_at <= data.generated_at
+            or data.expires_at > data.generated_at + LEGACY_MAX_AGE then return false end
+    else
+        return false
+    end
+    for key, _ in pairs(data) do if not expected[key] then return false end end
+    for key, _ in pairs(expected) do if data[key] == nil then return false end end
+    local count = 0
+    for name, required in pairs(data.domains) do
+        count = count + 1
+        if count > 10000 or normalized_domain(name) ~= name
+            or type(required) ~= "boolean" then return false end
+    end
+    return true
 end
 
 local function read_policy(path)
@@ -47,40 +74,39 @@ local function read_policy(path)
     local ok_parse, parsed = pcall(parser.parse_string, parser, raw)
     if not ok_parse or not parsed then return nil end
     local ok_data, data = pcall(parser.get_object, parser)
-    if not ok_data or type(data) ~= "table" then return nil end
-    if data.format ~= "opensigweave-domain-policy-v1"
-        or type(data.generated_at) ~= "number"
-        or type(data.expires_at) ~= "number"
-        or type(data.domains) ~= "table" then return nil end
-    local now = os.time()
-    if data.generated_at > now + 300 or data.generated_at < 0
-        or data.expires_at <= now or data.expires_at <= data.generated_at
-        or data.expires_at > data.generated_at + MAX_AGE then return nil end
-    -- Validate every domain entry: reject the whole policy if any malformed
-    -- exemption could otherwise be accepted following a partial update.
-    local count = 0
-    for name, required in pairs(data.domains) do
-        count = count + 1
-        if count > 10000 or normalized_domain(name) ~= name
-            or type(required) ~= "boolean" then return nil end
-    end
+    if not ok_data or not check_envelope(data, os.time()) then return nil end
     return data.domains
+end
+
+local function emergency_requires(domain, options)
+    -- Root-administered local strict overrides take precedence over stale Off
+    -- policies. A malformed override fails closed rather than being ignored.
+    local strict = options and options.domain_policy_force_required
+    if strict == nil then return false end
+    if type(strict) == "string" then strict = {strict} end
+    if type(strict) ~= "table" then return true end
+    local count = 0
+    for key, name in pairs(strict) do
+        count = count + 1
+        if count > 10000 or type(key) ~= "number"
+            or type(name) ~= "string" or normalized_domain(name) == nil then return true end
+        if normalized_domain(name) == domain then return true end
+    end
+    return false
 end
 
 function M.must_tempfail(task, global_failure_policy, options)
     local file = options and options.domain_policy_file
     if file == nil then
-        -- Legacy installations with no offline domain policy keep the
-        -- historical global failure-policy behavior.
+        -- No opt-in keeps historical enabled/disabled behavior.
         return global_failure_policy ~= "disabled"
     end
-    -- Explicitly selecting offline domain policy enables strict fallback:
-    -- missing/expired/corrupt snapshot or unknown sender must never become
-    -- an unverified exemption (even with global failure_policy=disabled).
     local domain = sender_domain(task)
     if not domain then return true end
+    if emergency_requires(domain, options) then return true end
     local known = read_policy(file)
     if not known then return true end
+    -- Exact case-insensitive match. Unknown domains never inherit exemptions.
     return known[domain] ~= false
 end
 
