@@ -23,7 +23,8 @@ class GlobalUIConsistencyTests(unittest.TestCase):
     def test_shared_flow_and_corner_rules(self):
         css = (ROOT / "static/css/portal.css").read_text(encoding="utf-8")
         self.assertIn("body.osw-application-page, body.osw-auth-page", css)
-        self.assertIn(".osw-app-content { flex:", css)
+        # Check the CSS property itself, independent of rule formatting.
+        self.assertRegex(css, r"\.osw-app-content\s*\{[^}]*\bflex:\s*1\s+0\s+auto\s*;")
         self.assertIn(".osw-site-footer", css)
         self.assertNotIn("position: fixed", css.split(".osw-site-footer {", 1)[1].split("}", 1)[0])
         self.assertIn("overflow: clip;", css)
