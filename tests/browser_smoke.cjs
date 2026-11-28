@@ -597,6 +597,7 @@ async function main() {
       "unknown administrator sections must not resolve to the portal");
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await page.getByRole("button", { name: "System", exact: true }).click();
+    await page.waitForURL(url => url.pathname === "/admin/system");
     assert.equal(new URL(page.url()).pathname, "/admin/system",
       "returning to System must use its canonical path");
     await page.getByRole("button", { name: "Domains", exact: true }).click();
