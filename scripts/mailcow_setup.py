@@ -145,8 +145,8 @@ def split_config(existing: str, state: dict | None) -> tuple[str, str | None]:
         if not state or digest(old.encode()) != state["block_hash"]:
             raise ValueError("Existing managed configuration was changed; refusing to overwrite")
         existing = head + tail
-    elif re.search(r"(?m)^\s*opensigweave\s*\{", existing):
-        raise ValueError("Unmanaged OpenSigWeave configuration exists; migrate it manually")
+    if re.search(r"(?m)^\s*opensigweave\s*\{", existing):
+        raise ValueError("Unmanaged/duplicate OpenSigWeave configuration exists; migrate it manually")
     return existing.rstrip(), old
 
 
@@ -231,11 +231,18 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
         if not previous and existing_sync != values["scripts/sync_domain_policy.py"]:
             raise ValueError("Existing, unmanaged synchronization helper")
     atomic(local_sync, values["scripts/sync_domain_policy.py"], 0o644)
-    policy_directory = root / "data/conf/rspamd/local.d"
-    if policy_directory.is_symlink():
-        raise ValueError("Refusing symlinked Rspamd local.d directory")
-    policy_directory.mkdir(parents=True, exist_ok=True, mode=0o755)
-    sync_policy(root, url)
+    try:
+        policy_directory = root / "data/conf/rspamd/local.d"
+        if policy_directory.is_symlink():
+            raise ValueError("Refusing symlinked Rspamd local.d directory")
+        policy_directory.mkdir(parents=True, exist_ok=True, mode=0o755)
+        sync_policy(root, url)
+    except Exception:
+        if existing_sync is None:
+            local_sync.unlink(missing_ok=True)
+        else:
+            atomic(local_sync, existing_sync, 0o644)
+        raise
     block = managed_block(url, key)
     new_config = (rest + "\n\n" if rest else "") + block + "\n"
     if original_conf == new_config and previous and previous["revision"] == revision:
@@ -311,8 +318,11 @@ def rollback(root: Path) -> None:
     state = load_state()
     if not state or state["root"] != str(root):
         raise ValueError("No matching managed installation")
-    # Do not destroy administrator edits.
-    status(root)
+    # Rollback also works if a local policy snapshot was damaged.
+    for src, rel in FILES.items():
+        current = checked_regular(root / "data/conf/rspamd" / rel)
+        if current is None or digest(current) != state["files"][src]:
+            raise ValueError("Locally modified adapter; refusing rollback: " + rel)
     path = root / "data/conf/rspamd/rspamd.conf.local"
     raw = path.read_text()
     rest, old = split_config(raw, state)
@@ -321,7 +331,11 @@ def rollback(root: Path) -> None:
     if TIMER.exists():
         run(["systemctl", "disable", "--now", TIMER.name])
     atomic(path, (rest + "\n").encode(), 0o600)
-    run(["docker", "compose", "exec", "-T", "rspamd-mailcow", "rspamadm", "configtest"], root)
+    try:
+        run(["docker", "compose", "exec", "-T", "rspamd-mailcow", "rspamadm", "configtest"], root)
+    except Exception:
+        atomic(path, raw.encode(), 0o600)
+        raise
     run(["docker", "compose", "restart", "rspamd-mailcow"], root)
     for src, rel in FILES.items():
         (root / "data/conf/rspamd" / rel).unlink()
