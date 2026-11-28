@@ -69,10 +69,15 @@ class AdapterHealthTests(unittest.TestCase):
         self.assertEqual(result["status"], "configured")
         self.assertEqual(opener.request.get_header("Password"), "readonly-secret")
 
-    def test_missing_symbol_not_healthy(self):
-        data = json.dumps([{"name": "OPENSIGWEAVE_INJECT"}]).encode()
+    def test_optional_guard_is_not_required_and_missing_injector_fails(self):
+        injector_only = json.dumps([{"name": "OPENSIGWEAVE_INJECT"}]).encode()
+        result = probe("rspamd", "http://10.0.0.9:11334",
+                       fetch=lambda _: injector_only)
+        self.assertEqual(result["status"], "configured")
+        self.assertIn("optional guard", result["detail"])
+        guard_only = json.dumps([{"name": "OPENSIGWEAVE_GUARD"}]).encode()
         self.assertEqual(probe("rspamd", "http://10.0.0.9:11334",
-                               fetch=lambda _: data)["status"], "missing")
+                               fetch=lambda _: guard_only)["status"], "missing")
 
     def test_unavailable_not_healthy(self):
         def broken(_):

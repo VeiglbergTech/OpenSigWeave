@@ -111,10 +111,13 @@ def probe(server: str, url: str, *, fetch=None, password: str | None = None) -> 
         _find_symbols(payload, found)
         if not found:
             return {"status": "unknown", "detail": "Controller response does not verify OpenSigWeave symbols"}
-        missing = [symbol for symbol in MODULE_SYMBOLS if symbol not in found]
-        return ({"status": "missing", "detail": "Missing symbols: " + ", ".join(missing)}
-                if missing else
-                {"status": "configured", "detail": "Both OpenSigWeave symbols are registered (not a mail delivery test)"})
+        # The independent guard is experimental and not required for a working
+        # default adapter. Missing the injector is a real configuration failure.
+        if "OPENSIGWEAVE_INJECT" not in found:
+            return {"status": "missing", "detail": "Required OpenSigWeave injector symbol is missing"}
+        if "OPENSIGWEAVE_GUARD" not in found:
+            return {"status": "configured", "detail": "Injector registered; optional guard not installed (not a mail delivery test)"}
+        return {"status": "configured", "detail": "Injector and optional guard registered (not a mail delivery test)"}
     except HTTPError as exc:
         if exc.code in (401, 403):
             return {"status": "auth_required", "detail": "Rspamd read-only controller authentication required or refused"}
