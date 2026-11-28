@@ -108,8 +108,26 @@ jobs:
             echo "::error::Release installer asset already exists; refusing to overwrite"
             exit 1
           fi
-          gh release upload "$VERSION" "dist/$ASSET" --repo "$GH_REPO"
-          GITHUB_DIGEST="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest')"
           LOCAL_DIGEST="$(sha256sum "dist/$ASSET" | cut -d' ' -f1)"
-          test "$GITHUB_DIGEST" = "sha256:$LOCAL_DIGEST"
+          gh release upload "$VERSION" "dist/$ASSET" --repo "$GH_REPO"
+          # The asset was not present before this step. If GitHub cannot
+          # attest the expected digest, remove only this newly uploaded file;
+          # never leave an unverifiable installer attached to a release.
+          GITHUB_DIGEST=""
+          UPLOADED_ID=""
+          for attempt in 1 2 3 4 5; do
+            GITHUB_DIGEST="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest // empty')"
+            UPLOADED_ID="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .id')"
+            if [[ "$GITHUB_DIGEST" == "sha256:$LOCAL_DIGEST" ]]; then
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$GITHUB_DIGEST" != "sha256:$LOCAL_DIGEST" ]]; then
+            echo "::error::Published asset digest mismatch; removing just-uploaded unverified asset"
+            if [[ "$UPLOADED_ID" =~ ^[0-9]+$ ]]; then
+              gh api -X DELETE "repos/$GH_REPO/releases/assets/$UPLOADED_ID"
+            fi
+            exit 1
+          fi
           echo "Published verified installer $ASSET sha256:$LOCAL_DIGEST" >> "$GITHUB_STEP_SUMMARY"
