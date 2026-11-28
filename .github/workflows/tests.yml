@@ -318,6 +318,9 @@ jobs:
           db.commit()
           db.close()
           PY
+      - name: Smoke-test minimal Git-free release package against disposable Docker
+        timeout-minutes: 12
+        run: python3 tests/release_package_docker_smoke.py
       - name: Install age for backup integration
         run: |
           sudo apt-get update
