@@ -88,7 +88,10 @@ GHCR_REPO = "ghcr.io/veiglbergtech/opensigweave"
 def release_image_ref(env: dict[str, str]) -> str:
     configured = env.get("OSW_IMAGE_TAG")
     if bundle_mode():
-        from release_bundle import TAG
+        try:
+            from release_bundle import TAG
+        except ModuleNotFoundError:
+            from scripts.release_bundle import TAG
         if not isinstance(configured, str) or not TAG.fullmatch(configured):
             raise DeploymentError("A verified stable release requires an explicit stable OSW_IMAGE_TAG", 4)
     tag = configured or "alpha"  # Legacy Git checkout default; never used by bundle mode.

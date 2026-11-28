@@ -156,11 +156,14 @@ incomplete legacy configuration fails instead of generating a mismatched key.
 ./update.sh
 ```
 
-This resolves the newest published main GitHub Release, including an alpha
-or beta prerelease if no newer stable release has been published, verifies its
-Git tag/commit against the approved main history, then pulls and verifies
-the matching GHCR image before changing source or database. It records the
-immutable version tag in `.env`, preserving local secrets.
+**Verified minimal package installations** select only published stable
+releases, never alpha/beta tags, and require a matching installer archive and
+version-specific GHCR image. See [the prepared Git-free procedure](MINIMAL_RELEASE_INSTALL.md);
+no such installer asset is published yet. **Legacy Git-based main checkouts**
+retain their existing published-release selection behavior, which may include
+an alpha/beta prerelease when there is no newer stable release. Both paths
+verify the exact source/image revision before changes, preserve local
+credentials and never automatically remove persistent volumes.
 
 **Latest beta development channel:**
 

@@ -613,7 +613,11 @@ def bundle_main(args) -> int:
         print(f"OpenSigWeave release: {installed_tag} | channel: main | commit: {installed}")
         return 0
     release_tag = latest_release(stable_only=True)
+    if release_tag < installed_tag:
+        raise DeploymentError("Refusing to downgrade the installed stable release", 4)
     remote = release_commit_sha(release_tag)
+    if release_tag == installed_tag and remote != installed:
+        raise DeploymentError("Published stable release tag changed its source revision", 4)
     if args.check:
         show_bundle_plan(installed, remote, release_tag)
         return 0

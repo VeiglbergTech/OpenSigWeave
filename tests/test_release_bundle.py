@@ -89,6 +89,7 @@ class MinimalReleaseBundleTests(unittest.TestCase):
             raw = output.read_bytes()
             digest = hashlib.sha256(raw).hexdigest()
             release = {
+                "tag_name": self.VERSION, "draft": False, "prerelease": False,
                 "assets": [{
                     "name": bundle.asset_name(self.VERSION),
                     "digest": "sha256:" + digest,

@@ -1,6 +1,8 @@
 # OpenSigWeave release channels, GHCR and installation
 
-**Status: prepared on `dev`; no main promotion, version tag or package publication has happened yet.**
+**Status (28 November 2026):** the published `2026.11-alpha` prerelease has no
+minimal installer asset. No stable Release 2 installer or stable tag has been
+published or approved by this work.
 
 ## Version tags (no extra Git branches)
 
@@ -73,7 +75,13 @@ does not create or retain GitHub credentials.
 
 ## Main installation and update: published image only
 
-Once the approved main image actually exists:
+The existing Git-based alpha/main installation path below remains supported.
+Once an explicitly approved **stable release** and verified installer asset
+exist, the preferred production path will be the [minimal Git-free stable
+installation](MINIMAL_RELEASE_INSTALL.md). Only stable releases receive an
+installer bundle; alpha/beta tags stay on the legacy source workflow.
+
+For the Git checkout installation:
 
 ```bash
 git clone --branch main https://github.com/VeiglbergTech/OpenSigWeave.git
