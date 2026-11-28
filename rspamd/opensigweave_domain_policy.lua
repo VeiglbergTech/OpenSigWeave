@@ -2,6 +2,9 @@
 -- Trust comes from an authenticated HTTPS sync and a root-controlled file;
 -- policy_version is a fingerprint, NOT an independent digital signature.
 local ucl = require "ucl"
+-- Use Rspamd's built-in crypto implementation; do not rely on an unchecked
+-- version string in a manually edited or damaged file.
+local hash_available, hash_module = pcall(require, "rspamd_cryptobox_hash")
 local M = {}
 local MAX_BYTES = 65536
 local LEGACY_MAX_AGE = 86400
@@ -57,6 +60,29 @@ local function check_envelope(data, now)
         count = count + 1
         if count > 10000 or normalized_domain(name) ~= name
             or type(required) ~= "boolean" then return false end
+    end
+    if data.format == "opensigweave-domain-policy-v2" then
+        -- Domain names contain only [a-z0-9.-], so this matches the
+        -- canonical JSON produced by Python json.dumps(sort_keys=True,
+        -- separators=(",", ":"), ensure_ascii=True) without JSON escaping.
+        local names = {}
+        for name, _ in pairs(data.domains) do names[#names + 1] = name end
+        table.sort(names)
+        local fields = {}
+        for _, name in ipairs(names) do
+            fields[#fields + 1] = '"' .. name .. '":'
+                .. (data.domains[name] and "true" or "false")
+        end
+        local canonical = "{" .. table.concat(fields, ",") .. "}"
+        if not hash_available or type(hash_module.create_specific) ~= "function" then
+            return false
+        end
+        local ok, digest = pcall(function()
+            local sha = hash_module.create_specific("sha256")
+            sha:update(canonical)
+            return sha:hex()
+        end)
+        if not ok or digest ~= data.policy_version then return false end
     end
     return true
 end

@@ -223,8 +223,12 @@ local function inject_signature(task)
     -- Only authenticated submissions reach this point (task:get_user() is required above).
     -- A deprecated mode selector is ignored, but stripped so it cannot leak downstream.
     local deprecated_mode_header_count = task:get_header_count('X-OpenSigWeave-Mode')
-    if deprecated_mode_header_count > 0 then
-        task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
+    -- Defer mutation until a valid engine response: an outage must never
+    -- remove even deprecated control headers from an exempt original email.
+    local function remove_deprecated_mode_header()
+        if deprecated_mode_header_count > 0 then
+            task:modify_header('X-OpenSigWeave-Mode', { remove = { 0 } })
+        end
     end
     local signature_marker = find_signature_text_marker(task, has_quoted_history)
 
@@ -337,6 +341,7 @@ local function inject_signature(task)
             fail("MESSAGE_MUTATION_FAILED")
             return false
         end
+        remove_deprecated_mode_header()
         rspamd_logger.infox(task, "OpenSigWeave processing_success adapter=rspamd")
         return true
     end
@@ -390,11 +395,13 @@ local function inject_signature(task)
         local content_type = task:get_header_raw("Content-Type")
         local multipart_message = content_type and tostring(content_type):lower():match("^%s*multipart/") ~= nil
         if not html_sig or html_sig == "" then
+            remove_deprecated_mode_header()
             remove_text_marker_from_message()
             return
         end
 
         if is_reply and not inject_on_replies then
+            remove_deprecated_mode_header()
             remove_text_marker_from_message()
             rspamd_logger.infox(task, "OpenSigWeave: Reply detected, API flag is FALSE. Skipping.")
             return
@@ -817,6 +824,7 @@ local function inject_signature(task)
             elseif changed_or_reason ~= "no editable text was changed" or not already_present then
                 fail("MULTIPART_REWRITE_FAILED")
             else
+                remove_deprecated_mode_header()
                 rspamd_logger.infox(task, "OpenSigWeave: existing signature retained")
                 return
             end

@@ -27,6 +27,19 @@ package.preload['rspamd_http'] = function()
     return true
   end }
 end
+package.preload['rspamd_cryptobox_hash'] = function() return {
+  create_specific=function(kind)
+    assert(kind == 'sha256')
+    local payload
+    return {
+      update=function(_, data) payload = data end,
+      hex=function()
+        if payload == '{"example.test":false,"required.test":true}' then return 'a6d05536fe3c9096fe2f3bd552ceed4f53aca57e3e1666d67b6e4b551f4ac544' end
+        return string.rep('0',64)
+      end,
+    }
+  end,
+} end
 package.preload['ucl'] = function()
   return { parser=function()
     local current_raw = nil
@@ -509,7 +522,7 @@ policy_file = '/etc/rspamd/local.d/opensigweave-domain-policy.json'
 offline_policy_fixture = {
   format='opensigweave-domain-policy-v2',
   generated_at=os.time() - 3 * 86400,
-  policy_version=string.rep('a',64),
+  policy_version='a6d05536fe3c9096fe2f3bd552ceed4f53aca57e3e1666d67b6e4b551f4ac544',
   domains={ ['example.test']=false, ['required.test']=true },
 }
 io.open = function(path, mode)
@@ -549,8 +562,17 @@ assert(callback(persisted) and not persisted_result.pre_result and not persisted
 -- An API failure must never rewrite even a plain message containing a selector.
 local tagged = '<---[Sales]--[a1b2]--->'
 local marked, marked_result = task_case('text/html; charset=utf-8','7bit', tagged, tagged, true)
-assert(callback(marked) and not marked_result.pre_result and not marked_result.modified,
-  'exempt outage must retain exact original selector/body')
+marked.get_header_count = function() return 1 end
+marked.modify_header = function() marked_result.header_mutated = true end
+assert(callback(marked) and not marked_result.pre_result and not marked_result.modified
+  and not marked_result.header_mutated,
+  'exempt outage must retain original header, selector and body')
+offline_policy_fixture.domains['example.test']=true
+local tampered, tampered_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(tampered) and tampered_result.pre_result
+  and tampered_result.pre_result.action == 'soft reject',
+  'tampering with a valid-looking but mismatched digest fails closed')
+offline_policy_fixture.domains['example.test']=false
 offline_policy_fixture.policy_version='corrupt'
 local corrupted, corrupted_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 assert(callback(corrupted) and corrupted_result.pre_result

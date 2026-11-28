@@ -12,6 +12,19 @@ os.time = function() return clock end
 package.preload['ucl'] = function() return {parser=function()
     return {parse_string=function() return true end, get_object=function() return fixture end}
 end} end
+package.preload['rspamd_cryptobox_hash'] = function() return {
+    create_specific=function(kind)
+        assert(kind == 'sha256')
+        local payload
+        return {
+            update=function(_, s) payload = s end,
+            hex=function()
+                if payload == '{"example.test":false,"sub.example.test":true}' then return '8753c6e3ec13424cefc1b9d9aa2987ccbe2c01cfd5892b75388f5017447a50e6' end
+                return string.rep('0', 64)
+            end
+        }
+    end
+} end
 local policy = require 'opensigweave_domain_policy'
 local opts = {domain_policy_file='/tmp/osw-policy-fixture.json'}
 local t = {
@@ -20,7 +33,7 @@ local t = {
     get_header_raw=function() error('untrusted From header must never be used') end,
 }
 fixture = {format='opensigweave-domain-policy-v2',generated_at=900,
-    policy_version=string.rep('a',64),
+    policy_version='8753c6e3ec13424cefc1b9d9aa2987ccbe2c01cfd5892b75388f5017447a50e6',
     domains={['example.test']=false, ['sub.example.test']=true}}
 assert(not policy.must_tempfail(t, 'enabled', opts), 'verified Off domain must pass')
 assert(not policy.must_tempfail(t, 'disabled', opts), 'Off independent of global mode')
@@ -47,7 +60,10 @@ assert(policy.must_tempfail(t, 'disabled', opts), 'malformed entry invalidates s
 fixture.domains['bad name.test']=nil
 fixture.policy_version='garbled'
 assert(policy.must_tempfail(t, 'disabled', opts), 'invalid policy version invalidates snapshot')
-fixture.policy_version=string.rep('a',64)
+fixture.policy_version='8753c6e3ec13424cefc1b9d9aa2987ccbe2c01cfd5892b75388f5017447a50e6'
+fixture.domains['example.test']=true
+assert(policy.must_tempfail(t, 'disabled', opts), 'domain tampering with old digest must fail closed')
+fixture.domains['example.test']=false
 file_available=false
 assert(policy.must_tempfail(t, 'disabled', opts), 'missing policy must fail closed')
 file_available=true
