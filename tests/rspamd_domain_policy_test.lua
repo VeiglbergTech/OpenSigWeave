@@ -61,9 +61,10 @@ fixture.domains['bad name.test']=nil
 fixture.policy_version='garbled'
 assert(policy.must_tempfail(t, 'disabled', opts), 'invalid policy version invalidates snapshot')
 fixture.policy_version='8753c6e3ec13424cefc1b9d9aa2987ccbe2c01cfd5892b75388f5017447a50e6'
-fixture.domains['example.test']=true
-assert(policy.must_tempfail(t, 'disabled', opts), 'domain tampering with old digest must fail closed')
-fixture.domains['example.test']=false
+fixture.domains['sub.example.test']=false
+assert(policy.must_tempfail(required, 'disabled', opts),
+    'forged Off exemption for required domain must fail on digest mismatch')
+fixture.domains['sub.example.test']=true
 file_available=false
 assert(policy.must_tempfail(t, 'disabled', opts), 'missing policy must fail closed')
 file_available=true

@@ -25,9 +25,11 @@ local registered
 local injector
 local enabled = true
 local failure_policy = "enabled"
+local domain_policy_file = nil
 rspamd_config = {
     get_all_opt = function(_, name)
-        if name == "opensigweave" then return { failure_policy = failure_policy } end
+        if name == "opensigweave" then return { failure_policy = failure_policy,
+            domain_policy_file = domain_policy_file } end
         assert(name == "opensigweave_guard")
         return { enabled = enabled }
     end,
@@ -92,6 +94,37 @@ failure_policy = "disabled"
 registered = nil
 dofile("rspamd/opensigweave_guard.lua")
 assert(registered == nil, "disabled mode must never register rejection guard")
+failure_policy = "enabled"
+
+-- Optional domain mode: a trusted Off domain must pass when only the injector
+-- is missing; a required domain must tempfail regardless of global disabled.
+package.loaded["opensigweave_domain_policy"] = nil
+package.preload["opensigweave_domain_policy"] = function() return {
+    must_tempfail = function(task)
+        local sender = task:get_from(1)[1].addr
+        return sender ~= "sender@optional.test"
+    end
+} end
+domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json"
+failure_policy = "disabled"
+rspamd_config.get_symbol_callback = function() return nil end
+registered = nil
+dofile("rspamd/opensigweave_guard.lua")
+assert(registered ~= nil, "opt-in policy must activate guard despite disabled global mode")
+local domain_guard = registered.callback
+local off, off_result = task_case("sender@optional.test")
+off.get_from = function() return {{addr="sender@optional.test"}} end
+assert(domain_guard(off) == false and off_result.action == nil,
+    "verified optional domain must pass without injector")
+local on, on_result = task_case("sender@required.test")
+on.get_from = function() return {{addr="sender@required.test"}} end
+assert(domain_guard(on) == true and on_result.action == "soft reject",
+    "required domain must be temporarily rejected if injector is missing")
+local inbound_domain, inbound_domain_result = task_case(nil)
+inbound_domain.get_from = function() error("inbound sender must not be evaluated") end
+assert(domain_guard(inbound_domain) == false and inbound_domain_result.action == nil,
+    "unauthenticated incoming mail unaffected by opted-in guard")
+domain_policy_file = nil
 failure_policy = "enabled"
 
 failure_policy = "standard"

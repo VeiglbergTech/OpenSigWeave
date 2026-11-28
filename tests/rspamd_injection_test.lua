@@ -567,12 +567,13 @@ marked.modify_header = function() marked_result.header_mutated = true end
 assert(callback(marked) and not marked_result.pre_result and not marked_result.modified
   and not marked_result.header_mutated,
   'exempt outage must retain original header, selector and body')
-offline_policy_fixture.domains['example.test']=true
+offline_policy_fixture.domains['required.test']=false
 local tampered, tampered_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+tampered.get_from = function() return {{addr='someone@required.test'}} end
 assert(callback(tampered) and tampered_result.pre_result
   and tampered_result.pre_result.action == 'soft reject',
-  'tampering with a valid-looking but mismatched digest fails closed')
-offline_policy_fixture.domains['example.test']=false
+  'forged Off exemption for required domain fails digest verification')
+offline_policy_fixture.domains['required.test']=true
 offline_policy_fixture.policy_version='corrupt'
 local corrupted, corrupted_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 assert(callback(corrupted) and corrupted_result.pre_result
