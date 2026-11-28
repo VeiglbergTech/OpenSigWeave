@@ -58,6 +58,7 @@ from core.engine_service import SignatureEngineService
 from core.cid_assets import build_cid_payload
 from core.support_alert_status import read_support_alert_status
 from core.portal_realtime import portal_realtime_hub
+from core.mail_activity import connection_label, record_verified_adapter_activity, reset_activity_cache
 from core.branding import (
     DEFAULT_APP_COLOR,
     DEFAULT_APP_NAME,
@@ -350,6 +351,27 @@ class MailAdapterSystemSettings(BaseModel):
     monitoring_enabled: bool = False
     monitoring_interval: int = Field(default=300, ge=30, le=3600)
     controller_url: str = Field(default="", max_length=255)
+    engine_url: str = Field(default="", max_length=512)
+
+    @field_validator("engine_url")
+    @classmethod
+    def validate_engine_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            return ""
+        parts = urlsplit(value)
+        # Endpoint is embedded in an Rspamd UCL string; prevent config injection.
+        if not re.fullmatch(r"[A-Za-z0-9.\-:\[\]]+", parts.netloc):
+            raise ValueError("Invalid engine URL hostname")
+        if (parts.scheme != "https" or not parts.hostname or parts.username or parts.password
+                or parts.query or parts.fragment or parts.path.rstrip("/") not in
+                {"", "/api/v1/engine/signatures"}):
+            raise ValueError("Use an HTTPS OpenSigWeave URL without credentials or query parameters")
+        try:
+            _ = parts.port
+        except ValueError:
+            raise ValueError("Invalid engine URL port") from None
+        return f"https://{parts.netloc}/api/v1/engine/signatures/"
 
     @field_validator("controller_url")
     @classmethod
@@ -1771,24 +1793,41 @@ def delete_identity_provider(provider_id: str, request: Request, db: Session = D
 
 
 def _public_system_settings(row: SystemSetupDB | None) -> dict:
+    """Admin-only status; controller probes never establish adapter activity."""
     if row is None:
         return {
             "mail_server": "unconfigured", "monitoring_enabled": False,
-            "monitoring_interval": 300, "controller_url": "",
-            "setup_completed": False, "last_monitor_status": "not_checked",
-            "last_monitor_detail": "", "last_monitored_at": None,
+            "monitoring_interval": 300, "controller_url": "", "engine_url": "",
+            "setup_completed": False, "last_authenticated_at": None,
+            "connection_status": "Unverified",
+            "last_monitor_status": "not_checked", "last_monitor_detail": "",
+            "last_monitored_at": None,
         }
+    now = datetime.now(timezone.utc)
+    status = connection_label(row.last_authenticated_at, now=now)
+    checked = row.last_monitored_at
+    if checked is not None and checked.tzinfo is None:
+        checked = checked.replace(tzinfo=timezone.utc)
+    # Only a recent affirmative missing-symbol response is a confirmed error.
+    # An inaccessible controller and idle SMTP traffic are not errors.
+    if (row.monitoring_enabled and row.last_monitor_status == "missing"
+            and checked is not None
+            and 0 <= (now - checked).total_seconds() <= row.monitoring_interval * 2 + 15):
+        status = "Error"
     return {
         "mail_server": row.mail_server,
         "monitoring_enabled": row.monitoring_enabled,
         "monitoring_interval": row.monitoring_interval,
         "controller_url": row.controller_url,
-        "setup_completed": row.setup_completed,
+        "engine_url": row.engine_url or "",
+        "setup_completed": bool(row.setup_completed and row.last_authenticated_at),
+        "last_authenticated_at": (row.last_authenticated_at.isoformat()
+                                  if row.last_authenticated_at else None),
+        "connection_status": status,
         "last_monitor_status": row.last_monitor_status,
         "last_monitor_detail": row.last_monitor_detail,
         "last_monitored_at": row.last_monitored_at.isoformat() if row.last_monitored_at else None,
     }
-
 
 @app.get("/api/admin/mail-adapter-setup")
 def get_mail_adapter_setup(request: Request, db: Session = Depends(get_db)):
@@ -1796,7 +1835,7 @@ def get_mail_adapter_setup(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Admins only")
     row = db.get(SystemSetupDB, 1)
     result = _public_system_settings(row)
-    result["instructions"] = adapter_instructions(result["mail_server"])
+    result["instructions"] = adapter_instructions(result["mail_server"], result["engine_url"])
     return result
 
 
@@ -1809,18 +1848,28 @@ def save_mail_adapter_setup(payload: MailAdapterSystemSettings, request: Request
     if row is None:
         row = SystemSetupDB(id=1)
         db.add(row)
+    # Changing only advanced monitoring must not revoke a verified adapter.
+    changed_adapter = (row.mail_server != payload.mail_server or
+                       (row.engine_url or "") != payload.engine_url)
+    changed_probe = (row.controller_url != payload.controller_url or
+                     row.monitoring_enabled != payload.monitoring_enabled)
     row.mail_server = payload.mail_server
+    row.engine_url = payload.engine_url
     row.monitoring_enabled = payload.monitoring_enabled
     row.monitoring_interval = payload.monitoring_interval
     row.controller_url = payload.controller_url
-    row.setup_completed = payload.mail_server != "unconfigured"
-    # All saved configuration changes invalidate the previously checked status.
-    row.last_monitor_status = "not_checked"
-    row.last_monitor_detail = ""
-    row.last_monitored_at = None
+    if changed_adapter or payload.mail_server == "unconfigured":
+        row.setup_completed = False
+        row.last_authenticated_at = None
+    if changed_probe or changed_adapter:
+        row.last_monitor_status = "not_checked"
+        row.last_monitor_detail = ""
+        row.last_monitored_at = None
     db.commit()
+    if changed_adapter:
+        reset_activity_cache()
     result = _public_system_settings(row)
-    result["instructions"] = adapter_instructions(result["mail_server"])
+    result["instructions"] = adapter_instructions(result["mail_server"], result["engine_url"])
     return result
 
 
@@ -3448,6 +3497,9 @@ async def get_engine_signature(
     except SignatureEngineError as exc:
         db.rollback()
         raise _engine_http_exception(exc)
+    record_verified_adapter_activity(
+        SessionLocal, "engine",
+        on_change=lambda: portal_realtime_hub.publish("/api/admin/mail-adapter-setup"))
     return payload
 
 
@@ -3552,4 +3604,7 @@ async def stalwart_mta_hook(
         db.commit()
     else:
         db.rollback()
+    record_verified_adapter_activity(
+        SessionLocal, "stalwart",
+        on_change=lambda: portal_realtime_hub.publish("/api/admin/mail-adapter-setup"))
     return hook_response

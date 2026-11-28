@@ -4,6 +4,31 @@
 
 OpenSigWeave runs in its own Compose stack. The adapter runs inside Mailcow's Rspamd. Do not merge or replace Mailcow's bundled `rspamd.local.lua`.
 
+## Minimal Mailcow integration — same host or remote
+
+Open **Admin → System → Mail Server** in OpenSigWeave and choose Mailcow / Rspamd.
+Enter an OpenSigWeave engine HTTPS URL reachable **from the Rspamd container**.
+It may point to a trusted reverse proxy on the same host, a different Docker
+network or another server. You do not need to publish the Rspamd controller
+port or alter Mailcow's Docker host networking merely for monitoring.
+
+Copy the three-file installation commands onto the *Mailcow host*. Set
+OSW_REF to the exact tested OpenSigWeave revision. Only
+opensigweave.lua, opensigweave_mime.lua and opensigweave_cid.lua
+are required by the standard Rspamd adapter. The independent
+opensigweave_guard.lua is optional, experimental and **not** part of the
+minimal setup. Place the generated opensigweave section into your existing
+rspamd.conf.local, replacing REPLACE_WITH_YOUR_ENGINE_API_KEY with the
+actual secret on the mail server only; this secret is never returned by the
+web interface. Validate and restart Rspamd only when the configuration is ready.
+
+After the first successful API-key-authenticated adapter request OpenSigWeave
+remembers a connection timestamp, hides the setup instructions and displays the
+compact status plus Reconfigure Mail Server. The timer records API activity,
+**not successful signature injection or delivery**. No outgoing email for over
+eight hours displays Unverified, not an error. Read-only Rspamd controller
+module checks remain optional and separate from normal mail processing.
+
 ## Independent missing-plugin guard (experimental, opt-in; isolated Mailcow only)
 
 **Reproduced fail-closed gap, 24 November 2026:** with `rspamd-mailcow` running but `plugins.d/opensigweave.lua` disabled, Postfix SOGo submission accepted an email **without a signature**. The previous `milter_default_action=tempfail` did not protect this case because the Milter itself remained reachable. Issue #14 remains open.
@@ -38,7 +63,7 @@ docker compose logs --tail=80 rspamd-mailcow
 
 ## Install in a disposable Mailcow instance
 
-Run from the Mailcow checkout directory; substitute `/path/to/OpenSigWeave` for the checkout of the *same tested OpenSigWeave commit*.
+For manual installation when the tested OpenSigWeave checkout is already available on the Mailcow host, run from the Mailcow checkout directory; substitute `/path/to/OpenSigWeave` for the checkout of the *same tested OpenSigWeave commit*.
 
 ```bash
 cd /opt/mailcow-dockerized

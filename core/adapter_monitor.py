@@ -124,23 +124,44 @@ def probe(server: str, url: str, *, fetch=None, password: str | None = None) -> 
         return {"status": "unknown", "detail": "Controller probe unavailable or returned invalid data"}
 
 
-def adapter_instructions(server: str) -> dict[str, object]:
-    """Server-side commands are a single terminal block per supported adapter."""
-    if server == "mailcow_rspamd":
-        return {"supported": True, "title": "Mailcow / Rspamd",
-                "description": "Copy both Lua plugins and their two helpers onto the Mailcow host. Configure the existing Rspamd module with the OpenSigWeave engine URL and key; use failure_policy = enabled.",
-                "commands": "cd /opt/mailcow-dockerized\n"
-                    "install -m 0644 /opt/OpenSigWeave/rspamd/opensigweave.lua data/conf/rspamd/plugins.d/opensigweave.lua\n"
-                    "install -m 0644 /opt/OpenSigWeave/rspamd/opensigweave_guard.lua data/conf/rspamd/plugins.d/opensigweave_guard.lua\n"
-                    "install -m 0644 /opt/OpenSigWeave/rspamd/opensigweave_mime.lua data/conf/rspamd/lua/opensigweave_mime.lua\n"
-                    "install -m 0644 /opt/OpenSigWeave/rspamd/opensigweave_cid.lua data/conf/rspamd/lua/opensigweave_cid.lua\n"
-                    "docker compose exec -T rspamd-mailcow rspamadm configtest && docker compose restart rspamd-mailcow"}
-    if server == "rspamd":
-        return {"supported": True, "title": "Rspamd / other MTA",
-                "description": "Deploy the four Lua files in the server's Rspamd directories. Configure the existing Rspamd module and connect the MTA's authenticated submission path to Rspamd Milter. Exact commands depend on your distribution.",
-                "commands": ""}
+def adapter_instructions(server: str, engine_url: str = "") -> dict[str, object]:
+    """Minimal mail-host setup; does not depend on OpenSigWeave's Docker location.
+
+    The browser never receives an installed ENGINE_API_KEY. Download only the
+    three necessary Rspamd Lua assets from a pinned, tested Git commit.
+    """
+    if server in {"mailcow_rspamd", "rspamd"}:
+        mailcow = server == "mailcow_rspamd"
+        if mailcow:
+            commands = """cd /opt/mailcow-dockerized
+OSW_REF=REPLACE_WITH_TESTED_COMMIT
+install -d -m 0755 data/conf/rspamd/plugins.d data/conf/rspamd/lua
+curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave.lua" -o data/conf/rspamd/plugins.d/opensigweave.lua
+curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave_mime.lua" -o data/conf/rspamd/lua/opensigweave_mime.lua
+curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave_cid.lua" -o data/conf/rspamd/lua/opensigweave_cid.lua"""
+            verify = "docker compose exec -T rspamd-mailcow rspamadm configtest && docker compose restart rspamd-mailcow"
+        else:
+            commands = "Install the three required Lua files from the tested repository revision in your Rspamd plugin/Lua directories; see docs/ADAPTERS.md."
+            verify = "Validate the Rspamd configuration and reload its service using your distribution's tooling."
+        endpoint = engine_url or "https://YOUR_OPENSIGWEAVE_HOST/api/v1/engine/signatures/"
+        config = ('opensigweave {\n'
+                  '    api_url = "' + endpoint + '";\n'
+                  '    engine_api_key = "REPLACE_WITH_YOUR_ENGINE_API_KEY";\n'
+                  '    failure_policy = "disabled";\n'
+                  '}')
+        return {
+            "supported": True, "title": "Mailcow / Rspamd" if mailcow else "Rspamd / other MTA",
+            "description": ("Copy the module files onto the MAIL SERVER host, regardless of "
+                            "where OpenSigWeave runs. Add the configuration to the existing "
+                            "rspamd.conf.local and then validate/restart. The HTTPS endpoint "
+                            "must be reachable from Rspamd and the key must match ENGINE_API_KEY. "
+                            "No published controller port, Docker socket or extra service is required."),
+            "commands": commands, "config": config, "verify": verify,
+        }
     if server == "stalwart":
         return {"supported": True, "title": "Stalwart",
-                "description": "Configure the Stalwart outgoing MTA hook and shared authentication token as described in docs/ADAPTERS.md. No Rspamd changes required.", "commands": ""}
+                "description": "Configure the Stalwart DATA-stage hook using its Bearer token and the OpenSigWeave HTTPS URL described in docs/ADAPTERS.md. No Rspamd changes required.",
+                "commands": "", "config": "", "verify": ""}
     return {"supported": False, "title": "Other mail server",
-            "description": "No supported adapter selected. Review docs/ADAPTERS.md before sending production email.", "commands": ""}
+            "description": "Choose a supported adapter against the HTTPS engine API; see docs/ADAPTERS.md.",
+            "commands": "", "config": "", "verify": ""}

@@ -238,6 +238,8 @@ class SystemSetupDB(Base):
     monitoring_interval = Column(Integer, nullable=False, default=300)
     controller_url = Column(String(255), nullable=False, default="")
     setup_completed = Column(Boolean, nullable=False, default=False)
+    last_authenticated_at = Column(DateTime(timezone=True), nullable=True)
+    engine_url = Column(String(512), nullable=False, default="")
     last_monitor_status = Column(String(32), nullable=False, default="not_checked")
     last_monitor_detail = Column(String(255), nullable=False, default="")
     last_monitored_at = Column(DateTime(timezone=True), nullable=True)

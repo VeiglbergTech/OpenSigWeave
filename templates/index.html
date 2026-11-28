@@ -977,50 +977,91 @@
         </div>
         <div id="osw-system-status-panel" x-show="adminTab === 'system'" x-cloak x-data="systemStatusManager" x-init="start()" class="osw-admin-section space-y-5">
             <section class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4" aria-labelledby="mail-adapter-config-title">
-              <div>
-                <h3 id="mail-adapter-config-title" class="text-xl font-semibold">Mail server & adapter health monitoring</h3>
-                <p class="text-sm text-gray-400 mt-1">First-time setup: choose your mail server and review the exact integration instructions. Monitoring is optional and does not block email.</p>
-              </div>
-              <p x-show="!adapterSetupCompleted" class="text-sm text-amber-300" role="status">Mail-server onboarding is not finished. Select an adapter and save the settings.</p>
-              <div class="grid md:grid-cols-2 gap-4">
-                <label class="block text-sm">Mail server
-                  <select x-model="mailServer" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
-                    <option value="unconfigured">Choose a mail server</option>
-                    <option value="mailcow_rspamd">Mailcow / Rspamd</option>
-                    <option value="rspamd">Rspamd (other MTA)</option>
-                    <option value="stalwart">Stalwart</option>
-                    <option value="other">Other (adapter not yet configured)</option>
-                  </select>
-                </label>
-                <label class="block text-sm">Check interval (seconds: 30–3600)
-                  <input type="number" x-model.number="monitoringInterval" min="30" max="3600" step="1" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
-                </label>
-              </div>
-              <label class="flex items-center gap-3 text-sm">
-                <input type="checkbox" class="osw-switch" role="switch" x-model="monitoringEnabled">
-                Enable automatic adapter health checks
-              </label>
-              <label x-show="mailServer === 'mailcow_rspamd' || mailServer === 'rspamd'" class="block text-sm">
-                Optional private Rspamd controller URL (numeric private IP only, e.g. http://10.35.12.29:11334)
-                <input type="url" x-model.trim="controllerUrl" maxlength="255" placeholder="http://10.0.0.10:11334" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
-                <span class="text-xs text-gray-400">Uses the existing Rspamd /symbols endpoint. No new Lua plugin required. The endpoint must be reachable and accessible from OpenSigWeave.</span>
-              </label>
-              <div class="flex flex-wrap gap-4 items-center">
-                <button type="button" @click="saveAdapterSettings()" :disabled="savingAdapterSettings || loadingAdapterSettings" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm">Save mail-server settings</button>
-                <button type="button" @click="checkAdapterNow()" :disabled="adapterChecking || loadingAdapterSettings || savingAdapterSettings || mailServer === 'unconfigured'" class="osw-button osw-button--secondary" x-text="adapterChecking ? 'Checking…' : 'Check now'">Check now</button>
-                <span class="osw-health-result" role="status">Module registration: <strong x-text="adapterMonitorStatus"></strong></span>
-                <span class="text-xs text-gray-400">Last checked: <span x-text="adapterMonitorCheckedAt"></span></span>
-                <span class="text-xs text-gray-400" x-text="adapterMonitorDetail"></span>
-              </div>
-              <p x-show="adapterSettingsError" x-text="adapterSettingsError" role="alert" class="text-sm text-red-300"></p>
-              <div class="border-t border-gray-700 pt-4 space-y-3">
-                <h4 class="text-base font-semibold" x-text="adapterInstructions.title || 'Integration instructions'"></h4>
-                <p class="text-sm text-gray-300" x-text="adapterInstructions.description || 'Save a mail-server selection to see its installation instructions.'"></p>
-                <div x-show="adapterInstructions.commands" class="space-y-2">
-                  <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.commands"></code></pre>
-                  <button type="button" @click="copyAdapterCommands()" class="rounded bg-gray-700 hover:bg-gray-600 px-3 py-2 text-sm">Copy commands</button>
+              <div class="flex flex-wrap gap-3 justify-between items-start">
+                <div>
+                  <h3 id="mail-adapter-config-title" class="text-xl font-semibold">Mail Server</h3>
+                  <p class="text-sm text-gray-400 mt-1">Last successful authenticated adapter connection, not verified delivery or signature insertion.</p>
                 </div>
-                <p class="text-xs text-amber-300">Module registration is not an end-to-end mail test. Check a delivered authenticated message and its final DKIM signature after changes. Controller authentication uses an optional read-only password configured on the application host.</p>
+                <button x-show="adapterSetupCompleted" type="button" @click="adapterReconfigureOpen = !adapterReconfigureOpen"
+                        class="osw-button osw-button--secondary"
+                        x-text="adapterReconfigureOpen ? 'Close configuration' : 'Reconfigure Mail Server'">Reconfigure Mail Server</button>
+              </div>
+              <div class="flex flex-wrap gap-3 items-center text-sm" role="status" aria-live="polite">
+                <strong x-text="mailServerDisplayName">Mail server</strong>
+                <span class="osw-health-result" :class="mailServerStatus === 'Error' ? 'text-red-300' : (mailServerStatus === 'Unverified' ? 'text-amber-300' : 'text-green-300')"
+                      x-text="mailServerStatus">Unverified</span>
+                <span x-text="lastAuthenticatedDisplay" class="text-xs text-gray-400">Never connected</span>
+              </div>
+              <p class="text-xs text-gray-400">Active durations show time since the last authenticated interaction. No outgoing email can mean inactivity; this is not a continuous reachability or SMTP check.</p>
+              <div x-show="!adapterSetupCompleted || adapterReconfigureOpen" x-cloak class="space-y-4 border-t border-gray-700 pt-4">
+                <p x-show="!adapterSetupCompleted" class="text-sm text-amber-300" role="status">Integration not yet verified. Save the settings, configure your mail server, then make one authenticated adapter request. Saving or checking Rspamd modules alone cannot verify the connection.</p>
+                <div class="grid md:grid-cols-2 gap-4">
+                  <label class="block text-sm">Mail server / adapter
+                    <select x-model="mailServer" class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                      <option value="unconfigured">Choose a mail server</option>
+                      <option value="mailcow_rspamd">Mailcow / Rspamd</option>
+                      <option value="rspamd">Rspamd (other MTA)</option>
+                      <option value="stalwart">Stalwart</option>
+                      <option value="other">Other (custom HTTP engine adapter)</option>
+                    </select>
+                  </label>
+                  <label class="block text-sm">OpenSigWeave engine HTTPS endpoint
+                    <input type="url" x-model.trim="engineUrl" maxlength="512"
+                           placeholder="https://signatures.example.org/api/v1/engine/signatures/"
+                           class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                  </label>
+                </div>
+                <p class="text-xs text-gray-400">Use an HTTPS address reachable from the mail server. This works unchanged with the same Docker host, separate Docker networks or separate servers. A trusted TLS certificate and the existing API key are required.</p>
+                <div class="space-y-3 border border-gray-700 rounded-lg p-3">
+                  <label class="flex items-center gap-3 text-sm">
+                    <input type="checkbox" class="osw-switch" role="switch" x-model="monitoringEnabled">
+                    Enable optional advanced Rspamd module checks
+                  </label>
+                  <div x-show="monitoringEnabled" class="grid md:grid-cols-2 gap-4">
+                    <label class="block text-sm">Check interval (30–3600 seconds)
+                      <input type="number" x-model.number="monitoringInterval" min="30" max="3600"
+                             class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                    </label>
+                    <label class="block text-sm">Existing private Rspamd controller URL (optional)
+                      <input type="url" x-model.trim="controllerUrl" maxlength="255" placeholder="http://10.0.0.10:11334"
+                             class="mt-1 w-full rounded bg-gray-900 border border-gray-600 px-3 py-2">
+                    </label>
+                  </div>
+                  <p x-show="monitoringEnabled" class="text-xs text-gray-400">The optional check requires a preexisting reachable private controller. Do not publish a controller port or install a monitoring agent just for this feature.</p>
+                  <div x-show="monitoringEnabled" class="text-xs text-gray-400">
+                    Advanced module check: <strong x-text="adapterMonitorStatus"></strong>.
+                    Last checked: <span x-text="adapterMonitorCheckedAt"></span>.
+                    <span x-text="adapterMonitorDetail"></span>
+                    <button type="button" @click="checkAdapterNow()" :disabled="adapterChecking || loadingAdapterSettings || savingAdapterSettings || mailServer === 'unconfigured'"
+                            class="osw-button osw-button--secondary"
+                            x-text="adapterChecking ? 'Checking…' : 'Check advanced modules'">Check advanced modules</button>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-3 items-center">
+                  <button type="button" @click="saveAdapterSettings()" :disabled="savingAdapterSettings || loadingAdapterSettings"
+                          class="osw-button" x-text="savingAdapterSettings ? 'Saving…' : 'Save mail-server settings'">Save mail-server settings</button>
+                </div>
+                <p x-show="adapterSettingsError" x-text="adapterSettingsError" role="alert" class="text-sm text-red-300"></p>
+                <div class="border-t border-gray-700 pt-4 space-y-3">
+                  <h4 class="text-base font-semibold" x-text="adapterInstructions.title || 'Integration instructions'"></h4>
+                  <p class="text-sm text-gray-300" x-text="adapterInstructions.description || 'Save the mail-server selection to view installation instructions.'"></p>
+                  <div x-show="adapterInstructions.commands" class="space-y-2">
+                    <h5 class="font-semibold text-sm">1. Minimal files on the mail server</h5>
+                    <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.commands"></code></pre>
+                    <button type="button" @click="copyAdapterCommands()" class="osw-button osw-button--secondary">Copy installation commands</button>
+                  </div>
+                  <div x-show="adapterInstructions.config" class="space-y-2">
+                    <h5 class="font-semibold text-sm">2. Add to existing Rspamd configuration</h5>
+                    <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.config"></code></pre>
+                    <button type="button" @click="copyAdapterConfig()" class="osw-button osw-button--secondary">Copy Rspamd configuration</button>
+                    <p class="text-xs text-amber-300">Replace the API key placeholder on the mail server only; never paste credentials into this page. Choose your mail-processing failure policy separately from monitoring.</p>
+                  </div>
+                  <div x-show="adapterInstructions.verify" class="space-y-2">
+                    <h5 class="font-semibold text-sm">3. Validate and restart when configured</h5>
+                    <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.verify"></code></pre>
+                  </div>
+                  <p class="text-xs text-gray-400">A successful authenticated API response is not proof of an inserted signature, SMTP acceptance or valid DKIM. Verify a received test message separately.</p>
+                </div>
               </div>
             </section>
 

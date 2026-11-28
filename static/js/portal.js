@@ -2454,13 +2454,56 @@ function systemStatusManager() {
         alertLastUpdate: "—", alertIncidents: [],
         records: [],
         loadingAdapterSettings: false, savingAdapterSettings: false,
-        adapterSettingsError: "", adapterSetupCompleted: false,
+        adapterSettingsError: "", adapterSetupCompleted: false, adapterReconfigureOpen: false,
         mailServer: "unconfigured", monitoringEnabled: false,
-        monitoringInterval: 300, controllerUrl: "",
+        monitoringInterval: 300, controllerUrl: "", engineUrl: "",
+        lastAuthenticatedAt: null, lastMonitorStatus: "not_checked", lastMonitorAt: null,
+        statusClock: Date.now(), relativeClockTimer: null,
+        get mailServerDisplayName() {
+            return ({
+                mailcow_rspamd: "Mailcow / Rspamd", rspamd: "Rspamd",
+                stalwart: "Stalwart", other: "Other HTTP adapter",
+                unconfigured: "No mail server configured"
+            })[this.mailServer] || "Mail server";
+        },
+        get mailServerStatus() {
+            const now = this.statusClock;
+            const checked = this.lastMonitorAt ? Date.parse(this.lastMonitorAt) : NaN;
+            if (this.monitoringEnabled && this.lastMonitorStatus === "missing"
+                    && Number.isFinite(checked) && now >= checked
+                    && now - checked <= (Number(this.monitoringInterval) * 2 + 15) * 1000) {
+                return "Error";
+            }
+            const connected = this.lastAuthenticatedAt ? Date.parse(this.lastAuthenticatedAt) : NaN;
+            if (!Number.isFinite(connected)) return "Unverified";
+            const elapsed = Math.max(0, (now - connected) / 1000);
+            if (elapsed <= 120) return "Active";
+            if (elapsed < 3600) return "Active " + Math.floor(elapsed / 60) + "m";
+            if (elapsed <= 28800) {
+                const hours = Math.floor(elapsed / 3600);
+                const minutes = Math.floor(elapsed % 3600 / 60);
+                return "Active " + hours + "h" + (minutes ? " " + minutes + "m" : "");
+            }
+            return "Unverified";
+        },
+        get lastAuthenticatedDisplay() {
+            const value = this.lastAuthenticatedAt ? new Date(this.lastAuthenticatedAt) : null;
+            return value && Number.isFinite(value.getTime())
+                ? "Last authenticated: " + value.toLocaleString()
+                : "No authenticated adapter connection recorded";
+        },
         adapterMonitorStatus: "Not checked", adapterMonitorDetail: "",
         adapterMonitorCheckedAt: "—", adapterChecking: false,
         adapterInstructions: {},
         setAdapterMonitorState(adapter) {
+            if (!adapter || typeof adapter !== "object") return;
+            const firstVerified = !this.adapterSetupCompleted && !!adapter.setup_completed;
+            this.adapterSetupCompleted = !!adapter.setup_completed;
+            this.lastAuthenticatedAt = adapter.last_authenticated_at || null;
+            this.statusClock = Date.now();
+            this.lastMonitorStatus = adapter.last_monitor_status || "not_checked";
+            this.lastMonitorAt = adapter.last_monitored_at || null;
+            if (firstVerified) this.adapterReconfigureOpen = false;
             const statuses = {
                 configured: "Registered (not a mail test)", missing: "Modules missing",
                 auth_required: "Authentication required", unknown: "Unknown",
@@ -2482,6 +2525,8 @@ function systemStatusManager() {
         connectionListener: null,
         start() {
             void this.loadAdapterSettings();
+            // Update labels locally; no HTTP polling, full page refresh or extra service.
+            this.relativeClockTimer = setInterval(() => { this.statusClock = Date.now(); }, 30000);
             this.statusListener = event => this.applyStatus(event.detail);
             this.statusErrorListener = event => {
                 this.loading = false;
@@ -2504,6 +2549,8 @@ function systemStatusManager() {
             if (this.statusListener) window.removeEventListener("osw-realtime-status", this.statusListener);
             if (this.statusErrorListener) window.removeEventListener("osw-realtime-status-error", this.statusErrorListener);
             if (this.connectionListener) window.removeEventListener("osw-realtime-connection", this.connectionListener);
+            if (this.relativeClockTimer !== null) clearInterval(this.relativeClockTimer);
+            this.relativeClockTimer = null;
         },
         async loadAdapterSettings() {
             if (this.loadingAdapterSettings) return;
@@ -2516,10 +2563,11 @@ function systemStatusManager() {
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(data.detail || "Failed to fetch adapter configuration");
                 this.mailServer = data.mail_server;
+                this.engineUrl = data.engine_url || (window.location.protocol === "https:"
+                    ? window.location.origin + "/api/v1/engine/signatures/" : "");
                 this.monitoringEnabled = !!data.monitoring_enabled;
                 this.monitoringInterval = data.monitoring_interval;
                 this.controllerUrl = data.controller_url || "";
-                this.adapterSetupCompleted = !!data.setup_completed;
                 this.setAdapterMonitorState(data);
                 this.adapterInstructions = data.instructions || {};
                 this.adapterSettingsError = "";
@@ -2540,12 +2588,13 @@ function systemStatusManager() {
                         mail_server: this.mailServer,
                         monitoring_enabled: this.monitoringEnabled,
                         monitoring_interval: Number(this.monitoringInterval),
-                        controller_url: this.controllerUrl
+                        controller_url: this.controllerUrl,
+                        engine_url: this.engineUrl
                     })
                 });
                 const data = await response.json().catch(() => ({}));
                 if (!response.ok) throw new Error(typeof data.detail === "string" ? data.detail : "Invalid settings");
-                this.adapterSetupCompleted = !!data.setup_completed;
+                this.engineUrl = data.engine_url || this.engineUrl;
                 this.adapterInstructions = data.instructions || {};
                 this.setAdapterMonitorState(data);
                 this.adapterSettingsError = "";
@@ -2577,6 +2626,15 @@ function systemStatusManager() {
                 notify("Adapter check failed.", "error");
             } finally {
                 this.adapterChecking = false;
+            }
+        },
+        async copyAdapterConfig() {
+            if (!this.adapterInstructions.config) return;
+            try {
+                await navigator.clipboard.writeText(this.adapterInstructions.config);
+                notify("Rspamd configuration copied.");
+            } catch (_error) {
+                notify("Clipboard unavailable; select and copy the configuration manually.", "error");
             }
         },
         async copyAdapterCommands() {
@@ -2615,6 +2673,10 @@ function systemStatusManager() {
                 ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
             this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
             const adapter = data.mail_adapter || {};
+            if (adapter.mail_server && this.mailServer !== adapter.mail_server) {
+                // A concurrent administrator changed the configuration.
+                void this.loadAdapterSettings();
+            }
             this.setAdapterMonitorState(adapter);
             this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
                 key, label: labels[key] || key, count

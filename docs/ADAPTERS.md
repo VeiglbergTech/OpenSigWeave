@@ -87,6 +87,40 @@ A product is not considered supported merely because it can make HTTP requests. 
 
 The initial contract uses the existing `ENGINE_API_KEY` for backwards compatibility. Before production or multi-tenant use, replace the shared key with independently revocable adapter credentials (adapter ID, secret hash, enabled state, scopes, last-used timestamp and rotation/revocation workflow). Do not put adapter secrets in tracked Lua/config examples.
 
+## Built-in authenticated connection status
+
+Admin → System displays the selected mail server and the last successful authenticated
+adapter request to OpenSigWeave. The existing engine API (X-Engine-Key) and the
+Stalwart DATA hook (Bearer token) are the only sources of this activity timestamp.
+An unauthorized call, a failed engine request, saving the settings, or a successful
+Rspamd /symbols probe **never** completes initial verification.
+
+The timestamp is persisted in system_setup.last_authenticated_at, aggregated
+to at most about one write per 45 seconds across workers, and pushed to
+authenticated administrator WebSocket subscribers. The browser only updates
+relative labels locally: at most two minutes = Active; then Active Xm;
+from one to eight hours = Active Xh [Ym]; after eight hours = Unverified.
+There is **no** basic inactivity error; a confirmed missing Rspamd module is the
+only current optional advanced Error. Controller unavailable/unsupported
+remains unknown, not a negative inference about SMTP.
+
+A successful engine lookup does **not** prove MIME rewriting, SMTP acceptance,
+final DKIM verification or current Rspamd health. A configured mail adapter
+that sends no mail may appear Unverified. This mechanism uses the existing
+shared adapter credential; deployments needing cryptographically distinct
+mailserver identities should migrate to per-adapter revocable tokens when that
+feature becomes available.
+
+The same setup works when OpenSigWeave and a mailserver share a host, use
+different Docker networks, or run on separate hosts: configure a reachable
+HTTPS engine URL and trusted TLS certificate and the matching existing API
+key. No additional Compose service, published Rspamd controller port, Docker
+socket or monitoring plugin is required. OpenSigWeave's Admin → System screen
+offers the minimal Rspamd files and a copyable configuration template.
+Pin the Rspamd files to the same *tested* commit as the engine before enabling
+production mail. Reconfiguring the mail adapter or engine URL requires a fresh
+authenticated request; enabling advanced monitoring does not reset verification.
+
 ## Release gates
 
 An adapter is releasable only after unit/contract tests, static analysis, supported-version documentation and an isolated SMTP end-to-end test covering plain text, HTML, multipart/alternative, attachments, inline Content-IDs, transfer encodings, replies, retries, duplicate prevention, sender spoofing rejection and final DKIM validation. Unsupported MIME cases must be skipped safely, not corrupted.

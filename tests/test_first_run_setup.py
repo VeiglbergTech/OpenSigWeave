@@ -6,7 +6,7 @@ import unittest
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 os.environ.setdefault("SECRET_KEY", "a-secret-key-longer-than-thirty-two-characters")
 os.environ.setdefault("ENGINE_API_KEY", "a-different-engine-key-longer-than-thirty-two-characters")
@@ -156,6 +156,104 @@ class BrowserBootstrapTests(unittest.TestCase):
             self.assertIsNotNone(result.json()["last_monitored_at"])
             checked.assert_called_once()
 
+
+    def _login_and_configure_for_activity(self):
+        start = self.client.get("/setup")
+        fields = {
+            "csrf_token": self.csrf(start), "setup_token": self.token,
+            "email": "newadmin@example.org",
+            "password": "another correct horse battery",
+            "confirm_password": "another correct horse battery",
+        }
+        self.assertEqual(self.client.post("/setup", data=fields).status_code, 303)
+        response = self.client.get("/admin/system")
+        csrf = re.search(r'data-csrf-token="([^"]+)"', response.text).group(1)
+        payload = {
+            "mail_server": "rspamd", "monitoring_enabled": False,
+            "monitoring_interval": 300, "controller_url": "",
+            "engine_url": "https://app.example.org/api/v1/engine/signatures/",
+        }
+        saved = self.client.put("/api/admin/mail-adapter-setup",
+                                json=payload, headers={"X-CSRF-Token": csrf})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        self.assertFalse(saved.json()["setup_completed"])
+        return csrf, payload
+
+    def test_only_successful_authenticated_engine_call_verifies_setup(self):
+        from core.mail_activity import reset_activity_cache
+        reset_activity_cache()
+        csrf, payload = self._login_and_configure_for_activity()
+        with patch.object(main, "SessionLocal", self.Session), patch.object(
+                main, "resolve_signature_engine", new_callable=AsyncMock) as resolver:
+            resolver.return_value = SimpleNamespace(
+                to_payload=lambda: {"html": "", "inject_on_replies": False})
+            endpoint = "/api/v1/engine/signatures/sender@example.org"
+            bad = self.client.get(endpoint, headers={"X-Engine-Key": "wrong"})
+            self.assertEqual(bad.status_code, 401)
+            self.assertEqual(self.client.get("/api/admin/mail-adapter-setup").json()
+                             ["connection_status"], "Unverified")
+            good = self.client.get(endpoint, headers={"X-Engine-Key": main.ENGINE_API_KEY})
+            self.assertEqual(good.status_code, 200, good.text)
+        verified = self.client.get("/api/admin/mail-adapter-setup").json()
+        self.assertTrue(verified["setup_completed"])
+        self.assertEqual(verified["connection_status"], "Active")
+        self.assertIsNotNone(verified["last_authenticated_at"])
+        with self.Session() as reopened:
+            self.assertTrue(reopened.get(SystemSetupDB, 1).setup_completed)
+        self.assertEqual(self.client.get("/admin/system").status_code, 200)
+
+        payload["monitoring_enabled"] = True
+        payload["controller_url"] = "http://10.35.12.29:11334"
+        updated = self.client.put("/api/admin/mail-adapter-setup", json=payload,
+                                  headers={"X-CSRF-Token": csrf})
+        self.assertTrue(updated.json()["setup_completed"])
+        payload["engine_url"] = "https://other.example.org/api/v1/engine/signatures/"
+        updated = self.client.put("/api/admin/mail-adapter-setup", json=payload,
+                                  headers={"X-CSRF-Token": csrf})
+        self.assertFalse(updated.json()["setup_completed"])
+        self.assertEqual(updated.json()["connection_status"], "Unverified")
+        self.assertEqual(updated.json()["last_authenticated_at"], None)
+
+    def test_remote_https_endpoint_validation_and_advanced_status(self):
+        csrf, payload = self._login_and_configure_for_activity()
+        payload["engine_url"] = "http://remote.example.org/api/v1/engine/signatures/"
+        invalid = self.client.put("/api/admin/mail-adapter-setup", json=payload,
+                                  headers={"X-CSRF-Token": csrf})
+        self.assertEqual(invalid.status_code, 422)
+        payload["engine_url"] = "https://remote.example.org"
+        valid = self.client.put("/api/admin/mail-adapter-setup", json=payload,
+                                headers={"X-CSRF-Token": csrf})
+        self.assertEqual(valid.status_code, 200, valid.text)
+        self.assertEqual(valid.json()["engine_url"],
+                         "https://remote.example.org/api/v1/engine/signatures/")
+        from datetime import datetime, timezone
+        from main import _public_system_settings
+        with self.Session() as db:
+            row = db.get(SystemSetupDB, 1)
+            row.monitoring_enabled = True
+            row.last_monitor_status = "unknown"
+            row.last_monitored_at = datetime.now(timezone.utc)
+            self.assertEqual(_public_system_settings(row)["connection_status"], "Unverified")
+            row.last_monitor_status = "missing"
+            self.assertEqual(_public_system_settings(row)["connection_status"], "Error")
+            row.monitoring_enabled = False
+            self.assertEqual(_public_system_settings(row)["connection_status"], "Unverified")
+
+    def test_websocket_reconnect_replays_authorized_status_snapshot(self):
+        self._login_and_configure_for_activity()
+        with patch.object(main, "SessionLocal", self.Session):
+            for _ in range(2):
+                with self.client.websocket_connect("/ws/portal", headers={
+                        "Origin": "https://app.example.org"}) as socket:
+                    hello = socket.receive_json()
+                    self.assertEqual(hello["type"], "ready")
+                    self.assertTrue(hello["status_available"])
+                    socket.send_json({"type": "subscribe-status"})
+                    snapshot = socket.receive_json()
+                    self.assertEqual(snapshot["type"], "system-status")
+                    self.assertEqual(snapshot["data"]["mail_adapter"]["connection_status"],
+                                     "Unverified")
+
     def test_monitoring_preferences_require_admin(self):
         self.assertEqual(self.client.get("/api/admin/mail-adapter-setup").status_code, 403)
 
@@ -185,7 +283,7 @@ class BrowserBootstrapTests(unittest.TestCase):
         saved = self.client.put("/api/admin/mail-adapter-setup", json=payload,
                                 headers={"X-CSRF-Token": csrf})
         self.assertEqual(saved.status_code, 200, saved.text)
-        self.assertTrue(saved.json()["setup_completed"])
+        self.assertFalse(saved.json()["setup_completed"])
         self.assertTrue(saved.json()["instructions"]["supported"])
         with self.Session() as db:
             row = db.get(SystemSetupDB, 1)
