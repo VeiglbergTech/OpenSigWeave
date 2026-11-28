@@ -2780,6 +2780,11 @@ function initOswDialogs() {
     )].filter(el => visible(el) && !el.closest('[inert]'));
     const focus = dialog => {
         if (!visible(dialog) || top() !== dialog) return;
+        // A delayed initial-focus callback must never steal focus from an input
+        // the user or a browser automation already selected in this dialog.
+        // In particular, OIDC provider field updates re-render Alpine markup
+        // while Playwright fills adjacent inputs in quick succession.
+        if (dialog.contains(document.activeElement) && visible(document.activeElement)) return;
         const el = focusables(dialog).find(item => item.matches('input:not([type="hidden"]):not([type="checkbox"]), textarea, select')) || focusables(dialog)[0];
         if (el) el.focus({ preventScroll: true });
         else { dialog.tabIndex = -1; dialog.focus({ preventScroll: true }); }

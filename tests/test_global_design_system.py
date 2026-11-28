@@ -32,6 +32,13 @@ class GlobalDesignSystemTests(unittest.TestCase):
         self.assertIn(':aria-pressed="signature.is_active"', HTML)
         self.assertIn('item.status === \'failed\' ? \'text-red-300\'', HTML)
 
+    def test_initial_dialog_focus_never_steals_active_field(self):
+        portal = (ROOT / "static/js/portal.js").read_text(encoding="utf-8")
+        coordinator = portal.split("function initOswDialogs()", 1)[1]
+        self.assertIn("dialog.contains(document.activeElement) && visible(document.activeElement)", coordinator)
+        self.assertIn("requestAnimationFrame(() => focus(dialog))", coordinator)
+        self.assertIn("if (top()) focus(top())", coordinator)
+
     def test_dialog_backdrop_is_single_and_theme_aware(self):
         self.assertEqual(HTML.count('id="osw-modal-backdrop"'), 1)
         self.assertIn(':root[data-theme="light"] .osw-dialog-backdrop', CSS)
