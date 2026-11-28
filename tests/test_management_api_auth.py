@@ -138,7 +138,9 @@ class ManagementKeyAuthorizationTests(unittest.TestCase):
                     self.assertIn("no-store", response.headers.get("cache-control", ""))
             # Credentials are strictly scoped: no automatic browser or personal identity.
             self.assertEqual(self.client.get("/", headers=headers, follow_redirects=False).status_code, 303)
-            self.assertEqual(self.client.get("/admin/system", headers=headers).status_code, 403)
+            browser = self.client.get("/admin/system", headers=headers, follow_redirects=False)
+            self.assertEqual(browser.status_code, 303)
+            self.assertEqual(browser.headers["location"], "/login")
             self.assertEqual(self.client.get("/api/my-signature", headers=headers).status_code, 401)
             self.assertEqual(self.client.get(
                 "/api/v1/engine/signatures/user@example.org", headers=headers
