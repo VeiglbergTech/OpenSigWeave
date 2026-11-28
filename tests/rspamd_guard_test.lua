@@ -9,6 +9,9 @@ package.preload["rspamd_logger"] = function()
         end
     }
 end
+package.preload["ucl"] = function()
+    return { parser = function() return {parse_string = function() return true end, get_object = function() return {} end} end }
+end
 package.preload["rspamd_util"] = function()
     return { random_hex = function(n) assert(n == 8); return "0011aabb" end }
 end
