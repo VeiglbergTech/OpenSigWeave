@@ -55,7 +55,7 @@ Use a system font stack (Segoe UI, Inter, Arial, sans-serif; no mandatory extern
 | Input/select/button | 14px | 400–500 | Min. 40px high; 44px touch target |
 | Border radius | 8px card, 6px control, 14px dialog | — | No random combinations |
 
-Spacing scale: **4 / 8 / 12 / 16 / 24 / 32px**. Field label -> input 6–8px; field -> field 16px; control grouping 8–12px; card padding 20–24px desktop, 16px mobile; page grid gap 24px; section gap 24–32px. Consistent page max width approx. 1280px, centered. Sections always align to the same horizontal edge.
+Spacing scale: **4 / 8 / 12 / 16 / 24 / 32px**. Field label -> input 6–8px; field -> field 16px; control grouping 8–12px; card padding 20–24px desktop, 16px mobile; page grid gap 24px; section gap 24–32px. Use fluid administration and editor content width with responsive gutters (no global fixed maximum width); constrain only prose or forms that benefit from a readable measure. Sections always align to the same horizontal edge.
 
 The global app bar, admin navigation and section heading use separate but consistent hierarchy. Do not make some tab headings bold while others are plain. Display page title at 24px/600; make sub-navigation obvious with an active indicator beyond background color.
 
