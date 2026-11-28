@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
@@ -41,7 +42,16 @@ COMMIT = re.compile(r"[a-f0-9]{40}\Z")
 
 
 def digest(data: bytes) -> str:
+    """SHA-256 for nonsecret adapter file integrity only."""
     return hashlib.sha256(data).hexdigest()
+
+
+def block_mac(block: str, api_key: str) -> str:
+    """Protect the credential-bearing block using a keyed MAC, not a bare digest."""
+    if len(api_key) < 32:
+        raise ValueError("Invalid ENGINE_API_KEY for managed configuration verification")
+    return hmac.new(api_key.encode("utf-8"), block.encode("utf-8"),
+                    hashlib.sha256).hexdigest()
 
 
 def run(args: list[str], cwd: Path | None = None) -> None:
@@ -133,7 +143,7 @@ def managed_block(url: str, secret: str) -> str:
             + "}\n" + END)
 
 
-def split_config(existing: str, state: dict | None) -> tuple[str, str | None]:
+def split_config(existing: str, state: dict | None, key: str | None = None) -> tuple[str, str | None]:
     nstart, nend = existing.count(BEGIN), existing.count(END)
     if nstart != nend or nstart > 1:
         raise ValueError("Conflicting OpenSigWeave managed block markers; refusing update")
@@ -142,7 +152,11 @@ def split_config(existing: str, state: dict | None) -> tuple[str, str | None]:
         head, remaining = existing.split(BEGIN, 1)
         body, tail = remaining.split(END, 1)
         old = BEGIN + body + END
-        if not state or digest(old.encode()) != state["block_hash"]:
+        if not state:
+            raise ValueError("Existing managed block has no trusted installation state")
+        if key is None:
+            key = _key()
+        if not hmac.compare_digest(block_mac(old, key), state["block_hash"]):
             raise ValueError("Existing managed configuration was changed; refusing to overwrite")
         existing = head + tail
     if re.search(r"(?m)^\s*opensigweave\s*\{", existing):
@@ -263,7 +277,7 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
             "root": str(root), "revision": revision, "engine_url": url,
             "files": {src: digest(values[src]) for src in FILES},
             "sync_hash": digest(values["scripts/sync_domain_policy.py"]),
-            "block_hash": digest(block.encode()),
+            "block_hash": block_mac(block, key),
         }
         atomic(STATE, (json.dumps(next_state, sort_keys=True) + "\n").encode(), 0o600)
         run(["docker", "compose", "exec", "-T", "rspamd-mailcow",
