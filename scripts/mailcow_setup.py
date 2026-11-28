@@ -108,8 +108,10 @@ def load_state() -> dict | None:
     if data is None:
         return None
     value = json.loads(data)
-    if (not isinstance(value, dict) or set(value) != {"root", "revision", "engine_url", "files", "block_hash"}
+    if (not isinstance(value, dict) or set(value) != {"root", "revision", "engine_url", "files", "block_hash", "sync_hash"}
             or not COMMIT.fullmatch(value["revision"])
+            or not isinstance(value["sync_hash"], str)
+            or not re.fullmatch(r"[a-f0-9]{64}", value["sync_hash"])
             or not isinstance(value["files"], dict) or set(value["files"]) != set(FILES)
             or not all(isinstance(v, str) and re.fullmatch(r"[a-f0-9]{64}", v)
                        for v in value["files"].values())):
@@ -183,6 +185,9 @@ def status(root: Path) -> None:
         current = checked_regular(root / "data/conf/rspamd" / rel)
         if current is None or digest(current) != state["files"][source]:
             raise ValueError("Missing or modified Rspamd adapter: " + rel)
+    helper = checked_regular(RUNTIME / "sync_domain_policy.py")
+    if helper is None or digest(helper) != state["sync_hash"]:
+        raise ValueError("Missing or modified synchronization helper")
     conf = (root / "data/conf/rspamd/rspamd.conf.local").read_text()
     split_config(conf, state)
     run([sys.executable, str(RUNTIME / "sync_domain_policy.py"), "--status",
@@ -220,15 +225,23 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
     RUNTIME.mkdir(mode=0o755, parents=True, exist_ok=True)
     local_sync = RUNTIME / "sync_domain_policy.py"
     existing_sync = checked_regular(local_sync)
-    if existing_sync is not None and not previous and existing_sync != values["scripts/sync_domain_policy.py"]:
-        raise ValueError("Existing, unmanaged synchronization helper")
+    if existing_sync is not None:
+        if previous and digest(existing_sync) != previous["sync_hash"]:
+            raise ValueError("Locally edited synchronization helper; refusing overwrite")
+        if not previous and existing_sync != values["scripts/sync_domain_policy.py"]:
+            raise ValueError("Existing, unmanaged synchronization helper")
     atomic(local_sync, values["scripts/sync_domain_policy.py"], 0o644)
+    policy_directory = root / "data/conf/rspamd/local.d"
+    if policy_directory.is_symlink():
+        raise ValueError("Refusing symlinked Rspamd local.d directory")
+    policy_directory.mkdir(parents=True, exist_ok=True, mode=0o755)
     sync_policy(root, url)
     block = managed_block(url, key)
     new_config = (rest + "\n\n" if rest else "") + block + "\n"
     if original_conf == new_config and previous and previous["revision"] == revision:
         print("Already prepared at the same revision; configuration left unchanged")
         return
+    conf_mode = stat.S_IMODE(conf_path.stat().st_mode) if raw_conf is not None else 0o644
     backup = {str(conf_path): raw_conf}
     for src, rel in FILES.items():
         path = root / "data/conf/rspamd" / rel
@@ -242,6 +255,7 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
         next_state = {
             "root": str(root), "revision": revision, "engine_url": url,
             "files": {src: digest(values[src]) for src in FILES},
+            "sync_hash": digest(values["scripts/sync_domain_policy.py"]),
             "block_hash": digest(block.encode()),
         }
         atomic(STATE, (json.dumps(next_state, sort_keys=True) + "\n").encode(), 0o600)
@@ -253,7 +267,7 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
             if content is None:
                 target.unlink(missing_ok=True)
             else:
-                atomic(target, content, 0o600 if target == conf_path else 0o644)
+                atomic(target, content, conf_mode if target == conf_path else 0o644)
         if previous is None:
             STATE.unlink(missing_ok=True)
         else:
@@ -267,6 +281,8 @@ def activate(root: Path) -> None:
     if shutil.which("systemctl") is None or not Path("/run/systemd/system").is_dir():
         raise ValueError("Automatic synchronization requires a systemd timer; configure an equivalent root cron job manually")
     state = load_state()
+    if not re.fullmatch(r"[A-Za-z0-9_./-]+", str(root)):
+        raise ValueError("Mailcow directory contains unsupported systemd path characters")
     url = state["engine_url"].removesuffix(ENGINE_SUFFIX) + "/api/v1/mail/domain-policy"
     destination = root / "data/conf/rspamd" / POLICY_REL
     service = ("[Unit]\nDescription=OpenSigWeave authenticated domain policy synchronization\n"
