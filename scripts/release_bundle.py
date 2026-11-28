@@ -104,7 +104,7 @@ def build(root: Path, tag: str, revision: str, output: Path) -> None:
             item.mtime = 0
             item.uid = item.gid = 0
             item.uname = item.gname = ""
-            item.mode = 0o755 if path in ("install.sh", "update.sh", "generate_config.sh") else 0o644
+            item.mode = 0o700 if path in ("install.sh", "update.sh", "generate_config.sh") else 0o600
             archive.addfile(item, io.BytesIO(raw))
     if output.stat().st_size > MAX_ARCHIVE_BYTES:
         output.unlink()
@@ -215,7 +215,7 @@ def fetch_verified_bundle(tag: str, directory: Path) -> tuple[Path, dict]:
                 target = staging / member.name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(raw)
-                target.chmod(0o755 if member.name.endswith(".sh") else 0o644)
+                target.chmod(0o700 if member.name.endswith(".sh") else 0o600)
         manifest = read_manifest(staging)
         if manifest["revision"] != expected_revision or manifest["tag"] != tag:
             raise ValueError("Published package identity differs from approved release tag")
@@ -245,7 +245,7 @@ def install_files(staging: Path, root: Path) -> None:
                 stream.write(source.read_bytes())
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.chmod(tmp, 0o755 if path.endswith(".sh") else 0o644)
+            os.chmod(tmp, 0o700 if path.endswith(".sh") else 0o600)
             os.replace(tmp, target)
         finally:
             if os.path.exists(tmp):
