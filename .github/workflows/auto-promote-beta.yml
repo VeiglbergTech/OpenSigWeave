@@ -17,7 +17,8 @@ concurrency:
 jobs:
   promote:
     name: Promote dev only after all source push checks pass
-    if: github.repository == 'VeiglbergTech/OpenSigWeave'
+    # A dev-only push must not be promoted, even when its CI is green.
+    if: github.repository == 'VeiglbergTech/OpenSigWeave' && !contains(github.event.head_commit.message, '[dev-only]')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

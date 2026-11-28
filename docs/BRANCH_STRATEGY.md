@@ -132,3 +132,7 @@ Release PR checklist:
 As long as the GitHub App cannot configure branch protection, the above
 rulesets require manual repository-administrator action. Do not treat the
 policy as fully enforced until the rules appear as **Active** in GitHub.
+
+## Dev-only changes
+
+A dev commit with `[dev-only]` in its head commit message runs normal push Tests and Security scan but the automatic dev-to-beta promotion job is skipped. Use this for work explicitly authorized on `dev` only. Follow-up commits must retain the marker until promotion is explicitly approved. This does not bypass any CI checks or change existing branch protection on `beta` or `main`.

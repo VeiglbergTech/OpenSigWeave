@@ -74,6 +74,7 @@ class BranchStrategyConfigurationTests(unittest.TestCase):
         self.assertIn("CI_PROMOTION_APP_PRIVATE_KEY", workflow)
         self.assertIn('GH_TOKEN: ${{ steps.app-token.outputs.token }}', workflow)
         self.assertIn("permission-contents: write", workflow)
+        self.assertIn("!contains(github.event.head_commit.message, '[dev-only]')", workflow)
         self.assertIn("permission-actions: read", workflow)
         self.assertIn("permissions:\n  contents: read\n  actions: read", workflow)
         self.assertNotIn("pull-requests: write", workflow)
