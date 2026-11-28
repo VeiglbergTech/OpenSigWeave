@@ -1,0 +1,80 @@
+name: Attach verified minimal installer to approved GitHub Release
+
+# This never creates a new release, Docker image or Git branch. Only a
+# pre-existing, manually published, non-draft release of a main-approved tag
+# can receive its own exact-version minimal installation bundle.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  packages: read
+
+concurrency:
+  group: opensigweave-release-installer-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    if: github.repository == 'VeiglbergTech/OpenSigWeave'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out approved release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Verify published release points at approved main history
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.event.release.tag_name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip --version
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$VERSION^{}")"
+          python3 - <<'PY'
+          import json,os,subprocess
+          from scripts.release_bundle import TAG
+          version=os.environ["VERSION"]
+          if not TAG.fullmatch(version):
+              raise SystemExit("Unsupported release version")
+          item=json.loads(subprocess.check_output(
+              ["gh","api",f"repos/{os.environ['GH_REPO']}/releases/{os.environ['RELEASE_ID']}"]))
+          if item.get("draft") or item.get("tag_name") != version or not item.get("published_at"):
+              raise SystemExit("Release is not approved and published")
+          main=subprocess.check_output(["git","rev-parse","origin/main"],text=True).strip()
+          rev=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          ancestor=subprocess.check_output(["git","merge-base",rev,main],text=True).strip()
+          if ancestor!=rev:
+              raise SystemExit("Published release must be an ancestor of approved main")
+          PY
+      - name: Package minimal host-side release files
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          python3 scripts/release_bundle.py --tag "$VERSION" --revision "$(git rev-parse HEAD)" --output "dist/opensigweave-$VERSION-install.tar.gz"
+          sha256sum "dist/opensigweave-$VERSION-install.tar.gz"
+      - name: Attach installer artifact without replacing any published asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ github.event.release.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ASSET="opensigweave-$VERSION-install.tar.gz"
+          if gh release view "$VERSION" --json assets --jq '.assets[].name' | grep -Fx "$ASSET"; then
+            echo "::error::Release installer asset already exists; refusing to overwrite"
+            exit 1
+          fi
+          gh release upload "$VERSION" "dist/$ASSET" --repo "$GH_REPO"
+          gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest' | grep -E '^sha256:[0-9a-f]{64}$'

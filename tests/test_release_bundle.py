@@ -1,0 +1,129 @@
+"""Offline release-package integrity, host-file scope and Gitless identity tests."""
+import hashlib
+import io
+import json
+from pathlib import Path
+import tarfile
+import tempfile
+import unittest
+from unittest.mock import patch
+
+from scripts import release_bundle as bundle
+from scripts import deploy_common
+
+
+class MinimalReleaseBundleTests(unittest.TestCase):
+    VERSION = "2026.11-alpha"
+    SHA = "a" * 40
+
+    def _source(self, root):
+        for path in bundle.FILES:
+            location = root / path
+            location.parent.mkdir(parents=True, exist_ok=True)
+            location.write_text(f"# bundled {path}\n", encoding="utf-8")
+
+    def test_build_verifies_exact_allowlist_and_integrity(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "source"
+            root.mkdir()
+            self._source(root)
+            output = Path(work) / "bundle.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, output)
+            self.assertLess(output.stat().st_size, bundle.MAX_ARCHIVE_BYTES)
+            with tarfile.open(output) as archive:
+                names = {m.name for m in archive.getmembers()}
+                self.assertEqual(names, set(bundle.FILES) | {bundle.MANIFEST})
+                self.assertFalse(any("test" in n or ".git" in n or ".env.example" == n + ".bad" for n in names))
+                target = Path(work) / "installed"
+                target.mkdir()
+                for member in archive:
+                    item = target / member.name
+                    item.parent.mkdir(parents=True, exist_ok=True)
+                    item.write_bytes(archive.extractfile(member).read())
+            self.assertEqual(bundle.read_manifest(target)["revision"], self.SHA)
+            (target / "compose.yaml").write_text("tampered", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                bundle.read_manifest(target)
+
+    def test_install_files_preserves_local_data_secrets_and_rejects_symlink(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "source"
+            root.mkdir()
+            self._source(root)
+            bundle_path = Path(work) / "release.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, bundle_path)
+            staged = Path(work) / "staging"
+            staged.mkdir()
+            with tarfile.open(bundle_path) as archive:
+                for member in archive:
+                    dest = staged / member.name
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    dest.write_bytes(archive.extractfile(member).read())
+            live = Path(work) / "live"
+            live.mkdir()
+            secret = live / ".env"
+            secret.write_text("KEEP_TOKEN=unchanged\n", encoding="utf-8")
+            data = live / "signatures"
+            data.mkdir()
+            (data / "signature.html").write_text("keep", encoding="utf-8")
+            bundle.install_files(staged, live)
+            self.assertEqual(secret.read_text(), "KEEP_TOKEN=unchanged\n")
+            self.assertEqual((data / "signature.html").read_text(), "keep")
+            self.assertEqual(bundle.read_manifest(live)["tag"], self.VERSION)
+            (live / "install.sh").unlink()
+            (live / "install.sh").symlink_to(secret)
+            with self.assertRaises(ValueError):
+                bundle.install_files(staged, live)
+            self.assertEqual(secret.read_text(), "KEEP_TOKEN=unchanged\n")
+
+    def test_verified_bundle_requires_expected_api_asset_digest_and_revision(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "source"
+            root.mkdir()
+            self._source(root)
+            output = Path(work) / "archive.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, output)
+            raw = output.read_bytes()
+            digest = hashlib.sha256(raw).hexdigest()
+            release = {
+                "assets": [{
+                    "name": bundle.asset_name(self.VERSION),
+                    "digest": "sha256:" + digest,
+                    "browser_download_url": "https://github.com/VeiglbergTech/OpenSigWeave/releases/download/"
+                        + self.VERSION + "/" + bundle.asset_name(self.VERSION),
+                }]
+            }
+            with patch.object(bundle, "release_commit_sha", return_value=self.SHA), \
+                 patch.object(bundle, "_api", return_value=release), \
+                 patch.object(bundle, "_download", return_value=raw):
+                staging, manifest = bundle.fetch_verified_bundle(self.VERSION, Path(work) / "extract")
+                self.assertEqual(manifest["revision"], self.SHA)
+                self.assertTrue((staging / "install.sh").exists())
+            release["assets"][0]["digest"] = "sha256:" + "0" * 64
+            with patch.object(bundle, "release_commit_sha", return_value=self.SHA), \
+                 patch.object(bundle, "_api", return_value=release), \
+                 patch.object(bundle, "_download", return_value=raw):
+                with self.assertRaises(ValueError):
+                    bundle.fetch_verified_bundle(self.VERSION, Path(work) / "reject")
+
+    def test_bundle_without_git_is_recognized_but_unverified_changes_rejected(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work)
+            self._source(root)
+            bundle_path = root / "release.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, bundle_path)
+            with tarfile.open(bundle_path) as archive:
+                member = archive.extractfile(bundle.MANIFEST)
+                (root / bundle.MANIFEST).write_bytes(member.read())
+            with patch.object(deploy_common, "ROOT", root):
+                self.assertTrue(deploy_common.bundle_mode())
+                self.assertEqual(deploy_common.current_channel(), "main")
+                self.assertEqual(deploy_common.current_sha(), self.SHA)
+                deploy_common.pristine()
+                (root / "install.sh").write_text("# malicious", encoding="utf-8")
+                with self.assertRaises(deploy_common.DeploymentError):
+                    deploy_common.pristine()
+
+
+if __name__ == "__main__":
+    unittest.main()
