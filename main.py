@@ -69,7 +69,10 @@ from core.branding import (
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES, DEFAULT_SIGNATURE_IMAGE_BYTES
-from signature_deletion import inspect_signature_deletion, delete_signature_with_cleanup
+from signature_deletion import (
+    inspect_signature_deletion, delete_signature_with_cleanup,
+    reconcile_staged_signature_deletes,
+)
 from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
@@ -398,6 +401,13 @@ class SignatureScheduleRequest(NoLegacySignatureSelectionRequest):
 
 # 3. FastAPI App Initialization
 app = FastAPI(title="OpenSigWeave API", version="1.0.0", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@app.on_event("startup")
+def recover_interrupted_signature_deletions():
+    """Reconcile quarantined HTML with committed SQL before serving requests."""
+    with SessionLocal() as db:
+        reconcile_staged_signature_deletes(db, signature_file_store)
 
 @app.on_event("startup")
 def migrate_legacy_identity_provider_configuration():

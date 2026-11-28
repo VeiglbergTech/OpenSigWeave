@@ -9,7 +9,6 @@ import tempfile
 import uuid
 import stat
 import shutil
-import time
 
 
 class SignatureStorageError(Exception):
@@ -51,7 +50,6 @@ class SignatureFileStore:
         self.assets_root.mkdir(mode=0o700, exist_ok=True)
         if self.assets_root.is_symlink() or not self.assets_root.is_dir():
             raise SignatureStorageError("Signature asset directory root must be a real directory")
-        self.cleanup_staged_signature_deletes()
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -206,19 +204,20 @@ class SignatureFileStore:
     # A same-filesystem directory rename is the only atomic boundary available
     # for coordinating SQL metadata deletion with HTML files. Shared image
     # assets are not owned by an individual signature and are never touched.
-    _DELETED_NAME = re.compile(r"\.deleted-[0-9a-f]{32}\Z")
+    _DELETED_NAME = re.compile(r"\.deleted-([0-9a-f]{32})-([0-9a-f]{32})\Z")
 
-    def stage_signature_delete(self, signature_name: str) -> str:
+    def stage_signature_delete(self, signature_name: str, signature_id: str) -> str:
+        if not isinstance(signature_id, str) or not re.fullmatch(r"[0-9a-f]{32}", signature_id):
+            raise SignatureStorageError("Invalid signature identifier")
         source = self._signature_dir(signature_name)
         if source.is_symlink() or not source.is_dir():
             raise SignatureStorageError("Signature directory is unavailable or unsafe")
-        token = ".deleted-" + uuid.uuid4().hex
+        token = ".deleted-" + signature_id + "-" + uuid.uuid4().hex
         destination = self.signatures_root / token
         if destination.exists() or destination.is_symlink():
             raise SignatureStorageError("Signature delete staging collision")
         try:
             os.rename(source, destination)
-            os.utime(destination, None)  # age is measured from staging, not creation
         except OSError as exc:
             if destination.is_dir() and not destination.is_symlink() and not source.exists():
                 try:
@@ -255,17 +254,12 @@ class SignatureFileStore:
         except OSError as exc:
             raise SignatureStorageError("Unable to purge staged signature") from exc
 
-    def cleanup_staged_signature_deletes(self) -> None:
-        """Retry post-commit cleanup after a crash; avoid in-flight recent stages."""
+    def iter_staged_signature_deletes(self):
+        """Yield signature identity and quarantine token for database-aware recovery."""
         for entry in self.signatures_root.iterdir():
-            if not self._DELETED_NAME.fullmatch(entry.name) or entry.is_symlink():
-                continue
-            try:
-                if time.time() - entry.stat().st_mtime >= 600:
-                    self.purge_staged_signature(entry.name)
-            except (OSError, SignatureStorageError):
-                # Cleanup must not prevent the application from starting.
-                pass
+            match = self._DELETED_NAME.fullmatch(entry.name)
+            if match and not entry.is_symlink() and entry.is_dir():
+                yield match.group(1), entry.name
 
     def write_image(self, payload: bytes, content_type: str, *, max_bytes: int = DEFAULT_SIGNATURE_IMAGE_BYTES) -> str:
         """Persist a bounded immutable PNG/JPEG/GIF asset and return its hash filename."""

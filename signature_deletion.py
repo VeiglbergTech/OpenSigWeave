@@ -128,7 +128,8 @@ def delete_signature_with_cleanup(db: Session, store: SignatureFileStore, signat
 
     impact = inspect_signature_deletion(db, signature_id)
     marker = _marker_pattern(signature.name)
-    staged = store.stage_signature_delete(signature.name)
+    signature_name = signature.name
+    staged = store.stage_signature_delete(signature_name, signature_id)
     try:
         # Keep rule definitions and conditions for later administrator repair.
         for rule in db.query(SignatureRuleDB).filter(
@@ -198,7 +199,7 @@ def delete_signature_with_cleanup(db: Session, store: SignatureFileStore, signat
     except Exception:
         db.rollback()
         try:
-            store.restore_staged_signature(signature.name, staged)
+            store.restore_staged_signature(signature_name, staged)
         except Exception as restore_exc:
             logger.critical("Could not restore signature directory after database rollback", exc_info=True)
             raise SignatureStorageError(
@@ -207,8 +208,7 @@ def delete_signature_with_cleanup(db: Session, store: SignatureFileStore, signat
         raise
 
     # Post-commit unlink is not atomic with the SQL transaction. A failure is
-    # reported as pending cleanup, not as a failed DB deletion. The quarantined
-    # directory cannot be selected by the engine and is retried at store startup.
+    # reported as pending cleanup; recovery checks the database before unlinking.
     cleanup_pending = False
     try:
         store.purge_staged_signature(staged)
@@ -217,3 +217,30 @@ def delete_signature_with_cleanup(db: Session, store: SignatureFileStore, signat
         logger.exception("Signature deleted from database; staged files need cleanup")
 
     return {"status": "deleted", "impact": impact, "files_cleanup_pending": cleanup_pending}
+
+
+def reconcile_staged_signature_deletes(db: Session, store: SignatureFileStore) -> None:
+    """Recover crash-interrupted deletions after the database becomes available.
+
+    A row means the deletion transaction rolled back and its directory must be
+    restored. No row means the commit succeeded and quarantine may be purged.
+    A nowait row lock prevents touching a live deletion in another worker.
+    This must never run at SignatureFileStore initialization without a DB.
+    """
+    for signature_id, token in store.iter_staged_signature_deletes():
+        try:
+            signature = db.execute(
+                select(SignatureDB).where(SignatureDB.id == signature_id)
+                .with_for_update(nowait=True)
+            ).scalar_one_or_none()
+            if signature is not None:
+                store.restore_staged_signature(signature.name, token)
+                logger.warning("Recovered HTML files for interrupted signature deletion")
+            else:
+                store.purge_staged_signature(token)
+            db.commit()
+        except Exception:
+            db.rollback()
+            # A locked row, a storage collision or a temporary DB failure must
+            # never trigger blind deletion of the quarantined HTML directory.
+            logger.exception("Could not reconcile staged signature deletion")

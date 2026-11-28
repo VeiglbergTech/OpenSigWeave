@@ -17,7 +17,10 @@ from models import (
     SignatureScheduleDB, SignatureVersionDB, UserOverrideDB,
 )
 from signature_catalog import SignatureNotFoundError, create_signature
-from signature_deletion import delete_signature_with_cleanup, inspect_signature_deletion
+from signature_deletion import (
+    delete_signature_with_cleanup, inspect_signature_deletion,
+    reconcile_staged_signature_deletes,
+)
 from signature_storage import SignatureFileStore, SignatureStorageError
 
 
@@ -219,6 +222,30 @@ class SignatureDeletionTests(unittest.TestCase):
         self.assertEqual(len(quarantined), 1)
         self.store.purge_staged_signature(quarantined[0].name)
         self.assertFalse(quarantined[0].exists())
+
+    def test_interrupted_transaction_recovers_file_if_db_row_survives(self):
+        signature = self.signature()
+        folder = Path(self.temp.name) / "signatur" / signature.name
+        token = self.store.stage_signature_delete(signature.name, signature.id)
+        self.assertFalse(folder.exists())
+        self.assertTrue((self.store.signatures_root / token).exists())
+        reconcile_staged_signature_deletes(self.db, self.store)
+        self.assertTrue((folder / "signature.html").is_file())
+        self.assertFalse((self.store.signatures_root / token).exists())
+        self.assertIsNotNone(self.db.get(SignatureDB, signature.id))
+
+    def test_committed_delete_retries_purge_without_live_db_row(self):
+        signature = self.signature()
+        folder = Path(self.temp.name) / "signatur" / signature.name
+        token = self.store.stage_signature_delete(signature.name, signature.id)
+        self.db.query(SignatureVersionDB).filter(
+            SignatureVersionDB.signature_id == signature.id
+        ).delete(synchronize_session=False)
+        self.db.delete(signature)
+        self.db.commit()
+        self.assertFalse(folder.exists())
+        reconcile_staged_signature_deletes(self.db, self.store)
+        self.assertFalse((self.store.signatures_root / token).exists())
 
     def test_missing_signature_is_not_deleted(self):
         with self.assertRaises(SignatureNotFoundError):
