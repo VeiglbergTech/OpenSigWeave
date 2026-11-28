@@ -121,15 +121,23 @@ allowed = {
     "scripts/update_manager.py", "scripts/release_target.py",
     "scripts/release_bundle.py", ".opensigweave-release.json",
 }
-with tarfile.open(fileobj=io.BytesIO(content), mode="r:gz") as archive:
-    members = archive.getmembers()
-    if len(members) != len(allowed) or {m.name for m in members} != allowed:
-        raise SystemExit("Unexpected archive paths")
-    if any(not m.isfile() or m.size > 2 * 1024 * 1024 for m in members):
-        raise SystemExit("Unsafe archive member type or size")
-    files = {m.name: archive.extractfile(m).read() for m in members}
-if sum(map(len, files.values())) > 2 * 1024 * 1024:
-    raise SystemExit("Archive expands past the allowed limit")
+files = {}
+total = 0
+with tarfile.open(fileobj=io.BytesIO(content), mode="r|gz") as archive:
+    for member in archive:
+        if member.name not in allowed or member.name in files or not member.isfile():
+            raise SystemExit("Unsafe, duplicate or unexpected archive entry")
+        if member.size > 2 * 1024 * 1024:
+            raise SystemExit("Oversized archive entry")
+        total += member.size
+        if total > 2 * 1024 * 1024:
+            raise SystemExit("Archive expands past the allowed limit")
+        body = archive.extractfile(member).read(2 * 1024 * 1024 + 1)
+        if len(body) != member.size:
+            raise SystemExit("Truncated or oversized archive entry")
+        files[member.name] = body
+if set(files) != allowed:
+    raise SystemExit("Missing release archive entries")
 manifest = json.loads(files[".opensigweave-release.json"])
 if (manifest.get("format") != "opensigweave-release-bundle-v1"
         or manifest.get("tag") != version

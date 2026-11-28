@@ -217,14 +217,18 @@ def fetch_verified_bundle(tag: str, directory: Path) -> tuple[Path, dict]:
     try:
         # Never use extractall(): archives cannot create links, devices, or
         # unexpected paths, and no data or secret paths are accepted.
-        with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as archive:
-            members = archive.getmembers()
-            if len(members) != len(FILES) + 1 or {m.name for m in members} != set(FILES) | {MANIFEST}:
-                raise ValueError("Unexpected release package contents")
-            total = 0
-            for member in members:
+        # Streaming validation rejects unsafe headers before decompression or
+        # extraction of the next entry; getmembers() could expand a gzip bomb.
+        permitted = set(FILES) | {MANIFEST}
+        seen: set[str] = set()
+        total = 0
+        with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r|gz") as archive:
+            for member in archive:
+                if member.name not in permitted or member.name in seen:
+                    raise ValueError("Unexpected or duplicate release package entry")
                 if not member.isfile() or member.size > MAX_CONTENT_BYTES:
                     raise ValueError("Unsafe release archive entry")
+                seen.add(member.name)
                 total += member.size
                 if total > MAX_CONTENT_BYTES:
                     raise ValueError("Release package expanded size exceeded")
@@ -238,6 +242,8 @@ def fetch_verified_bundle(tag: str, directory: Path) -> tuple[Path, dict]:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(raw)
                 target.chmod(0o700 if member.name.endswith(".sh") else 0o600)
+        if seen != permitted:
+            raise ValueError("Missing release package entries")
         manifest = read_manifest(staging)
         if manifest["revision"] != expected_revision or manifest["tag"] != tag:
             raise ValueError("Published package identity differs from approved release tag")
