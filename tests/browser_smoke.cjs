@@ -738,12 +738,16 @@ async function main() {
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     // The status UI is WebSocket-driven, so inject a socket error event rather
     // than expecting a periodic HTTP request that no longer exists.
-    await page.evaluate(() => window.dispatchEvent(new CustomEvent("osw-realtime-status-error", {
-      detail: "Synthetic dependency outage"
-    })));
-    await systemPanel.getByRole("alert").waitFor({ state: "visible" });
-    assert.match(await systemPanel.getByRole("alert").textContent(), /Synthetic dependency outage/);
-    await systemPanel.getByText("Unavailable", { exact: true }).first().waitFor();
+    const errorState = await page.evaluate(() => {
+      window.dispatchEvent(new CustomEvent("osw-realtime-status-error", {
+        detail: "Synthetic dependency outage"
+      }));
+      const manager = window.Alpine.$data(document.querySelector('[x-data="systemStatusManager"]'));
+      return { error: manager.error, state: manager.state };
+    });
+    assert.match(errorState.error, /Synthetic dependency outage/,
+      "a failing WebSocket status snapshot must expose its error without waiting for a later live frame");
+    assert.equal(errorState.state, "Unavailable");
     await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
     assert.equal(await systemPanel.getByText("Connected", { exact: true }).count(), 1,
