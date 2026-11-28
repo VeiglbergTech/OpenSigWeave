@@ -7,6 +7,7 @@ local rspamd_util = require "rspamd_util"
 package.path = package.path .. ";/etc/rspamd/lua/?.lua"
 local mime_rewriter = require "opensigweave_mime"
 local cid_rewriter = require "opensigweave_cid"
+local domain_policy = require "opensigweave_domain_policy"
 
 -- ==========================================
 -- OPENSIGWEAVE CONFIGURATION
@@ -37,7 +38,7 @@ local function technical_failure(task, reason)
     local failure_id = rspamd_util.random_hex(8)
     rspamd_logger.errx(task, "OpenSigWeave failure_id=%s reason=%s policy=%s",
         failure_id, reason, FAILURE_POLICY)
-    if FAILURE_POLICY ~= "disabled" then
+    if domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
         task:set_pre_result("soft reject",
             "OpenSigWeave: Your email could not be sent because the signature could not be applied. Please try again later. Error ID: "
                 .. failure_id, "opensigweave", nil, 3)
@@ -258,7 +259,9 @@ local function inject_signature(task)
 
 
     local function fail_api(reason)
-        if FAILURE_POLICY == "disabled" then remove_text_marker_from_message() end
+        if not domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
+            remove_text_marker_from_message()
+        end
         fail(reason)
     end
 
@@ -828,7 +831,9 @@ local function inject_signature(task)
     })
 
     if not request_ok or not scheduled then
-        if FAILURE_POLICY == "disabled" then remove_text_marker_from_message() end
+        if not domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
+            remove_text_marker_from_message()
+        end
         fail("ENGINE_REQUEST_NOT_SCHEDULED")
     end
     return true

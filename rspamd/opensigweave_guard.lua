@@ -3,6 +3,8 @@
 -- help if its own configuration, Rspamd or the Postfix Milter link is bypassed.
 local rspamd_logger = require "rspamd_logger"
 local rspamd_util = require "rspamd_util"
+package.path = package.path .. ";/etc/rspamd/lua/?.lua"
+local domain_policy = require "opensigweave_domain_policy"
 
 local options = rspamd_config:get_all_opt("opensigweave_guard") or {}
 local adapter_options = rspamd_config:get_all_opt("opensigweave") or {}
@@ -11,7 +13,8 @@ if failure_policy == "fail_open" then failure_policy = "disabled" end
 if failure_policy == "tempfail" or failure_policy == "standard" then failure_policy = "enabled" end
 -- A disabled failure policy must not turn a missing optional plugin into SMTP
 -- rejection. A missing guard cannot independently enforce the policy.
-if options.enabled == true and failure_policy ~= "disabled" then
+if options.enabled == true and
+    (failure_policy ~= "disabled" or adapter_options.domain_policy_file ~= nil) then
     local function require_injector(task)
         -- Never reject unauthenticated inbound SMTP for missing outbound plugin.
         local user_ok, user = pcall(task.get_user, task)
@@ -29,6 +32,9 @@ if options.enabled == true and failure_policy ~= "disabled" then
             return false
         end
 
+        if not domain_policy.must_tempfail(task, failure_policy, adapter_options) then
+            return false
+        end
         local failure_id = rspamd_util.random_hex(8)
         rspamd_logger.errx(
             task, "OpenSigWeave guard failure_id=%s reason=SIGNATURE_PLUGIN_NOT_LOADED",

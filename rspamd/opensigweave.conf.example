@@ -8,6 +8,11 @@ opensigweave {
     max_response_size = 6291456;
     # Backwards compatible default; experimental strict rejection is opt-in.
     failure_policy = "fail_open";
+    # Opt in to domain-aware offline decisions. The JSON snapshot must be
+    # installed under Mailcow's mounted data/conf/rspamd/local.d directory.
+    # An absent/expired/malformed snapshot temporarily rejects authenticated
+    # submissions instead of treating unknown domains as exempt.
+    domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";
     # Enable CID for managed signature images; install opensigweave_cid.lua.
     # Existing deployments without this setting still use external links.
     inline_images = "cid";
