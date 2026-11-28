@@ -16,8 +16,9 @@ concurrency:
 
 jobs:
   promote:
+    # A dev-only maintenance commit may explicitly opt out of beta promotion.
     name: Promote dev only after all source push checks pass
-    if: github.repository == 'VeiglbergTech/OpenSigWeave'
+    if: github.repository == 'VeiglbergTech/OpenSigWeave' && !contains(github.event.head_commit.message, '[no-beta-promotion]')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

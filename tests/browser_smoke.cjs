@@ -709,6 +709,50 @@ async function main() {
     assert.equal((await backupRuleCreated).status(), 201, "Backup Rule must persist");
     const backupRuleRow = backupPanel.locator("tbody tr").filter({ hasText: "Browser Smoke Backup Rule" });
     await backupRuleRow.waitFor({ state: "visible" });
+    const initialBackupViewport = page.viewportSize();
+    const initialBackupTheme = await page.evaluate(() => document.documentElement.dataset.theme);
+    try {
+      for (const width of [1440, 1280, 768, 390]) {
+        await page.setViewportSize({ width, height: 900 });
+        for (const mode of ["dark", "light"]) {
+          await page.evaluate(theme => {
+            document.documentElement.dataset.theme = theme;
+            document.documentElement.classList.toggle("dark", theme === "dark");
+          }, mode);
+          const layout = await backupRuleRow.evaluate(row => {
+            const cell = row.querySelector('td[data-label="Actions"]');
+            const actions = [...cell.querySelectorAll(".osw-backup-rule-actions > button")];
+            const boxes = actions.map(button => {
+              const r = button.getBoundingClientRect();
+              return { name: button.textContent.trim(), left: r.left, right: r.right, top: r.top, bottom: r.bottom };
+            });
+            const container = row.closest(".osw-table-scroll");
+            return {
+              mode: document.documentElement.dataset.theme,
+              viewport: innerWidth, documentWidth: document.documentElement.scrollWidth,
+              tableOverflow: container.scrollWidth - container.clientWidth,
+              wrap: getComputedStyle(cell.querySelector(".osw-backup-rule-actions")).flexWrap,
+              actions: boxes,
+            };
+          });
+          assert.equal(layout.wrap, "nowrap", "backup action flex row must not wrap: " + JSON.stringify(layout));
+          assert.deepEqual(layout.actions.map(action => action.name), ["Run Backup", "Edit", "Delete"]);
+          assert.ok(layout.documentWidth <= layout.viewport + 2 && layout.tableOverflow <= 2,
+            "backup rules may not cause horizontal scrolling: " + JSON.stringify(layout));
+          for (let i = 1; i < layout.actions.length; i++) {
+            assert.ok(Math.abs(layout.actions[i].top - layout.actions[0].top) <= 2
+              && layout.actions[i].left >= layout.actions[i - 1].right + 1,
+              "backup actions must remain spaced on one horizontal row: " + JSON.stringify(layout));
+          }
+        }
+      }
+    } finally {
+      await page.setViewportSize(initialBackupViewport);
+      await page.evaluate(theme => {
+        document.documentElement.dataset.theme = theme;
+        document.documentElement.classList.toggle("dark", theme === "dark");
+      }, initialBackupTheme);
+    }
     await backupRuleRow.getByRole("button", { name: "Delete", exact: true }).click();
     await page.locator('[x-data="confirmModal"]').getByRole("button", { name: "Confirm", exact: true }).click();
     await backupRuleRow.waitFor({ state: "detached" });
@@ -2053,6 +2097,21 @@ async function main() {
       "all group columns must share the same row: " + JSON.stringify(groupRowLayout));
     assert.ok(groupRowLayout.horizontalOverflow <= 2,
       "group table must fit the available width: " + JSON.stringify(groupRowLayout));
+    const nameHeader = await groupPanel.locator(".osw-groups-table thead th").first().evaluate(th => {
+      const label = document.createRange();
+      label.selectNodeContents(th);
+      return {
+        label: th.textContent.trim(),
+        whiteSpace: getComputedStyle(th).whiteSpace,
+        labelWidth: label.getBoundingClientRect().width,
+        cellWidth: th.getBoundingClientRect().width,
+        padding: parseFloat(getComputedStyle(th).paddingLeft) + parseFloat(getComputedStyle(th).paddingRight),
+      };
+    });
+    assert.equal(nameHeader.label, "Name", "Name column title must not be abbreviated");
+    assert.equal(nameHeader.whiteSpace, "nowrap", "Name heading must remain in one line");
+    assert.ok(nameHeader.cellWidth >= nameHeader.labelWidth + nameHeader.padding - 2,
+      "Name column must never clip the heading: " + JSON.stringify(nameHeader));
     const groupActions = await groupCard.locator(".osw-group-actions > button").evaluateAll(buttons =>
       buttons.map(button => {
         const rect = button.getBoundingClientRect();
@@ -2081,8 +2140,63 @@ async function main() {
         columns: getComputedStyle(card).gridTemplateColumns, row, parts };
     });
     assert.equal(memberLayout.display, "flex", "group member fields must fit their content without unused name space");
-    assert.ok(memberLayout.parts[1].left - memberLayout.parts[0].right < 20,
+    assert.ok(memberLayout.parts[1].left - memberLayout.parts[0].right < 24,
       "the Weight field must follow a short signature name without a large empty gap");
+    const extendedGroupLayout = await groupCard.evaluate(row => {
+      const title = row.querySelector(".osw-group-title");
+      const member = row.querySelector(".osw-group-member");
+      const name = member.querySelector(".osw-group-member-name");
+      const originalTitle = title.textContent, originalName = name.textContent;
+      const longTitle = "Browser Smoke Very Long Signature Group Name That Must Remain Readable";
+      const longName = "Browser Smoke Signature With A Very Long Name That Must Truncate Responsively";
+      const extra = member.cloneNode(true);
+      try {
+        title.textContent = longTitle;
+        title.title = longTitle;
+        name.textContent = longName;
+        name.title = longName;
+        extra.querySelector(".osw-group-member-name").textContent = "Additional Signature in Same Group";
+        member.after(extra);
+        const members = [member, extra].map(element => {
+          const box = element.getBoundingClientRect();
+          const nameBox = element.querySelector(".osw-group-member-name").getBoundingClientRect();
+          const weight = element.querySelector(".osw-group-member-weight").getBoundingClientRect();
+          const enabled = element.querySelector(".osw-group-member-enabled").getBoundingClientRect();
+          const remove = element.querySelector(".osw-group-member-remove").getBoundingClientRect();
+          return { row: { left: box.left, right: box.right },
+            name: { left: nameBox.left, right: nameBox.right, top: nameBox.top },
+            weight: { left: weight.left, right: weight.right, top: weight.top },
+            enabled: { left: enabled.left, right: enabled.right, top: enabled.top },
+            remove: { left: remove.left, right: remove.right, top: remove.top },
+            nameOverflow: getComputedStyle(element.querySelector(".osw-group-member-name")).textOverflow,
+          };
+        });
+        const container = row.closest(".osw-table-scroll");
+        return { members, containerOverflow: container.scrollWidth - container.clientWidth,
+          groupFullName: title.title, signatureFullName: name.title,
+          groupTextOverflow: getComputedStyle(title).textOverflow };
+      } finally {
+        extra.remove();
+        title.textContent = originalTitle;
+        title.title = originalTitle;
+        name.textContent = originalName;
+        name.title = originalName;
+      }
+    });
+    assert.equal(extendedGroupLayout.members.length, 2, "multiple signatures must remain distinct rows");
+    assert.equal(extendedGroupLayout.groupTextOverflow, "ellipsis");
+    assert.ok(extendedGroupLayout.members.every(item => item.nameOverflow === "ellipsis"),
+      "long signature names must preserve readable truncation");
+    assert.ok(extendedGroupLayout.containerOverflow <= 2,
+      "long group and signature names must not overflow the table: " + JSON.stringify(extendedGroupLayout));
+    for (const item of extendedGroupLayout.members) {
+      assert.ok(item.name.right <= item.weight.left + 1 &&
+        item.weight.right <= item.enabled.left + 1 &&
+        item.enabled.right <= item.remove.left + 1,
+        "Remove must be after all other fields: " + JSON.stringify(item));
+      assert.ok(Math.abs(item.remove.right - item.row.right) <= 12,
+        "Remove must remain at the far-right edge: " + JSON.stringify(item));
+    }
     // Narrow mobile: the full group row must fit without any horizontal pan.
     const originalViewport = page.viewportSize();
     try {

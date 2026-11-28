@@ -1075,6 +1075,16 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-data-table > thead > tr:first-child > th:last-child {
     border-top-right-radius: calc(.5rem - 1px);
 }
+/* Group members remain in one line when there is room; the group table uses
+   its own available width instead of the browser viewport for breakpoints. */
+.osw-group-table-container {
+    container-name: osw-groups;
+    container-type: inline-size;
+}
+.osw-backup-table-container {
+    container-name: osw-backup-rules;
+    container-type: inline-size;
+}
 /* Group members keep their four controls together on every viewport. */
 .osw-admin-section .osw-table-scroll > table.osw-groups-table { min-width: 0; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) {
@@ -1127,6 +1137,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     text-align: center;
 }
 .osw-group-member-remove {
+    margin-inline-start: auto;
     white-space: nowrap;
     padding: .25rem 0;
     font-size: .875rem;
@@ -1213,13 +1224,18 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > thead th {
     padding: .875rem .75rem !important;
 }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 1%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 1%; white-space: nowrap; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > thead th:first-child {
+    white-space: nowrap;
+    overflow-wrap: normal;
+    word-break: normal;
+}
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: auto; }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3),
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 1%; white-space: nowrap; }
 .osw-groups-table .osw-group-title {
     width: max-content;
-    max-width: min(17rem, 26vw);
+    max-width: clamp(8ch, 18cqi, 17rem);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1230,7 +1246,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     display: none;
 }
 .osw-group-member {
-    gap: .375rem;
+    gap: .5rem;
     padding: .375rem .5rem;
 }
 .osw-group-member :is(.osw-group-member-weight, .osw-group-member-enabled),
@@ -1276,7 +1292,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
         padding: 0;
     }
 }
-@media (max-width: 1200px) {
+@container osw-groups (max-width: 70rem) {
     .osw-admin-section .osw-table-scroll > table.osw-groups-table,
     .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody {
         display: block;
@@ -1349,6 +1365,20 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-group-member-enabled .osw-group-member-label, .osw-group-member-remove-text { display: none; }
     .osw-group-member-remove-icon { display: block; font-size: 1.375rem; line-height: 1; }
     .osw-group-member-remove { min-width: 1.75rem; min-height: 1.75rem; }
+}
+/* Only very narrow group containers need a two-line member layout.
+   At typical mobile/desktop widths the name, weight, switch and Remove
+   continue to occupy one horizontal line. */
+@container osw-groups (max-width: 19rem) {
+    .osw-group-member {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: .5rem .75rem;
+    }
+    .osw-group-member-name { grid-column: 1 / -1; }
+    .osw-group-member-weight { grid-column: 1; grid-row: 2; }
+    .osw-group-member-enabled { grid-column: 2; grid-row: 2; }
+    .osw-group-member-remove { grid-column: 2; grid-row: 3; justify-self: end; }
 }
 /* Other long multi-column lists turn into labelled cards at narrower widths.
    This avoids forcing the user to pan sideways to reach action buttons. */
@@ -1441,4 +1471,89 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-admin-section .osw-table-scroll > table.osw-data-table:not(.osw-groups-table) > tbody > tr > td[data-label] > * {
         grid-column: 1;
     }
+}
+
+/* Backup Rules: actions are always a single ordered row. Unlike the
+   shared legacy .flex rule, they must never wrap between Run/Edit/Delete. */
+.osw-admin-section .osw-table-scroll > table.osw-backup-rules-table {
+    table-layout: auto;
+}
+.osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > :is(thead,tbody) > tr > :last-child {
+    width: 1%;
+    white-space: nowrap;
+}
+.osw-admin-section .osw-backup-rule-actions {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: clamp(.375rem, .7vw, .75rem);
+    white-space: nowrap;
+    min-width: 0;
+}
+.osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody td .osw-backup-rule-actions {
+    flex-wrap: nowrap;
+}
+.osw-backup-rule-actions > button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: .25rem .125rem;
+}
+
+/* Once the *table container* cannot fit seven labelled columns comfortably,
+   keep the Domain-table typography but display one labelled rule per row. */
+@container osw-backup-rules (max-width: 70rem) {
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table,
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody {
+        display: block;
+        width: 100%;
+        min-width: 0 !important;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > thead { display: none; }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody { padding: .5rem; }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr {
+        display: block;
+        width: 100%;
+        margin: 0 0 .75rem;
+        border: 1px solid var(--osw-border);
+        border-radius: .5rem;
+        background: var(--osw-panel);
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr:last-child { margin-bottom: 0; }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr > td {
+        display: grid;
+        width: 100%;
+        min-width: 0;
+        grid-template-columns: minmax(8rem, 33%) minmax(0, 1fr);
+        gap: .75rem;
+        align-items: center;
+        padding: .75rem 1rem !important;
+        border-bottom: 1px solid var(--osw-border);
+        text-align: start;
+        white-space: normal;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr > td:last-child {
+        width: 100%;
+        border-bottom: 0;
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr > td[data-label]::before {
+        content: attr(data-label);
+        font-size: .75rem;
+        font-weight: 600;
+        line-height: 1.5;
+        letter-spacing: .03em;
+        text-transform: uppercase;
+        color: var(--osw-muted);
+    }
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr > td[colspan] {
+        display: block;
+        text-align: center;
+    }
+}
+@container osw-backup-rules (max-width: 33rem) {
+    .osw-admin-section .osw-table-scroll > table.osw-backup-rules-table > tbody > tr > td {
+        grid-template-columns: minmax(0, 1fr);
+        gap: .375rem;
+    }
+    .osw-admin-section .osw-backup-rule-actions { justify-content: flex-start; }
 }
