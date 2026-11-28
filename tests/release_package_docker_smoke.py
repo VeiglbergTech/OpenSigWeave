@@ -149,10 +149,19 @@ def main() -> int:
                 return ""  # Synthetic OCI images are local fixtures, never GHCR assets.
             return deploy_common.compose(*args, **kwargs)
 
+        def create_ci_config(**kwargs):
+            config_manager.create_config(**kwargs)
+            # CI has no HTTPS reverse proxy. These are isolated, test-only
+            # browser-cookie options; real installations must use HTTPS.
+            with (install_root / ".env").open("a", encoding="utf-8") as file:
+                file.write('SESSION_COOKIE_NAME="osw-ci-session"\\n')
+                file.write('SESSION_COOKIE_SECURE="false"\\n')
+
         try:
             with patch.object(deploy_common, "git", side_effect=forbid_git), \
                  patch.object(config_manager, "_free_port", return_value=PORT), \
                  patch.object(config_manager, "prompt", return_value="127.0.0.1"), \
+                 patch.object(install_manager, "create_config", side_effect=create_ci_config), \
                  patch.object(release_bundle, "release_commit_sha", return_value=FIRST_SHA), \
                  patch.object(install_manager, "compose", side_effect=installed_compose):
                 install_manager.perform_install(
