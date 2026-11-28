@@ -2533,7 +2533,11 @@ function systemStatusManager() {
         start() {
             void this.loadAdapterSettings();
             // Update labels locally; no HTTP polling, full page refresh or extra service.
-            this.relativeClockTimer = setInterval(() => { this.statusClock = Date.now(); }, 30000);
+            const updateRelativeLabels = () => {
+                this.statusClock = Date.now();
+                this.relativeClockTimer = setTimeout(updateRelativeLabels, 30000);
+            };
+            this.relativeClockTimer = setTimeout(updateRelativeLabels, 30000);
             this.statusListener = event => this.applyStatus(event.detail);
             this.statusErrorListener = event => {
                 this.loading = false;
@@ -2556,7 +2560,7 @@ function systemStatusManager() {
             if (this.statusListener) window.removeEventListener("osw-realtime-status", this.statusListener);
             if (this.statusErrorListener) window.removeEventListener("osw-realtime-status-error", this.statusErrorListener);
             if (this.connectionListener) window.removeEventListener("osw-realtime-connection", this.connectionListener);
-            if (this.relativeClockTimer !== null) clearInterval(this.relativeClockTimer);
+            if (this.relativeClockTimer !== null) clearTimeout(this.relativeClockTimer);
             this.relativeClockTimer = null;
         },
         async loadAdapterSettings() {

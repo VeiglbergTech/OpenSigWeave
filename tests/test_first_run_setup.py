@@ -244,7 +244,8 @@ class BrowserBootstrapTests(unittest.TestCase):
         with patch.object(main, "SessionLocal", self.Session):
             for _ in range(2):
                 with self.client.websocket_connect("/ws/portal", headers={
-                        "Origin": "https://app.example.org"}) as socket:
+                        "Origin": "https://app.example.org",
+                        "Host": "app.example.org"}) as socket:
                     hello = socket.receive_json()
                     self.assertEqual(hello["type"], "ready")
                     self.assertTrue(hello["status_available"])
