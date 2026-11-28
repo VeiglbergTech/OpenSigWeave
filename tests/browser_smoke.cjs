@@ -34,6 +34,23 @@ async function main() {
       + (failure ? " (" + failure.errorText + ")" : "") + "\n");
   });
   const checkpoint = name => process.stdout.write("[browser-smoke] " + name + "\n");
+  async function assertAttribution(label) {
+    const footer = page.locator("footer.osw-site-footer");
+    assert.equal(await footer.count(), 1, label + " must have one attribution footer");
+    const link = footer.getByRole("link", { name: "Powered by OpenSigWeave" });
+    assert.equal(await link.getAttribute("href"), "https://github.com/VeiglbergTech/OpenSigWeave");
+    const metrics = await footer.evaluate(element => ({
+      position: getComputedStyle(element).position,
+      height: element.getBoundingClientRect().height,
+      width: element.getBoundingClientRect().width,
+      viewport: window.innerWidth,
+      documentWidth: document.documentElement.scrollWidth
+    }));
+    assert.notEqual(metrics.position, "fixed", label + " footer cannot overlap content");
+    assert.notEqual(metrics.position, "sticky", label + " footer cannot obscure content");
+    assert.ok(metrics.height > 0 && metrics.width > 0, label + " footer must occupy flow space");
+    assert.ok(metrics.documentWidth <= metrics.viewport + 2, label + " cannot force horizontal page scrolling");
+  }
   // Assert computed surface hierarchy rather than duplicating CSS tokens in a test.
   // Screenshots are uploaded for review; these assertions protect contrast and theme structure.
   async function assertThemePalette(label) {
@@ -134,6 +151,7 @@ async function main() {
 
 
   async function assertAdminSectionLayout(section, label) {
+    await assertAttribution(label);
     await section.waitFor({ state: "visible" });
     const badButtons = await section.evaluate(root => {
       const rect = root.getBoundingClientRect();
@@ -369,6 +387,7 @@ async function main() {
     checkpoint("login: open");
     const loginResponse = await page.goto(baseURL + "/login");
     assert.equal(loginResponse.status(), 200, "login page must load");
+    await assertAttribution("login");
     await page.locator("#theme-toggle").click();
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
     await assertThemePalette("login light");
@@ -381,6 +400,7 @@ async function main() {
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL(url => url.origin === new URL(baseURL).origin && url.pathname === "/user");
     await page.locator("#logout-button").waitFor();
+    await assertAttribution("personal");
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
     checkpoint("login: complete");

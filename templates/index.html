@@ -12,11 +12,11 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=group-fluid-names-20261128" rel="stylesheet">
+    <link href="/static/css/portal.css?v=ui-footer-tables-20261128" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
-<body class="bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-mail-setup-required="{{ 'true' if mail_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
+<body class="osw-application-page bg-gray-900 text-gray-100 font-sans antialiased" x-data="portalShell" data-user-data="{{ {"first_name": first_name, "last_name": last_name, "email": user.email, "title": title, "phone": phone}|tojson|forceescape }}" data-csrf-token="{{ csrf_token }}" data-can-edit="{{ 'true' if can_edit else 'false' }}" data-is-admin="{{ 'true' if is_admin else 'false' }}" data-idp-setup-required="{{ 'true' if idp_setup_required else 'false' }}" data-mail-setup-required="{{ 'true' if mail_setup_required else 'false' }}" data-app-color="{{ app_color|e }}">
     <div id="osw-modal-backdrop" class="osw-dialog-backdrop" aria-hidden="true"></div>
 
     <div x-data="toastManager" @notify.window="add($event)" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none">
@@ -43,7 +43,7 @@
         </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto p-6 mt-4">
+    <div class="osw-app-content max-w-7xl mx-auto p-6 mt-4">
 
         <div x-show="tab === 'personal'" x-cloak class="osw-personal-layout grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div class="space-y-6">
@@ -128,7 +128,7 @@
                     <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
                         <td class="px-4 py-3" data-label="Name"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
                         <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')" data-label="Type"></td>
-                        <td class="px-4 py-3 text-sm" data-label="Status"><span class="osw-admin-status" :class="provider.configured && provider.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Enabled' : 'Disabled')"></span></td>
+                        <td class="px-4 py-3 text-sm" data-label="Status"><span class="osw-admin-status" :class="provider.configured && provider.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Active' : 'Disabled')"></span></td>
                         <td class="px-4 py-3 text-right space-x-3" data-label="Actions"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
                     </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
                 </table>
@@ -247,7 +247,7 @@
                                 <td class="px-6 py-4" data-label="Status">
                                     <button type="button" class="osw-admin-status cursor-pointer" :class="signature.is_active ? 'text-green-400' : 'text-red-400'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
                                 </td>
-                                <td class="px-6 py-4" data-label="Actions">
+                                <td class="px-6 py-4 text-right" data-label="Actions">
                                     <div class="osw-actions justify-end">
                                         <button type="button" @click="previewSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Preview</button>
                                         <button type="button" @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
@@ -368,8 +368,8 @@
                                         <p x-show="group.members.length === 0" class="text-xs text-gray-400">No signatures assigned.</p>
                                     </div>
                                 </td>
-                                <td class="align-top" data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Enabled' : 'Disabled'"></span></td>
-                                <td class="align-top" data-label="Actions"><div class="osw-group-actions">
+                                <td class="align-top" data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="align-top text-right" data-label="Actions"><div class="osw-group-actions">
                                     <button type="button" @click="openGroupPreview(group)" class="text-green-400 hover:text-green-300">Preview</button>
                                     <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>
                                     <button type="button" @click="deleteGroup(group)" class="text-red-400 hover:text-red-300">Delete</button>
@@ -456,7 +456,7 @@
                                 <td class="px-4 py-3 text-sm" x-text="ruleActionLabel(rule)" data-label="Action"></td>
                                 <td class="px-4 py-3 text-xs text-gray-400" x-text="formatConditions(rule)" data-label="Conditions"></td>
                                 <td class="px-4 py-3 text-xs text-gray-300" x-text="formatWindow(rule)" data-label="Time Window"></td>
-                                <td class="px-4 py-3" data-label="Status"><span class="osw-admin-status" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Enabled' : 'Disabled'"></span></td>
+                                <td class="px-4 py-3" data-label="Status"><span class="osw-admin-status" :class="rule.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="rule.is_enabled ? 'Active' : 'Disabled'"></span></td>
                                 <td class="px-4 py-3 text-right whitespace-nowrap" data-label="Actions">
                                     <button @click="editRule(rule)" class="text-blue-400 hover:text-blue-300 text-sm mr-3">Edit</button>
                                     <button @click="deleteRule(rule)" class="text-red-400 hover:text-red-300 text-sm">Delete</button>
@@ -653,8 +653,8 @@
                                     <td class="px-4 py-3 font-medium" x-text="item.name" data-label="Name"></td>
                                     <td class="px-4 py-3 uppercase" x-text="item.type" data-label="Type"></td>
                                     <td class="px-4 py-3 break-all text-gray-300" x-text="locationDescription(item)" data-label="Destination"></td>
-                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleLocation(item)" class="osw-admin-status" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
-                                    <td class="px-4 py-3" data-label="Actions"><div class="flex flex-wrap gap-3 justify-end">
+                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleLocation(item)" class="osw-admin-status" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Active' : 'Disabled'" :aria-label="'Toggle ' + item.name"></button></td>
+                                    <td class="px-4 py-3 text-right" data-label="Actions"><div class="flex flex-wrap gap-3 justify-end">
                                         <button type="button" class="text-blue-400 hover:text-blue-300" @click="openLocation(item)">Edit</button>
                                         <button type="button" class="text-cyan-300 hover:text-cyan-200 disabled:opacity-40" :disabled="locationTesting !== ''" @click="testLocation(item)">Test Connection</button>
                                         <button type="button" class="text-red-400 hover:text-red-300" @click="deleteLocation(item)">Delete</button>
@@ -728,8 +728,8 @@
                                     <td class="px-4 py-3 capitalize" x-text="item.schedule_kind === 'interval' ? 'Every ' + item.interval_minutes + ' min' : item.schedule_kind + ' (UTC)'" data-label="Schedule"></td>
                                     <td class="px-4 py-3 text-gray-300" x-text="ruleRetentionText(item)" data-label="Retention"></td>
                                     <td class="px-4 py-3 whitespace-nowrap" x-text="item.next_run_at ? formatDate(item.next_run_at) : '—'" data-label="Next Run (Local Time)"></td>
-                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Enabled' : 'Disabled'"></button></td>
-                                    <td class="px-4 py-3" data-label="Actions"><div class="flex flex-wrap justify-end gap-3">
+                                    <td class="px-4 py-3" data-label="Status"><button type="button" @click="toggleRule(item)" :class="item.enabled ? 'text-green-300' : 'text-red-300'" x-text="item.enabled ? 'Active' : 'Disabled'"></button></td>
+                                    <td class="px-4 py-3 text-right" data-label="Actions"><div class="flex flex-wrap justify-end gap-3">
                                         <button type="button" class="text-green-300 hover:text-green-200" :disabled="busy || !item.enabled" @click="runRule(item)">Run Backup</button>
                                         <button type="button" class="text-blue-400 hover:text-blue-300" @click="openRule(item)">Edit</button>
                                         <button type="button" class="text-red-400 hover:text-red-300" @click="deleteRule(item)">Delete</button>
@@ -1291,6 +1291,7 @@
     </div>
 
 
+    <footer class="osw-site-footer" aria-label="Application attribution"><a href="https://github.com/VeiglbergTech/OpenSigWeave" target="_blank" rel="noopener noreferrer">Powered by OpenSigWeave</a></footer>
     <script src="/static/js/portal.js?v=websocket-routing-20261128"></script>
 </body>
 </html>

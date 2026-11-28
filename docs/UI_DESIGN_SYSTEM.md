@@ -65,7 +65,7 @@ The global app bar, admin navigation and section heading use separate but consis
 - `osw-page-header`: left title + optional subtitle, right actions. All headings use the same typography regardless of nested `h1/h2` or wrapper `div`; mobile actions wrap below the title.
 - `osw-card`: one surface, 1px border, 8px radius, standard padding; `osw-card-header` for repeated card titles; avoid nested visually identical gray boxes without space or dividers.
 - `osw-tabs`: active fill + indicator/border + `aria-selected`; inactive and hover states clearly distinct. A pair of adjacent options must never resemble one large clickable area.
-- Tables: one header format; consistent row height, alignment, hover and zebra/separator semantics; narrow screens deliberately scroll horizontally in *the table container only*.
+- Tables: one header format; consistent row height, alignment, hover and separator semantics. Narrow screens use responsive row/card layouts without horizontal page or table scrolling. Keep header/cell insets identical and preserve right alignment for Actions.
 
 ### Form controls
 - One `osw-field` wrapper per value: visible label, optional description, control, inline validation/error. Validation never relies only on color. Focus ring and disabled appearance are uniform across all themes.
@@ -130,6 +130,14 @@ The signed browser session and administrator role protect status frames, and the
 - `static/js/rich-editor.js` / `static/js/portal.js`: share all formatting/editor chrome, permission-gate asset actions, fix viewport-aware editor overlays, show clear status labels.
 - `core/adapter_monitor.py`, `core/monitor_scheduler.py`, `main.py`, `compose.yaml`: implement trustworthy health layers, Rspamd response parsing and UI diagnostics without exposing controllers.
 - Do not introduce additional branches or new JavaScript/CSS frameworks. Use existing Alpine, self-hosted CKEditor and the project CSS stack.
+
+### Global attribution and table/status UI contract
+
+- Every rendered page (`/user`, `/admin/*`, login, setup and access denied) includes the same unconditional `Powered by OpenSigWeave` GitHub footer. Branding and environment settings do not hide it. This does not restrict GPLv3 source modification.
+- The application body uses a column flex layout; content expands on short pages, while the attribution remains in normal flow, below editor/modals and without fixed positioning.
+- Table wrappers clip their own decorative rounded backgrounds. Data tables use separated borders with zero spacing, shared column padding and matching action alignment; mobile/tablet layouts retain labelled rows rather than horizontal scrolling.
+- Status outputs use `Active` rather than `Enabled`; persisted `is_enabled`, `enabled`, `is_active`, API fields, and technical settings remain unchanged.
+- The branding swatch affects primary action fills but never redefines link tokens. Links retain their own recognizable colors, underline and focus treatment in both themes.
 
 ## 8. Acceptance and regression criteria
 
