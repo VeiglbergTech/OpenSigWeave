@@ -256,6 +256,10 @@
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <div class="flex flex-wrap gap-2"><button @click="downloadPolicy()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded shadow transition text-sm">Download mailserver policy</button><button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button></div>
             </div>
+            <p class="mb-3 text-xs text-gray-400">
+                Desired offline policy version: <code class="break-all" x-text="desiredPolicyVersion || 'Unavailable'"></code>.
+                This is not a mailserver acknowledgment. A stricter change is pending until every Mailcow host confirms the same version.
+            </p>
             <div class="bg-gray-800 rounded-lg shadow osw-table-scroll border border-gray-700">
                 <table class="w-full text-left border-collapse osw-data-table">
                     <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700"><th class="px-6 py-4 font-medium">Domain Name</th><th class="px-6 py-4 font-medium">Status</th><th class="px-6 py-4 font-medium">Profile Provider</th><th class="px-6 py-4 font-medium">Login Provider</th><th class="px-6 py-4 font-medium text-right">Actions</th></tr></thead>
@@ -1149,7 +1153,7 @@
                                 <input type="checkbox" x-model="signatureRequired" class="osw-switch" role="switch">
                                 <div class="ml-3 text-sm font-medium text-gray-300">Signature required</div>
                             </label>
-                            <p class="mb-4 text-xs text-gray-400">On: temporarily reject mail if OpenSigWeave fails. Off: allow unsigned mail only when this domain is explicitly exempted by the valid policy installed on the mailserver. Normal signature insertion is unchanged. Sync the mailserver policy after every change.</p>
+                            <p class="mb-4 text-xs text-gray-400">On: temporarily reject mail if OpenSigWeave fails. Off: allow unchanged, unsigned mail only with a securely installed local exemption. Both modes still insert normal signatures while OpenSigWeave is healthy. <strong>Important:</strong> Saving an Off → On change is NOT enough to enforce it on Mailcow. Synchronize and acknowledge the new policy version on every host, or apply a Mailcow-local emergency strict override.</p>
 
                             <label class="flex items-center cursor-pointer mb-4">
                                 <input type="checkbox" x-model="allowOverrides" class="osw-switch" role="switch">

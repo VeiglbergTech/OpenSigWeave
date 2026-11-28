@@ -487,13 +487,16 @@ function domainProviderLabel(providers, providerId, kind) {
     return provider.display_name + (eligible ? '' : ' (Unavailable)');
 }
 function domainManager() { return {
-    domains: [], providers: [],
+    domains: [], providers: [], desiredPolicyVersion: null,
     providerLabel(providerId, kind) { return domainProviderLabel(this.providers, providerId, kind); },
     async downloadPolicy() {
         try {
             const response = await fetch('/api/v1/mail/domain-policy', { cache: 'no-store', credentials: 'same-origin' });
             if (!response.ok) throw new Error('HTTP ' + response.status);
-            const blob = await response.blob();
+            const policy = await response.json();
+            if (!/^[a-f0-9]{64}$/.test(policy.policy_version || '')) throw new Error('Invalid policy version');
+            this.desiredPolicyVersion = policy.policy_version;
+            const blob = new Blob([JSON.stringify(policy, null, 2) + '\n'], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
@@ -502,17 +505,28 @@ function domainManager() { return {
             link.click();
             link.remove();
             URL.revokeObjectURL(url);
-            notify('Download complete. Install this policy on your mailserver; changes are not synchronized automatically.');
+            notify('Desired policy ' + this.desiredPolicyVersion + '. Confirm the matching version on every Mailcow host; downloading is not an acknowledgment.');
         } catch (error) {
             notify('Could not export domain policy: ' + error.message, 'error');
         }
     },
     async fetchDomains() {
-        const [domainsResponse, providersResponse] = await Promise.all([fetch('/domains/'), fetch('/api/admin/identity-providers')]);
+        const [domainsResponse, providersResponse, policyResponse] = await Promise.all([
+            fetch('/domains/'),
+            fetch('/api/admin/identity-providers'),
+            fetch('/api/v1/mail/domain-policy', { cache: 'no-store', credentials: 'same-origin' })
+        ]);
         if (domainsResponse.ok) this.domains = await domainsResponse.json();
         else notify('Could not load domains.', 'error');
         if (providersResponse.ok) this.providers = await providersResponse.json();
         else notify('Could not load identity providers.', 'error');
+        if (policyResponse.ok) {
+            const policy = await policyResponse.json().catch(() => null);
+            this.desiredPolicyVersion = /^[a-f0-9]{64}$/.test(policy?.policy_version || '')
+                ? policy.policy_version : null;
+        } else {
+            this.desiredPolicyVersion = null;
+        }
     }
 } }
 function identityProviderManager() { return {
@@ -1681,6 +1695,8 @@ function identityProviderManager() { return {
                     };
                     if (profileChanged) payload.identity_provider_id = this.identityProviderId || null;
                     if (loginChanged) payload.authentication_provider_id = this.authenticationProviderId || null;
+                    const requirementChanged = this.signatureRequired !== !!this.domain.signature_required;
+                    const becomingRequired = requirementChanged && this.signatureRequired;
                     this.saving = true;
                     try {
                         const response = await fetch('/domains/' + this.domain.id, {
@@ -1692,7 +1708,13 @@ function identityProviderManager() { return {
                             throw new Error(typeof error.detail === 'string' ? error.detail : 'HTTP ' + response.status);
                         }
                         this.show = false;
-                        notify('Domain settings saved.');
+                        if (becomingRequired) {
+                            notify('WARNING: Signature required is saved, but NOT yet enforced on Mailcow. Synchronize and acknowledge the policy version on every host.', 'error');
+                        } else if (requirementChanged) {
+                            notify('Domain saved. Offline-policy changes are pending until mailserver synchronization is acknowledged.');
+                        } else {
+                            notify('Domain settings saved.');
+                        }
                         window.dispatchEvent(new CustomEvent('domain-updated'));
                     } catch (error) {
                         notify('Could not save domain settings: ' + error.message, 'error');
