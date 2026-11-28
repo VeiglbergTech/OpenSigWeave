@@ -114,6 +114,14 @@ Keep these separate in both APIs and UI:
 
 Verification: unit-test nested Rspamd response formats, missing one/both symbols, invalid content, refusal, auth failure, inaccessible endpoint, scheduler timing, stale results and role enforcement. Separately test Docker live/ready endpoints through real HTTP, with database/storage broken. The final SMTP test remains an explicit integration test, not a fake “health” status.
 
+### Canonical navigation and realtime UI
+
+The browser route contract is `/user`, `/admin`, and `/admin/{tab}`. The administrator’s tab list is deep-linkable; URL state is represented by the pathname, not `?view=...&section=...`. Existing query bookmarks redirect to canonical paths.
+
+The System tab uses an authenticated same-origin WebSocket (`/ws/portal`) instead of a 10-second JavaScript interval. The backend pushes the first snapshot, refresh responses, and relevant change notifications. Its 20-second backend check detects out-of-process state changes but **does not** trigger browser HTTP polling or redraw unchanged status. The backup overview also uses WebSocket change notifications instead of its previous 20-second browser interval. A disconnected socket is clearly marked and reconnects with bounded exponential delay. The REST diagnostics endpoint remains available for operators and machine clients.
+
+The signed browser session and administrator role protect status frames, and the WebSocket handshake rejects untrusted or missing Origin headers. A process-local event queue supports the default single-worker deployment; multiple ASGI worker processes require a shared pub/sub broker for immediate cross-worker list invalidations.
+
 ## 7. Known implementation targets and causes
 
 - `templates/index.html`: normalize heading/header markup and classes, switch vs checkbox semantics, selected groups, personal/admin editor containers, modal shell nesting and control labels.

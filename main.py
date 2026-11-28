@@ -11,7 +11,7 @@ import re
 from datetime import datetime, timezone
 from dataclasses import replace
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
-from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response
+from fastapi import FastAPI, Depends, HTTPException, Request, Header, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -57,6 +57,7 @@ from core.engine_contract import (
 from core.engine_service import SignatureEngineService
 from core.cid_assets import build_cid_payload
 from core.support_alert_status import read_support_alert_status
+from core.portal_realtime import portal_realtime_hub
 from core.branding import (
     DEFAULT_APP_COLOR,
     DEFAULT_APP_NAME,
@@ -423,7 +424,7 @@ def disable_legacy_profile_attribute_fallback():
 
 @app.on_event("startup")
 def launch_mail_adapter_monitor():
-    start_mail_adapter_monitor(SessionLocal)
+    start_mail_adapter_monitor(SessionLocal, on_change=lambda: portal_realtime_hub.publish("/api/admin/mail-adapter-check"))
 
 
 @app.on_event("shutdown")
@@ -490,6 +491,10 @@ class BackupSnapshotGateMiddleware(BaseHTTPMiddleware):
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         response = await call_next(request)
+        if request.method in {"POST", "PUT", "PATCH", "DELETE"} and 200 <= response.status_code < 400 and (
+            request.url.path.startswith(("/api/admin/", "/domains/"))
+        ):
+            portal_realtime_hub.publish(request.url.path)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault(
@@ -497,7 +502,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
             "form-action 'self'; script-src 'self' https://cdn.jsdelivr.net; script-src-attr 'none'; "
             "style-src 'self'; style-src-attr 'none'; img-src 'self' data: https:; "
-            "font-src 'self' data:; connect-src 'self'; frame-src 'self'"
+            "font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self'"
         )
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000")
         response.headers.setdefault("X-Permitted-Cross-Domain-Policies", "none")
@@ -907,7 +912,7 @@ async def submit_browser_admin_setup(request: Request, db: Session = Depends(get
         "attributes": {}, "auth_source": "local",
     }
     request.session["csrf_token"] = secrets.token_urlsafe(32)
-    return RedirectResponse(url="/?view=admin&section=system", status_code=303)
+    return RedirectResponse(url="/admin/system", status_code=303)
 
 
 @app.get("/login")
@@ -1172,17 +1177,60 @@ def portal_session_status(request: Request):
     return Response(status_code=204, headers={"Cache-Control": "no-store, private"})
 
 
+PORTAL_ADMIN_SECTIONS = frozenset({
+    "system", "identity-providers", "domains", "signatures",
+    "signature-groups", "rules", "branding", "backups", "import-export",
+})
+
+
+def canonical_admin_section(value: str | None) -> str | None:
+    aliases = {"imports": "import-export", "exports": "import-export", "scheduling": "rules"}
+    value = aliases.get(value, value)
+    return value if value in PORTAL_ADMIN_SECTIONS else None
+
+
 @app.get("/")
-async def read_root(request: Request, db: Session = Depends(get_db)):
+@app.get("/user")
+@app.get("/admin")
+@app.get("/admin/{section}")
+async def read_root(request: Request, db: Session = Depends(get_db), section: str | None = None):
     user = request.session.get('user')
-    if not user: return RedirectResponse(url='/login')
+    if not user:
+        return RedirectResponse(url='/login', status_code=303)
     csrf_token = request.session.setdefault("csrf_token", secrets.token_urlsafe(32))
 
     user_groups = user.get('groups', [])
     is_admin = 'signature-admins' in user_groups
     is_user = 'signature-users' in user_groups
     if not is_admin and not is_user:
-        return templates.TemplateResponse(request, "error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token})
+        return templates.TemplateResponse(request, "error.html", {"request": request, "message": "You do not have permission to access the Signature Portal.", "csrf_token": csrf_token}, status_code=403)
+
+    path = request.url.path
+    # Keep old query bookmarks functional, but always use canonical path URLs.
+    if path == "/":
+        legacy_view = request.query_params.get("view")
+        legacy_section = canonical_admin_section(request.query_params.get("section"))
+        target = ("/admin/" + legacy_section if legacy_section else "/admin") if (
+            is_admin and (legacy_view == "admin" or (legacy_view is None and legacy_section))
+        ) else "/user"
+        return RedirectResponse(url=target, status_code=303)
+    if path == "/user":
+        if request.query_params.get("view") == "admin" and is_admin:
+            legacy_section = canonical_admin_section(request.query_params.get("section"))
+            return RedirectResponse(url="/admin/" + legacy_section if legacy_section else "/admin", status_code=303)
+    else:
+        if not is_admin:
+            raise HTTPException(status_code=403, detail="Admins only")
+        if section is not None:
+            canonical = canonical_admin_section(section)
+            if canonical is None:
+                raise HTTPException(status_code=404, detail="Unknown administrator section")
+            if canonical != section:
+                return RedirectResponse(url="/admin/" + canonical, status_code=303)
+        if request.query_params.get("section"):
+            canonical = canonical_admin_section(request.query_params.get("section"))
+            if canonical:
+                return RedirectResponse(url="/admin/" + canonical, status_code=303)
 
     brand = branding_context(db)
     has_logo = brand["has_logo"]
@@ -1743,6 +1791,10 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
     """Safe, read-only diagnostics for an authorized application administrator."""
     if not is_admin_user(request):
         raise HTTPException(status_code=403, detail="Admins only")
+    return _admin_system_status_snapshot(db)
+
+
+def _admin_system_status_snapshot(db: Session) -> dict:
     database_status, counts = "ok", {}
     try:
         db.execute(text("SELECT 1"))
@@ -1797,6 +1849,118 @@ def admin_system_status(request: Request, db: Session = Depends(get_db)):
             "mail_adapters": "external",
         },
     }
+
+
+
+def _portal_websocket_same_origin(websocket: WebSocket) -> bool:
+    # Browser WebSocket handshakes carry Origin. Reject cross-site cookie use
+    # and non-browser callers that cannot prove a same-origin handshake.
+    origin = urlsplit(websocket.headers.get("origin", ""))
+    host = websocket.headers.get("host", "")
+    return (
+        origin.scheme in {"http", "https"}
+        and bool(origin.hostname)
+        and origin.netloc.casefold() == host.casefold()
+        and not origin.username and not origin.password
+        and not origin.path and not origin.query and not origin.fragment
+    )
+
+
+def _portal_status_for_stream() -> dict:
+    with SessionLocal() as db:
+        return _admin_system_status_snapshot(db)
+
+
+def _portal_backup_revision() -> tuple:
+    with SessionLocal() as db:
+        rows = db.query(
+            BackupRunDB.id, BackupRunDB.status, BackupRunDB.started_at,
+            BackupRunDB.finished_at, BackupRunDB.is_retained,
+        ).order_by(BackupRunDB.requested_at.desc()).limit(50).all()
+        return tuple(tuple(str(value) for value in row) for row in rows)
+
+
+@app.websocket("/ws/portal")
+async def portal_realtime_socket(websocket: WebSocket):
+    if not _portal_websocket_same_origin(websocket):
+        await websocket.close(code=1008)
+        return
+    try:
+        user = require_signature_user(websocket)
+    except HTTPException:
+        await websocket.close(code=1008)
+        return
+    is_admin = "signature-admins" in user.get("groups", [])
+    queue = portal_realtime_hub.subscribe()
+    subscribed = False
+    backups_subscribed = False
+    await websocket.accept()
+    await websocket.send_json({"type": "ready", "status_available": is_admin})
+
+    async def push_events():
+        last_status = None
+        last_backup_revision = None
+        try:
+            while True:
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=20)
+                except asyncio.TimeoutError:
+                    event = None
+                if event and event.get("type") == "resource-changed" and is_admin:
+                    await websocket.send_json(event)
+                if backups_subscribed:
+                    try:
+                        revision = await asyncio.to_thread(_portal_backup_revision)
+                        if revision != last_backup_revision:
+                            last_backup_revision = revision
+                            await websocket.send_json({"type": "resource-changed", "path": "/api/admin/backups/history"})
+                    except Exception as exc:
+                        logger.warning("Realtime backup history snapshot failed (%s)", type(exc).__name__)
+                if subscribed:
+                    try:
+                        status = await asyncio.to_thread(_portal_status_for_stream)
+                        # checked_at tracks when a snapshot is generated, not a
+                        # state change. Do not send unchanged data on every probe.
+                        stable = dict(status)
+                        stable.pop("checked_at", None)
+                        fingerprint = json.dumps(stable, sort_keys=True, default=str)
+                        if fingerprint != last_status or (event and event.get("type") == "refresh-status"):
+                            await websocket.send_json({"type": "system-status", "data": status})
+                            last_status = fingerprint
+                    except Exception as exc:
+                        logger.warning("Realtime system status snapshot failed (%s)", type(exc).__name__)
+                        if last_status != "error":
+                            await websocket.send_json({"type": "system-status-error", "message": "System status unavailable"})
+                        last_status = "error"
+        except asyncio.CancelledError:
+            raise
+
+    sender = asyncio.create_task(push_events())
+    try:
+        while True:
+            message = await websocket.receive_json()
+            if not isinstance(message, dict):
+                continue
+            action = message.get("type")
+            if action == "subscribe-status" and is_admin:
+                subscribed = True
+                portal_realtime_hub.enqueue(queue, {"type": "refresh-status"})
+            elif action == "unsubscribe-status":
+                subscribed = False
+            elif action == "refresh-status" and is_admin:
+                subscribed = True
+                portal_realtime_hub.enqueue(queue, {"type": "refresh-status"})
+            elif action == "subscribe-backups" and is_admin:
+                backups_subscribed = True
+                portal_realtime_hub.enqueue(queue, {"type": "refresh-backups"})
+            elif action == "unsubscribe-backups":
+                backups_subscribed = False
+    except (WebSocketDisconnect, RuntimeError, ValueError):
+        pass
+    finally:
+        sender.cancel()
+        await asyncio.gather(sender, return_exceptions=True)
+        portal_realtime_hub.unsubscribe(queue)
 
 
 def _retired_backup_api(request: Request):

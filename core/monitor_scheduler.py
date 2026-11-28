@@ -32,7 +32,7 @@ def check_once(session_factory, *, force: bool = False) -> dict[str, object] | N
         return result
 
 
-def start(session_factory) -> None:
+def start(session_factory, *, on_change=None) -> None:
     global _thread
     if _thread and _thread.is_alive():
         return
@@ -43,7 +43,12 @@ def start(session_factory) -> None:
         # duplicate probes; future cluster deployments need leader election.
         while not _stop.wait(5):
             try:
-                check_once(session_factory)
+                result = check_once(session_factory)
+                if result is not None and on_change is not None:
+                    try:
+                        on_change()
+                    except Exception as notification_error:
+                        log.warning("Realtime monitor notification failed (%s)", type(notification_error).__name__)
             except Exception as exc:
                 log.warning("Adapter health probe could not run (%s)", type(exc).__name__)
 

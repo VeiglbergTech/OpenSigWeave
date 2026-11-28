@@ -35,6 +35,22 @@ details. The browser **System** tab shows the snapshot and a refresh control.
 Full encrypted backup/restore, deployment secrets and MTA diagnostics remain
 operator-only.
 
+## Portal routes and authenticated WebSocket
+
+The interactive portal uses deep-linkable paths instead of query-string state:
+
+- `GET /` redirects a signed-in user to `/user`; old `/?view=admin&section=...` and `/?view=personal` bookmarks redirect to the appropriate canonical path.
+- `GET /user` shows the personal signature workspace.
+- `GET /admin` opens the administrator portal at **System**.
+- `GET /admin/{tab}` opens a particular section: `system`, `identity-providers`, `domains`, `signatures`, `signature-groups`, `rules`, `branding`, `backups` or `import-export`. Unknown names return 404; non-admin users receive 403. Old `imports`/`exports` aliases redirect to `import-export`; old `scheduling` redirects to `rules`.
+- Browser Back/Forward works without a page reload; direct access and reload preserve the selected section.
+
+Authenticated browser sessions use `WS /ws/portal`, with the same signed session cookie and a required same-origin `Origin` header. Normal users receive only the connection handshake; administrator-only diagnostics and change events are role-gated. Machine management API keys are **not** accepted over WebSocket. The browser sends `subscribe-status`/`unsubscribe-status`, `refresh-status`, and `subscribe-backups`/`unsubscribe-backups` JSON messages. Server events include `ready`, `system-status`, `system-status-error`, and `resource-changed`.
+
+System diagnostics are sent as an initial snapshot, after relevant writes and monitor updates, or after a manual refresh. While subscribed, the backend samples dependencies every 20 seconds to detect external changes; it sends a frame only when meaningful status changes (excluding `checked_at`). Backups follow the same change-only stream for run-state transitions. **There is no browser-side status or backup polling and no periodic page reload.** Existing REST APIs remain available for CRUD and machine clients.
+
+The current notification bus is in-process; with `UVICORN_WORKERS=1` (the default) all connected browser tabs receive immediate write notifications. On multi-worker deployments, backend snapshot sampling still detects status and backup changes, but list invalidations across different workers need a shared event broker before being considered cluster-wide realtime. A reverse proxy must support WebSocket upgrades; Caddy’s normal `reverse_proxy` does so automatically.
+
 ## Authentication and authorization
 
 - `GET /login`: renders the local administrator form, LDAP email/password login and buttons for configured managed OIDC providers.

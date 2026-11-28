@@ -353,6 +353,17 @@ async function main() {
   });
   const pageErrors = [];
   page.on("pageerror", error => pageErrors.push({ message: error.message, stack: error.stack }));
+  const liveFrames = [];
+  let statusHttpReads = 0;
+  page.on("request", request => {
+    if (request.method() === "GET" && request.url().includes("/api/admin/system-status")) statusHttpReads++;
+  });
+  page.on("websocket", socket => {
+    if (!socket.url().endsWith("/ws/portal")) return;
+    socket.on("framereceived", frame => {
+      try { liveFrames.push(JSON.parse(frame.payload)); } catch (_error) {}
+    });
+  });
 
   try {
     checkpoint("login: open");
@@ -368,7 +379,7 @@ async function main() {
     await page.getByLabel("Email address").fill(email);
     await page.getByLabel("Password").fill(password);
     await page.getByRole("button", { name: "Sign in" }).click();
-    await page.waitForURL(url => url.origin === new URL(baseURL).origin && url.pathname === "/");
+    await page.waitForURL(url => url.origin === new URL(baseURL).origin && url.pathname === "/user");
     await page.locator("#logout-button").waitFor();
     await page.getByRole("button", { name: "Admin", exact: true }).waitFor();
 
@@ -556,15 +567,15 @@ async function main() {
     assert.equal(await page.locator('div[x-show="tab === \'admin\'"] > div').first().locator('button').first().textContent(), "System",
       "System must be the first administrator navigation item");
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
-    assert.match(page.url(), /[?&]section=identity-providers(?:&|$)/,
-      "first administrator opening must use Identity Providers and persist it in the URL");
+    assert.equal(new URL(page.url()).pathname, "/admin/identity-providers",
+      "administrator navigation must use a deep-linkable path");
     await page.reload();
     await page.getByRole("heading", { name: "Identity Providers" }).waitFor({ state: "visible" });
     await page.getByRole("button", { name: "Domains", exact: true }).click();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     await page.reload();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
-    assert.match(page.url(), /[?&]section=domains(?:&|$)/, "admin tab must survive reload via URL");
+    assert.equal(new URL(page.url()).pathname, "/admin/domains", "admin path must survive reload");
     await page.getByRole("button", { name: "My Signature", exact: true }).click();
     await page.getByRole("button", { name: "Admin", exact: true }).click();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
@@ -572,13 +583,22 @@ async function main() {
     await page.getByRole("heading", { name: "Personal Signature Override" }).waitFor({ state: "visible" });
     await page.goForward();
     await page.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
-    await page.goto(baseURL + "/?view=admin&section=system");
+    await page.goto(baseURL + "/admin/system");
     await page.getByRole("heading", { name: "System Status" }).waitFor({ state: "visible" });
+    await page.locator('[x-data="systemStatusManager"]').getByText("Healthy", { exact: true }).waitFor();
+    assert.ok(liveFrames.some(frame => frame.type === "system-status"),
+      "the system status must be delivered over an authenticated WebSocket");
+    assert.equal(statusHttpReads, 0,
+      "the browser must not poll the system-status REST endpoint");
+    assert.equal(new URL(page.url()).pathname, "/admin/system");
+    const directAdmin = await page.request.get(baseURL + "/admin");
+    assert.equal(directAdmin.status(), 200, "bare /admin must load the administrator portal");
+    assert.equal((await page.request.get(baseURL + "/admin/does-not-exist")).status(), 404,
+      "unknown administrator sections must not resolve to the portal");
     await page.getByRole("button", { name: "Domains", exact: true }).click();
-    const systemTabReload = page.waitForResponse(response =>
-      response.url().includes("/api/admin/system-status") && response.request().method() === "GET");
     await page.getByRole("button", { name: "System", exact: true }).click();
-    assert.equal((await systemTabReload).status(), 200, "revisiting System must request fresh status");
+    assert.equal(new URL(page.url()).pathname, "/admin/system",
+      "returning to System must use its canonical path");
     await page.getByRole("button", { name: "Domains", exact: true }).click();
 
     checkpoint("admin: open");
@@ -620,8 +640,8 @@ async function main() {
     for (const legacySection of ["imports", "exports"]) {
       await page.goto(baseURL + "/?view=admin&section=" + legacySection);
       await page.getByRole("heading", { name: "Import / Export", exact: true }).waitFor();
-      assert.match(page.url(), /[?&]section=import-export(?:&|$)/,
-        "old " + legacySection + " link must be canonicalized");
+      assert.equal(new URL(page.url()).pathname, "/admin/import-export",
+        "old " + legacySection + " link must redirect to the canonical path");
       await page.getByRole("heading", { name: "Import", exact: true }).waitFor();
       await page.getByRole("heading", { name: "Export", exact: true }).waitFor();
     }
@@ -715,16 +735,19 @@ async function main() {
     assert.ok(cardGap >= 20, "separate system context cards need visible spacing: " + cardGap);
     await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
-    await page.route("**/api/admin/system-status", route => route.fulfill({
-      status: 503, contentType: "application/json", body: JSON.stringify({ detail: "Synthetic dependency outage" }),
-    }));
-    await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
+    // The status UI is WebSocket-driven, so inject a socket error event rather
+    // than expecting a periodic HTTP request that no longer exists.
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("osw-realtime-status-error", {
+      detail: "Synthetic dependency outage"
+    })));
     await systemPanel.getByRole("alert").waitFor({ state: "visible" });
     assert.match(await systemPanel.getByRole("alert").textContent(), /Synthetic dependency outage/);
     await systemPanel.getByText("Unavailable", { exact: true }).first().waitFor();
-    await page.unroute("**/api/admin/system-status");
     await systemPanel.getByRole("button", { name: "Refresh Status" }).click();
     await systemPanel.getByText("Healthy", { exact: true }).waitFor();
+    assert.equal(await systemPanel.getByText("Connected", { exact: true }).count(), 1,
+      "system status must use a connected WebSocket");
+    assert.equal(statusHttpReads, 0, "manual status refresh must also use the WebSocket");
 
     await page.getByRole("button", { name: "Import / Export", exact: true }).click();
     await page.getByRole("button", { name: "Choose ZIP File", exact: true }).waitFor({ state: "visible" });
@@ -2673,7 +2696,7 @@ async function main() {
       const visualPage = await visualContext.newPage();
       visualPage.setDefaultTimeout(15000);
       try {
-        await visualPage.goto(baseURL + "/?view=admin&section=domains");
+        await visualPage.goto(baseURL + "/admin/domains");
         await visualPage.evaluate(theme => {
           localStorage.setItem("opensigweave.theme.v1", theme);
           document.documentElement.dataset.theme = theme;
@@ -2931,7 +2954,7 @@ async function main() {
     const mobileContext = await browser.newContext({ viewport: { width, height } });
     await mobileContext.addCookies(await page.context().cookies());
     const mobilePage = await mobileContext.newPage();
-    await mobilePage.goto(baseURL + "/?view=admin&section=domains");
+    await mobilePage.goto(baseURL + "/admin/domains");
     await mobilePage.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
     const mobileLayout = await mobilePage.evaluate(() => ({
       documentWidth: document.documentElement.scrollWidth,
@@ -3006,6 +3029,30 @@ async function main() {
     assert.equal((await normalSignature.json()).html_content, "");
     const deniedAdminApi = await normalPage.request.get(baseURL + "/api/admin/signatures");
     assert.equal(deniedAdminApi.status(), 403, "regular user must be denied administrator APIs");
+    assert.equal((await normalPage.request.get(baseURL + "/admin/signatures")).status(), 403,
+      "a regular user must not open administrator deep links");
+    const regularSocket = await normalPage.evaluate(() => new Promise(resolve => {
+      const scheme = location.protocol === "https:" ? "wss:" : "ws:";
+      const socket = new WebSocket(scheme + "//" + location.host + "/ws/portal");
+      const observed = [];
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        socket.close();
+        resolve(observed);
+      };
+      socket.addEventListener("open", () => socket.send(JSON.stringify({ type: "subscribe-status" })));
+      socket.addEventListener("message", event => {
+        try { observed.push(JSON.parse(event.data)); } catch (_error) {}
+        if (observed.length) setTimeout(finish, 250);
+      });
+      setTimeout(finish, 2000);
+    }));
+    assert.ok(regularSocket.some(message => message.type === "ready" && message.status_available === false),
+      "regular users may connect but must not be granted system status access");
+    assert.ok(!regularSocket.some(message => message.type === "system-status"),
+      "regular users must not receive private system diagnostic frames");
     const deniedDirectory = await normalPage.request.get(baseURL + "/api/admin/domains/1/users");
     assert.equal(deniedDirectory.status(), 403, "regular user must not enumerate domain users");
     const savedPersonalSignature = await normalPage.request.post(baseURL + "/api/my-signature", {
@@ -3056,7 +3103,7 @@ async function main() {
     await expiredContext.addCookies(await page.context().cookies());
     try {
       const expiredPage = await expiredContext.newPage();
-      await expiredPage.goto(baseURL + "/?view=admin&section=domains");
+      await expiredPage.goto(baseURL + "/admin/domains");
       await expiredPage.getByRole("heading", { name: "Managed Domains" }).waitFor({ state: "visible" });
       assert.equal((await expiredPage.request.get(baseURL + "/api/session/status")).status(), 204);
       // Simulates expiration/logout in another tab while this page stays open.

@@ -43,6 +43,109 @@ window.fetch = async (resource, options = {}) => {
     return response;
 };
 
+// One authenticated WebSocket per portal page. CRUD remains REST; changes and
+// system health arrive as events rather than repeated browser HTTP polling.
+const portalRealtime = (() => {
+    let socket = null, reconnectTimer = null, reconnectDelay = 1000;
+    let statusWanted = false, backupWanted = false, intentionallyClosed = false;
+    const emit = (name, detail) => window.dispatchEvent(new CustomEvent(name, { detail }));
+    const connectionState = state => emit("osw-realtime-connection", state);
+
+    function send(type) {
+        if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+        socket.send(JSON.stringify({ type }));
+        return true;
+    }
+    function connect() {
+        if (intentionallyClosed || !("WebSocket" in window)) {
+            connectionState("unavailable");
+            return;
+        }
+        if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) return;
+        if (reconnectTimer !== null) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+        const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+        socket = new WebSocket(scheme + "//" + window.location.host + "/ws/portal");
+        connectionState("connecting");
+        socket.addEventListener("open", () => {
+            reconnectDelay = 1000;
+            connectionState("connected");
+            if (statusWanted) send("subscribe-status");
+            if (backupWanted) send("subscribe-backups");
+        });
+        socket.addEventListener("message", event => {
+            let message;
+            try { message = JSON.parse(event.data); } catch (_error) { return; }
+            if (!message || typeof message !== "object") return;
+            if (message.type === "system-status") emit("osw-realtime-status", message.data);
+            if (message.type === "system-status-error") emit("osw-realtime-status-error", message.message);
+            if (message.type === "resource-changed") {
+                const path = String(message.path || "");
+                emit("osw-realtime-change", path);
+                if (path.startsWith("/api/admin/signatures")) {
+                    emit("osw-live-signatures", path);
+                    emit("osw-live-groups", path);
+                } else if (path.startsWith("/api/admin/signature-groups")) {
+                    emit("osw-live-groups", path);
+                    emit("osw-live-rules", path);
+                } else if (path.startsWith("/api/admin/rules") || path.startsWith("/api/admin/schedules")) {
+                    emit("osw-live-rules", path);
+                } else if (path.startsWith("/domains/") || path.startsWith("/api/admin/domains")) {
+                    emit("osw-live-domains", path);
+                    emit("osw-live-signatures", path);
+                    emit("osw-live-groups", path);
+                } else if (path.startsWith("/api/admin/identity-providers")) {
+                    emit("osw-live-providers", path);
+                    emit("osw-live-domains", path);
+                } else if (path.startsWith("/api/admin/branding")) {
+                    emit("osw-live-branding", path);
+                } else if (path.startsWith("/api/admin/backups")) {
+                    emit("osw-live-backups", path);
+                }
+            }
+        });
+        socket.addEventListener("close", event => {
+            socket = null;
+            connectionState("disconnected");
+            if (intentionallyClosed) return;
+            // A rejected handshake (policy/auth) should not be retried forever.
+            if (event.code === 1008 || event.code === 4401 || event.code === 4403) {
+                connectionState("unavailable");
+                return;
+            }
+            reconnectTimer = setTimeout(connect, reconnectDelay);
+            reconnectDelay = Math.min(30000, reconnectDelay * 2);
+        });
+    }
+    return {
+        connect,
+        setStatusActive(active) {
+            const next = !!active;
+            if (next === statusWanted) return;
+            statusWanted = next;
+            send(next ? "subscribe-status" : "unsubscribe-status");
+        },
+        setBackupActive(active) {
+            const next = !!active;
+            if (next === backupWanted) return;
+            backupWanted = next;
+            send(next ? "subscribe-backups" : "unsubscribe-backups");
+        },
+        refreshStatus() {
+            if (!send("refresh-status")) {
+                connectionState("disconnected");
+                return false;
+            }
+            return true;
+        },
+        close() {
+            intentionallyClosed = true;
+            if (reconnectTimer !== null) clearTimeout(reconnectTimer);
+            if (socket) socket.close();
+            socket = null;
+        }
+    };
+})();
+
         var userRichEditor, adminRichEditor, signatureRichEditor;
         let personalEffective = null;
         async function reloadPersonalEffective() {
@@ -252,68 +355,73 @@ window.fetch = async (resource, options = {}) => {
     const stateKey = "opensigweave.portal-state.v1";
     const isAdmin = document.body.dataset.isAdmin === "true";
     const allowedAdminTabs = new Set([
-        "identity-providers", "domains", "signatures", "signature-groups",
-        "rules", "scheduling", "branding", "backups", "import-export", "system"
+        "system", "identity-providers", "domains", "signatures",
+        "signature-groups", "rules", "branding", "backups", "import-export"
     ]);
+    const normalizeAdminTab = section => ({
+        imports: "import-export", exports: "import-export", scheduling: "rules"
+    })[section] || section;
     let saved = {};
     try { saved = JSON.parse(sessionStorage.getItem(stateKey) || "{}"); } catch (_error) {}
-    // Keep existing bookmarked URLs and session state valid after merging the two tabs.
-    const normalizeAdminTab = section => (section === "imports" || section === "exports")
-        ? "import-export" : section;
-    const initialUrl = new URL(window.location.href);
-    const directSection = normalizeAdminTab(initialUrl.searchParams.get("section"));
-    const directView = initialUrl.searchParams.get("view");
-    const initialAdminTab = document.body.dataset.mailSetupRequired === "true"
-        ? "system"
-        : (allowedAdminTabs.has(directSection) ? directSection
-            : (allowedAdminTabs.has(normalizeAdminTab(saved.adminTab)) ? normalizeAdminTab(saved.adminTab) : "identity-providers"));
-    const initialView = isAdmin && (
-        directView === "admin" || (directView !== "personal" && !directView && (
-            allowedAdminTabs.has(directSection) || saved.tab === "admin" ||
-            document.body.dataset.idpSetupRequired === "true" ||
-            document.body.dataset.mailSetupRequired === "true"
-        ))
-    ) ? "admin" : "personal";
+    const currentPath = () => window.location.pathname.replace(/\/+$/, "") || "/";
+    const tabFromPath = () => {
+        const path = currentPath();
+        if (isAdmin && (path === "/admin" || path.startsWith("/admin/"))) {
+            const section = normalizeAdminTab(path.split("/")[2] || "system");
+            return { tab: "admin", adminTab: allowedAdminTabs.has(section) ? section : "system" };
+        }
+        return { tab: "personal", adminTab: "" };
+    };
+    const route = tabFromPath();
+    const previousAdminTab = normalizeAdminTab(saved.adminTab);
+    const initialAdminTab = route.tab === "admin" ? route.adminTab
+        : allowedAdminTabs.has(previousAdminTab) ? previousAdminTab : "identity-providers";
     return {
-        tab: initialView,
+        tab: route.tab,
         adminTab: initialAdminTab,
         saveNavigation(push = true) {
             try { sessionStorage.setItem(stateKey, JSON.stringify({tab: this.tab, adminTab: this.adminTab})); }
             catch (_error) { /* Session storage is optional. */ }
-            const url = new URL(window.location.href);
-            url.searchParams.set("view", this.tab);
-            if (this.tab === "admin") url.searchParams.set("section", this.adminTab);
-            else url.searchParams.delete("section");
-            const next = url.pathname + url.search + url.hash;
-            if (next !== window.location.pathname + window.location.search + window.location.hash) {
-                window.history[push ? "pushState" : "replaceState"]({}, "", next);
+            const next = this.tab === "admin" ? "/admin/" + this.adminTab : "/user";
+            if (next !== currentPath() || window.location.search) {
+                window.history[push ? "pushState" : "replaceState"]({}, "", next + window.location.hash);
             }
+            portalRealtime.setStatusActive(this.tab === "admin" && this.adminTab === "system"
+                && document.visibilityState === "visible");
+            portalRealtime.setBackupActive(this.tab === "admin" && this.adminTab === "backups"
+                && document.visibilityState === "visible");
         },
         init() {
-            this.saveNavigation(false);
+            portalRealtime.connect();
+            // The bare /admin entry point displays System, and keeps its URL
+            // until the user explicitly selects a tab.
+            if (currentPath() !== "/admin") this.saveNavigation(false);
+            else {
+                portalRealtime.setStatusActive(document.visibilityState === "visible");
+                portalRealtime.setBackupActive(false);
+            }
             window.addEventListener("popstate", async () => {
                 if (!(await checkPortalSession())) {
                     this.saveNavigation(false);
                     return;
                 }
-                const url = new URL(window.location.href);
-                const view = url.searchParams.get("view");
-                const section = normalizeAdminTab(url.searchParams.get("section"));
-                this.adminTab = allowedAdminTabs.has(section) ? section : this.adminTab;
-                this.tab = isAdmin && (view === "admin" || (!view && allowedAdminTabs.has(section)))
-                    ? "admin" : "personal";
-                // Replace legacy URLs without creating an extra history entry.
-                this.saveNavigation(false);
-                if (this.tab === "admin" && this.adminTab === "system") {
-                    window.dispatchEvent(new Event("osw-system-tab-active"));
-                }
+                const restored = tabFromPath();
+                this.tab = restored.tab;
+                if (restored.adminTab) this.adminTab = restored.adminTab;
+                portalRealtime.setStatusActive(this.tab === "admin" && this.adminTab === "system"
+                    && document.visibilityState === "visible");
+                portalRealtime.setBackupActive(this.tab === "admin" && this.adminTab === "backups"
+                    && document.visibilityState === "visible");
             });
-            // Catch revoked sessions when returning from another tab or bfcache.
             window.addEventListener("pageshow", event => {
                 if (event.persisted) void checkPortalSession();
             });
             document.addEventListener("visibilitychange", () => {
                 if (!document.hidden) void checkPortalSession();
+                portalRealtime.setStatusActive(this.tab === "admin" && this.adminTab === "system"
+                    && !document.hidden);
+                portalRealtime.setBackupActive(this.tab === "admin" && this.adminTab === "backups"
+                    && !document.hidden);
             });
             window.addEventListener("focus", () => { void checkPortalSession(); });
         },
@@ -323,7 +431,6 @@ window.fetch = async (resource, options = {}) => {
             this.adminTab = section;
             this.tab = "admin";
             this.saveNavigation();
-            if (section === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
         },
         async openPersonal() {
             if (!(await checkPortalSession())) return;
@@ -334,7 +441,6 @@ window.fetch = async (resource, options = {}) => {
             if (!isAdmin || !(await checkPortalSession())) return;
             this.tab = "admin";
             this.saveNavigation();
-            if (this.adminTab === "system") window.dispatchEvent(new Event("osw-system-tab-active"));
         },
         emit(name, detail) { window.dispatchEvent(new CustomEvent(name, { detail })); },
         confirmClearUser() { this.emit("open-confirm", { action: "clear-user" }); },
@@ -1940,7 +2046,6 @@ function backupManager() {
             interval_minutes: 1440, timezone: "UTC", retention_count: 14, retention_days: null },
         init() {
             this.fetchAll();
-            this.startPolling();
         },
         get hasEnabledLocations() {
             return this.locations.some(item => item.enabled);
@@ -2098,17 +2203,8 @@ function backupManager() {
         openHistoryDetails(item) {
             this.historyDetail = item;
         },
-        startPolling() {
-            this.backupPoll = setInterval(() => {
-                if (!this.loading && !this.busy && !this.ruleModal && !this.locationModal) {
-                    this.fetchRules();
-                    this.fetchHistory();
-                }
-            }, 20000);
-        },
-        destroy() {
-            if (this.backupPoll) clearInterval(this.backupPoll);
-        },
+        // Backup status/history refreshes are driven by WebSocket invalidations.
+        destroy() {},
 
         async fetchAll() {
             if (this.loading) return;
@@ -2193,29 +2289,32 @@ function systemStatusManager() {
             this.adapterMonitorCheckedAt = lastCheck && !Number.isNaN(lastCheck.getTime())
                 ? lastCheck.toLocaleString() : "Never";
         },
-        statusPoll: null, activationListener: null, visibilityListener: null,
-        isPanelVisible() {
-            const panel = document.getElementById("osw-system-status-panel");
-            return !!panel && panel.getClientRects().length > 0;
-        },
-        refreshIfVisible() {
-            if (document.visibilityState === "visible" && this.isPanelVisible()) this.refresh();
-        },
+        connection: "Connecting", statusListener: null, statusErrorListener: null,
+        connectionListener: null,
         start() {
             void this.loadAdapterSettings();
-            // The initial x-init runs even when Alpine x-show hides the system tab.
-            // Wait for the first render and only poll while it is actually visible.
-            this.activationListener = () => this.refresh();
-            this.visibilityListener = () => this.refreshIfVisible();
-            window.addEventListener("osw-system-tab-active", this.activationListener);
-            document.addEventListener("visibilitychange", this.visibilityListener);
-            this.statusPoll = window.setInterval(() => this.refreshIfVisible(), 10000);
-            requestAnimationFrame(() => this.refreshIfVisible());
+            this.statusListener = event => this.applyStatus(event.detail);
+            this.statusErrorListener = event => {
+                this.loading = false;
+                this.error = String(event.detail || "System status unavailable");
+                this.state = "Unavailable";
+            };
+            this.connectionListener = event => {
+                const state = event.detail;
+                this.connection = ({
+                    connected: "Connected", connecting: "Connecting",
+                    disconnected: "Reconnecting", unavailable: "Unavailable"
+                })[state] || "Unavailable";
+                if (state === "disconnected" || state === "unavailable") this.loading = false;
+            };
+            window.addEventListener("osw-realtime-status", this.statusListener);
+            window.addEventListener("osw-realtime-status-error", this.statusErrorListener);
+            window.addEventListener("osw-realtime-connection", this.connectionListener);
         },
         destroy() {
-            if (this.statusPoll !== null) window.clearInterval(this.statusPoll);
-            if (this.activationListener) window.removeEventListener("osw-system-tab-active", this.activationListener);
-            if (this.visibilityListener) document.removeEventListener("visibilitychange", this.visibilityListener);
+            if (this.statusListener) window.removeEventListener("osw-realtime-status", this.statusListener);
+            if (this.statusErrorListener) window.removeEventListener("osw-realtime-status-error", this.statusErrorListener);
+            if (this.connectionListener) window.removeEventListener("osw-realtime-connection", this.connectionListener);
         },
         async loadAdapterSettings() {
             if (this.loadingAdapterSettings) return;
@@ -2300,57 +2399,37 @@ function systemStatusManager() {
                 notify("Clipboard unavailable; select and copy the commands manually.", "error");
             }
         },
-        async refresh() {
-            if (this.loading) return;
-            this.loading = true;
+        refresh() {
             this.error = "";
-            try {
-                const response = await fetch("/api/admin/system-status", {
-                    headers: { Accept: "application/json" },
-                    credentials: "same-origin", cache: "no-store"
-                });
-                const data = await response.json().catch(() => ({}));
-                if (!response.ok) throw new Error(data.detail || "Could not load system status.");
-                this.state = data.status === "healthy" ? "Healthy" : "Degraded";
-                this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
-                this.database = data.database?.status === "ok" ? "OK" : "Unavailable";
-                this.storage = data.storage?.signature_files === true ? "Accessible" : "Unavailable";
-                this.assets = data.storage?.image_assets === true ? "Accessible" : "Unavailable";
-                this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
-                this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
-                const alerts = data.support_alerts || {};
-                this.alertStatus = ({
-                    ok: "Healthy", active: "Active failures", stale: "Status outdated",
-                    unavailable: "Status unavailable", not_configured: "Not configured"
-                })[alerts.status] || "Unknown";
-                this.alertPending = Number.isInteger(alerts.pending_count) ? alerts.pending_count : 0;
-                this.alertActive = Number.isInteger(alerts.active_count) ? alerts.active_count : 0;
-                this.alertLastUpdate = Number.isInteger(alerts.generated_at)
-                    ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
-                this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
-                const adapter = data.mail_adapter || {};
-                this.setAdapterMonitorState(adapter);
-                this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
-                    key, label: labels[key] || key, count
-                }));
-            } catch (error) {
-                this.error = "Could not load system status: " + (error instanceof Error ? error.message : "Unknown error");
-                this.state = "Unavailable";
-                this.checkedAt = new Date().toLocaleString();
-                this.database = "Unknown";
-                this.storage = "Unknown";
-                this.assets = "Unknown";
-                this.localAdmin = "Unknown";
-                this.managementApi = "Unknown";
-                this.alertStatus = "Unavailable";
-                this.alertPending = 0;
-                this.alertActive = 0;
-                this.alertIncidents = [];
-                this.alertLastUpdate = "—";
-                this.records = [];
-            } finally {
-                this.loading = false;
-            }
+            this.loading = portalRealtime.refreshStatus();
+            if (!this.loading) this.error = "Live WebSocket connection unavailable; status is not refreshed.";
+        },
+        applyStatus(data) {
+            if (!data || typeof data !== "object") return;
+            this.loading = false;
+            this.error = "";
+            this.state = data.status === "healthy" ? "Healthy" : "Degraded";
+            this.checkedAt = data.checked_at ? new Date(data.checked_at).toLocaleString() : "Unknown";
+            this.database = data.database?.status === "ok" ? "OK" : "Unavailable";
+            this.storage = data.storage?.signature_files === true ? "Accessible" : "Unavailable";
+            this.assets = data.storage?.image_assets === true ? "Accessible" : "Unavailable";
+            this.localAdmin = data.configuration?.local_admin_enabled ? "Configured" : "Unavailable";
+            this.managementApi = data.configuration?.management_api_enabled ? "Enabled" : "Disabled";
+            const alerts = data.support_alerts || {};
+            this.alertStatus = ({
+                ok: "Healthy", active: "Active failures", stale: "Status outdated",
+                unavailable: "Status unavailable", not_configured: "Not configured"
+            })[alerts.status] || "Unknown";
+            this.alertPending = Number.isInteger(alerts.pending_count) ? alerts.pending_count : 0;
+            this.alertActive = Number.isInteger(alerts.active_count) ? alerts.active_count : 0;
+            this.alertLastUpdate = Number.isInteger(alerts.generated_at)
+                ? new Date(alerts.generated_at * 1000).toLocaleString() : "—";
+            this.alertIncidents = Array.isArray(alerts.incidents) ? alerts.incidents : [];
+            const adapter = data.mail_adapter || {};
+            this.setAdapterMonitorState(adapter);
+            this.records = Object.entries(data.counts || {}).filter(([key]) => key !== "versions").map(([key, count]) => ({
+                key, label: labels[key] || key, count
+            }));
         }
     };
 }

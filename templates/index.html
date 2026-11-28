@@ -118,7 +118,7 @@
                 <button :aria-pressed="adminTab === 'backups'" @click="setAdminTab('backups')" :class="adminTab === 'backups' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Backup</button>
                 <button :aria-pressed="adminTab === 'import-export'" @click="setAdminTab('import-export')" :class="adminTab === 'import-export' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Import / Export</button>
             </div>
-        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" class="osw-admin-section">
+        <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" @osw-live-providers.window="fetchAll()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Identity Providers</h1>
                 <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
@@ -185,7 +185,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" class="osw-admin-section">
+        <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" @osw-live-domains.window="fetchDomains()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Managed Domains</h1>
                 <button @click="$dispatch('open-add-domain')" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Domain</button>
@@ -212,7 +212,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" class="osw-admin-section">
+        <div x-show="adminTab === 'signatures'" x-cloak x-data="signatureManager" x-init="fetchAll()" @osw-live-signatures.window="fetchAll()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
                 <h1 class="text-2xl font-semibold">Signature Catalog</h1>
                 <button type="button" @click="newSignature()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded shadow transition text-sm">+ Add Signature</button>
@@ -335,7 +335,7 @@
         </div>
 
 
-        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" class="osw-admin-section">
+        <div x-show="adminTab === 'signature-groups'" x-cloak x-data="signatureGroupManager" x-init="fetchAll()" @osw-live-groups.window="fetchAll()" class="osw-admin-section">
             <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Signature Groups</h2>
                 <div class="flex flex-wrap gap-2"><button @click="openMemberEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded text-sm">+ Add Signature to Group</button><button @click="newGroup()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Group</button></div>
@@ -434,7 +434,7 @@
             </div>
         </div>
 
-        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" class="osw-admin-section">
+        <div x-show="adminTab === 'rules'" x-cloak x-data="ruleManager" x-init="init()" @osw-live-rules.window="fetchAll()" class="osw-admin-section">
             <details class="rounded border border-gray-700 bg-gray-800 p-3 text-sm text-gray-300 mb-4">
                 <summary class="cursor-pointer">Scheduling priority</summary>
                 <p class="mt-2 text-xs text-gray-400">Active time-bound rules override always-on rules, regardless of normal priority. Higher priority wins within the same category. Older schedules remain active and are converted to rules when edited and saved.</p>
@@ -529,7 +529,7 @@
                 </div>
             </div>
         </div>
-        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" class="osw-admin-section space-y-5">
+        <div x-show="adminTab === 'branding'" x-cloak x-data="brandingManager" x-init="fetchSettings()" @osw-live-branding.window="fetchSettings()" class="osw-admin-section space-y-5">
             <div class="osw-section-header"><h2 class="text-2xl font-semibold">Branding</h2></div>
             <div class="grid grid-cols-1 xl:grid-cols-2 gap-5">
                 <div class="bg-gray-800 border border-gray-700 rounded-lg p-5 space-y-4">
@@ -625,7 +625,7 @@
             </div>
         </section>
         </div>
-        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="init()" class="osw-admin-section space-y-5">
+        <div x-show="adminTab === 'backups'" x-cloak x-data="backupManager" x-init="init()" @osw-live-backups.window="fetchAll()" class="osw-admin-section space-y-5">
             <div class="osw-section-header">
                 <h2 class="text-2xl font-semibold">Backup Management</h2>
                 <button type="button" @click="fetchAll()" :disabled="loading || busy" class="rounded bg-gray-700 px-4 py-2 text-sm disabled:opacity-50" x-text="loading ? 'Loading…' : 'Refresh'"></button>
@@ -959,7 +959,7 @@
             </section>
 
             <div class="osw-section-header">
-                <div><h2 class="text-2xl font-semibold">System Status</h2><p class="mt-1 text-xs text-gray-400">Automatically refreshes every 10 seconds while this tab is visible.</p></div>
+                <div><h2 class="text-2xl font-semibold">System Status</h2><p class="mt-1 text-xs text-gray-400">Live via WebSocket · connection: <span x-text="connection">Connecting</span>. The page does not poll or reload.</p></div>
                 <button type="button" @click="refresh()" :disabled="loading" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-50 px-4 py-2 rounded text-sm" x-text="loading ? 'Checking…' : 'Refresh Status'">Refresh Status</button>
             </div>
             <p x-show="error" x-text="error" role="alert" class="text-sm text-red-300"></p>
@@ -1291,6 +1291,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=group-fluid-names-20261128"></script>
+    <script src="/static/js/portal.js?v=websocket-routing-20261128"></script>
 </body>
 </html>
