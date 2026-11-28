@@ -1557,3 +1557,71 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     }
     .osw-admin-section .osw-backup-rule-actions { justify-content: flex-start; }
 }
+
+
+/* Identity management: two capability-specific tables share the global design
+   system, but their forms have dedicated, comfortably padded fields. */
+.osw-idp-section { min-width: 0; }
+.osw-idp-section .osw-section-header { gap: 1rem; }
+.osw-idp-table th:first-child { width: 32%; }
+.osw-idp-table th:nth-child(2) { width: 23%; }
+.osw-idp-table th:nth-child(3) { width: 19%; }
+.osw-idp-table th:last-child { width: 26%; }
+.osw-idp-actions {
+    display: flex; justify-content: flex-end; align-items: center;
+    flex-wrap: wrap; gap: .5rem .85rem; min-width: 0;
+}
+.osw-idp-actions button { min-height: 2rem; white-space: normal; }
+.osw-idp-form-grid {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem 1.25rem; min-width: 0;
+}
+.osw-idp-field {
+    display: flex; flex-direction: column; min-width: 0; gap: .5rem;
+    color: var(--osw-text); font-size: .875rem; line-height: 1.4;
+}
+.osw-idp-span-all { grid-column: 1 / -1; min-width: 0; }
+.osw-idp-dialog .osw-idp-input {
+    box-sizing: border-box; display: block; width: 100%; max-width: 100%;
+    min-height: 2.75rem; height: auto; line-height: 1.45;
+    padding: .65rem .875rem !important;
+    background: var(--osw-input-bg) !important;
+    border: 1px solid var(--osw-border) !important;
+    border-radius: .375rem;
+    color: var(--osw-text) !important;
+    text-overflow: ellipsis;
+}
+.osw-idp-dialog .osw-idp-input::placeholder { color: var(--osw-muted); opacity: 1; }
+.osw-idp-dialog .osw-idp-input:focus-visible {
+    outline: 2px solid var(--osw-focus); outline-offset: 1px;
+}
+.osw-idp-dialog .osw-idp-input:disabled { opacity: .65; cursor: not-allowed; }
+.osw-idp-enabled { display: flex; gap: .75rem; align-items: center; min-height: 2.75rem; align-self: end; font-size: .875rem; }
+.osw-idp-help { font-size: .8125rem; color: var(--osw-muted); line-height: 1.5; margin: 0; }
+.osw-idp-dialog .osw-modal-body { overflow-y: auto; overflow-x: hidden; min-height: 0; }
+.osw-idp-dialog .osw-modal-footer, .osw-idp-dialog .osw-modal-header { flex-shrink: 0; }
+
+/* Domain Management: override selection is independent of the paginated
+   directory, remains accessible in both themes and never needs x-scrolling. */
+.osw-override-management { min-width: 0; }
+.osw-overrides-table { width: 100%; max-width: 100%; table-layout: fixed; }
+.osw-overrides-table th, .osw-overrides-table td {
+    padding: .75rem .875rem; font-size: .875rem; overflow-wrap: anywhere;
+    vertical-align: middle;
+}
+.osw-overrides-table th:nth-child(1) { width: 3.25rem; }
+.osw-overrides-table th:nth-child(2) { width: 49%; }
+.osw-overrides-table th:nth-child(3) { width: 19%; }
+.osw-override-checkbox {
+    width: 1.125rem; height: 1.125rem; accent-color: var(--osw-ui-accent);
+    cursor: pointer; flex: 0 0 auto;
+}
+.osw-override-checkbox:disabled { cursor: not-allowed; opacity: .45; }
+@media (max-width: 700px) {
+    .osw-idp-form-grid { grid-template-columns: minmax(0, 1fr); }
+    .osw-idp-span-all { grid-column: 1; }
+    .osw-overrides-table th:nth-child(2) { width: auto; }
+    .osw-overrides-table th:nth-child(3) { width: auto; }
+    .osw-overrides-table td { padding: .625rem .5rem; }
+    .osw-overrides-table .osw-idp-actions { gap: .35rem; }
+}

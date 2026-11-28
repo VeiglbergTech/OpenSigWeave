@@ -60,6 +60,8 @@ jobs:
         run: |
           npm install --no-save --package-lock=false @alpinejs/csp@3.17.5 jsdom@26.1.0
           node tests/frontend_csp_smoke.cjs
+      - name: Test identity and override selection controllers
+        run: node tests/identity_management_smoke.cjs
       - name: Verify Alpine CSP CDN artifact and calculate SRI
         run: |
           curl -fsSLo /tmp/alpine-csp.min.js https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js

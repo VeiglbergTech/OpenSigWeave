@@ -177,6 +177,10 @@ class IdentityProviderRegistry:
             "provider_type": kind, "is_enabled": values.get("IDP_ENABLED", "true").casefold() == "true",
             "settings": {key: value for key, value in values.items() if key in _FIELDS[kind] and key not in secret_keys},
             "secret_configured": any(bool(values.get(key)) for key in secret_keys & _FIELDS[kind]),
+            # Keep the existing generic credential flag, but distinguish an
+            # Authentik API token from an OIDC client secret for login readiness.
+            "oidc_secret_configured": kind in {"authentik", "oidc"} and bool(values.get("OIDC_CLIENT_SECRET")),
+            "authentik_api_secret_configured": kind == "authentik" and bool(values.get("AUTHENTIK_API_TOKEN")),
         }
 
     def load(self, slug: str):

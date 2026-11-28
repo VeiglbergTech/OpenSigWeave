@@ -119,71 +119,137 @@
                 <button :aria-pressed="adminTab === 'import-export'" @click="setAdminTab('import-export')" :class="adminTab === 'import-export' ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'" class="px-4 py-2 rounded text-sm">Import / Export</button>
             </div>
         <div x-show="adminTab === 'identity-providers'" x-cloak x-data="identityProviderManager" x-init="fetchAll()" @osw-live-providers.window="fetchAll()" class="osw-admin-section">
-            <div class="osw-section-header mb-6">
-                <h1 class="text-2xl font-semibold">Identity Providers</h1>
-                <button @click="newProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Identity Provider</button>
-            </div>
-            <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll mb-6">
-                <table class="w-full text-left osw-data-table"><thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th class="px-4 py-3">Name</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Status</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
-                    <tbody class="divide-y divide-gray-700"><template x-for="provider in providers" :key="provider.id"><tr>
-                        <td class="px-4 py-3" data-label="Name"><div class="font-medium" x-text="provider.display_name"></div><div class="text-xs text-gray-500" x-text="provider.id"></div></td>
-                        <td class="px-4 py-3 text-sm" x-text="provider.provider_type === 'ldap' ? 'LDAP / Active Directory' : (provider.provider_type === 'oidc' ? 'OpenID Connect' : 'Authentik')" data-label="Type"></td>
-                        <td class="px-4 py-3 text-sm" data-label="Status"><span class="osw-admin-status" :class="provider.configured && provider.is_enabled ? 'text-green-400' : 'text-gray-500'" x-text="!provider.configured ? 'Configuration missing' : (provider.is_enabled ? 'Active' : 'Disabled')"></span></td>
-                        <td class="px-4 py-3 text-right space-x-3" data-label="Actions"><button @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button><button @click="editProvider(provider)" class="text-blue-400 text-sm">Edit</button><button @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button></td>
-                    </tr></template><tr x-show="providers.length === 0"><td colspan="4" class="px-4 py-6 text-center text-gray-500">No identity providers configured.</td></tr></tbody>
-                </table>
-            </div>
-            <div class="osw-modal-root">
-                <div class="osw-modal-placement">
-                    <div x-show="editing" x-cloak role="dialog" aria-label="Identity Provider editor" aria-modal="true" class="form-dialog osw-modal-shell osw-modal-width-medium">
-                        <div class="osw-modal-header"><h2 class="text-lg font-bold" x-text="form.original_id ? 'Edit Identity Provider' : 'Add Identity Provider'"></h2><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
-                        <div class="osw-modal-body">
-                        <div class="grid md:grid-cols-2 gap-4">
-                            <label class="text-sm">Provider ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="samba-ad" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Display Name<input x-model="form.display_name" placeholder="Company Active Directory" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Provider Type<select x-model="form.provider_type" @change="changeType" :disabled="!!form.original_id" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"><option value="authentik">Authentik</option><option value="oidc">OpenID Connect (generic)</option><option value="ldap">LDAP / Active Directory</option></select></label>
-                            <label class="text-sm flex items-center gap-2 mt-6"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Enabled</label>
-                        </div>
-                        <div x-show="form.provider_type === 'authentik'" class="grid md:grid-cols-2 gap-4">
-                            <label class="text-sm">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">API Token<input type="password" autocomplete="new-password" x-model="form.settings.AUTHENTIK_API_TOKEN" placeholder="Leave empty to keep existing token" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <div class="md:col-span-2 border-t border-gray-700 pt-3 mt-2">
-                                <p class="text-sm font-semibold text-gray-200 mb-2">OIDC Sign-in (Optional)</p>
-                                <div class="grid md:grid-cols-2 gap-3">
-                                    <label class="text-sm">OIDC Discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://auth.example.org/application/o/app/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                    <label class="text-sm">OIDC Client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                    <label class="text-sm">OIDC Client Secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                    <label class="text-sm">OIDC Scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                    <label class="text-sm md:col-span-2">OIDC Callback / Redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/auth-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                    <label class="text-sm md:col-span-2">OIDC Post-logout Redirect URI (Optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                                </div>
-                            </div>
-                            <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.AUTHENTIK_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                        </div>
-                        <div x-show="form.provider_type === 'oidc'" class="grid md:grid-cols-2 gap-4">
-                            <p class="md:col-span-2 text-xs text-gray-400">For profile attributes, select this provider as both the domain login and profile provider.</p>
-                            <label class="text-sm">OIDC Discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example/.well-known/openid-configuration" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">OIDC Client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">OIDC Client Secret<input type="password" autocomplete="new-password" x-model="form.settings.OIDC_CLIENT_SECRET" placeholder="Leave empty to keep existing secret" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">OIDC Scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm md:col-span-2">OIDC Callback / Redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/oidc-main" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm md:col-span-2">OIDC Post-logout Redirect URI (Optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                        </div>
-                        <div x-show="form.provider_type === 'ldap'" class="grid md:grid-cols-2 gap-4">
-                            <label class="text-sm">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Bind Password<input type="password" autocomplete="new-password" x-model="form.settings.LDAP_BIND_PASSWORD" placeholder="Leave empty to keep existing password" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">User Filter<input x-model="form.settings.LDAP_USER_FILTER" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">CA Certificate File<input x-model="form.settings.LDAP_CA_CERT_FILE" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                            <label class="text-sm">Timeout<input type="number" min="1" max="60" x-model="form.settings.LDAP_TIMEOUT" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded p-2"></label>
-                        </div>
-                        </div>
-                        <div class="osw-modal-footer"><button data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button><button @click="saveProvider()" class="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm">Save</button></div>
-                    </div>
-                </div>
-            </div>
+  <div class="osw-section-header mb-6"><h1 class="text-2xl font-semibold">Identity Providers</h1></div>
+  <div class="space-y-8">
+    <section class="osw-idp-section" aria-label="Web Interface">
+  <div class="osw-section-header mb-3">
+    <div><h2 class="text-xl font-semibold">Web Interface</h2><p class="mt-1 text-sm text-gray-400">Login providers for the web interface. LDAP also supports password sign-in; Authentik uses optional OIDC settings.</p></div>
+    <button type="button" @click="newWebProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Login Provider</button>
+  </div>
+  <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll">
+    <table class="w-full text-left osw-data-table osw-idp-table">
+      <thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th>Name</th><th>Type</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+      <tbody class="divide-y divide-gray-700">
+        <template x-for="provider in webProviders()" :key="provider.id">
+          <tr>
+            <td data-label="Name"><span class="font-medium" x-text="provider.display_name"></span></td>
+            <td data-label="Type" x-text="providerTypeLabel(provider)"></td>
+            <td data-label="Status"><span class="osw-admin-status" :class="webProviderReady(provider) ? 'text-green-400' : 'text-gray-400'" x-text="webProviderStatus(provider)"></span></td>
+            <td data-label="Actions" class="text-right"><div class="osw-idp-actions">
+              <button type="button" @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button>
+              <button type="button" @click="editProvider(provider, 'web')" class="text-blue-400 text-sm">Edit</button>
+              <button type="button" @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button>
+            </div></td>
+          </tr>
+        </template>
+        <tr x-show="webProviders().length === 0"><td colspan="4" class="text-center text-gray-400">No web login providers configured.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+    <section class="osw-idp-section" aria-label="User Provisioning">
+  <div class="osw-section-header mb-3">
+    <div><h2 class="text-xl font-semibold">User Provisioning</h2><p class="mt-1 text-sm text-gray-400">Sources of identity attributes and user-directory synchronization. LDAP and Authentik can also be used for web sign-in when configured.</p></div>
+    <button type="button" @click="newProvisioningProvider()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm">+ Add Provisioning Provider</button>
+  </div>
+  <div class="bg-gray-800 border border-gray-700 rounded-lg osw-table-scroll">
+    <table class="w-full text-left osw-data-table osw-idp-table">
+      <thead><tr class="bg-gray-900 text-gray-400 text-xs uppercase"><th>Name</th><th>Type</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+      <tbody class="divide-y divide-gray-700">
+        <template x-for="provider in provisioningProviders()" :key="provider.id">
+          <tr>
+            <td data-label="Name"><span class="font-medium" x-text="provider.display_name"></span></td>
+            <td data-label="Type" x-text="providerTypeLabel(provider)"></td>
+            <td data-label="Status"><span class="osw-admin-status" :class="provisioningProviderReady(provider) ? 'text-green-400' : 'text-gray-400'" x-text="provisioningProviderStatus(provider)"></span></td>
+            <td data-label="Actions" class="text-right"><div class="osw-idp-actions">
+              <button type="button" @click="testProvider(provider)" class="text-green-400 text-sm">Test Connection</button>
+              <button type="button" @click="editProvider(provider, 'provisioning')" class="text-blue-400 text-sm">Edit</button>
+              <button type="button" @click="deleteProvider(provider)" class="text-red-400 text-sm">Delete</button>
+            </div></td>
+          </tr>
+        </template>
+        <tr x-show="provisioningProviders().length === 0"><td colspan="4" class="text-center text-gray-400">No provisioning providers configured.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+  </div>
+  <div class="osw-modal-root">
+  <div class="osw-modal-placement">
+    <div x-show="editing && editorSection === 'web'" x-cloak role="dialog" aria-modal="true" aria-label="Web Interface provider editor" class="form-dialog osw-modal-shell osw-modal-width-medium osw-idp-dialog">
+      <div class="osw-modal-header"><h2 class="text-lg font-semibold" x-text="(form.original_id ? 'Edit' : 'Add') + ' Web Login Provider'"></h2><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+      <div class="osw-modal-body">
+        
+  <div class="osw-idp-form-grid">
+    <label class="osw-idp-field">Provider ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="provider-id" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Display Name<input x-model="form.display_name" placeholder="Company Identity Provider" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Provider Type
+      <select x-model="form.provider_type" @change="changeType" :disabled="!!form.original_id" class="osw-idp-input">
+        <option value="oidc">OpenID Connect</option><option value="ldap">LDAP / Active Directory</option><option value="authentik">Authentik (OIDC login)</option>
+      </select>
+    </label>
+    <label class="osw-idp-enabled"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Enabled</label>
+  </div>
+        <p class="osw-idp-help">Web sign-in settings. For an Authentik provider, the API integration is managed separately under User Provisioning. LDAP uses the same connection for login and profile lookups.</p>
+  <div x-show="form.provider_type === 'oidc' || form.provider_type === 'authentik'" class="osw-idp-form-grid">
+    <label class="osw-idp-field">OIDC Discovery URL<input x-model="form.settings.OIDC_DISCOVERY_URL" placeholder="https://idp.example.org/.well-known/openid-configuration" class="osw-idp-input"></label>
+    <label class="osw-idp-field">OIDC Client ID<input x-model="form.settings.OIDC_CLIENT_ID" autocomplete="off" class="osw-idp-input"></label>
+    <label class="osw-idp-field">OIDC Client Secret<input x-model="form.settings.OIDC_CLIENT_SECRET" type="password" placeholder="Leave empty to keep the existing secret" autocomplete="new-password" class="osw-idp-input"></label>
+    <label class="osw-idp-field">OIDC Scopes<input x-model="form.settings.OIDC_SCOPES" placeholder="openid email profile groups" class="osw-idp-input"></label>
+    <div class="osw-idp-span-all"><label class="osw-idp-field">OIDC Callback / Redirect URI<input x-model="form.settings.OIDC_REDIRECT_URI" placeholder="https://signatures.example.org/auth/provider-id" class="osw-idp-input"></label></div>
+    <div class="osw-idp-span-all"><label class="osw-idp-field">OIDC Post-logout Redirect URI (optional)<input x-model="form.settings.OIDC_POST_LOGOUT_REDIRECT_URI" placeholder="https://signatures.example.org/login" class="osw-idp-input"></label></div>
+  </div>
+  <div x-show="form.provider_type === 'ldap'" class="osw-idp-form-grid">
+    <label class="osw-idp-field">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Bind Password<input x-model="form.settings.LDAP_BIND_PASSWORD" type="password" placeholder="Leave empty to keep the existing password" autocomplete="new-password" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="osw-idp-input"></label>
+    <label class="osw-idp-field">User Filter<input x-model="form.settings.LDAP_USER_FILTER" class="osw-idp-input"></label>
+    <label class="osw-idp-field">CA Certificate File<input x-model="form.settings.LDAP_CA_CERT_FILE" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Timeout (seconds)<input x-model="form.settings.LDAP_TIMEOUT" type="number" min="1" max="60" class="osw-idp-input"></label>
+  </div>
+      </div>
+      <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button><button type="button" @click="saveProvider()" :disabled="saving" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-4 py-2 rounded text-sm" x-text="saving ? 'Saving…' : 'Save Provider'"></button></div>
+    </div>
+  </div>
+</div>
+  <div class="osw-modal-root">
+  <div class="osw-modal-placement">
+    <div x-show="editing && editorSection === 'provisioning'" x-cloak role="dialog" aria-modal="true" aria-label="User Provisioning provider editor" class="form-dialog osw-modal-shell osw-modal-width-medium osw-idp-dialog">
+      <div class="osw-modal-header"><h2 class="text-lg font-semibold" x-text="(form.original_id ? 'Edit' : 'Add') + ' Provisioning Provider'"></h2><button type="button" data-osw-dialog-close class="osw-modal-dismiss" aria-label="Close dialog">&times;</button></div>
+      <div class="osw-modal-body">
+        
+  <div class="osw-idp-form-grid">
+    <label class="osw-idp-field">Provider ID<input x-model="form.id" :disabled="!!form.original_id" placeholder="provider-id" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Display Name<input x-model="form.display_name" placeholder="Company Identity Provider" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Provider Type
+      <select x-model="form.provider_type" @change="changeType" :disabled="!!form.original_id" class="osw-idp-input">
+        <option value="authentik">Authentik API</option><option value="ldap">LDAP / Active Directory</option>
+      </select>
+    </label>
+    <label class="osw-idp-enabled"><input type="checkbox" x-model="form.is_enabled" class="osw-switch" role="switch"> Enabled</label>
+  </div>
+        <p class="osw-idp-help">Directory/profile lookup settings. Shared LDAP connections also support web password login.</p>
+        <div x-show="form.provider_type === 'authentik'" class="osw-idp-form-grid">
+          <label class="osw-idp-field">Authentik URL<input x-model="form.settings.AUTHENTIK_URL" placeholder="https://auth.example.org" class="osw-idp-input"></label>
+          <label class="osw-idp-field">API Token<input x-model="form.settings.AUTHENTIK_API_TOKEN" type="password" placeholder="Leave empty to keep the existing token" autocomplete="new-password" class="osw-idp-input"></label>
+          <label class="osw-idp-field">Timeout (seconds)<input x-model="form.settings.AUTHENTIK_TIMEOUT" type="number" min="1" max="60" class="osw-idp-input"></label>
         </div>
+  <div x-show="form.provider_type === 'ldap'" class="osw-idp-form-grid">
+    <label class="osw-idp-field">LDAPS URL<input x-model="form.settings.LDAP_URL" placeholder="ldaps://dc.example.org:636" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Bind DN<input x-model="form.settings.LDAP_BIND_DN" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Bind Password<input x-model="form.settings.LDAP_BIND_PASSWORD" type="password" placeholder="Leave empty to keep the existing password" autocomplete="new-password" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Base DN<input x-model="form.settings.LDAP_BASE_DN" placeholder="DC=example,DC=org" class="osw-idp-input"></label>
+    <label class="osw-idp-field">User Filter<input x-model="form.settings.LDAP_USER_FILTER" class="osw-idp-input"></label>
+    <label class="osw-idp-field">CA Certificate File<input x-model="form.settings.LDAP_CA_CERT_FILE" class="osw-idp-input"></label>
+    <label class="osw-idp-field">Timeout (seconds)<input x-model="form.settings.LDAP_TIMEOUT" type="number" min="1" max="60" class="osw-idp-input"></label>
+  </div>
+      </div>
+      <div class="osw-modal-footer"><button type="button" data-osw-dialog-close class="bg-gray-700 px-4 py-2 rounded text-sm">Cancel</button><button type="button" @click="saveProvider()" :disabled="saving" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-4 py-2 rounded text-sm" x-text="saving ? 'Saving…' : 'Save Provider'"></button></div>
+    </div>
+  </div>
+</div>
+</div>
 
         <div x-show="adminTab === 'domains'" x-cloak x-data="domainManager" x-init="fetchDomains()" @domain-updated.window="fetchDomains()" @osw-live-domains.window="fetchDomains()" class="osw-admin-section">
             <div class="osw-section-header mb-6">
@@ -1016,7 +1082,7 @@
 
     </div>
 
-    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="refreshDomainUsers()" x-show="show" x-cloak class="osw-modal-root">
+    <div x-data="domainSettingsModal" @open-domain-settings.window="open($event.detail)" @refresh-admin-overrides.window="refreshDomainUsers()" @osw-live-overrides.window="refreshDomainUsers()" x-show="show" x-cloak class="osw-modal-root">
         <div class="osw-modal-placement">
             
             <div role="dialog" aria-modal="true" aria-label="Domain management" class="osw-modal-shell osw-modal-width-large">
@@ -1177,6 +1243,52 @@
 <div id="admin-outlook-markup-warning" class="hidden mt-2 rounded border border-amber-700 bg-amber-950/40 p-3 text-sm text-amber-200" role="alert">Outlook-specific conditional comments or VML were detected. The original HTML is preserved, but these elements are removed from previews and outgoing signatures.</div></div>
                             </div>
                         </div>
+
+                        <section class="osw-override-management space-y-3" aria-label="User Overrides">
+                            <div class="flex flex-wrap items-center justify-between gap-3">
+                                <div><h4 class="text-sm font-semibold text-gray-200 uppercase tracking-wider">User Overrides</h4>
+                                    <p class="mt-1 text-xs text-gray-400">Removing an override restores normal domain and signature-rule selection. User accounts are not deleted.</p>
+                                </div>
+                                <button type="button" @click="deleteSelectedOverrides()" :disabled="selectedOverrideCount() === 0 || deletingOverrides || overridesLoading || !!overridesError" class="rounded bg-red-700 px-4 py-2 text-sm text-white disabled:opacity-40">Remove selected</button>
+                            </div>
+                            <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
+                                <label class="text-sm text-gray-300">Filter overrides
+                                    <input type="search" x-model="overrideQuery" @input.debounce.300ms="overridePage=1" placeholder="Email address" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white">
+                                </label>
+                                <label class="flex items-center gap-2 text-sm text-gray-200">
+                                    <input type="checkbox" :checked="allOverridesSelected()" @change="toggleAllOverrides($event.target.checked)" :disabled="!userOverrides.length || deletingOverrides || overridesLoading || !!overridesError" aria-label="Select all overrides across all pages and filters" class="osw-override-checkbox">
+                                    Select all
+                                </label>
+                                <span class="text-sm text-gray-300" role="status" x-text="selectedOverrideCount() + ' selected of ' + userOverrides.length + ' overrides'"></span>
+                            </div>
+                            <p class="text-xs text-gray-400">Select all includes <strong>every override in this domain across all pages and filters</strong>, not only visible rows. Selection is preserved when filtering or changing pages.</p>
+                            <p x-show="overridesError" x-text="overridesError" role="alert" class="text-sm text-red-300"></p>
+                            <div class="rounded border border-gray-700 osw-table-scroll">
+                                <table class="w-full text-left text-sm osw-data-table osw-overrides-table">
+                                    <thead class="bg-gray-900 text-gray-300 text-xs uppercase">
+                                        <tr><th class="osw-override-select-column"><span class="sr-only">Select</span></th><th>Email</th><th>Status</th><th class="text-right">Actions</th></tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-700">
+                                        <template x-for="item in displayedOverrides()" :key="item.id">
+                                            <tr>
+                                                <td class="osw-override-select-column"><input type="checkbox" class="osw-override-checkbox" :aria-label="'Select override for ' + item.user_email" :checked="selectedOverrideIds.includes(item.id)" @change="toggleOverrideSelected(item.id, $event.target.checked)" :disabled="deletingOverrides || overridesLoading"></td>
+                                                <td data-label="Email" class="break-all" x-text="item.user_email"></td>
+                                                <td data-label="Status" x-text="item.is_disabled ? 'Disabled' : 'Configured'"></td>
+                                                <td data-label="Actions" class="text-right"><div class="osw-idp-actions"><button type="button" class="text-blue-400" @click="loadAdminEditor(item.user_email, item.html_content, item.is_disabled)">Edit</button><button type="button" class="text-red-400" @click="deleteSingleOverride(item.id)" :disabled="deletingOverrides || overridesLoading">Remove</button></div></td>
+                                            </tr>
+                                        </template>
+                                        <tr x-show="!overridesLoading && filteredOverrides().length === 0"><td colspan="4" class="py-4 text-center text-gray-400">No user overrides match this filter.</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="flex flex-wrap items-center justify-between gap-3 text-sm text-gray-400">
+                                <span x-text="filteredOverrides().length + ' matching override(s) · page ' + overridePage + ' of ' + overridePageCount()"></span>
+                                <div class="osw-actions">
+                                    <button type="button" @click="previousOverridesPage()" :disabled="overridesLoading || overridePage <= 1" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Previous</button>
+                                    <button type="button" @click="nextOverridesPage()" :disabled="overridesLoading || overridePage >= overridePageCount()" class="rounded bg-gray-700 px-3 py-2 disabled:opacity-40">Next</button>
+                                </div>
+                            </div>
+                        </section>
 
                         <div class="osw-user-controls flex flex-wrap items-end gap-3 rounded border border-gray-700 bg-gray-900 p-3">
                             <label class="text-sm text-gray-300">Search users<input type="search" x-model="userQuery" @input.debounce.300ms="fetchUsersFirstPage()" placeholder="Name or email" class="mt-1 block rounded border border-gray-600 bg-gray-800 px-3 py-2 text-white"></label>

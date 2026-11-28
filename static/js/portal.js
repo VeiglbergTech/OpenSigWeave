@@ -93,6 +93,8 @@ const portalRealtime = (() => {
                     emit("osw-live-domains", path);
                     emit("osw-live-signatures", path);
                     emit("osw-live-groups", path);
+                } else if (path.startsWith("/api/admin/overrides")) {
+                    emit("osw-live-overrides", path);
                 } else if (path.startsWith("/api/admin/identity-providers")) {
                     emit("osw-live-providers", path);
                     emit("osw-live-domains", path);
@@ -473,7 +475,7 @@ function eligibleLoginProvider(provider) {
     return (provider.provider_type === 'authentik' || provider.provider_type === 'oidc') &&
         !!(provider.settings && provider.settings.OIDC_DISCOVERY_URL &&
            provider.settings.OIDC_CLIENT_ID && provider.settings.OIDC_REDIRECT_URI &&
-           provider.secret_configured);
+           (provider.provider_type === 'authentik' ? provider.oidc_secret_configured : provider.secret_configured));
 }
 function domainProviderLabel(providers, providerId, kind) {
     if (!providerId) return kind === 'profile' ? 'No provider' : 'Local Sign-in (No SSO)';
@@ -494,42 +496,109 @@ function domainManager() { return {
     }
 } }
 function identityProviderManager() { return {
-    providers: [], editing: false,
-    form: {id:'', original_id:null, display_name:'', provider_type:'authentik', is_enabled:true, settings:{}},
+    providers: [], editing: false, editorSection: null, saving: false,
+    form: {id:'', original_id:null, display_name:'', provider_type:'oidc', is_enabled:true, settings:{}},
+    webProviders() {
+        // Capabilities, not current configuration: an Authentik provider can
+        // gain optional OIDC login later, and LDAP serves both roles.
+        return this.providers.filter(item => ['oidc', 'authentik', 'ldap'].includes(item.provider_type));
+    },
+    provisioningProviders() {
+        return this.providers.filter(item => ['authentik', 'ldap'].includes(item.provider_type));
+    },
+    providerTypeLabel(provider) {
+        return ({oidc:'OpenID Connect', authentik:'Authentik', ldap:'LDAP / Active Directory'})[provider.provider_type] || 'Unknown';
+    },
+    webProviderReady(provider) {
+        if (!provider.configured || !provider.is_enabled) return false;
+        if (provider.provider_type === 'ldap') return true;
+        const settings = provider.settings || {};
+        return !!(settings.OIDC_DISCOVERY_URL && settings.OIDC_CLIENT_ID &&
+            settings.OIDC_REDIRECT_URI && provider.oidc_secret_configured);
+    },
+    provisioningProviderReady(provider) {
+        if (!provider.configured || !provider.is_enabled) return false;
+        if (provider.provider_type === 'ldap') return true;
+        const settings = provider.settings || {};
+        return !!(settings.AUTHENTIK_URL && provider.authentik_api_secret_configured);
+    },
+    webProviderStatus(provider) {
+        if (!provider.configured) return 'Configuration missing';
+        if (!provider.is_enabled) return 'Disabled';
+        return this.webProviderReady(provider) ? 'Active' : 'Login not configured';
+    },
+    provisioningProviderStatus(provider) {
+        if (!provider.configured) return 'Configuration missing';
+        if (!provider.is_enabled) return 'Disabled';
+        return this.provisioningProviderReady(provider) ? 'Active' : 'Provisioning not configured';
+    },
     async fetchAll() {
-        const response = await fetch('/api/admin/identity-providers');
-        if (response.ok) { this.providers = await response.json(); }
+        const response=await fetch('/api/admin/identity-providers');
+        if (response.ok) this.providers=await response.json();
         else notify('Could not load identity providers.', 'error');
     },
-    newProvider() { this.form={id:'',original_id:null,display_name:'',provider_type:'authentik',is_enabled:true,settings:{AUTHENTIK_TIMEOUT:'5'}}; this.editing=true; },
+    defaultsForType(type) {
+        if(type==='ldap') return {LDAP_TIMEOUT:'5', LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'};
+        if(type==='oidc') return {OIDC_SCOPES:'openid email profile groups'};
+        return {AUTHENTIK_TIMEOUT:'5', OIDC_SCOPES:'openid email profile groups'};
+    },
+    newWebProvider() { this.newProvider('web'); },
+    newProvisioningProvider() { this.newProvider('provisioning'); },
+    newProvider(section) {
+        this.editorSection=section;
+        const type=section==='provisioning'?'authentik':'oidc';
+        this.form={id:'',original_id:null,display_name:'',provider_type:type,is_enabled:true,
+            settings:this.defaultsForType(type)};
+        this.editing=true;
+    },
     changeType(event) {
         const providerType = event && event.target && event.target.value ? event.target.value : this.form.provider_type;
-        this.form.provider_type = providerType;
-        this.form.settings = providerType === 'ldap'
-            ? {LDAP_TIMEOUT:'5',LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'}
-            : (providerType === 'oidc' ? {OIDC_SCOPES:'openid email profile groups'} : {AUTHENTIK_TIMEOUT:'5'});
+        const allowed = this.editorSection==='web' ? ['oidc','authentik','ldap'] : ['authentik','ldap'];
+        if (!allowed.includes(providerType)) return;
+        this.form.provider_type=providerType;
+        this.form.settings=this.defaultsForType(providerType);
     },
-    editProvider(provider) {
-        // The table row is rendered from the latest API result and already contains
-        // all non-secret settings. Reusing it avoids a second async fetch and a
-        // visible/editable dialog with temporarily empty fields.
-        const item = provider;
-        if(!item) return;
-        const settings={...(item.settings||{})}; if(item.provider_type==='authentik') settings.AUTHENTIK_API_TOKEN=''; if(item.provider_type==='authentik'||item.provider_type==='oidc') settings.OIDC_CLIENT_SECRET=''; if(item.provider_type==='ldap') settings.LDAP_BIND_PASSWORD='';
-        this.form={id:item.id,original_id:item.id,display_name:item.display_name,provider_type:item.provider_type,is_enabled:item.is_enabled,settings};
+    editProvider(provider, section) {
+        if (!provider || !['web','provisioning'].includes(section)) return;
+        const settings={...(provider.settings||{})};
+        if(provider.provider_type==='authentik') {
+            settings.AUTHENTIK_API_TOKEN='';
+            settings.OIDC_CLIENT_SECRET='';
+        }
+        if(provider.provider_type==='oidc') settings.OIDC_CLIENT_SECRET='';
+        if(provider.provider_type==='ldap') settings.LDAP_BIND_PASSWORD='';
+        this.form={id:provider.id,original_id:provider.id,display_name:provider.display_name,
+            provider_type:provider.provider_type,is_enabled:provider.is_enabled,settings};
+        this.editorSection=section;
         this.editing=true;
     },
     async saveProvider() {
-        // Flush the most recent x-model input event before constructing the PUT/POST
-        // body. Otherwise a fast Save click can send the previous field value.
         await this.$nextTick();
-        if(!this.form.id.trim() || !this.form.display_name.trim()) { notify('Provider ID and display name are required.','error'); return; }
-        const payload={id:this.form.id,display_name:this.form.display_name,provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,settings:{...this.form.settings}};
+        if (this.saving) return;
+        if(!this.form.id.trim() || !this.form.display_name.trim()) {
+            notify('Provider ID and display name are required.', 'error'); return;
+        }
+        const payload={id:this.form.id,display_name:this.form.display_name,
+            provider_type:this.form.provider_type,is_enabled:this.form.is_enabled,
+            // Include all existing *nonsecret* settings, even from the other
+            // section, so editing Authentik OIDC never erases its API config.
+            // Blank secret placeholders are restored securely server-side.
+            settings:{...this.form.settings}};
         const url=this.form.original_id ? '/api/admin/identity-providers/'+encodeURIComponent(this.form.original_id) : '/api/admin/identity-providers';
-        const response=await fetch(url,{method:this.form.original_id?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-        if(!response.ok) { notify('Could not save identity provider: '+(await response.text()),'error'); return; }
-        notify('Identity provider saved.');
-        this.editing=false; await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
+        this.saving=true;
+        try {
+            const response=await fetch(url,{method:this.form.original_id?'PUT':'POST',
+                headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+            if(!response.ok) throw new Error('HTTP '+response.status);
+            notify('Identity provider saved.');
+            this.editing=false;
+            await this.fetchAll();
+            window.dispatchEvent(new Event('domain-updated'));
+        } catch (_error) {
+            // Do not display API response bodies: validation errors may echo
+            // provider-controlled URLs or configuration fields.
+            notify('Could not save identity provider. Check the form and application logs.', 'error');
+        } finally { this.saving=false; }
     },
     async testProvider(provider) {
         const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id)+'/test',{method:'POST'});
@@ -537,10 +606,15 @@ function identityProviderManager() { return {
         else notify('Connection test failed. Check the configuration and application logs.','error');
     },
     async deleteProvider(provider) {
-        if (!await oswAskConfirmation({ title: 'Delete identity provider?', message: 'Delete identity provider ' + provider.display_name + '? Unassign it from all domains first.' })) return;
+        if (!await oswAskConfirmation({
+            title:'Delete identity provider?',
+            message:'Delete '+provider.display_name+'? This removes the shared provider from BOTH sections. Unassign it from all domains first.'
+        })) return;
         const response=await fetch('/api/admin/identity-providers/'+encodeURIComponent(provider.id),{method:'DELETE'});
-        if(!response.ok) { notify('Could not delete identity provider: '+(await response.text()),'error'); return; }
-        notify('Identity provider deleted.'); await this.fetchAll(); window.dispatchEvent(new Event('domain-updated'));
+        if(!response.ok) { notify('Could not delete identity provider. Unassign it from all domains first.', 'error'); return; }
+        notify('Identity provider deleted.');
+        await this.fetchAll();
+        window.dispatchEvent(new Event('domain-updated'));
     }
 } }
         function signatureManager() {
@@ -1463,6 +1537,7 @@ function identityProviderManager() { return {
         function domainSettingsModal() {
             return {
                 show: false, domain: null, allowOverrides: true, injectOnReplies: false, trimWhitespace: true, stripDeviceSignatures: false, modalTab: 'settings', userOverrides: [], newOverrideEmail: '', editingUserEmail: '', editingUserDisabled: false,
+                selectedOverrideIds: [], overrideQuery: '', overridePage: 1, overridesLoading: false, overridesError: '', deletingOverrides: false,
                 providers: [], identityProviderId: '', authenticationProviderId: '', providerLoading: false, providerError: '', providerRequestId: 0, saving: false,
                 fallbackValues: {},
                 users: [], userQuery: '', userSource: 'all', userPage: 1, userTotal: 0,
@@ -1512,6 +1587,9 @@ function identityProviderManager() { return {
                     this.saving = false;
                     this.modalTab = 'settings';
                     this.editingUserEmail = '';
+                    this.selectedOverrideIds = [];
+                    this.overrideQuery = '';
+                    this.overridePage = 1;
                     await this.$nextTick();
                     await this.fetchProviders();
                 },
@@ -1594,10 +1672,117 @@ function identityProviderManager() { return {
                     }
                 },
                 refreshDomainUsers() { this.fetchOverrides(); this.fetchUsers(); },
+                filteredOverrides() {
+                    const q=this.overrideQuery.trim().toLowerCase();
+                    return q ? this.userOverrides.filter(item=>(item.user_email || '').toLowerCase().includes(q))
+                        : this.userOverrides;
+                },
+                displayedOverrides() {
+                    return this.filteredOverrides().slice((this.overridePage - 1) * 20, this.overridePage * 20);
+                },
+                overridePageCount() { return Math.max(1, Math.ceil(this.filteredOverrides().length / 20)); },
+                selectedOverrideCount() { return this.selectedOverrideIds.length; },
+                allOverridesSelected() {
+                    return this.userOverrides.length > 0 && this.selectedOverrideIds.length === this.userOverrides.length &&
+                        this.userOverrides.every(item=>this.selectedOverrideIds.includes(item.id));
+                },
+                toggleAllOverrides(checked) {
+                    // Select ALL domain overrides across every page and search,
+                    // not merely the 20 visible rows.
+                    this.selectedOverrideIds=checked ? this.userOverrides.map(item=>item.id) : [];
+                },
+                toggleOverrideSelected(id, checked) {
+                    if(!this.userOverrides.some(item=>item.id===id)) return;
+                    this.selectedOverrideIds=checked
+                        ? [...new Set([...this.selectedOverrideIds,id])]
+                        : this.selectedOverrideIds.filter(value=>value!==id);
+                },
+                previousOverridesPage() { if(this.overridePage>1) this.overridePage--; },
+                nextOverridesPage() { if(this.overridePage<this.overridePageCount()) this.overridePage++; },
                 async fetchOverrides() {
-                    const res = await fetch(`/api/admin/overrides/${this.domain.domain_name}`);
-                    if(res.ok) this.userOverrides = await res.json();
-                    else notify("Could not load user overrides.", "error");
+                    if(!this.domain) return;
+                    const domainName=this.domain.domain_name;
+                    this.overridesLoading=true;
+                    this.overridesError='';
+                    try {
+                        const res=await fetch('/api/admin/overrides/'+encodeURIComponent(domainName),{cache:'no-store'});
+                        if(!res.ok) throw new Error('HTTP '+res.status);
+                        const data=await res.json();
+                        if(!this.domain || this.domain.domain_name!==domainName) return;
+                        this.userOverrides=data;
+                        const validIds=new Set(data.map(item=>item.id));
+                        this.selectedOverrideIds=this.selectedOverrideIds.filter(id=>validIds.has(id));
+                        this.overridePage=Math.min(this.overridePage,this.overridePageCount());
+                    } catch (_error) {
+                        this.overridesError='Could not load user overrides. Retry before deleting.';
+                        notify(this.overridesError,'error');
+                    } finally { if(this.domain?.domain_name===domainName) this.overridesLoading=false; }
+                },
+                async deleteSingleOverride(id) { return this.removeOverrides([id]); },
+                async deleteSelectedOverrides() { return this.removeOverrides([...this.selectedOverrideIds]); },
+                async removeOverrides(ids) {
+                    if(!this.domain || this.deletingOverrides || this.overridesLoading || this.overridesError) return;
+                    const current=new Set(this.userOverrides.map(item=>item.id));
+                    const selected=[...new Set(ids)].filter(id=>current.has(id)).sort((a,b)=>a-b);
+                    if(!selected.length) return;
+                    const domainName=this.domain.domain_name;
+                    if(!await oswAskConfirmation({
+                        title: 'Remove '+selected.length+' user override(s)?',
+                        message: 'Remove exactly '+selected.length+' selected override(s) in '+domainName+
+                            '? Only the personal overrides will be deleted. User accounts and directory identities are preserved.'
+                    })) return;
+                    if(!this.domain || this.domain.domain_name!==domainName) return;
+                    this.deletingOverrides=true;
+                    const deleted=[], missing=[], outOfScope=[];
+                    let failedCount=0;
+                    try {
+                        // Each server request is bounded, but Select all still covers
+                        // every domain override even when there are >5,000 records.
+                        // A single confirmation covers the immutable snapshot.
+                        for(let offset=0;offset<selected.length;offset+=5000) {
+                            const batch=selected.slice(offset,offset+5000);
+                            try {
+                                const res=await fetch('/api/admin/overrides/bulk-delete',{
+                                    method:'POST',headers:{'Content-Type':'application/json'},
+                                    body:JSON.stringify({domain_name:domainName,ids:batch})
+                                });
+                                if(!res.ok) throw new Error('HTTP '+res.status);
+                                const outcome=await res.json();
+                                const done=Array.isArray(outcome.deleted_ids)?outcome.deleted_ids:[];
+                                const absent=Array.isArray(outcome.not_found_ids)?outcome.not_found_ids:[];
+                                const outside=Array.isArray(outcome.out_of_scope_ids)?outcome.out_of_scope_ids:[];
+                                // Never trust a response as evidence of deletion for
+                                // IDs absent from this explicit confirmed batch.
+                                const allowed=new Set(batch);
+                                deleted.push(...done.filter(id=>allowed.has(id)));
+                                missing.push(...absent.filter(id=>allowed.has(id)));
+                                outOfScope.push(...outside.filter(id=>allowed.has(id)));
+                                const accounted=new Set([...done,...absent,...outside]);
+                                failedCount+=batch.filter(id=>!accounted.has(id)).length;
+                            } catch (_error) {
+                                // Stop after an unknown result so we never retry a
+                                // possibly-completed transaction without refreshing.
+                                failedCount+=selected.length-offset;
+                                break;
+                            }
+                        }
+                        const handled=new Set([...deleted,...missing]);
+                        this.selectedOverrideIds=this.selectedOverrideIds.filter(id=>!handled.has(id));
+                        if(deleted.length) {
+                            notify(deleted.length+' user override(s) removed. Normal signature rules apply.');
+                            const removedEmails=new Set(this.userOverrides.filter(item=>deleted.includes(item.id))
+                                .map(item=>item.user_email));
+                            if(removedEmails.has(this.editingUserEmail)) this.editingUserEmail='';
+                        }
+                        if(missing.length || outOfScope.length || failedCount)
+                            notify('Not removed: '+missing.length+' missing, '+outOfScope.length+
+                                ' outside this domain, '+failedCount+' not verified. IDs: '+
+                                [...missing,...outOfScope].join(', '),'error');
+                    } finally {
+                        this.deletingOverrides=false;
+                        if(this.domain?.domain_name===domainName)
+                            await Promise.all([this.fetchOverrides(),this.fetchUsers()]);
+                    }
                 },
                 async loadAdminEditor(email, directHtml = null, isDisabled = false) {
                     if(!email || !email.includes('@')) { notify("Please enter a valid email address.", "error"); return; }

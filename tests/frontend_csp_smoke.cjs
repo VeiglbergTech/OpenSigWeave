@@ -359,6 +359,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 
   // Exercise identity-provider form state without a second network fetch.
   const identityManager = vm.runInNewContext("identityProviderManager()", signatureContext);
+  identityManager.newWebProvider();
   identityManager.changeType({ target: { value: "oidc" } });
   assert.equal(identityManager.form.provider_type, "oidc");
   assert.equal(identityManager.form.settings.OIDC_SCOPES, "openid email profile groups");
@@ -372,7 +373,7 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
       OIDC_CLIENT_ID: "opensigweave",
       OIDC_REDIRECT_URI: "https://signatures.example.org/auth/oidc-main",
     },
-  });
+  }, "web");
   assert.equal(identityManager.editing, true);
   assert.equal(identityManager.form.settings.OIDC_DISCOVERY_URL,
     "https://idp.example.org/.well-known/openid-configuration");

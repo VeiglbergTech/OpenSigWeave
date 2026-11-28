@@ -830,8 +830,8 @@ async function main() {
     // expanding the current page. Also verify the provider dialog can be cancelled.
     await page.getByRole("button", { name: "Identity Providers", exact: true }).click();
     const providerPanel = page.locator('[x-data="identityProviderManager"]');
-    await providerPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
-    const providerDialog = providerPanel.locator('[x-show="editing"][role="dialog"]');
+    await providerPanel.getByRole("button", { name: "+ Add Login Provider" }).click();
+    const providerDialog = providerPanel.locator('[aria-label="Web Interface provider editor"]');
     await assertFloatingDialog(providerDialog, "identity provider editor");
     await page.evaluate(() => document.getElementById("theme-toggle").click());
     await page.waitForFunction(() => document.documentElement.dataset.theme === "light");
@@ -849,7 +849,7 @@ async function main() {
       root: !!dialog.closest(".osw-modal-root"),
       placement: !!dialog.closest(".osw-modal-placement"),
     })));
-    assert.equal(unifiedDialogs.length, 5, "five administrator create/edit dialogs should share one layout after merging schedules into rules");
+    assert.equal(unifiedDialogs.length, 6, "six administrator create/edit dialogs should share one layout after merging schedules into rules");
     for (const item of unifiedDialogs) assert.deepEqual(item, {
       header: true, body: true, footer: true, shell: true, root: true, placement: true,
     }, "each administrator dialog must have the shared Domains-style shell");
@@ -2437,12 +2437,12 @@ async function main() {
     // non-secret SSO settings survive a reload. Secrets intentionally remain hidden.
     await page.getByRole("button", { name: "Identity Providers", exact: true }).click();
     const ssoProviderPanel = page.locator('[x-data="identityProviderManager"]');
-    await ssoProviderPanel.getByRole("button", { name: "+ Add Identity Provider" }).click();
-    const ssoProviderDialog = ssoProviderPanel.locator('[x-show="editing"][role="dialog"]');
+    await ssoProviderPanel.getByRole("button", { name: "+ Add Login Provider" }).click();
+    const ssoProviderDialog = ssoProviderPanel.locator('[aria-label="Web Interface provider editor"]');
     await ssoProviderDialog.getByLabel("Provider ID").fill("browser-smoke-login-provider");
     await ssoProviderDialog.getByLabel("Display Name").fill("Browser Smoke Login Provider");
     await ssoProviderDialog.getByLabel("Provider Type").selectOption("oidc");
-    const oidcFields = ssoProviderDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    const oidcFields = ssoProviderDialog.locator('div[x-show="form.provider_type === \'oidc\' || form.provider_type === \'authentik\'"]');
     await oidcFields.getByLabel("OIDC Discovery URL").fill("https://idp.example.org/.well-known/openid-configuration");
     await oidcFields.getByLabel("OIDC Client ID").fill("browser-smoke-client");
     await oidcFields.getByLabel("OIDC Client Secret").fill("browser-smoke-secret");
@@ -2454,7 +2454,7 @@ async function main() {
     );
     // Do not hide a 4xx/5xx response behind the generic response timeout.
     // Avoid logging credentials or the raw POST body when diagnosing a failure.
-    await ssoProviderDialog.getByRole("button", { name: "Save", exact: true }).click();
+    await ssoProviderDialog.getByRole("button", { name: "Save Provider", exact: true }).click();
     let createSsoResponse;
     try {
       createSsoResponse = await createSsoProvider;
@@ -2492,9 +2492,9 @@ async function main() {
     const reloadedSsoProviderRow = page.locator('[x-data="identityProviderManager"] tbody tr')
       .filter({ hasText: "Browser Smoke Login Provider" });
     await reloadedSsoProviderRow.getByRole("button", { name: "Edit", exact: true }).click();
-    const reloadedSsoDialog = page.locator('[x-data="identityProviderManager"] [x-show="editing"][role="dialog"]');
+    const reloadedSsoDialog = page.locator('[x-data="identityProviderManager"] [aria-label="Web Interface provider editor"]');
     await reloadedSsoDialog.waitFor({ state: "visible" });
-    const reloadedOidcFields = reloadedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    const reloadedOidcFields = reloadedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\' || form.provider_type === \'authentik\'"]');
     await reloadedOidcFields.waitFor({ state: "visible" });
     assert.equal(await reloadedOidcFields.getByLabel("OIDC Discovery URL").inputValue(),
       "https://idp.example.org/.well-known/openid-configuration");
@@ -2515,7 +2515,7 @@ async function main() {
         response.request().method() === "PUT"
         && response.url().endsWith("/api/admin/identity-providers/browser-smoke-login-provider")
       ),
-      reloadedSsoDialog.getByRole("button", { name: "Save", exact: true }).click(),
+      reloadedSsoDialog.getByRole("button", { name: "Save Provider", exact: true }).click(),
     ]);
     const scopePayload = JSON.parse(scopeResponse.request().postData() || "{}");
     assert.equal(scopePayload.settings?.OIDC_SCOPES, "openid email profile groups offline_access",
@@ -2535,9 +2535,9 @@ async function main() {
     const updatedSsoProviderRow = page.locator('[x-data="identityProviderManager"] tbody tr')
       .filter({ hasText: "Browser Smoke Login Provider" });
     await updatedSsoProviderRow.getByRole("button", { name: "Edit", exact: true }).click();
-    const updatedSsoDialog = page.locator('[x-data="identityProviderManager"] [x-show="editing"][role="dialog"]');
+    const updatedSsoDialog = page.locator('[x-data="identityProviderManager"] [aria-label="Web Interface provider editor"]');
     await updatedSsoDialog.waitFor({ state: "visible" });
-    const updatedOidcFields = updatedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\'"]');
+    const updatedOidcFields = updatedSsoDialog.locator('div[x-show="form.provider_type === \'oidc\' || form.provider_type === \'authentik\'"]');
     await updatedOidcFields.waitFor({ state: "visible" });
     assert.equal(await updatedOidcFields.getByLabel("OIDC Scopes").inputValue(),
       "openid email profile groups offline_access");
@@ -2872,8 +2872,8 @@ async function main() {
           await shell(sel).waitFor({ state: "hidden" });
         };
         await nav("Identity Providers");
-        await visualPage.getByRole("button", { name: "+ Add Identity Provider" }).click();
-        const providerSelector = '[x-data="identityProviderManager"] [role="dialog"]';
+        await visualPage.getByRole("button", { name: "+ Add Login Provider" }).click();
+        const providerSelector = '[x-data="identityProviderManager"] [aria-label="Web Interface provider editor"]';
         await inspect(providerSelector, "identity-provider");
         if (width === 1440 && mode === "dark") {
           await shell(providerSelector).getByLabel("Display Name").fill("Unsaved");
@@ -2885,7 +2885,7 @@ async function main() {
           await shell(providerSelector).getByRole("button", { name: "Cancel", exact: true }).click();
           await confirmation.getByRole("button", { name: "Confirm", exact: true }).click();
           await shell(providerSelector).waitFor({ state: "hidden" });
-          await visualPage.getByRole("button", { name: "+ Add Identity Provider" }).click();
+          await visualPage.getByRole("button", { name: "+ Add Login Provider" }).click();
           assert.equal(await shell(providerSelector).getByLabel("Display Name").inputValue(), "", "reopening must reset draft");
         }
         await close(providerSelector);

@@ -1642,6 +1642,61 @@ def delete_admin_override(override_id: int, request: Request, db: Session = Depe
     return {"status": "deleted"}
 
 
+class OverrideBulkDeleteRequest(BaseModel):
+    """Explicit, domain-scoped selection; never delete all records implicitly."""
+    domain_name: str = Field(min_length=1, max_length=253)
+    ids: list[int] = Field(min_length=1, max_length=5000)
+
+    @field_validator("ids", mode="before")
+    @classmethod
+    def validate_selected_ids(cls, value):
+        if (not isinstance(value, list) or not value
+                or len(value) > 5000
+                or any(type(item) is not int or item <= 0 for item in value)
+                or len(value) != len(set(value))):
+            raise ValueError("Select distinct, positive override IDs (maximum 5000).")
+        return value
+
+
+@app.post("/api/admin/overrides/bulk-delete")
+def bulk_delete_admin_overrides(
+    payload: OverrideBulkDeleteRequest, request: Request, db: Session = Depends(get_db),
+):
+    """Delete only the confirmed override IDs within the selected managed domain.
+
+    One transaction guarantees a database error cannot leave a half-applied batch.
+    Missing and out-of-domain records are reported individually, never deleted.
+    """
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    domain_name = normalize_domain(payload.domain_name)
+    if db.query(DomainDB).filter(func.lower(DomainDB.domain_name) == domain_name).first() is None:
+        raise HTTPException(status_code=404, detail="Managed domain not found")
+    found = {row.id: row for row in db.query(UserOverrideDB).filter(
+        UserOverrideDB.id.in_(payload.ids)
+    ).all()}
+    deleted, not_found, out_of_scope = [], [], []
+    for override_id in payload.ids:
+        item = found.get(override_id)
+        if item is None:
+            not_found.append(override_id)
+        elif not (item.user_email or "").strip().casefold().endswith("@" + domain_name):
+            out_of_scope.append(override_id)
+        else:
+            db.delete(item)
+            deleted.append(override_id)
+    try:
+        db.commit()
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.error("Override bulk removal transaction failed (%s)", type(exc).__name__)
+        raise HTTPException(status_code=500, detail="No overrides removed; database transaction failed.") from exc
+    # Effective signature resolution queries overrides from the database for
+    # every request, so the next lookup immediately uses normal domain/rules.
+    return {"deleted_ids": deleted, "not_found_ids": not_found,
+            "out_of_scope_ids": out_of_scope}
+
+
 @app.get("/api/admin/identity-providers")
 def list_identity_providers(request: Request, db: Session = Depends(get_db)):
     if not is_admin_user(request): raise HTTPException(status_code=403, detail="Admins only")
