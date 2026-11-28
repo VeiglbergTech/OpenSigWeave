@@ -307,6 +307,12 @@ def activate(root: Path) -> None:
         atomic(target, content.encode(), 0o644)
     sync_policy(root, state["engine_url"])
     run(["docker", "compose", "exec", "-T", "rspamd-mailcow", "rspamadm", "configtest"], root)
+    # A valid host file alone cannot prove that the running Rspamd container
+    # sees the same mounted policy and adapter files.
+    run(["docker", "compose", "exec", "-T", "rspamd-mailcow", "sh", "-c",
+         "test -r /etc/rspamd/opensigweave-policy/policy.json && "
+         "test -r /etc/rspamd/lua/opensigweave_domain_policy.lua && "
+         "test -r /etc/rspamd/plugins.d/opensigweave.lua"], root)
     run(["docker", "compose", "restart", "rspamd-mailcow"], root)
     run(["systemctl", "daemon-reload"])
     run(["systemctl", "enable", "--now", TIMER.name])

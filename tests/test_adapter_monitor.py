@@ -1,5 +1,6 @@
 """Adapter health and setup contract tests."""
 import json
+import subprocess
 import unittest
 from urllib.error import HTTPError
 from unittest.mock import patch
@@ -106,6 +107,9 @@ class AdapterHealthTests(unittest.TestCase):
         self.assertNotIn("REPLACE_WITH_TESTED_COMMIT", cmd)
         self.assertNotIn("ENGINE_API_KEY=", cmd)
         self.assertIn("activate", info["verify"])
+        self.assertEqual(cmd.count("sha256sum -c --status"), 6)
+        subprocess.run(["bash", "-n"], input=cmd, text=True, check=True,
+                       capture_output=True)
         self.assertEqual(info["config"], "")
 
 
