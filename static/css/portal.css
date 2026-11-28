@@ -1044,17 +1044,17 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 }
 /* Group members keep their four controls together on every viewport. */
 .osw-admin-section .osw-table-scroll > table.osw-groups-table { min-width: 0; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) {
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) {
     min-width: 0;
 }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody td {
     vertical-align: top;
 }
 .osw-group-member {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content max-content max-content;
+    display: flex;
+    flex-wrap: nowrap;
     align-items: center;
-    gap: .75rem;
+    gap: .5rem;
     min-width: 0;
     padding: .75rem 1rem;
     border: 1px solid var(--osw-border);
@@ -1062,6 +1062,8 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     background: var(--osw-panel-raised);
 }
 .osw-group-member-name {
+    display: block;
+    flex: 0 1 auto;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1142,7 +1144,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     width: 100%;
     max-width: 100%;
     min-width: 0 !important;
-    table-layout: fixed;
+    table-layout: auto;
     border-collapse: collapse;
 }
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > thead {
@@ -1177,11 +1179,18 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > thead th {
     padding: .875rem .75rem !important;
 }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 19%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: 18%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3) { width: 32%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 7%; }
-.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(5) { width: 24%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(1) { width: 1%; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(2) { width: auto; }
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(3),
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 1%; white-space: nowrap; }
+.osw-groups-table .osw-group-title {
+    width: max-content;
+    max-width: min(17rem, 26vw);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td[data-label]::before {
     content: none;
     display: none;
@@ -1189,16 +1198,18 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-group-member {
     gap: .375rem;
     padding: .375rem .5rem;
-    grid-template-columns: minmax(0, 1fr) 3.25rem 2.75rem max-content;
+}
+.osw-group-member :is(.osw-group-member-weight, .osw-group-member-enabled),
+.osw-group-member-remove {
+    flex: 0 0 auto;
 }
 .osw-groups-table .osw-group-member-name {
-    display: block;
-    max-width: 4.25rem;
+    max-width: 100%;
 }
 .osw-group-member + .osw-group-member { margin-top: .5rem; }
 .osw-group-member-weight input[type="number"] {
-    width: 3.25rem;
-    min-width: 3.25rem;
+    width: 4.25rem;
+    min-width: 4.25rem;
     padding: .25rem;
 }
 .osw-group-member-enabled .osw-group-member-label { display: none; }
@@ -1216,7 +1227,6 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     word-break: normal;
 }
 @media (max-width: 1150px) {
-    .osw-group-member-weight .osw-group-member-label { display: none; }
     .osw-group-member-remove-text { display: none; }
     .osw-group-member-remove-icon {
         display: block;
@@ -1232,7 +1242,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
         padding: 0;
     }
 }
-@media (max-width: 900px) {
+@media (max-width: 1200px) {
     .osw-admin-section .osw-table-scroll > table.osw-groups-table,
     .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody {
         display: block;
@@ -1270,24 +1280,19 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(2) {
         grid-column: 1 / -1;
         grid-row: 2;
-        color: var(--osw-muted);
-        font-size: .8125rem !important;
-    }
-    .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(3) {
-        grid-column: 1 / -1;
-        grid-row: 3;
         padding-block: .375rem !important;
     }
-    .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(4) {
+    .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(3) {
         grid-column: 2;
         grid-row: 1;
         align-self: center;
     }
-    .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(5) {
+    .osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td:nth-child(4) {
         grid-column: 1 / -1;
-        grid-row: 4;
+        grid-row: 3;
         padding-top: .375rem !important;
     }
+    .osw-groups-table .osw-group-title { max-width: 100%; }
     .osw-group-actions {
         justify-content: flex-start;
         gap: .625rem;
@@ -1304,11 +1309,10 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
         padding: .625rem .75rem;
     }
     .osw-group-member {
-        grid-template-columns: minmax(0, 1fr) 3.25rem 2.75rem 1.75rem;
         gap: .375rem;
         padding: .5rem;
     }
-    .osw-group-member-label, .osw-group-member-remove-text { display: none; }
+    .osw-group-member-enabled .osw-group-member-label, .osw-group-member-remove-text { display: none; }
     .osw-group-member-remove-icon { display: block; font-size: 1.375rem; line-height: 1; }
     .osw-group-member-remove { min-width: 1.75rem; min-height: 1.75rem; }
 }

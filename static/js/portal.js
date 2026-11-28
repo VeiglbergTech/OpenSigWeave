@@ -713,10 +713,6 @@ function identityProviderManager() { return {
                     const item = this.signatures.find(signature => signature.id === id);
                     return item ? item.name : 'Missing signature';
                 },
-                compactSignatureName(id) {
-                    const name = Array.from(this.signatureName(id));
-                    return name.length > 3 ? name.slice(0, 3).join('') + '...' : name.join('');
-                },
                 toggleDomain(id, checked) {
                     const value = Number(id);
                     this.form.domain_ids = checked

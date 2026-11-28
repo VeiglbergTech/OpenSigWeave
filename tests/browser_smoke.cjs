@@ -1026,7 +1026,8 @@ async function main() {
     // Filter by search, state and scope without changing the persisted catalog.
     const signatureSearch = signaturePanel.getByRole("searchbox", { name: "Search signatures" });
     const signatureStatusFilter = signaturePanel.getByRole("combobox", { name: "Signature status" });
-    const signatureDomainFilter = signaturePanel.getByRole("combobox", { name: "Domain scope" });
+    assert.equal(await signaturePanel.getByRole("combobox", { name: "Domain scope" }).count(), 0,
+      "the signature scope filter must stay hidden");
     await signatureSearch.fill("not-present-in-catalog");
     await signaturePanel.getByText("No signatures match the selected filters.").waitFor({ state: "visible" });
     await signatureSearch.fill("Browser Smoke Signature");
@@ -1036,9 +1037,6 @@ async function main() {
     await signatureStatusFilter.selectOption("active");
     await signatureRow.waitFor({ state: "visible" });
     await signatureStatusFilter.selectOption("all");
-    await signatureDomainFilter.selectOption("global");
-    await signatureRow.waitFor({ state: "visible" });
-    await signatureDomainFilter.selectOption("all");
     await signatureSearch.fill("");
     // Preview must retrieve the saved current version without changing it.
     await signatureRow.getByRole("button", { name: "Preview", exact: true }).click();
@@ -1965,19 +1963,23 @@ async function main() {
     await memberDialog.locator('select[x-model="memberForm.group_id"]').selectOption({ label: "Browser Smoke Group" });
     await memberDialog.locator('select[x-model="memberForm.signature_id"]').selectOption({ label: "Browser Smoke Signature" });
     await memberDialog.getByRole("button", { name: "Add Signature", exact: true }).click();
-    const compactGroupName = groupCard.locator(".osw-group-member-name").first();
-    await compactGroupName.waitFor();
-    assert.equal(await compactGroupName.textContent(), "Bro...",
-      "signature names display only their first three characters and an ellipsis");
-    assert.equal(await compactGroupName.getAttribute("title"), "Browser Smoke Signature",
-      "hovering over a shortened name must show the full signature name");
+    const memberNameLabel = groupCard.locator(".osw-group-member-name").first();
+    await memberNameLabel.waitFor();
+    assert.equal(await memberNameLabel.textContent(), "Browser Smoke Signature",
+      "signature names must be fully rendered and truncated only by CSS when space is scarce");
+    assert.equal(await memberNameLabel.getAttribute("title"), "Browser Smoke Signature",
+      "hovering over an overflowing name must show its full value");
     const memberCard = groupCard.locator(".osw-group-member").first();
     assert.ok(await memberCard.getByRole("spinbutton", { name: /Rotation weight for Browser Smoke Signature/ }).isVisible(),
       "group rotation weight input must be clearly labelled");
+    assert.ok(await memberCard.getByText("Weight", { exact: true }).isVisible(),
+      "the full Weight label must remain visible");
     assert.ok(await memberCard.getByRole("switch", { name: "Enabled" }).isVisible(),
       "group membership switch must remain accessible");
     assert.ok(await memberCard.getByRole("button", { name: "Remove" }).isVisible(),
       "member removal must remain inside the member card");
+    assert.equal(await groupPanel.getByText("Domain scope", { exact: true }).count(), 0,
+      "domain scope assignment must not appear in the group overview or editor");
     // Signature Groups: each group occupies a table row, not one card per field.
     const groupRowLayout = await groupCard.evaluate(row => {
       const table = row.closest("table");
@@ -2030,7 +2032,9 @@ async function main() {
       return { display: getComputedStyle(card).display,
         columns: getComputedStyle(card).gridTemplateColumns, row, parts };
     });
-    assert.equal(memberLayout.display, "grid", "group member must have a fixed four-column layout");
+    assert.equal(memberLayout.display, "flex", "group member fields must fit their content without unused name space");
+    assert.ok(memberLayout.parts[1].left - memberLayout.parts[0].right < 20,
+      "the Weight field must follow a short signature name without a large empty gap");
     // Narrow mobile: the full group row must fit without any horizontal pan.
     const originalViewport = page.viewportSize();
     try {
@@ -2061,7 +2065,7 @@ async function main() {
         "member row must fit its group on mobile: " + JSON.stringify(mobile));
       assert.equal(mobile.groupRowDisplay, "grid",
         "mobile group data must remain in a single responsive row: " + JSON.stringify(mobile));
-      assert.equal(mobile.groupCellCount, 5, "all group fields must stay in the same row");
+      assert.equal(mobile.groupCellCount, 4, "all visible group fields must stay in the same row");
       assert.equal(mobile.groupRowMarginBottom, "0px", "group rows must not be separated as cards");
       assert.equal(mobile.groupRowRadius, "0px", "group rows must not have card styling");
       assert.ok(mobile.groupRowRight <= mobile.right + 2,
@@ -2223,8 +2227,8 @@ async function main() {
     await updatedGroupCard.getByText("Browser Smoke Group Updated", { exact: true }).waitFor();
     const updatedMemberLabel = updatedGroupCard.locator(".osw-group-member-name").first();
     await updatedMemberLabel.waitFor();
-    assert.equal(await updatedMemberLabel.textContent(), "Bro...",
-      "shortened signature name must remain visible after editing a group");
+    assert.equal(await updatedMemberLabel.textContent(), "Browser Smoke Signature",
+      "signature name must remain intact after editing a group");
     assert.equal(await updatedMemberLabel.getAttribute("title"), "Browser Smoke Signature",
       "full signature name must remain available on hover after editing a group");
 

@@ -165,8 +165,10 @@ const tick = () => new Promise(resolve => setTimeout(resolve, 0));
   assert.deepEqual([...groupManager.previewDomainsForGroup(groupManager.groups[0])].map(item => item.id), [2],
     "eligible domains must consider both group and member scopes");
   assert.equal(groupManager.signatureName("missing"), "Missing signature");
-  assert.equal(groupManager.compactSignatureName("s1"), "Cor...",
-    "signature labels must show the first three characters and an ellipsis");
+  assert.equal(groupManager.signatureName("s1"), "Corporate",
+    "full names must be available to the responsive group member layout");
+  assert.equal(typeof groupManager.compactSignatureName, "undefined",
+    "fixed three-character abbreviations must not be used");
   groupManager.editGroup(groupManager.groups[0]);
   groupManager.toggleDomain("3", true);
   groupManager.toggleDomain("2", false);

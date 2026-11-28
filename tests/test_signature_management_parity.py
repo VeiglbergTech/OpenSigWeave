@@ -29,20 +29,23 @@ class SignatureManagementParityTests(unittest.TestCase):
         self.assertIn("table.osw-data-table > thead th", CSS)
         self.assertIn("table.osw-data-table > tbody td", CSS)
 
-    def test_search_status_scope_and_empty_states(self):
-        for binding in ('x-model="searchQuery"', 'x-model="statusFilter"', 'x-model="domainFilter"',
+    def test_search_status_and_empty_states_without_scope_controls(self):
+        for binding in ('x-model="searchQuery"', 'x-model="statusFilter"',
                         'signature in filteredSignatures', 'x-text="signatureResultLabel"',
                         'No signatures match the selected filters'):
             with self.subTest(binding=binding):
                 self.assertIn(binding, SIGNATURES)
         self.assertIn('get filteredSignatures()', JS)
-        self.assertIn("this.domainFilter === 'global'", JS)
+        self.assertNotIn('x-model="domainFilter"', SIGNATURES)
+        self.assertNotIn('data-label="Scope"', SIGNATURES)
+        self.assertNotIn("Assigned domains", SIGNATURES)
+        self.assertIn("this.domainFilter === 'global'", JS,
+                      "retain dormant scope logic for future use")
 
     def test_versions_markers_and_editor_are_preserved(self):
         for binding in ('formatSignatureMarker(signature)', 'x-text="signature.versions"',
                         'x-model="selectedVersionId"', 'restoreSelectedVersion()',
                         'id="signature-template-editor"', 'id="signature-html-source"',
-                        'toggleDomain(domain.id',
                         'saveSignature()', 'x-model="form.is_active"'):
             with self.subTest(binding=binding):
                 self.assertIn(binding, SIGNATURES)
@@ -61,6 +64,10 @@ class SignatureManagementParityTests(unittest.TestCase):
             with self.subTest(required=required):
                 self.assertIn(required, groups)
         self.assertNotIn('id="group-advanced-preview-domain"', groups)
+        self.assertNotIn('Domain scope', groups)
+        self.assertNotIn('data-label="Domain Scope"', groups)
+        self.assertIn('x-text="signatureName(member.signature_id)"', groups)
+        self.assertIn('osw-group-title', groups)
         self.assertIn("previewDomainsForGroup(group)", JS)
         self.assertIn("result.rotation_state_changed !== false", JS)
 

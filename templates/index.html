@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=group-compact-actions-20261127" rel="stylesheet">
+    <link href="/static/css/portal.css?v=group-fluid-names-20261128" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -219,17 +219,11 @@
             </div>
             <div class="flex flex-wrap items-end gap-3 mb-4">
                 <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[240px]">Search signatures
-                    <input type="search" x-model="searchQuery" placeholder="Name, domain or marker" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white" autocomplete="off">
+                    <input type="search" x-model="searchQuery" placeholder="Name or marker" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white" autocomplete="off">
                 </label>
                 <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[150px]">Signature status
                     <select x-model="statusFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
                         <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Disabled</option>
-                    </select>
-                </label>
-                <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[170px]">Domain scope
-                    <select x-model="domainFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
-                        <option value="all">All domains</option><option value="global">Global only</option>
-                        <template x-for="domain in domains" :key="domain.id"><option :value="'domain:' + domain.id" x-text="domain.domain_name"></option></template>
                     </select>
                 </label>
             </div>
@@ -238,7 +232,6 @@
                 <table class="w-full text-left border-collapse osw-data-table">
                     <thead><tr class="bg-gray-900 text-gray-400 text-sm uppercase tracking-wider border-b border-gray-700">
                         <th class="px-6 py-4 font-medium">Name &amp; Marker</th>
-                        <th class="px-6 py-4 font-medium">Scope</th>
                         <th class="px-6 py-4 font-medium">Versions</th>
                         <th class="px-6 py-4 font-medium">Status</th>
                         <th class="px-6 py-4 font-medium text-right">Actions</th>
@@ -250,7 +243,6 @@
                                     <div x-text="signature.name"></div>
                                     <div class="osw-signature-marker mt-1 text-xs text-gray-400 font-mono" x-text="formatSignatureMarker(signature)"></div>
                                 </td>
-                                <td class="px-6 py-4 text-sm" x-text="domainNames(signature)" data-label="Scope"></td>
                                 <td class="px-6 py-4 tabular-nums" x-text="signature.versions" data-label="Versions"></td>
                                 <td class="px-6 py-4" data-label="Status">
                                     <button type="button" class="osw-admin-status cursor-pointer" :class="signature.is_active ? 'text-green-400' : 'text-red-400'" x-text="signature.is_active ? 'Active' : 'Disabled'" :aria-label="signatureToggleLabel(signature)" @click="toggleSignatureStatus(signature)"></button>
@@ -263,8 +255,8 @@
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="signatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures configured.</td></tr>
-                        <tr x-show="signatures.length > 0 && filteredSignatures.length === 0"><td colspan="5" class="px-6 py-8 text-center text-gray-500">No signatures match the selected filters.</td></tr>
+                        <tr x-show="signatures.length === 0"><td colspan="4" class="px-6 py-8 text-center text-gray-500">No signatures configured.</td></tr>
+                        <tr x-show="signatures.length > 0 && filteredSignatures.length === 0"><td colspan="4" class="px-6 py-8 text-center text-gray-500">No signatures match the selected filters.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -278,15 +270,6 @@
                             <h4 class="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">General Settings</h4>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <label class="text-sm text-gray-300">Name<input x-model="form.name" maxlength="255" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2 text-white"></label>
-                            <div class="text-sm text-gray-300 md:col-span-2">
-                                <div class="mb-2">Assigned domains <span class="text-gray-500">(select none for a global signature)</span></div>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 bg-gray-900 border border-gray-600 rounded p-3">
-                                    <template x-for="domain in domains" :key="domain.id">
-                                        <label class="flex items-center gap-2"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch" role="switch"><span x-text="domain.domain_name"></span></label>
-                                    </template>
-                                    <p x-show="domains.length === 0" class="text-gray-500">No domains configured.</p>
-                                </div>
-                            </div>
                             <label class="flex items-center gap-3 cursor-pointer text-sm text-gray-300 md:col-span-2">
                                 <input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">
                                 Active signature
@@ -360,20 +343,19 @@
             <p class="mb-4 text-sm text-gray-400">Assign signatures to a group and adjust their rotation weights. Previews never advance rotation history. When several domains are eligible, Preview lets you choose one.</p>
             <div class="osw-table-scroll osw-table-scroll--wide">
                 <table class="w-full text-left text-sm osw-data-table osw-groups-table">
-                    <thead><tr><th>Name</th><th>Domain scope</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
+                    <thead><tr><th>Name</th><th>Signatures and rotation</th><th>Status</th><th class="text-right">Actions</th></tr></thead>
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="group in groups" :key="group.id">
                             <tr class="osw-group-row">
                                 <td class="align-top" data-label="Name">
-                                    <h3 class="font-medium" x-text="group.name"></h3>
+                                    <h3 class="osw-group-title font-medium" x-text="group.name" :title="group.name"></h3>
                                     
                                 </td>
-                                <td class="align-top text-gray-300" x-text="group.domain_ids.length ? group.domain_ids.length + ' assigned domain(s)' : 'All domains'" data-label="Domain Scope"></td>
                                 <td class="align-top" data-label="Signatures and Rotation">
                                     <div class="space-y-2">
                                         <template x-for="member in group.members" :key="member.signature_id">
                                             <div class="osw-group-member">
-                                                <span class="osw-group-member-name" x-text="compactSignatureName(member.signature_id)" :title="signatureName(member.signature_id)" :aria-label="signatureName(member.signature_id)"></span>
+                                                <span class="osw-group-member-name" x-text="signatureName(member.signature_id)" :title="signatureName(member.signature_id)" :aria-label="signatureName(member.signature_id)"></span>
                                                 <label class="osw-group-member-weight"><span class="osw-group-member-label">Weight</span>
                                                     <input type="number" min="1" max="1000" class="rounded border border-gray-600 bg-gray-900 px-2 py-1" x-model.number="member.weight" @change="saveMember(group, member)" :aria-label="'Rotation weight for ' + signatureName(member.signature_id)">
                                                 </label>
@@ -394,7 +376,7 @@
                                 </div></td>
                             </tr>
                         </template>
-                        <tr x-show="groups.length === 0"><td colspan="5" class="text-center text-gray-400">No signature groups configured.</td></tr>
+                        <tr x-show="groups.length === 0"><td colspan="4" class="text-center text-gray-400">No signature groups configured.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -408,7 +390,6 @@
                             <label class="text-sm">Slug<input x-model="form.slug" placeholder="Generated from name" class="mt-1 w-full bg-gray-900 border border-gray-600 rounded px-3 py-2"></label>
                         </div>
                         <label class="flex gap-2 items-center text-sm"><input type="checkbox" x-model="form.is_active" class="osw-switch" role="switch">Group enabled</label>
-                        <div><p class="text-sm mb-2">Domain scope (none means all domains)</p><div class="flex flex-wrap gap-3"><template x-for="domain in domains" :key="domain.id"><label class="text-sm flex gap-2 items-center"><input type="checkbox" :checked="form.domain_ids.includes(domain.id)" @change="toggleDomain(domain.id, $event.target.checked)" class="osw-switch" role="switch"><span x-text="domain.domain_name"></span></label></template></div></div>
                         </div>
                         <div class="osw-modal-footer"><button data-osw-dialog-close class="px-3 py-2 bg-gray-700 rounded text-sm">Cancel</button><button @click="saveGroup()" class="px-3 py-2 bg-blue-600 rounded text-sm">Save Group</button></div>
                     </div>
@@ -1310,6 +1291,6 @@
     </div>
 
 
-    <script src="/static/js/portal.js?v=group-unified-preview-20261127"></script>
+    <script src="/static/js/portal.js?v=group-fluid-names-20261128"></script>
 </body>
 </html>

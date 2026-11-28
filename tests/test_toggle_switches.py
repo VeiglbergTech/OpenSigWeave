@@ -20,7 +20,7 @@ class SharedToggleSwitchTests(unittest.TestCase):
                 self.assertIn('role="switch"', field)
                 self.assertNotIn("sr-only", field)
                 self.assertNotIn("osw-checkbox--multi", field)
-        self.assertGreaterEqual(sum(any(marker in field for marker in MULTI) for field in INPUTS), 7)
+        self.assertGreaterEqual(sum(any(marker in field for marker in MULTI) for field in INPUTS), 5)
 
     def test_legacy_tracks_are_removed_but_bindings_stay(self):
         self.assertNotIn('class="dot absolute', HTML)
@@ -31,8 +31,7 @@ class SharedToggleSwitchTests(unittest.TestCase):
                         'x-model="allowOverrides"', 'x-model="injectOnReplies"',
                         'x-model="trimWhitespace"', 'x-model="stripDeviceSignatures"',
                         'x-model="editingUserDisabled"', 'x-model="selected"',
-                        '@change="saveMember(group, member)"',
-                        '@change="toggleDomain(domain.id, $event.target.checked)"'):
+                        '@change="saveMember(group, member)"'):
             with self.subTest(binding=binding):
                 self.assertIn(binding, HTML)
 
