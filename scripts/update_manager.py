@@ -13,7 +13,7 @@ from deploy_common import (
     ROOT, DeploymentError, check_migration, compose, current_channel,
     current_sha, docker, exclusive_lock, git, healthcheck, info, ok, parse_env,
     pristine, remote_sha, run, service_state, system_checks, validate_config, warn,
-    verify_release_image,
+    verify_release_image, bundle_mode,
 )
 from config_manager import ENV, migrate_config
 from release_target import latest_release, release_tag_sha
@@ -23,7 +23,7 @@ CRITICAL_PATHS = (
     "core/engine_service.py", "main.py", "models.py", "database.py", "alembic.ini",
     "compose.yaml", "Dockerfile", ".env.example", "backup_",
 )
-UPDATE_JOURNAL = ROOT / ".git" / "opensigweave-update-state.json"
+UPDATE_JOURNAL = ROOT / (".opensigweave" if bundle_mode() else ".git") / "opensigweave-update-state.json"
 
 
 def ensure_no_incomplete_update() -> None:
@@ -480,6 +480,166 @@ def apply_update(channel: str, remote: str, *, yes: bool,
         print(recovery_guidance(backup))
 
 
+
+def show_bundle_plan(installed: str, remote: str, release_tag: str) -> None:
+    from release_bundle import read_manifest, FILES
+    current_tag = read_manifest(ROOT)["tag"]
+    print(f"Channel: main (minimal verified release package)")
+    print(f"Installed release: {current_tag} | commit: {installed}")
+    print(f"Available release: {release_tag} | commit: {remote}")
+    if installed == remote:
+        ok("No newer published release is available")
+    else:
+        warn("Review the release notes and schema changes before applying.")
+        print("Only the following installation files will be replaced:")
+        print("  " + "\n  ".join(FILES) + "\n  .opensigweave-release.json")
+    print("Application and PostgreSQL images remain separate, version-pinned Docker pulls.")
+
+
+def apply_bundle_update(remote: str, release_tag: str, *, yes: bool,
+                        skip_start: bool, continue_without_backup: bool) -> None:
+    """Git-free main update preserving the normal backup, migration and journal gates."""
+    import shutil
+    import tempfile as tmp
+    from release_bundle import fetch_verified_bundle, install_files
+    with exclusive_lock():
+        ensure_no_incomplete_update()
+        pristine()
+        env = preflight()
+        installed = current_sha()
+        if installed == remote:
+            # preflight checked running services/schema, and pristine checked
+            # every allowlisted host file in the existing release manifest.
+            ok("Installed release already matches the approved published commit")
+            return
+        show_bundle_plan(installed, remote, release_tag)
+        if not yes and input("Apply this update? [y/N]: ").strip().lower() != "y":
+            raise DeploymentError("Update cancelled", 4)
+
+        # Download into a protected temporary directory. Verify the SHA256
+        # published by GitHub Releases and the approved main tag *before*
+        # touching the running services, protected config or data.
+        with tmp.TemporaryDirectory(prefix="opensigweave-bundle-", dir=ROOT / ".opensigweave") as work:
+            staging, manifest = fetch_verified_bundle(release_tag, Path(work))
+            if manifest["revision"] != remote:
+                raise DeploymentError("Release tag moved during artifact verification", 4)
+            os.environ["OSW_IMAGE_TAG"] = release_tag
+            info("Pulling the exact published GHCR image before changing source or database")
+            compose("pull", "opensigweave", timeout=1800)
+            verify_release_image({**env, "OSW_IMAGE_TAG": release_tag}, remote)
+            backup = select_backup_for_update(
+                yes=yes, continue_without_backup=continue_without_backup,
+            )
+            if backup["status"] != "verified":
+                info("No verified pre-update recovery point exists for this update.")
+            write_update_journal(
+                channel="main", installed=installed, target=remote,
+                backup=backup, stage="source-switch",
+            )
+            info("Replacing only verified release tooling; keeping .env, data and Docker volumes")
+            try:
+                install_files(staging, ROOT)
+            except (OSError, ValueError) as exc:
+                raise DeploymentError(
+                    "Interrupted release-file switch. Recovery journal retained; "
+                    "do not restart the update without manual review.", 8
+                ) from exc
+            env = parse_env(ENV)
+            validate_config(env)
+            migrate_config(yes=True)
+            pin_release_image_tag(release_tag)
+            env = parse_env(ENV)
+            validate_config(env)
+            compose("config", "--quiet")
+            write_update_journal(
+                channel="main", installed=installed, target=remote,
+                backup=backup, stage="migration",
+            )
+            info("Stopping application for serialized Alembic migration")
+            compose("stop", "--timeout", "30", "opensigweave", timeout=120)
+            try:
+                compose("run", "--rm", "--no-deps", "opensigweave",
+                        "alembic", "upgrade", "head", timeout=1200)
+                current_output = compose(
+                    "run", "--rm", "--no-deps", "opensigweave", "alembic",
+                    "current", timeout=120,
+                )
+                heads_output = compose(
+                    "run", "--rm", "--no-deps", "opensigweave", "alembic",
+                    "heads", timeout=120,
+                )
+                if parse_alembic_revision(current_output) != parse_alembic_revision(heads_output):
+                    raise DeploymentError("Post-migration revision does not match Alembic head", 8)
+            except DeploymentError as exc:
+                raise DeploymentError(
+                    "Migration failed. Do NOT roll back application code on a potentially "
+                    "migrated database. " + recovery_guidance(backup) + f" Reason: {exc}", 8
+                ) from exc
+            write_update_journal(
+                channel="main", installed=installed, target=remote,
+                backup=backup, stage="migration-complete",
+            )
+            if skip_start:
+                clear_update_journal()
+                warn("Release updated and migrated; application remains stopped (--skip-start)")
+                return
+            try:
+                compose("up", "-d", "--no-deps", "--force-recreate", "--wait",
+                        "--wait-timeout", "240", "opensigweave", timeout=600)
+                healthcheck(env)
+            except DeploymentError as exc:
+                raise DeploymentError(
+                    "Post-migration startup failed. Automatic rollback is unsafe. "
+                    + recovery_guidance(backup) + f" Reason: {exc}", 8
+                ) from exc
+            clear_update_journal()
+            ok(f"Verified minimal release installed: {release_tag} ({current_sha()})")
+            print(recovery_guidance(backup))
+
+
+def bundle_main(args) -> int:
+    """Keep normal update.sh flags while refusing beta/source operations in bundle mode."""
+    from release_bundle import read_manifest, release_commit_sha, fetch_verified_bundle
+    import shutil
+    if args.beta:
+        raise DeploymentError("Beta is source-built; use a separate beta Git checkout", 4)
+    if args.continue_without_backup and not args.yes:
+        raise DeploymentError("--continue-without-backup requires --yes", 4)
+    ensure_no_incomplete_update()
+    pristine()
+    installed = current_sha()
+    installed_tag = read_manifest(ROOT)["tag"]
+    if args.version:
+        print(f"OpenSigWeave release: {installed_tag} | channel: main | commit: {installed}")
+        return 0
+    release_tag = latest_release()
+    remote = release_commit_sha(release_tag)
+    if args.check:
+        show_bundle_plan(installed, remote, release_tag)
+        return 0
+    if args.dry_run:
+        with exclusive_lock():
+            preflight()
+            show_bundle_plan(installed, remote, release_tag)
+            ok("Read-only preflight completed; release archive is verified during prefetch/update")
+        return 0
+    if args.prefetch:
+        with exclusive_lock():
+            preflight()
+            if remote == installed:
+                ok("No new release to prefetch")
+                return 0
+            with tempfile.TemporaryDirectory(prefix="opensigweave-prefetch-", dir=ROOT / ".opensigweave") as work:
+                staging, manifest = fetch_verified_bundle(release_tag, Path(work))
+                if manifest["revision"] != remote:
+                    raise DeploymentError("Release tag changed during prefetch", 4)
+                ok("Release downloaded and verified. Apply with ./update.sh; the asset is verified again.")
+            return 0
+    apply_bundle_update(remote, release_tag, yes=args.yes, skip_start=args.skip_start,
+                        continue_without_backup=args.continue_without_backup)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Check, prefetch and safely update OpenSigWeave")
     mode = parser.add_mutually_exclusive_group()
@@ -496,6 +656,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Explicitly override a failed configured backup; requires --yes")
     args = parser.parse_args(argv)
     try:
+        if bundle_mode():
+            return bundle_main(args)
         if args.continue_without_backup and not args.yes:
             raise DeploymentError("--continue-without-backup requires --yes", 4)
         installed_channel = current_channel()
