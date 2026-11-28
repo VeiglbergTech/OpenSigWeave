@@ -114,7 +114,10 @@ def _safe_destination(destination: Path) -> None:
     if not destination.is_absolute() or ".." in destination.parts:
         raise ValueError("Policy destination must be an absolute, normalized path")
     directory = destination.parent
-    info = directory.lstat()
+    try:
+        info = directory.lstat()
+    except (FileNotFoundError, NotADirectoryError) as exc:
+        raise ValueError("Policy destination directory must already exist") from exc
     if not stat.S_ISDIR(info.st_mode) or info.st_mode & 0o022:
         raise ValueError("Policy directory must exist and deny group/other writes")
     if os.geteuid() == 0 and info.st_uid != 0:
