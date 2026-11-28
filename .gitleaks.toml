@@ -56,3 +56,13 @@ commits = [
   "659fad98a28c7f8d5a7db7595584dac21d274b69",
   "731ad71103f3f624a40084e87bc33b34515d77f3",
 ]
+
+# Exact historical CI assertion from Task 8. This line deliberately checks
+# that a generated command contains no engine credential assignment. It is
+# not a credential and no real value is embedded in the string.
+# Match only its introducing commit; future secret additions are still scanned.
+[[allowlists]]
+description = "False positive from negative ENGINE_API_KEY exposure assertion"
+commits = [
+  "c0353f59340f226a4974cc46c0bfd9cef1698400",
+]
