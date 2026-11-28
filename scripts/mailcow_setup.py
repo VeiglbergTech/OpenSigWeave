@@ -34,7 +34,7 @@ SECRET = Path("/etc/opensigweave-mailcow/engine.key")
 STATE = Path("/etc/opensigweave-mailcow/install-state.json")
 SERVICE = Path("/etc/systemd/system/opensigweave-mailcow-policy.service")
 TIMER = Path("/etc/systemd/system/opensigweave-mailcow-policy.timer")
-POLICY_REL = "local.d/opensigweave-domain-policy.json"
+POLICY_REL = "opensigweave-policy/policy.json"
 ENGINE_SUFFIX = "/api/v1/engine/signatures/"
 MAX_SIZE = 1024 * 1024
 COMMIT = re.compile(r"[a-f0-9]{40}\Z")
@@ -126,7 +126,7 @@ def managed_block(url: str, secret: str) -> str:
             + "  api_url = " + json.dumps(url) + ";\n"
             + "  engine_api_key = " + json.dumps(secret) + ";\n"
             + '  failure_policy = "enabled";\n'
-            + '  domain_policy_file = "/etc/rspamd/local.d/opensigweave-domain-policy.json";\n'
+            + '  domain_policy_file = "/etc/rspamd/opensigweave-policy/policy.json";\n'
             + '  inline_images = "cid";\n'
             + "  max_response_size = 6291456;\n"
             + "  timeout = 5.0;\n"
@@ -232,9 +232,9 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
             raise ValueError("Existing, unmanaged synchronization helper")
     atomic(local_sync, values["scripts/sync_domain_policy.py"], 0o644)
     try:
-        policy_directory = root / "data/conf/rspamd/local.d"
+        policy_directory = root / "data/conf/rspamd/opensigweave-policy"
         if policy_directory.is_symlink():
-            raise ValueError("Refusing symlinked Rspamd local.d directory")
+            raise ValueError("Refusing symlinked Rspamd OpenSigWeave policy directory")
         policy_directory.mkdir(parents=True, exist_ok=True, mode=0o755)
         sync_policy(root, url)
     except Exception:
