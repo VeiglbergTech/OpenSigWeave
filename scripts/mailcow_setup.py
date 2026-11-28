@@ -46,14 +46,6 @@ def digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def block_mac(block: str, api_key: str) -> str:
-    """Protect the credential-bearing block using a keyed MAC, not a bare digest."""
-    if len(api_key) < 32:
-        raise ValueError("Invalid ENGINE_API_KEY for managed configuration verification")
-    return hmac.new(api_key.encode("utf-8"), block.encode("utf-8"),
-                    hashlib.sha256).hexdigest()
-
-
 def run(args: list[str], cwd: Path | None = None) -> None:
     subprocess.run(args, cwd=cwd, check=True)
 
@@ -118,7 +110,7 @@ def load_state() -> dict | None:
     if data is None:
         return None
     value = json.loads(data)
-    if (not isinstance(value, dict) or set(value) != {"root", "revision", "engine_url", "files", "block_hash", "sync_hash"}
+    if (not isinstance(value, dict) or set(value) != {"root", "revision", "engine_url", "files", "sync_hash"}
             or not COMMIT.fullmatch(value["revision"])
             or not isinstance(value["sync_hash"], str)
             or not re.fullmatch(r"[a-f0-9]{64}", value["sync_hash"])
@@ -156,7 +148,9 @@ def split_config(existing: str, state: dict | None, key: str | None = None) -> t
             raise ValueError("Existing managed block has no trusted installation state")
         if key is None:
             key = _key()
-        if not hmac.compare_digest(block_mac(old, key), state["block_hash"]):
+        # Reconstruct the entire expected block from the root-only key and
+        # saved endpoint. No password-derived hash or MAC is ever stored.
+        if not hmac.compare_digest(old, managed_block(engine_url(state["engine_url"]), key)):
             raise ValueError("Existing managed configuration was changed; refusing to overwrite")
         existing = head + tail
     if re.search(r"(?m)^\s*opensigweave\s*\{", existing):
@@ -277,7 +271,6 @@ def prepare(root: Path, source: Path, revision: str, url: str) -> None:
             "root": str(root), "revision": revision, "engine_url": url,
             "files": {src: digest(values[src]) for src in FILES},
             "sync_hash": digest(values["scripts/sync_domain_policy.py"]),
-            "block_hash": block_mac(block, key),
         }
         atomic(STATE, (json.dumps(next_state, sort_keys=True) + "\n").encode(), 0o600)
         run(["docker", "compose", "exec", "-T", "rspamd-mailcow",
