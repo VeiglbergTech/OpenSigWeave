@@ -208,7 +208,7 @@ class MinimalReleaseBundleTests(unittest.TestCase):
                     path.parent.mkdir(parents=True, exist_ok=True)
                     path.write_bytes(archive.extractfile(member).read())
             self.assertEqual(bundle.read_manifest(extracted)["revision"], self.SHA)
-            services = (extracted / "compose.yaml").read_text().split("volumes:\\n", 1)[0]
+            services = (extracted / "compose.yaml").read_text().split(chr(10) + "volumes:", 1)[0]
             self.assertEqual(set(__import__("re").findall(r"(?m)^  ([a-z0-9-]+):$", services)),
                              {"postgres", "opensigweave"})
             # Python isolated mode with site-packages disabled: package host
