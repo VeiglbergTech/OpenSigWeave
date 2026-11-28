@@ -1050,7 +1050,7 @@
                   <h4 class="text-base font-semibold" x-text="adapterInstructions.title || 'Integration instructions'"></h4>
                   <p class="text-sm text-gray-300" x-text="adapterInstructions.description || 'Save the mail-server selection to view installation instructions.'"></p>
                   <div x-show="adapterInstructions.commands" class="space-y-2">
-                    <h5 class="font-semibold text-sm">1. Minimal files on the mail server</h5>
+                    <h5 class="font-semibold text-sm">1. Verify and prepare Mailcow (masked API key prompt)</h5>
                     <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.commands"></code></pre>
                     <button type="button" @click="copyAdapterCommands()" class="osw-button osw-button--secondary">Copy installation commands</button>
                   </div>
@@ -1058,13 +1058,13 @@
                     <h5 class="font-semibold text-sm">2. Add to existing Rspamd configuration</h5>
                     <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.config"></code></pre>
                     <button type="button" @click="copyAdapterConfig()" class="osw-button osw-button--secondary">Copy Rspamd configuration</button>
-                    <p class="text-xs text-amber-300">Replace the API key placeholder on the mail server only; never paste credentials into this page. Choose your mail-processing failure policy separately from monitoring.</p>
+                    <p class="text-xs text-amber-300">Never paste the Engine API key into this page. The Mailcow host securely prompts for it in the first terminal block.</p>
                   </div>
                   <div x-show="adapterInstructions.verify" class="space-y-2">
-                    <h5 class="font-semibold text-sm">3. Validate and restart when configured</h5>
+                    <h5 class="font-semibold text-sm">2. Validate, activate and enable policy synchronization</h5>
                     <pre class="overflow-x-auto rounded bg-gray-950 border border-gray-700 p-3 text-xs select-text"><code x-text="adapterInstructions.verify"></code></pre>
                   </div>
-                  <p class="text-xs text-gray-400">A successful authenticated API response is not proof of an inserted signature, SMTP acceptance or valid DKIM. Verify a received test message separately.</p>
+                  <p class="text-xs text-gray-400">All domains are synchronized as trusted local policies: Signature required On (or unknown) temporarily rejects on engine failure; Off may send unsigned. Default technical failure policy is enabled. A successful authenticated API response or rspamadm configtest is not proof of a delivered signature or valid DKIM. Verify the received test message separately.</p>
                 </div>
               </div>
             </section>

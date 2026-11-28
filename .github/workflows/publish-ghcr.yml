@@ -56,6 +56,8 @@ jobs:
             exit 1
           fi
           docker build --pull \
+            --build-arg "OSW_RELEASE_TAG=$VERSION" \
+            --build-arg "OSW_RELEASE_SHA=$REVISION" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --label "org.opencontainers.image.revision=$REVISION" \
             --label "org.opencontainers.image.version=$VERSION" \

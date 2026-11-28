@@ -9,6 +9,10 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import hashlib
+import re
+import shlex
+from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import build_opener, HTTPRedirectHandler, HTTPSHandler, Request
 from urllib.error import URLError, HTTPError
@@ -127,40 +131,109 @@ def probe(server: str, url: str, *, fetch=None, password: str | None = None) -> 
         return {"status": "unknown", "detail": "Controller probe unavailable or returned invalid data"}
 
 
-def adapter_instructions(server: str, engine_url: str = "") -> dict[str, object]:
-    """Minimal mail-host setup; does not depend on OpenSigWeave's Docker location.
+MAILCOW_ARTIFACTS = (
+    "rspamd/opensigweave.lua",
+    "rspamd/opensigweave_mime.lua",
+    "rspamd/opensigweave_cid.lua",
+    "rspamd/opensigweave_domain_policy.lua",
+    "scripts/sync_domain_policy.py",
+    "scripts/mailcow_setup.py",
+)
 
-    The browser never receives an installed ENGINE_API_KEY. Download only the
-    three necessary Rspamd Lua assets from a pinned, tested Git commit.
-    """
-    if server in {"mailcow_rspamd", "rspamd"}:
-        mailcow = server == "mailcow_rspamd"
-        if mailcow:
-            commands = """cd /opt/mailcow-dockerized
-OSW_REF=REPLACE_WITH_TESTED_COMMIT
-install -d -m 0755 data/conf/rspamd/plugins.d data/conf/rspamd/lua
-curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave.lua" -o data/conf/rspamd/plugins.d/opensigweave.lua
-curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave_mime.lua" -o data/conf/rspamd/lua/opensigweave_mime.lua
-curl -fsSL "https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/$OSW_REF/rspamd/opensigweave_cid.lua" -o data/conf/rspamd/lua/opensigweave_cid.lua"""
-            verify = "docker compose exec -T rspamd-mailcow rspamadm configtest && docker compose restart rspamd-mailcow"
-        else:
-            commands = "Install the three required Lua files from the tested repository revision in your Rspamd plugin/Lua directories; see docs/ADAPTERS.md."
-            verify = "Validate the Rspamd configuration and reload its service using your distribution's tooling."
-        endpoint = engine_url or "https://YOUR_OPENSIGWEAVE_HOST/api/v1/engine/signatures/"
-        config = ('opensigweave {\n'
-                  '    api_url = "' + endpoint + '";\n'
-                  '    engine_api_key = "REPLACE_WITH_YOUR_ENGINE_API_KEY";\n'
-                  '    failure_policy = "disabled";\n'
-                  '}')
+
+def _mailcow_install_commands(engine_url: str) -> tuple[str, str, str]:
+    """Two commands for the deployed, published release; never use moving branches."""
+    tag = os.environ.get("OSW_RELEASE_TAG", "").strip()
+    revision = os.environ.get("OSW_RELEASE_SHA", "").strip().lower()
+    if not (re.fullmatch(r"20\d\d\.(?:0[1-9]|1[0-2])(?:-(?:alpha|beta)[1-9]\d*)?", tag)
+            and re.fullmatch(r"[a-f0-9]{40}", revision)):
+        return "", "", ("No immutable published release identity is available in this "
+                        "development/older image. Do not copy unverified adapters: deploy "
+                        "an approved release with built-in revision metadata.")
+    if not engine_url or not engine_url.startswith("https://"):
+        return "", "", "Save a valid engine HTTPS endpoint first."
+    root = Path(__file__).resolve().parents[1]
+    hashes = {}
+    try:
+        for path in MAILCOW_ARTIFACTS:
+            file = root / path
+            if file.is_symlink() or not file.is_file():
+                raise OSError("Missing adapter file")
+            hashes[path] = hashlib.sha256(file.read_bytes()).hexdigest()
+    except OSError:
+        return "", "", "The deployed image lacks required matching adapter files."
+    lines = [
+        "# Run from the Mailcow Docker Compose directory (on the Mailcow HOST).",
+        "set -eu",
+        "OSW_TAG=" + shlex.quote(tag),
+        "OSW_REV=" + shlex.quote(revision),
+        "OSW_ENGINE_URL=" + shlex.quote(engine_url),
+        "# Confirm that the release tag actually resolves to the image's pinned commit.",
+        "python3 - \"$OSW_TAG\" \"$OSW_REV\" <<'PY'",
+        "import json, sys, urllib.request",
+        "tag, expected = sys.argv[1:]",
+        "base = 'https://api.github.com/repos/VeiglbergTech/OpenSigWeave'",
+        "def get(path):",
+        "    req = urllib.request.Request(base + path, headers={'Accept': 'application/vnd.github+json', 'User-Agent': 'OpenSigWeave-Mailcow-installer'})",
+        "    with urllib.request.urlopen(req, timeout=15) as result:",
+        "        return json.load(result)",
+        "release = get('/releases/tags/' + tag)",
+        "if release.get('draft') or release.get('tag_name') != tag or not release.get('published_at'):",
+        "    raise SystemExit('Not a published release')",
+        "obj = get('/git/ref/tags/' + tag)['object']",
+        "if obj.get('type') == 'tag':",
+        "    obj = get('/git/tags/' + obj['sha'])['object']",
+        "if obj.get('type') != 'commit' or obj.get('sha') != expected:",
+        "    raise SystemExit('Deployed release/revision mismatch; refusing to install')",
+        "PY",
+        "OSW_TMP=\"$(mktemp -d)\"",
+        "trap 'rm -rf \"$OSW_TMP\"' EXIT",
+    ]
+    for path in MAILCOW_ARTIFACTS:
+        lines.extend((
+            "mkdir -p \"$OSW_TMP/" + path.rsplit("/", 1)[0] + "\"",
+            "curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 2 "
+            + shlex.quote("https://raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/" + revision + "/" + path)
+            + " -o \"$OSW_TMP/" + path + "\"",
+            "printf '%s  %s\\n' " + shlex.quote(hashes[path]) + " \"$OSW_TMP/" + path
+            + "\" | sha256sum -c --status",
+        ))
+    lines.extend((
+        "sudo python3 \"$OSW_TMP/scripts/mailcow_setup.py\" prepare "
+        "--mailcow-root \"$PWD\" --source \"$OSW_TMP\" --revision \"$OSW_REV\" "
+        "--engine-url \"$OSW_ENGINE_URL\"",
+    ))
+    activation = (
+        "# Run from the same Mailcow Docker Compose directory after preparation.\n"
+        "sudo python3 /usr/local/lib/opensigweave-mailcow/mailcow_setup.py "
+        "activate --mailcow-root \"$PWD\""
+    )
+    return "\n".join(lines), activation, ""
+
+
+def adapter_instructions(server: str, engine_url: str = "") -> dict[str, object]:
+    """Administrator-only, no-secret release-pinned Mailcow setup instructions."""
+    if server == "mailcow_rspamd":
+        commands, verify, issue = _mailcow_install_commands(engine_url)
         return {
-            "supported": True, "title": "Mailcow / Rspamd" if mailcow else "Rspamd / other MTA",
-            "description": ("Copy the module files onto the MAIL SERVER host, regardless of "
-                            "where OpenSigWeave runs. Add the configuration to the existing "
-                            "rspamd.conf.local and then validate/restart. The HTTPS endpoint "
-                            "must be reachable from Rspamd and the key must match ENGINE_API_KEY. "
-                            "No published controller port, Docker socket or extra service is required."),
-            "commands": commands, "config": config, "verify": verify,
+            "supported": True, "title": "Mailcow / Rspamd",
+            "description": issue or (
+                "Run both blocks from your Mailcow Compose checkout, regardless of "
+                "whether OpenSigWeave is on the same host. The first block verifies "
+                "the published release revision and SHA-256 of all six adapter assets, "
+                "installs four Lua modules, fetches the authenticated offline domain "
+                "policy and asks for ENGINE_API_KEY via masked terminal entry. "
+                "The second validates, activates Rspamd and enables 5-minute "
+                "host-side domain-policy synchronization. You must securely transfer "
+                "the Engine API key from the OpenSigWeave host; it never appears here. "
+                "TLS must be valid; verify a real received SMTP message separately."
+            ),
+            "commands": commands, "verify": verify, "config": "",
         }
+    if server == "rspamd":
+        return {"supported": True, "title": "Rspamd / other MTA",
+                "description": "Use the adapter documentation for manual Rspamd integration outside Mailcow. Never substitute a moving branch for a release.",
+                "commands": "", "config": "", "verify": ""}
     if server == "stalwart":
         return {"supported": True, "title": "Stalwart",
                 "description": "Configure the Stalwart DATA-stage hook using its Bearer token and the OpenSigWeave HTTPS URL described in docs/ADAPTERS.md. No Rspamd changes required.",

@@ -89,7 +89,24 @@ class AdapterHealthTests(unittest.TestCase):
     def test_mailcow_onboarding_one_command_block(self):
         data = adapter_instructions("mailcow_rspamd")
         self.assertTrue(data["supported"])
-        self.assertEqual(data["commands"].count("cd /opt/mailcow-dockerized"), 1)
+        self.assertEqual(data["commands"], "", "Unversioned builds must fail closed")
+
+    def test_pinned_release_instructions_include_verified_domain_policy(self):
+        with patch.dict("os.environ", {"OSW_RELEASE_TAG": "2026.11",
+                                     "OSW_RELEASE_SHA": "a" * 40}):
+            info = adapter_instructions("mailcow_rspamd",
+                                        "https://osw.example.org/api/v1/engine/signatures/")
+        cmd = info["commands"]
+        self.assertIn("opensigweave_domain_policy.lua", cmd)
+        self.assertIn("scripts/sync_domain_policy.py", cmd)
+        self.assertIn("scripts/mailcow_setup.py", cmd)
+        self.assertIn("sha256sum -c --status", cmd)
+        self.assertIn("releases/tags/", cmd)
+        self.assertIn("raw.githubusercontent.com/VeiglbergTech/OpenSigWeave/" + "a" * 40, cmd)
+        self.assertNotIn("REPLACE_WITH_TESTED_COMMIT", cmd)
+        self.assertNotIn("ENGINE_API_KEY=", cmd)
+        self.assertIn("activate", info["verify"])
+        self.assertEqual(info["config"], "")
 
 
 if __name__ == "__main__":
