@@ -1032,6 +1032,28 @@ class SignatureCatalogApiTests(unittest.TestCase):
         self.assertNotIn("onmouseover", domain.template_html)
         self.assertNotIn("<script", domain.template_html)
 
+    def test_admin_delete_signature_endpoint_enforces_permissions_and_updates_storage(self):
+        signature = main.create_signature_endpoint(
+            main.SignatureCreateRequest(
+                name="To remove", html_content="<p>Delete me</p>",
+            ),
+            self.admin_request, self.db,
+        )
+        signature_id = signature["id"]
+        with self.assertRaises(HTTPException) as denied_preview:
+            main.get_signature_deletion_impact(signature_id, self.user_request, self.db)
+        self.assertEqual(denied_preview.exception.status_code, 403)
+        with self.assertRaises(HTTPException) as denied_delete:
+            main.delete_signature_endpoint(signature_id, self.user_request, self.db)
+        self.assertEqual(denied_delete.exception.status_code, 403)
+        self.assertIsNotNone(self.db.get(main.SignatureDB, signature_id))
+        impact = main.get_signature_deletion_impact(signature_id, self.admin_request, self.db)
+        self.assertEqual(impact["name"], "To remove")
+        deleted = main.delete_signature_endpoint(signature_id, self.admin_request, self.db)
+        self.assertEqual(deleted["status"], "deleted")
+        self.assertIsNone(self.db.get(main.SignatureDB, signature_id))
+        self.assertFalse((Path(self.tempdir.name) / "signatur" / "To remove").exists())
+
     def test_non_admin_cannot_mutate_signature_catalog(self):
         payload = main.SignatureCreateRequest(
             name="Denied", html_content="<p>Denied</p>"

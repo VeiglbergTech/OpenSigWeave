@@ -708,6 +708,71 @@ function identityProviderManager() { return {
                         notify('Could not update signature status: ' + error.message, 'error');
                     }
                 },
+                async copySignatureMarker(signature) {
+                    const marker = this.formatSignatureMarker(signature);
+                    try {
+                        if (!navigator.clipboard || !navigator.clipboard.writeText) {
+                            throw new Error('Clipboard unavailable');
+                        }
+                        await navigator.clipboard.writeText(marker);
+                        notify('Signature marker copied.');
+                    } catch (_error) {
+                        notify('Could not copy signature marker. Check clipboard permissions.', 'error');
+                    }
+                },
+                async deleteSignature(signature) {
+                    const url = '/api/admin/signatures/' + encodeURIComponent(signature.id);
+                    let impact;
+                    try {
+                        const response = await fetch(url + '/deletion-impact', { cache: 'no-store' });
+                        if (!response.ok) throw new Error('Could not check signature references.');
+                        impact = await response.json();
+                    } catch (_error) {
+                        notify('Could not inspect signature references. Deletion cancelled.', 'error');
+                        return;
+                    }
+                    const summarize = (items) => items.length
+                        ? items.slice(0, 3).map(item => item.name).join(', ')
+                            + (items.length > 3 ? ' and ' + (items.length - 3) + ' more' : '')
+                        : 'none';
+                    const consequences = [
+                        'Delete signature "' + impact.name + '" and all its HTML versions?',
+                        'Groups: ' + impact.groups.length + ' (' + summarize(impact.groups) + ').',
+                        'Affected rules: ' + impact.rules.length + ' (' + summarize(impact.rules) + ').',
+                        'Affected schedules: ' + impact.schedules.length + ' (' + summarize(impact.schedules) + ').',
+                        'Groups with no eligible signatures and affected rules will be disabled.',
+                        'Legacy schedules targeting this signature will be removed.',
+                        'Exact markers will be removed from ' + impact.personal_override_count + ' personal overrides.'
+                    ];
+                    if (impact.mandatory_domains.length) {
+                        consequences.push('WARNING: Signatures are mandatory for potentially affected domains: '
+                            + summarize(impact.mandatory_domains)
+                            + '. Verify their remaining rules before deletion.');
+                    }
+                    if (!await oswAskConfirmation({
+                        title: 'Delete signature?',
+                        message: consequences.join(' ')
+                    })) return;
+                    try {
+                        const response = await fetch(url, { method: 'DELETE' });
+                        if (!response.ok) {
+                            const problem = await response.json().catch(() => ({}));
+                            throw new Error(problem.detail || 'HTTP ' + response.status);
+                        }
+                        const result = await response.json();
+                        this.signatures = this.signatures.filter(item => item.id !== signature.id);
+                        notify(result.files_cleanup_pending
+                            ? 'Signature deleted. Residual files are queued for cleanup.'
+                            : 'Signature and its references deleted.');
+                        await this.fetchAll();
+                        window.dispatchEvent(new window.Event('signature-catalog-updated'));
+                        window.dispatchEvent(new window.Event('signature-groups-updated'));
+                        window.dispatchEvent(new window.Event('osw-live-rules'));
+                        window.dispatchEvent(new window.Event('osw-live-overrides'));
+                    } catch (error) {
+                        notify('Could not delete signature: ' + error.message, 'error');
+                    }
+                },
                 async previewSignature(signature) {
                     try {
                         const response = await fetch('/api/admin/signatures/' +

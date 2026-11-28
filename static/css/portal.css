@@ -1287,7 +1287,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 .osw-admin-section .osw-table-scroll > table.osw-groups-table > :is(thead,tbody) > tr > :nth-child(4) { width: 1%; white-space: nowrap; }
 .osw-groups-table .osw-group-title {
     width: max-content;
-    max-width: clamp(8ch, 14cqi, 14rem);
+    max-width: clamp(9ch, 18cqi, 17rem);
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1307,6 +1307,7 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
 }
 .osw-groups-table .osw-group-member-name {
     max-width: 100%;
+    flex: 1 1 11ch;
 }
 .osw-group-member + .osw-group-member { margin-top: .5rem; }
 .osw-group-member-weight input[type="number"] {
@@ -1775,4 +1776,50 @@ body a[href]:focus-visible { outline: 2px solid var(--osw-focus); outline-offset
     .osw-app-content { padding-inline: .75rem; }
     .osw-application-page > nav .h-6.w-px { display: none; }
     .osw-idp-actions { gap: .5rem .75rem; }
+}
+
+
+/* Signature marker is the copy target itself, with no redundant icon column. */
+.osw-signature-marker-copy {
+    display: inline-block;
+    max-width: 100%;
+    padding: .2rem .25rem;
+    margin-inline: -.25rem;
+    text-align: start;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    border-radius: .25rem;
+    cursor: copy;
+    transition: color .15s, background-color .15s;
+}
+.osw-signature-marker-copy:hover {
+    color: var(--osw-heading);
+    background-color: var(--osw-panel-raised);
+}
+.osw-signature-marker-copy:focus-visible {
+    outline: 2px solid var(--osw-accent, #60a5fa);
+    outline-offset: 2px;
+}
+
+/* Group table: short labels have compact intrinsic columns, with the
+   signature/rotation column consuming the remaining flexible space. */
+.osw-groups-table .osw-group-member {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    justify-content: space-between;
+    align-items: center;
+}
+.osw-groups-table .osw-group-member :is(label, button) {
+    align-self: center;
+}
+.osw-admin-section .osw-table-scroll > table.osw-groups-table > tbody > tr > td {
+    vertical-align: middle;
+}
+.osw-groups-table .osw-group-actions {
+    align-items: center;
+    justify-content: flex-end;
+}
+@container osw-groups (max-width: 70rem) {
+    .osw-groups-table .osw-group-actions { justify-content: flex-start; }
 }

@@ -293,7 +293,7 @@
                 </label>
                 <label class="text-sm text-gray-300 flex-1 min-w-0 sm:min-w-[150px]">Signature status
                     <select x-model="statusFilter" class="block mt-1 w-full rounded border border-gray-600 bg-gray-900 px-3 py-2 text-white">
-                        <option value="all">All statuses</option><option value="active">Active</option><option value="inactive">Disabled</option>
+                        <option value="all">Any</option><option value="active">Active</option><option value="inactive">Disabled</option>
                     </select>
                 </label>
             </div>
@@ -311,7 +311,7 @@
                             <tr class="hover:bg-gray-750 transition duration-150">
                                 <td class="px-6 py-4 font-medium text-white" data-label="Name & Marker">
                                     <div x-text="signature.name"></div>
-                                    <div class="osw-signature-marker mt-1 text-xs text-gray-400 font-mono" x-text="formatSignatureMarker(signature)"></div>
+                                    <button type="button" class="osw-signature-marker osw-signature-marker-copy mt-1 text-xs text-gray-400 font-mono" x-text="formatSignatureMarker(signature)" @click.stop="copySignatureMarker(signature)" :title="'Copy signature marker: ' + formatSignatureMarker(signature)" :aria-label="'Copy signature marker for ' + signature.name"></button>
                                 </td>
                                 <td class="px-6 py-4 tabular-nums" x-text="signature.versions" data-label="Versions"></td>
                                 <td class="px-6 py-4" data-label="Status">
@@ -321,6 +321,7 @@
                                     <div class="osw-actions justify-end">
                                         <button type="button" @click="previewSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Preview</button>
                                         <button type="button" @click="editSignature(signature)" class="text-blue-400 hover:text-blue-300 text-sm font-medium">Edit</button>
+                                        <button type="button" @click="deleteSignature(signature)" class="text-red-400 hover:text-red-300 text-sm font-medium">Delete</button>
                                     </div>
                                 </td>
                             </tr>
@@ -417,11 +418,11 @@
                     <tbody class="divide-y divide-gray-700">
                         <template x-for="group in groups" :key="group.id">
                             <tr class="osw-group-row">
-                                <td class="align-top" data-label="Name">
+                                <td data-label="Name">
                                     <h3 class="osw-group-title font-medium" x-text="group.name" :title="group.name"></h3>
                                     
                                 </td>
-                                <td class="align-top" data-label="Signatures and Rotation">
+                                <td data-label="Signatures and Rotation">
                                     <div class="space-y-2">
                                         <template x-for="member in group.members" :key="member.signature_id">
                                             <div class="osw-group-member">
@@ -438,8 +439,8 @@
                                         <p x-show="group.members.length === 0" class="text-xs text-gray-400">No signatures assigned.</p>
                                     </div>
                                 </td>
-                                <td class="align-top" data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Active' : 'Disabled'"></span></td>
-                                <td class="align-top text-right" data-label="Actions"><div class="osw-group-actions">
+                                <td data-label="Status"><span class="osw-admin-status" :class="group.is_active ? 'text-green-400' : 'text-gray-500'" x-text="group.is_active ? 'Active' : 'Disabled'"></span></td>
+                                <td class="text-right" data-label="Actions"><div class="osw-group-actions">
                                     <button type="button" @click="openGroupPreview(group)" class="text-green-400 hover:text-green-300">Preview</button>
                                     <button type="button" @click="editGroup(group)" class="text-blue-400 hover:text-blue-300">Edit</button>
                                     <button type="button" @click="deleteGroup(group)" class="text-red-400 hover:text-red-300">Delete</button>

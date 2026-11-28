@@ -13,7 +13,7 @@ class AdminTableLayoutTests(unittest.TestCase):
         self.assertIn('class="osw-group-title font-medium" x-text="group.name" :title="group.name"', HTML)
         self.assertIn("table.osw-groups-table > thead th:first-child", CSS)
         self.assertIn("white-space: nowrap;\n    overflow-wrap: normal;", CSS)
-        self.assertIn("max-width: clamp(8ch, 14cqi, 14rem)", CSS)
+        self.assertIn("max-width: clamp(9ch, 18cqi, 17rem)", CSS)
         self.assertIn("container-name: osw-groups;", CSS)
 
     def test_group_member_order_and_actions_are_preserved(self):

@@ -69,6 +69,7 @@ from core.branding import (
 )
 from signature_catalog import SignatureNotFoundError, SignatureVersionNotFoundError, add_signature_version, create_signature, restore_signature_version, update_signature
 from signature_storage import SignatureFileStore, SignatureStorageError, MAX_SIGNATURE_IMAGE_BYTES, DEFAULT_SIGNATURE_IMAGE_BYTES
+from signature_deletion import inspect_signature_deletion, delete_signature_with_cleanup
 from signature_image_import import import_image_from_url, SignatureImageImportError
 from admin_export import AdminExportError, build_admin_export, MAX_EXPORT_BYTES
 from admin_import import AdminImportError, inspect_admin_import, apply_admin_import
@@ -2673,6 +2674,35 @@ def update_signature_endpoint(
     domain_ids = [row.domain_id for row in db.query(SignatureDomainDB).filter(SignatureDomainDB.signature_id == signature.id).order_by(SignatureDomainDB.domain_id).all()]
     return {"id": signature.id, "name": signature.name, "domain_id": signature.domain_id,
             "domain_ids": domain_ids, "scope": signature.scope, "is_active": signature.is_active}
+
+
+
+@app.get("/api/admin/signatures/{signature_id}/deletion-impact")
+def get_signature_deletion_impact(
+    signature_id: str, request: Request, db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return inspect_signature_deletion(db, signature_id)
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+
+
+@app.delete("/api/admin/signatures/{signature_id}")
+def delete_signature_endpoint(
+    signature_id: str, request: Request, db: Session = Depends(get_db),
+):
+    if not is_admin_user(request):
+        raise HTTPException(status_code=403, detail="Admins only")
+    try:
+        return delete_signature_with_cleanup(db, signature_file_store, signature_id)
+    except SignatureNotFoundError:
+        raise HTTPException(status_code=404, detail="Signature not found")
+    except SignatureStorageError as exc:
+        # Never leak absolute storage paths or filesystem details.
+        logger.error("Could not safely delete signature: %s", type(exc).__name__)
+        raise HTTPException(status_code=409, detail=str(exc))
 
 
 @app.get("/api/admin/signatures/{signature_id}/versions")

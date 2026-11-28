@@ -8,6 +8,8 @@ import re
 import tempfile
 import uuid
 import stat
+import shutil
+import time
 
 
 class SignatureStorageError(Exception):
@@ -49,6 +51,7 @@ class SignatureFileStore:
         self.assets_root.mkdir(mode=0o700, exist_ok=True)
         if self.assets_root.is_symlink() or not self.assets_root.is_dir():
             raise SignatureStorageError("Signature asset directory root must be a real directory")
+        self.cleanup_staged_signature_deletes()
 
     @staticmethod
     def _safe_name(name: str) -> str:
@@ -198,6 +201,71 @@ class SignatureFileStore:
             raise
         except OSError as exc:
             raise SignatureStorageError("Unable to delete signature version") from exc
+
+
+    # A same-filesystem directory rename is the only atomic boundary available
+    # for coordinating SQL metadata deletion with HTML files. Shared image
+    # assets are not owned by an individual signature and are never touched.
+    _DELETED_NAME = re.compile(r"\.deleted-[0-9a-f]{32}\Z")
+
+    def stage_signature_delete(self, signature_name: str) -> str:
+        source = self._signature_dir(signature_name)
+        if source.is_symlink() or not source.is_dir():
+            raise SignatureStorageError("Signature directory is unavailable or unsafe")
+        token = ".deleted-" + uuid.uuid4().hex
+        destination = self.signatures_root / token
+        if destination.exists() or destination.is_symlink():
+            raise SignatureStorageError("Signature delete staging collision")
+        try:
+            os.rename(source, destination)
+            os.utime(destination, None)  # age is measured from staging, not creation
+        except OSError as exc:
+            if destination.is_dir() and not destination.is_symlink() and not source.exists():
+                try:
+                    os.rename(destination, source)
+                except OSError:
+                    pass
+            raise SignatureStorageError("Unable to stage signature for deletion") from exc
+        return token
+
+    def _staged_signature_dir(self, token: str) -> Path:
+        if not isinstance(token, str) or not self._DELETED_NAME.fullmatch(token):
+            raise SignatureStorageError("Invalid staged signature identifier")
+        path = self.signatures_root / token
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise SignatureStorageError("Staged signature directory is unsafe")
+        return path
+
+    def restore_staged_signature(self, signature_name: str, token: str) -> None:
+        source = self._staged_signature_dir(token)
+        destination = self._signature_dir(signature_name)
+        if not source.is_dir() or destination.exists() or destination.is_symlink():
+            raise SignatureStorageError("Unable to restore staged signature")
+        try:
+            os.rename(source, destination)
+        except OSError as exc:
+            raise SignatureStorageError("Unable to restore staged signature") from exc
+
+    def purge_staged_signature(self, token: str) -> None:
+        path = self._staged_signature_dir(token)
+        if not path.exists():
+            return
+        try:
+            shutil.rmtree(path)
+        except OSError as exc:
+            raise SignatureStorageError("Unable to purge staged signature") from exc
+
+    def cleanup_staged_signature_deletes(self) -> None:
+        """Retry post-commit cleanup after a crash; avoid in-flight recent stages."""
+        for entry in self.signatures_root.iterdir():
+            if not self._DELETED_NAME.fullmatch(entry.name) or entry.is_symlink():
+                continue
+            try:
+                if time.time() - entry.stat().st_mtime >= 600:
+                    self.purge_staged_signature(entry.name)
+            except (OSError, SignatureStorageError):
+                # Cleanup must not prevent the application from starting.
+                pass
 
     def write_image(self, payload: bytes, content_type: str, *, max_bytes: int = DEFAULT_SIGNATURE_IMAGE_BYTES) -> str:
         """Persist a bounded immutable PNG/JPEG/GIF asset and return its hash filename."""
