@@ -52,7 +52,8 @@ through an **overrides-only** list alongside the existing user directory.
   `{"domain_name":"example.org","ids":[1,2]}`. The server validates
   administrator privileges, the domain, distinct positive IDs and the
   per-record domain scope. It deletes **only** confirmed IDs in one database
-  transaction (max. 5,000 per request), then returns
+  transaction (max. 5,000 per request; the UI processes larger confirmed
+  selections in sequential batches), then returns
   `deleted_ids`, `not_found_ids` and `out_of_scope_ids`.
   Missing or out-of-domain entries are never removed. On a database commit
   failure the whole batch rolls back.

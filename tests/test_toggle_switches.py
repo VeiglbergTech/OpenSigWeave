@@ -12,15 +12,25 @@ MULTI = ('x-model="selected"', ':checked="form.domain_ids.includes(')
 
 
 class SharedToggleSwitchTests(unittest.TestCase):
-    def test_every_boolean_and_multi_selection_uses_a_visible_switch(self):
+    def test_boolean_switches_and_override_selection_checkboxes_are_distinct(self):
         self.assertGreaterEqual(len(INPUTS), 20, "new settings may add switches")
+        selection_fields = [field for field in INPUTS if 'osw-override-checkbox' in field]
+        self.assertEqual(len(selection_fields), 2, "one select-all and one per-record checkbox template")
         for field in INPUTS:
             with self.subTest(field=field):
-                self.assertIn('class="osw-switch"', field)
-                self.assertIn('role="switch"', field)
-                self.assertNotIn("sr-only", field)
-                self.assertNotIn("osw-checkbox--multi", field)
+                if 'osw-override-checkbox' in field:
+                    # Bulk selection is a checkbox, not a boolean setting.
+                    self.assertIn('class="osw-override-checkbox"', field)
+                    self.assertNotIn('role="switch"', field)
+                    self.assertNotIn('sr-only', field)
+                else:
+                    self.assertIn('class="osw-switch"', field)
+                    self.assertIn('role="switch"', field)
+                    self.assertNotIn("sr-only", field)
+                    self.assertNotIn("osw-checkbox--multi", field)
         self.assertGreaterEqual(sum(any(marker in field for marker in MULTI) for field in INPUTS), 5)
+        self.assertIn('Select all', HTML)
+        self.assertIn('selectedOverrideIds.includes(item.id)', HTML)
 
     def test_legacy_tracks_are_removed_but_bindings_stay(self):
         self.assertNotIn('class="dot absolute', HTML)

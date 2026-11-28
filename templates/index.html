@@ -12,7 +12,7 @@
     <script src="/static/js/rich-editor.js?v=ui-unification-20261127"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/csp@3.17.5/dist/cdn.min.js" integrity="sha384-Q4UOujiwqAb/jTt3ki4pdkETk4I3rIFQX8h271PLI41okj/YIKY7IQQFMw73wkrX" crossorigin="anonymous"></script>
 
-    <link href="/static/css/portal.css?v=group-backup-layout-20261128" rel="stylesheet">
+    <link href="/static/css/portal.css?v=identity-management-20261128" rel="stylesheet">
     <script src="/static/js/theme.js?v=branding-reset-20261122"></script>
     <script defer src="/static/js/branding.js?v=ui-unification-20261127"></script>
 </head>
@@ -1274,7 +1274,7 @@
                                                 <td class="osw-override-select-column"><input type="checkbox" class="osw-override-checkbox" :aria-label="'Select override for ' + item.user_email" :checked="selectedOverrideIds.includes(item.id)" @change="toggleOverrideSelected(item.id, $event.target.checked)" :disabled="deletingOverrides || overridesLoading"></td>
                                                 <td data-label="Email" class="break-all" x-text="item.user_email"></td>
                                                 <td data-label="Status" x-text="item.is_disabled ? 'Disabled' : 'Configured'"></td>
-                                                <td data-label="Actions" class="text-right"><div class="osw-idp-actions"><button type="button" class="text-blue-400" @click="loadAdminEditor(item.user_email, item.html_content, item.is_disabled)">Edit</button><button type="button" class="text-red-400" @click="deleteSingleOverride(item.id)" :disabled="deletingOverrides || overridesLoading">Remove</button></div></td>
+                                                <td data-label="Actions" class="text-right"><div class="osw-idp-actions"><button type="button" class="text-blue-400" @click="loadAdminEditor(item.user_email, item.html_content, item.is_disabled)">Edit</button><button type="button" class="text-red-400" @click="deleteSingleOverride(item.id)" :disabled="deletingOverrides || overridesLoading || !!overridesError">Remove</button></div></td>
                                             </tr>
                                         </template>
                                         <tr x-show="!overridesLoading && filteredOverrides().length === 0"><td colspan="4" class="py-4 text-center text-gray-400">No user overrides match this filter.</td></tr>
@@ -1404,6 +1404,6 @@
 
 
     <footer class="osw-site-footer" aria-label="Application attribution"><a href="https://github.com/VeiglbergTech/OpenSigWeave" target="_blank" rel="noopener noreferrer">Powered by OpenSigWeave</a></footer>
-    <script src="/static/js/portal.js?v=websocket-routing-20261128"></script>
+    <script src="/static/js/portal.js?v=identity-management-20261128"></script>
 </body>
 </html>

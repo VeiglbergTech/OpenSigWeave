@@ -34,10 +34,15 @@ class GlobalUIConsistencyTests(unittest.TestCase):
 
     def test_status_copy_preserves_internal_fields(self):
         html = (ROOT / "templates/index.html").read_text(encoding="utf-8")
-        for expression in ("provider.is_enabled", "group.is_active",
-                           "rule.is_enabled", "item.enabled"):
+        for expression in ("group.is_active", "rule.is_enabled", "item.enabled"):
             with self.subTest(expression=expression):
                 self.assertIn(expression, html)
+        # Provider status moved into role-specific view-model methods; both
+        # methods still respect the unchanged is_enabled metadata field.
+        portal_js = (ROOT / "static/js/portal.js").read_text(encoding="utf-8")
+        self.assertIn("provider.is_enabled", portal_js)
+        self.assertIn('webProviderStatus(provider)', html)
+        self.assertIn('provisioningProviderStatus(provider)', html)
         self.assertNotIn("? 'Enabled' : 'Disabled'", html)
         self.assertGreaterEqual(html.count("? 'Active' : 'Disabled'"), 5)
         for binding in ('x-model="form.is_enabled"', 'x-model="ruleForm.enabled"',

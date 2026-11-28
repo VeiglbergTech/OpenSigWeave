@@ -1683,8 +1683,9 @@ function identityProviderManager() { return {
                 overridePageCount() { return Math.max(1, Math.ceil(this.filteredOverrides().length / 20)); },
                 selectedOverrideCount() { return this.selectedOverrideIds.length; },
                 allOverridesSelected() {
-                    return this.userOverrides.length > 0 && this.selectedOverrideIds.length === this.userOverrides.length &&
-                        this.userOverrides.every(item=>this.selectedOverrideIds.includes(item.id));
+                    const selected=new Set(this.selectedOverrideIds);
+                    return this.userOverrides.length > 0 && selected.size === this.userOverrides.length &&
+                        this.userOverrides.every(item=>selected.has(item.id));
                 },
                 toggleAllOverrides(checked) {
                     // Select ALL domain overrides across every page and search,
@@ -1770,7 +1771,8 @@ function identityProviderManager() { return {
                         this.selectedOverrideIds=this.selectedOverrideIds.filter(id=>!handled.has(id));
                         if(deleted.length) {
                             notify(deleted.length+' user override(s) removed. Normal signature rules apply.');
-                            const removedEmails=new Set(this.userOverrides.filter(item=>deleted.includes(item.id))
+                            const deletedSet=new Set(deleted);
+                            const removedEmails=new Set(this.userOverrides.filter(item=>deletedSet.has(item.id))
                                 .map(item=>item.user_email));
                             if(removedEmails.has(this.editingUserEmail)) this.editingUserEmail='';
                         }
