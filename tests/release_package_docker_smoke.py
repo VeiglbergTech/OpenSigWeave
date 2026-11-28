@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from contextlib import ExitStack
 import hashlib
+import importlib.util
 from http.client import HTTPConnection
 import json
 import os
@@ -56,7 +57,16 @@ def make_local_test_image(tag: str, revision: str) -> None:
 
 
 def stage_bundle(tag: str, revision: str, root: Path) -> tuple[Path, dict]:
-    from scripts import release_bundle as builder
+    # The CI runner executes this file directly (python3 tests/...py). In that
+    # mode Python puts tests/ on sys.path, not the repository root. Load only
+    # the fixture archive builder by its explicit path, without adding the
+    # source checkout to the installed package's import search path.
+    source = PROJECT / "scripts" / "release_bundle.py"
+    spec = importlib.util.spec_from_file_location("_osw_ci_release_bundle_builder", source)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Cannot load source release bundle fixture builder")
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
     archive = root / (tag + "-local-fixture.tar.gz")
     builder.build(PROJECT, tag, revision, archive)
     target = root / ("package-" + tag)
