@@ -13,7 +13,7 @@ from deploy_common import (
 )
 from config_manager import ENV, create_config, migrate_config, _available
 from release_target import latest_release, release_tag_sha
-from update_manager import pin_release_image_tag
+from update_manager import pin_release_image_tag, ensure_no_incomplete_update
 
 
 def port_available(bind: str, port: int) -> bool:
@@ -27,6 +27,9 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
                     generate_admin_password: bool = False) -> None:
     with exclusive_lock():
         pristine()
+        if bundle_mode():
+            # A partial update may have migrated the DB. Never bypass its journal.
+            ensure_no_incomplete_update()
         selected = current_channel()
         chosen = channel or selected
         if chosen not in CHANNELS or chosen != selected:
@@ -38,33 +41,33 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
             warn(f"{selected} is not a production-stable release channel")
         system_checks()
         release_tag = None
-        if selected == "main" and not ENV.exists():
-            if bundle_mode():
-                from release_bundle import release_commit_sha, read_manifest
-                release_tag = read_manifest(ROOT)["tag"]
-                if release_commit_sha(release_tag) != current_sha():
-                    raise DeploymentError("Minimal installer does not match the approved published release", 4)
-            else:
-                release_tag = latest_release()
-                target = release_tag_sha(release_tag)
-                git("fetch", "--no-tags", "origin", f"refs/tags/{release_tag}:refs/tags/{release_tag}")
-                fetched = git("rev-parse", f"refs/tags/{release_tag}^{{commit}}")
-                if fetched != target:
-                    raise DeploymentError("Release tag moved during installation", 4)
-                git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
-                if git("merge-base", target, "refs/remotes/origin/main") != target:
-                    raise DeploymentError("Published tag is not on approved main history", 4)
+        if selected == "main" and bundle_mode():
+            # Verify even when .env exists (partial fresh install/restart).
+            from release_bundle import release_commit_sha, read_manifest
+            release_tag = read_manifest(ROOT)["tag"]
+            if release_commit_sha(release_tag) != current_sha():
+                raise DeploymentError("Minimal installer does not match the approved published release", 4)
+        if selected == "main" and not ENV.exists() and not bundle_mode():
+            release_tag = latest_release()
+            target = release_tag_sha(release_tag)
+            git("fetch", "--no-tags", "origin", f"refs/tags/{release_tag}:refs/tags/{release_tag}")
+            fetched = git("rev-parse", f"refs/tags/{release_tag}^{{commit}}")
+            if fetched != target:
+                raise DeploymentError("Release tag moved during installation", 4)
+            git("fetch", "--no-tags", "origin", "refs/heads/main:refs/remotes/origin/main")
+            if git("merge-base", target, "refs/remotes/origin/main") != target:
+                raise DeploymentError("Published tag is not on approved main history", 4)
+            if current_sha() != target:
+                info(f"Aligning clean first-install main source with published release {release_tag}")
+                # Only before .env and persisted deployment state exist.
+                # Re-execute the installer FROM that trusted release. Its image
+                # and setup behavior must match the published code, including
+                # older releases that predate browser bootstrap.
+                git("reset", "--keep", target)
                 if current_sha() != target:
-                    info(f"Aligning clean first-install main source with published release {release_tag}")
-                    # Only before .env and persisted deployment state exist.
-                    # Re-execute the installer FROM that trusted release. Its image
-                    # and setup behavior must match the published code, including
-                    # older releases that predate browser bootstrap.
-                    git("reset", "--keep", target)
-                    if current_sha() != target:
-                        raise DeploymentError("Checkout did not reach the published release", 4)
-                    os.execv(str(ROOT / "install.sh"),
-                             [str(ROOT / "install.sh"), *sys.argv[1:]])
+                    raise DeploymentError("Checkout did not reach the published release", 4)
+                os.execv(str(ROOT / "install.sh"),
+                         [str(ROOT / "install.sh"), *sys.argv[1:]])
         if ENV.is_symlink():
             raise DeploymentError("Refusing symlinked .env", 4)
         if ENV.exists():
@@ -77,8 +80,14 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
             except DeploymentError:
                 info("Existing configuration detected; inspecting/resuming services without replacing secrets")
             else:
-                ok("OpenSigWeave is already installed and healthy; no changes needed")
-                return
+                if not bundle_mode():
+                    ok("OpenSigWeave is already installed and healthy; no changes needed")
+                    return
+                if env.get("OSW_IMAGE_TAG") == release_tag:
+                    verify_release_image(env, current_sha())
+                    ok("Verified release bundle and application image are already healthy")
+                    return
+                info("Existing services are healthy but image tag differs from the verified release; resuming")
         else:
             create_config(hostname=hostname, admin_email=admin_email,
                           allowed_hosts=allowed_hosts, trusted_proxy_cidrs=trusted_proxy_cidrs,
