@@ -164,6 +164,7 @@ def _mailcow_install_commands(engine_url: str) -> tuple[str, str, str]:
         return "", "", "The deployed image lacks required matching adapter files."
     lines = [
         "# Run from the Mailcow Docker Compose directory (on the Mailcow HOST).",
+        "(",
         "set -eu",
         "OSW_TAG=" + shlex.quote(tag),
         "OSW_REV=" + shlex.quote(revision),
@@ -202,6 +203,7 @@ def _mailcow_install_commands(engine_url: str) -> tuple[str, str, str]:
         "sudo python3 \"$OSW_TMP/scripts/mailcow_setup.py\" prepare "
         "--mailcow-root \"$PWD\" --source \"$OSW_TMP\" --revision \"$OSW_REV\" "
         "--engine-url \"$OSW_ENGINE_URL\"",
+        ")",
     ))
     activation = (
         "# Run from the same Mailcow Docker Compose directory after preparation.\n"
