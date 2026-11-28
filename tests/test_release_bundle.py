@@ -13,7 +13,7 @@ from scripts import deploy_common
 
 
 class MinimalReleaseBundleTests(unittest.TestCase):
-    VERSION = "2026.11-alpha"
+    VERSION = "2026.11"
     SHA = "a" * 40
 
     def _source(self, root):
@@ -30,6 +30,9 @@ class MinimalReleaseBundleTests(unittest.TestCase):
             output = Path(work) / "bundle.tar.gz"
             bundle.build(root, self.VERSION, self.SHA, output)
             self.assertLess(output.stat().st_size, bundle.MAX_ARCHIVE_BYTES)
+            twin = Path(work) / "repeat.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, twin)
+            self.assertEqual(output.read_bytes(), twin.read_bytes(), "Release archive must be deterministic")
             with tarfile.open(output) as archive:
                 names = {m.name for m in archive.getmembers()}
                 self.assertEqual(names, set(bundle.FILES) | {bundle.MANIFEST})
@@ -105,6 +108,86 @@ class MinimalReleaseBundleTests(unittest.TestCase):
                  patch.object(bundle, "_download", return_value=raw):
                 with self.assertRaises(ValueError):
                     bundle.fetch_verified_bundle(self.VERSION, Path(work) / "reject")
+
+    def test_stable_only_rejects_alpha_and_malformed_publication(self):
+        for tag in ("2026.11-alpha", "2026.11-beta1", "latest", "../2026.11"):
+            with self.subTest(tag=tag), self.assertRaises(ValueError):
+                bundle.asset_name(tag)
+        with patch.object(bundle, "_api", return_value={
+            "draft": False, "prerelease": True, "tag_name": self.VERSION,
+            "published_at": "2026-11-28T00:00:00Z",
+        }), self.assertRaises(ValueError):
+            bundle.release_commit_sha(self.VERSION)
+
+    def test_missing_asset_digest_revision_and_malicious_archive_rejected(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "src"
+            root.mkdir()
+            self._source(root)
+            output = Path(work) / "good.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, output)
+            raw = output.read_bytes()
+            url = "https://github.com/VeiglbergTech/OpenSigWeave/releases/download/" + self.VERSION + "/" + bundle.asset_name(self.VERSION)
+            release = {
+                "draft": False, "prerelease": False, "tag_name": self.VERSION,
+                "assets": [{
+                    "name": bundle.asset_name(self.VERSION), "digest": "sha256:" + hashlib.sha256(raw).hexdigest(),
+                    "browser_download_url": url,
+                }]
+            }
+            with patch.object(bundle, "release_commit_sha", return_value=self.SHA), patch.object(bundle, "_api", return_value=release), patch.object(bundle, "_download", return_value=raw):
+                self.assertEqual(bundle.fetch_verified_bundle(self.VERSION, Path(work) / "good")[1]["tag"], self.VERSION)
+            for reason, changes in (
+                ("missing asset", {"assets": []}),
+                ("missing digest", {"assets": [{**release["assets"][0], "digest": None}]}),
+                ("incorrect revision", {}),
+            ):
+                with self.subTest(reason=reason), patch.object(bundle, "release_commit_sha", return_value=("b" * 40 if reason == "incorrect revision" else self.SHA)), patch.object(bundle, "_api", return_value={**release, **changes}), patch.object(bundle, "_download", return_value=raw), self.assertRaises(ValueError):
+                    bundle.fetch_verified_bundle(self.VERSION, Path(work) / reason.replace(" ", "-"))
+            # The digest can match an attacker-supplied tar and still must NOT
+            # permit traversal, links or unexpected archive members.
+            for member_name, kind in (("../outside", "file"), ("install.sh", "symlink"), ("unexpected.py", "file")):
+                with self.subTest(member_name=member_name, kind=kind):
+                    modified = io.BytesIO()
+                    with tarfile.open(fileobj=modified, mode="w:gz") as archive:
+                        for path in (*bundle.FILES, bundle.MANIFEST):
+                            item = tarfile.TarInfo(member_name if path == "install.sh" else path)
+                            if kind == "symlink" and path == "install.sh":
+                                item.type = tarfile.SYMTYPE
+                                item.linkname = "/etc/passwd"
+                                archive.addfile(item)
+                                continue
+                            content = (root / path).read_bytes() if path in bundle.FILES else b"{}"
+                            item.size = len(content)
+                            archive.addfile(item, io.BytesIO(content))
+                    corrupt = modified.getvalue()
+                    fake = {**release, "assets": [{**release["assets"][0], "digest": "sha256:" + hashlib.sha256(corrupt).hexdigest()}]}
+                    with patch.object(bundle, "release_commit_sha", return_value=self.SHA), patch.object(bundle, "_api", return_value=fake), patch.object(bundle, "_download", return_value=corrupt), self.assertRaises(ValueError):
+                        bundle.fetch_verified_bundle(self.VERSION, Path(work) / "bad")
+
+    def test_install_files_rejects_parent_directory_symlink_before_writing(self):
+        with tempfile.TemporaryDirectory() as work:
+            root = Path(work) / "source"
+            root.mkdir()
+            self._source(root)
+            archive = Path(work) / "release.tar.gz"
+            bundle.build(root, self.VERSION, self.SHA, archive)
+            staging = Path(work) / "staging"
+            staging.mkdir()
+            with tarfile.open(archive) as tar:
+                for member in tar:
+                    destination = staging / member.name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    destination.write_bytes(tar.extractfile(member).read())
+            target = Path(work) / "deployment"
+            target.mkdir()
+            external = Path(work) / "external"
+            external.mkdir()
+            (target / "scripts").symlink_to(external, target_is_directory=True)
+            with self.assertRaises(ValueError):
+                bundle.install_files(staging, target)
+            self.assertEqual(list(external.iterdir()), [])
+            self.assertFalse((target / "install.sh").exists())
 
     def test_bundle_without_git_is_recognized_but_unverified_changes_rejected(self):
         with tempfile.TemporaryDirectory() as work:

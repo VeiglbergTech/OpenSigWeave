@@ -14,6 +14,15 @@ class ReleaseTargetTests(unittest.TestCase):
         ]
         self.assertEqual(latest_release(fetch=lambda: json.dumps(items).encode()), "2026.11-alpha")
 
+    def test_stable_only_never_selects_newer_prerelease(self):
+        items = [
+            {"tag_name": "2026.11-alpha", "published_at": "2026-11-25T01:00:00Z", "draft": False, "prerelease": True},
+            {"tag_name": "2026.10", "published_at": "2026-10-25T01:00:00Z", "draft": False, "prerelease": False},
+        ]
+        self.assertEqual(latest_release(fetch=lambda: json.dumps(items).encode(), stable_only=True), "2026.10")
+        with self.assertRaises(DeploymentError):
+            latest_release(fetch=lambda: json.dumps(items[:1]).encode(), stable_only=True)
+
     def test_no_release_fails_closed(self):
         with self.assertRaises(DeploymentError):
             latest_release(fetch=lambda: b"[]")

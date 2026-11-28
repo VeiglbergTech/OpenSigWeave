@@ -19,8 +19,8 @@ URL = "https://api.github.com/repos/" + REPO + "/releases?per_page=100"
 TAG = re.compile(r"20\d\d\.(?:0[1-9]|1[0-2])(?:-(?:alpha|beta)[1-9]\d*)?$|20\d\d\.(?:0[1-9]|1[0-2])-(?:alpha|beta)$")
 
 
-def latest_release(*, fetch=None) -> str:
-    """Get most recently published non-draft OpenSigWeave release tag."""
+def latest_release(*, fetch=None, stable_only: bool = False) -> str:
+    """Get newest published tag; package deployments require stable-only releases."""
     if fetch is None:
         def fetch():
             # Fixed GitHub host/path: no redirects or arbitrary URL schemes.
@@ -46,6 +46,8 @@ def latest_release(*, fetch=None) -> str:
             and isinstance(row.get("tag_name"), str)
             and TAG.fullmatch(row["tag_name"])
             and isinstance(row.get("published_at"), str)
+            and (not stable_only or (row.get("prerelease") is False
+                                     and re.fullmatch(r"20\d\d\.(?:0[1-9]|1[0-2])", row["tag_name"])))
         ]
         if not candidates:
             raise ValueError("No published main release found")

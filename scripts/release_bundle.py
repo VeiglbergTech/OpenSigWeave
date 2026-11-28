@@ -9,6 +9,7 @@ already downloaded install directory from accidental edits.
 from __future__ import annotations
 
 import argparse
+import gzip
 import hashlib
 import io
 import json
@@ -22,7 +23,7 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 REPO_API = "https://api.github.com/repos/VeiglbergTech/OpenSigWeave"
-TAG = re.compile(r"20\d\d\.(?:0[1-9]|1[0-2])(?:-(?:alpha|beta)[1-9]\d*)?$|20\d\d\.(?:0[1-9]|1[0-2])-(?:alpha|beta)$")
+TAG = re.compile(r"20\d\d\.(?:0[1-9]|1[0-2])$")  # Stable bundles only
 COMMIT = re.compile(r"[0-9a-f]{40}")
 DIGEST = re.compile(r"sha256:([a-f0-9]{64})")
 FORMAT = "opensigweave-release-bundle-v1"
@@ -56,6 +57,11 @@ def _file_hash(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _parent_paths(path: str) -> tuple[Path, ...]:
+    parts = Path(path).parts
+    return tuple(Path(*parts[:index]) for index in range(1, len(parts)))
+
+
 def read_manifest(root: Path) -> dict:
     file = root / MANIFEST
     if file.is_symlink() or not file.is_file():
@@ -71,6 +77,8 @@ def read_manifest(root: Path) -> dict:
         if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
             raise ValueError("Invalid release file digest")
         source = root / path
+        if any((root / parent).is_symlink() for parent in _parent_paths(path)):
+            raise ValueError("Symlinked release package parent: " + path)
         if source.is_symlink() or not source.is_file() or source.stat().st_size > MAX_CONTENT_BYTES:
             raise ValueError("Release file is missing, oversized or symlinked: " + path)
         if _file_hash(source.read_bytes()) != digest:
@@ -88,6 +96,8 @@ def build(root: Path, tag: str, revision: str, output: Path) -> None:
     manifest = {"format": FORMAT, "tag": tag, "revision": revision, "files": {}}
     for path in FILES:
         source = root / path
+        if any((root / parent).is_symlink() for parent in _parent_paths(path)):
+            raise ValueError("Symlinked bundle source parent: " + path)
         if source.is_symlink() or not source.is_file():
             raise ValueError("Missing or symlinked bundle source: " + path)
         raw = source.read_bytes()
@@ -97,15 +107,19 @@ def build(root: Path, tag: str, revision: str, output: Path) -> None:
         manifest["files"][path] = _file_hash(raw)
     data[MANIFEST] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(output, mode="w:gz") as archive:
-        for path, raw in sorted(data.items()):
-            item = tarfile.TarInfo(path)
-            item.size = len(raw)
-            item.mtime = 0
-            item.uid = item.gid = 0
-            item.uname = item.gname = ""
-            item.mode = 0o700 if path in ("install.sh", "update.sh", "generate_config.sh") else 0o600
-            archive.addfile(item, io.BytesIO(raw))
+    # A zero-timestamp gzip header and tar members make repeated builds
+    # byte-for-byte identical for the same approved source revision.
+    with output.open("wb") as stream:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=stream, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w") as archive:
+                for path, raw in sorted(data.items()):
+                    item = tarfile.TarInfo(path)
+                    item.size = len(raw)
+                    item.mtime = 0
+                    item.uid = item.gid = 0
+                    item.uname = item.gname = ""
+                    item.mode = 0o700 if path in ("install.sh", "update.sh", "generate_config.sh") else 0o600
+                    archive.addfile(item, io.BytesIO(raw))
     if output.stat().st_size > MAX_ARCHIVE_BYTES:
         output.unlink()
         raise ValueError("Release bundle is unexpectedly large")
@@ -150,8 +164,9 @@ def release_commit_sha(tag: str) -> str:
     if not TAG.fullmatch(tag):
         raise ValueError("Invalid release tag")
     release = _api("/releases/tags/" + quote(tag, safe=""))
-    if release.get("draft") or release.get("tag_name") != tag or release.get("published_at") is None:
-        raise ValueError("Tag does not refer to an approved published release")
+    if (release.get("draft") or release.get("prerelease") is not False
+        or release.get("tag_name") != tag or release.get("published_at") is None):
+        raise ValueError("Tag does not refer to an approved published stable release")
     ref = _api("/git/ref/tags/" + quote(tag, safe=""))
     obj = ref.get("object")
     if not isinstance(obj, dict):
@@ -174,6 +189,9 @@ def fetch_verified_bundle(tag: str, directory: Path) -> tuple[Path, dict]:
     """Download only the release asset whose digest GitHub publishes."""
     expected_revision = release_commit_sha(tag)
     release = _api("/releases/tags/" + quote(tag, safe=""))
+    if (release.get("draft") or release.get("prerelease") is not False
+        or release.get("tag_name") != tag):
+        raise ValueError("Release metadata changed or is not a published stable release")
     wanted = asset_name(tag)
     assets = [a for a in release.get("assets", []) if a.get("name") == wanted]
     if len(assets) != 1:
@@ -232,13 +250,23 @@ def install_files(staging: Path, root: Path) -> None:
     Caller must hold the exclusive deployment lock and journal source switching.
     Any interruption leaves a recovery journal; no automatic schema rollback.
     """
-    verified = read_manifest(staging)
+    read_manifest(staging)
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("Release installation root must be a real directory")
+    # Validate *all* destination paths before changing any installed file.
+    # An admin-managed scripts/ symlink must never redirect writes outside root.
+    for path in (*FILES, MANIFEST):
+        target = root / path
+        for parent in _parent_paths(path):
+            folder = root / parent
+            if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
+                raise ValueError("Refusing unsafe release destination directory: " + str(parent))
+        if target.is_symlink() or (target.exists() and not target.is_file()):
+            raise ValueError("Refusing unsafe release destination: " + path)
     for path in (*FILES, MANIFEST):
         source = staging / path
         target = root / path
-        if target.is_symlink():
-            raise ValueError("Refusing to overwrite symlink: " + path)
-        target.parent.mkdir(parents=True, exist_ok=True)
+        target.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(prefix=".osw-update-", dir=target.parent)
         try:
             with os.fdopen(fd, "wb") as stream:

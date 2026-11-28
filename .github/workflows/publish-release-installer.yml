@@ -1,73 +1,105 @@
 name: Attach verified minimal installer to approved GitHub Release
 
-# This never creates a new release, Docker image or Git branch. Only a
-# pre-existing, manually published, non-draft release of a main-approved tag
-# can receive its own exact-version minimal installation bundle.
+# This workflow never creates a Git tag, GitHub Release, Docker image or branch.
+# A manually approved PUBLISHED STABLE release and its existing GHCR image
+# must both be verified before an installer is attached. If the image was still
+# building when the release event fired, a maintainer may retry explicitly.
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Exact already-published stable GitHub Release tag"
+        required: true
+        type: string
 
 permissions:
   contents: write
   packages: read
 
 concurrency:
-  group: opensigweave-release-installer-${{ github.event.release.tag_name }}
+  group: opensigweave-release-installer-${{ github.event.release.tag_name || inputs.release_tag }}
   cancel-in-progress: false
 
 jobs:
   package:
     if: github.repository == 'VeiglbergTech/OpenSigWeave'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - name: Check out approved release tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event.release.tag_name || inputs.release_tag }}
           persist-credentials: false
           fetch-depth: 0
-      - name: Verify published release points at approved main history
+      - name: Verify published stable release and main ancestry
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ github.event.release.tag_name }}
-          RELEASE_ID: ${{ github.event.release.id }}
+          VERSION: ${{ github.event.release.tag_name || inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip --version
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/$VERSION^{}")"
           python3 - <<'PY'
-          import json,os,subprocess
+          import json, os, subprocess
           from scripts.release_bundle import TAG
-          version=os.environ["VERSION"]
+          version = os.environ["VERSION"]
           if not TAG.fullmatch(version):
-              raise SystemExit("Unsupported release version")
-          item=json.loads(subprocess.check_output(
-              ["gh","api",f"repos/{os.environ['GH_REPO']}/releases/{os.environ['RELEASE_ID']}"]))
-          if item.get("draft") or item.get("tag_name") != version or not item.get("published_at"):
-              raise SystemExit("Release is not approved and published")
-          main=subprocess.check_output(["git","rev-parse","origin/main"],text=True).strip()
-          rev=subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
-          ancestor=subprocess.check_output(["git","merge-base",rev,main],text=True).strip()
-          if ancestor!=rev:
-              raise SystemExit("Published release must be an ancestor of approved main")
+              raise SystemExit("Only approved stable YYYY.MM releases may receive an installer")
+          row = json.loads(subprocess.check_output(
+              ["gh", "api", f"repos/{os.environ['GH_REPO']}/releases/tags/{version}"]))
+          if (row.get("draft") or row.get("prerelease") is not False or
+              row.get("tag_name") != version or not row.get("published_at")):
+              raise SystemExit("Published stable release metadata does not match the tag")
+          main = subprocess.check_output(["git", "rev-parse", "origin/main"], text=True).strip()
+          rev = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
+          if subprocess.check_output(["git", "merge-base", rev, main], text=True).strip() != rev:
+              raise SystemExit("Stable release must be an ancestor of approved main")
           PY
-      - name: Package minimal host-side release files
+      - name: Verify the already-published version-specific GHCR image
         env:
-          VERSION: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ github.event.release.tag_name || inputs.release_tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="ghcr.io/veiglbergtech/opensigweave:$VERSION"
+          REVISION="$(git rev-parse HEAD)"
+          export DOCKER_CONFIG
+          DOCKER_CONFIG="$(mktemp -d)"
+          trap 'rm -rf "$DOCKER_CONFIG"' EXIT
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          # Never publish an installer for a not-yet-built or unrelated image.
+          docker pull "$IMAGE"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' "$IMAGE")" = "$REVISION"
+          test "$(docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.version" }}' "$IMAGE")" = "$VERSION"
+          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" | grep -Fx "OSW_RELEASE_SHA=$REVISION"
+          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$IMAGE" | grep -Fx "OSW_RELEASE_TAG=$VERSION"
+      - name: Run offline release packaging regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p test_release_bundle.py -v
+          python3 -m unittest discover -s tests -p test_release_target.py -v
+      - name: Build deterministic minimal host-side package
+        env:
+          VERSION: ${{ github.event.release.tag_name || inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          python3 scripts/release_bundle.py --tag "$VERSION" --revision "$(git rev-parse HEAD)" --output "dist/opensigweave-$VERSION-install.tar.gz"
-          sha256sum "dist/opensigweave-$VERSION-install.tar.gz"
-      - name: Attach installer artifact without replacing any published asset
+          ASSET="opensigweave-$VERSION-install.tar.gz"
+          python3 scripts/release_bundle.py --tag "$VERSION" --revision "$(git rev-parse HEAD)" --output "dist/$ASSET"
+          sha256sum "dist/$ASSET"
+          test "$(tar -tzf "dist/$ASSET" | wc -l)" -eq 13
+      - name: Attach verified asset without replacing existing files
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          VERSION: ${{ github.event.release.tag_name }}
+          VERSION: ${{ github.event.release.tag_name || inputs.release_tag }}
         shell: bash
         run: |
           set -euo pipefail
@@ -77,4 +109,7 @@ jobs:
             exit 1
           fi
           gh release upload "$VERSION" "dist/$ASSET" --repo "$GH_REPO"
-          gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest' | grep -E '^sha256:[0-9a-f]{64}$'
+          GITHUB_DIGEST="$(gh api "repos/$GH_REPO/releases/tags/$VERSION" --jq '.assets[] | select(.name == "'"$ASSET"'") | .digest')"
+          LOCAL_DIGEST="$(sha256sum "dist/$ASSET" | cut -d' ' -f1)"
+          test "$GITHUB_DIGEST" = "sha256:$LOCAL_DIGEST"
+          echo "Published verified installer $ASSET sha256:$LOCAL_DIGEST" >> "$GITHUB_STEP_SUMMARY"

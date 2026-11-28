@@ -26,10 +26,11 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
                     allowed_hosts: str | None = None, trusted_proxy_cidrs: str | None = None,
                     generate_admin_password: bool = False) -> None:
     with exclusive_lock():
-        pristine()
         if bundle_mode():
-            # A partial update may have migrated the DB. Never bypass its journal.
+            # Check journal before manifest: an interrupted file switch may
+            # leave inconsistent allowlisted files, but recovery state wins.
             ensure_no_incomplete_update()
+        pristine()
         selected = current_channel()
         chosen = channel or selected
         if chosen not in CHANNELS or chosen != selected:
@@ -73,6 +74,12 @@ def perform_install(channel: str | None, *, hostname: str | None = None,
         if ENV.exists():
             env = parse_env(ENV)
             validate_config(env)
+            if bundle_mode() and env.get("OSW_IMAGE_TAG") not in (None, "", release_tag):
+                raise DeploymentError(
+                    "Existing image version differs from this installer bundle. "
+                    "Use ./update.sh with the installed version or review the recovery journal; "
+                    "refusing to silently switch or downgrade.", 4
+                )
             migrate_config()
             env = parse_env(ENV)
             try:

@@ -86,7 +86,12 @@ GHCR_REPO = "ghcr.io/veiglbergtech/opensigweave"
 
 
 def release_image_ref(env: dict[str, str]) -> str:
-    tag = env.get("OSW_IMAGE_TAG", "alpha") or "alpha"
+    configured = env.get("OSW_IMAGE_TAG")
+    if bundle_mode():
+        from release_bundle import TAG
+        if not isinstance(configured, str) or not TAG.fullmatch(configured):
+            raise DeploymentError("A verified stable release requires an explicit stable OSW_IMAGE_TAG", 4)
+    tag = configured or "alpha"  # Legacy Git checkout default; never used by bundle mode.
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", tag):
         raise DeploymentError("Invalid OSW_IMAGE_TAG; use a published release tag", 4)
     return f"{GHCR_REPO}:{tag}"
@@ -196,6 +201,8 @@ def remote_sha(channel: str) -> str:
 def system_checks() -> None:
     if platform.system() != "Linux" or platform.machine() not in ("x86_64", "aarch64"):
         raise DeploymentError("A supported Linux x86_64/aarch64 host is required", 4)
+    if bundle_mode() and platform.machine() != "x86_64":
+        raise DeploymentError("Published OpenSigWeave image is currently built for x86_64 only", 4)
     required_programs = ("python3", "docker") if bundle_mode() else ("git", "python3", "docker")
     for program in required_programs:
         if not shutil.which(program):

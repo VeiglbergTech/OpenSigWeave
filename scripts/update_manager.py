@@ -612,7 +612,7 @@ def bundle_main(args) -> int:
     if args.version:
         print(f"OpenSigWeave release: {installed_tag} | channel: main | commit: {installed}")
         return 0
-    release_tag = latest_release()
+    release_tag = latest_release(stable_only=True)
     remote = release_commit_sha(release_tag)
     if args.check:
         show_bundle_plan(installed, remote, release_tag)
