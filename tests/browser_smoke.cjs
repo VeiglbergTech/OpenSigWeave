@@ -407,6 +407,28 @@ async function main() {
     // Exercise the self-hosted CKEditor 5 surface and verify synchronization to the source textarea.
     const personalEditor = page.locator("#user-rich-editor .ck-editor__editable");
     await personalEditor.waitFor({ state: "visible" });
+    // Normal tables are supported by CKEditor; only Outlook-specific markup
+    // should trigger the conservative source-only protection.
+    const visualLocks = await page.evaluate(() => {
+      const raw = document.getElementById("raw-html-editor");
+      const lock = document.getElementById("user-rich-editor-lock");
+      const original = raw.value;
+      const load = html => {
+        raw.value = html;
+        raw.dispatchEvent(new Event("input", { bubbles: true }));
+        return !lock.classList.contains("hidden");
+      };
+      try {
+        return {
+          tableLocked: load('<table><tbody><tr><td>Supported table</td></tr></tbody></table>'),
+          outlookLocked: load('<!-- [if mso]><v:shape></v:shape><![endif]-->')
+        };
+      } finally {
+        load(original);
+      }
+    });
+    assert.deepEqual(visualLocks, { tableLocked: false, outlookLocked: true },
+      "standard tables must remain editable without weakening Outlook source protection");
     // Appearance is stored in this browser, not with any signature.
     checkpoint("appearance: light/dark and CKEditor dropdown contrast");
     const themeToggle = page.locator("#theme-toggle");
