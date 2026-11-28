@@ -541,8 +541,15 @@ function identityProviderManager() { return {
     },
     defaultsForType(type) {
         if(type==='ldap') return {LDAP_TIMEOUT:'5', LDAP_USER_FILTER:'(&(objectCategory=person)(objectClass=user)(mail={email}))'};
-        if(type==='oidc') return {OIDC_SCOPES:'openid email profile groups'};
-        return {AUTHENTIK_TIMEOUT:'5', OIDC_SCOPES:'openid email profile groups'};
+        // All x-model keys must exist before Alpine CSP attaches the editor.
+        // Otherwise new OIDC providers may POST incomplete settings (422).
+        const oidc = {
+            OIDC_DISCOVERY_URL:'', OIDC_CLIENT_ID:'', OIDC_CLIENT_SECRET:'',
+            OIDC_SCOPES:'openid email profile groups',
+            OIDC_REDIRECT_URI:'', OIDC_POST_LOGOUT_REDIRECT_URI:''
+        };
+        if(type==='oidc') return oidc;
+        return {...oidc, AUTHENTIK_URL:'', AUTHENTIK_API_TOKEN:'', AUTHENTIK_TIMEOUT:'5'};
     },
     newWebProvider() { this.newProvider('web'); },
     newProvisioningProvider() { this.newProvider('provisioning'); },

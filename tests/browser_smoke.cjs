@@ -2472,6 +2472,22 @@ async function main() {
     await oidcFields.getByLabel("OIDC Client Secret").fill("browser-smoke-secret");
     await oidcFields.getByLabel("OIDC Scopes").fill("openid email profile groups");
     await oidcFields.getByLabel("OIDC Callback / Redirect URI").fill("https://signatures.example.org/auth/browser-smoke-login-provider");
+    // Assert Alpine persisted non-secret x-model values before submitting.
+    // Do not log the client secret or raw request/response bodies.
+    const oidcFormState = await ssoProviderDialog.evaluate(el => {
+      const form = window.Alpine.$data(el).form;
+      return {
+        id: form.id, provider_type: form.provider_type,
+        discovery: !!form.settings.OIDC_DISCOVERY_URL,
+        client_id: !!form.settings.OIDC_CLIENT_ID,
+        client_secret_present: !!form.settings.OIDC_CLIENT_SECRET,
+        redirect: !!form.settings.OIDC_REDIRECT_URI,
+      };
+    });
+    assert.ok(oidcFormState.discovery && oidcFormState.client_id
+      && oidcFormState.client_secret_present && oidcFormState.redirect,
+      "OIDC x-model fields must be bound before POST: "
+      + JSON.stringify(oidcFormState));
     const createSsoProvider = page.waitForResponse(response =>
       response.request().method() === "POST"
       && response.url().endsWith("/api/admin/identity-providers")

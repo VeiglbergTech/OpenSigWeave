@@ -843,6 +843,13 @@ label:has(> input.osw-switch:disabled) { cursor: not-allowed; }
     border-radius: .375rem; background: var(--osw-panel-raised);
     color: var(--osw-text); font-size: .875rem;
 }
+/* Mail-server status colors must win over the generic badge text token. */
+.osw-health-result.text-green-300 { color: #86efac; }
+.osw-health-result.text-amber-300 { color: #fcd34d; }
+.osw-health-result.text-red-300 { color: #fca5a5; }
+html[data-theme="light"] .osw-health-result.text-green-300 { color: #166534; }
+html[data-theme="light"] .osw-health-result.text-amber-300 { color: #854d0e; }
+html[data-theme="light"] .osw-health-result.text-red-300 { color: #9f1239; }
 
 /* A switch means a Boolean state. Multiple selections use square checkboxes. */
 input[type="checkbox"].osw-checkbox {
