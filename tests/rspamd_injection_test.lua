@@ -3,6 +3,8 @@ package.path = 'rspamd/?.lua;' .. package.path
 local callback, status = nil, 200
 local failure_policy = 'fail_open'
 local inline_images_mode = 'external'
+local policy_file = nil
+local offline_policy_fixture = nil
 local request_error, request_scheduled = nil, true
 local response = {
   html = '<b>OpenSigWeave Footer</b> <a href="https://example.test/contact">Contact</a>',
@@ -27,9 +29,13 @@ package.preload['rspamd_http'] = function()
 end
 package.preload['ucl'] = function()
   return { parser=function()
+    local current_raw = nil
     return {
-      parse_string=function() return true end,
-      get_object=function() return response end,
+      parse_string=function(_, raw) current_raw = raw; return true end,
+      get_object=function()
+        if current_raw == 'OSW_OFFLINE_POLICY' then return offline_policy_fixture end
+        return response
+      end,
     }
   end}
 end
@@ -68,6 +74,7 @@ rspamd_config = {
     engine_api_key=string.rep('x',40),
     failure_policy=failure_policy,
     inline_images=inline_images_mode,
+    domain_policy_file=policy_file,
   } end,
   register_symbol=function(_,sym) callback=sym.callback end,
 }
@@ -495,4 +502,50 @@ status = 200
 dofile('rspamd/opensigweave.lua')
 local recovered, result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
 assert(callback(recovered) and result.modified and not result.pre_result, 'enabled must pass a healthy message')
-io.stderr:write('OpenSigWeave disabled/enabled fixtures passed\n')
+-- Exercise real adapter HTTP callback failure path with locally verified
+-- domain-specific exemptions. It must not depend on OpenSigWeave availability.
+local original_open = io.open
+policy_file = '/etc/rspamd/local.d/opensigweave-domain-policy.json'
+offline_policy_fixture = {
+  format='opensigweave-domain-policy-v1',
+  generated_at=os.time() - 10,
+  expires_at=os.time() + 1800,
+  domains={ ['example.test']=false, ['required.test']=true },
+}
+io.open = function(path, mode)
+  if path == policy_file then
+    return {read=function() return 'OSW_OFFLINE_POLICY' end, close=function() end}
+  end
+  return original_open(path,mode)
+end
+failure_policy = 'enabled'
+status = 503
+dofile('rspamd/opensigweave.lua')
+local exempt, exempt_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(exempt) and not exempt_result.pre_result and not exempt_result.modified,
+  'verified Off domain must pass unchanged on HTTP failure despite global enabled')
+local required, required_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+required.get_from = function() return {{addr='someone@REQUIRED.test'}} end
+assert(callback(required) and required_result.pre_result
+  and required_result.pre_result.action == 'soft reject',
+  'required domain must receive temporary rejection on engine HTTP failure')
+local unknown, unknown_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+unknown.get_from = function() return {{addr='other@unknown.test'}} end
+assert(callback(unknown) and unknown_result.pre_result
+  and unknown_result.pre_result.action == 'soft reject',
+  'unknown domain must never silently become exempt')
+status = 200
+response.html = '<b>OpenSigWeave Footer</b>'
+local healthy_exempt, healthy_exempt_result = task_case(
+  'text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(healthy_exempt) and healthy_exempt_result.modified
+  and not healthy_exempt_result.pre_result,
+  'Off domain must still receive its normal signature while engine is healthy')
+status = 503
+offline_policy_fixture.expires_at = os.time() - 1
+local stale, stale_result = task_case('text/html; charset=utf-8','7bit','hello','hello',true)
+assert(callback(stale) and stale_result.pre_result
+  and stale_result.pre_result.action == 'soft reject',
+  'expired Off exemption must never be treated as valid')
+io.open = original_open
+io.stderr:write('OpenSigWeave disabled/enabled/domain-specific fixtures passed\n')
