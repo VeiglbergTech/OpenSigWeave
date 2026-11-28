@@ -9,6 +9,11 @@ package.preload["rspamd_logger"] = function()
         end
     }
 end
+-- A legacy installation has no domain-policy file/module at all. The guard
+-- must still register and evaluate its historical global Failure Policy.
+package.preload["opensigweave_domain_policy"] = function()
+    error("unconfigured legacy guard must not load the optional policy module")
+end
 package.preload["ucl"] = function()
     return { parser = function() return {parse_string = function() return true end, get_object = function() return {} end} end }
 end

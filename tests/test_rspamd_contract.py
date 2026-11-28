@@ -44,6 +44,14 @@ class RspamdAdapterContractTests(unittest.TestCase):
         self.assertIn('lower_href:sub(1, 7) == "mailto:"', SOURCE)
         self.assertIn('return text .. " (" .. href .. ")"', SOURCE)
 
+    def test_optional_domain_policy_module_does_not_break_legacy_installations(self):
+        self.assertIn('if module_options.domain_policy_file ~= nil then', SOURCE)
+        self.assertIn('pcall(require, "opensigweave_domain_policy")', SOURCE)
+        self.assertIn('domain_policy_unavailable', SOURCE)
+        guard = (ROOT / "rspamd" / "opensigweave_guard.lua").read_text(encoding="utf-8")
+        self.assertIn('if adapter_options.domain_policy_file ~= nil then', guard)
+        self.assertIn('domain_policy_unavailable', guard)
+
     def test_multipart_uses_rspamd_parsed_mime_tree(self):
         self.assertIn('require "opensigweave_mime"', SOURCE)
         self.assertIn('pcall(mime_rewriter.rewrite, task, function(decoded, is_html)', SOURCE)

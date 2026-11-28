@@ -7,14 +7,26 @@ local rspamd_util = require "rspamd_util"
 package.path = package.path .. ";/etc/rspamd/lua/?.lua"
 local mime_rewriter = require "opensigweave_mime"
 local cid_rewriter = require "opensigweave_cid"
-local domain_policy = require "opensigweave_domain_policy"
-
 -- ==========================================
 -- OPENSIGWEAVE CONFIGURATION
 -- ==========================================
 -- Runtime configuration is supplied by the Rspamd configuration section:
 -- opensigweave { api_url = "..."; engine_api_key = "..."; timeout = 5.0; }
 local module_options = rspamd_config:get_all_opt("opensigweave") or {}
+-- Keep legacy three-module installations working without any offline policy
+-- module. When opted in, a missing or invalid module must NOT exempt mail.
+local domain_policy = nil
+local domain_policy_unavailable = false
+if module_options.domain_policy_file ~= nil then
+    local loaded, candidate = pcall(require, "opensigweave_domain_policy")
+    if loaded and type(candidate) == "table" and type(candidate.must_tempfail) == "function" then
+        domain_policy = candidate
+    else
+        domain_policy_unavailable = true
+        rspamd_logger.errx(rspamd_config,
+            "OpenSigWeave: configured offline domain policy module is unavailable; technical failures will be temporarily rejected")
+    end
+end
 local ENGINE_API_KEY = module_options.engine_api_key
 local API_URL_BASE = module_options.api_url
 local REQUEST_TIMEOUT = tonumber(module_options.timeout) or 5.0
@@ -38,7 +50,10 @@ local function technical_failure(task, reason)
     local failure_id = rspamd_util.random_hex(8)
     rspamd_logger.errx(task, "OpenSigWeave failure_id=%s reason=%s policy=%s",
         failure_id, reason, FAILURE_POLICY)
-    if domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
+    local defer = domain_policy_unavailable or
+        (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
+        (not domain_policy and FAILURE_POLICY ~= "disabled")
+    if defer then
         task:set_pre_result("soft reject",
             "OpenSigWeave: Your email could not be sent because the signature could not be applied. Please try again later. Error ID: "
                 .. failure_id, "opensigweave", nil, 3)
@@ -259,7 +274,9 @@ local function inject_signature(task)
 
 
     local function fail_api(reason)
-        if not domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
+        if not (domain_policy_unavailable or
+            (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
+            (not domain_policy and FAILURE_POLICY ~= "disabled")) then
             remove_text_marker_from_message()
         end
         fail(reason)
@@ -831,7 +848,9 @@ local function inject_signature(task)
     })
 
     if not request_ok or not scheduled then
-        if not domain_policy.must_tempfail(task, FAILURE_POLICY, module_options) then
+        if not (domain_policy_unavailable or
+            (domain_policy and domain_policy.must_tempfail(task, FAILURE_POLICY, module_options)) or
+            (not domain_policy and FAILURE_POLICY ~= "disabled")) then
             remove_text_marker_from_message()
         end
         fail("ENGINE_REQUEST_NOT_SCHEDULED")

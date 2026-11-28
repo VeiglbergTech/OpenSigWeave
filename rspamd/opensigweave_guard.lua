@@ -4,10 +4,20 @@
 local rspamd_logger = require "rspamd_logger"
 local rspamd_util = require "rspamd_util"
 package.path = package.path .. ";/etc/rspamd/lua/?.lua"
-local domain_policy = require "opensigweave_domain_policy"
-
 local options = rspamd_config:get_all_opt("opensigweave_guard") or {}
 local adapter_options = rspamd_config:get_all_opt("opensigweave") or {}
+local domain_policy = nil
+local domain_policy_unavailable = false
+if adapter_options.domain_policy_file ~= nil then
+    local loaded, candidate = pcall(require, "opensigweave_domain_policy")
+    if loaded and type(candidate) == "table" and type(candidate.must_tempfail) == "function" then
+        domain_policy = candidate
+    else
+        domain_policy_unavailable = true
+        rspamd_logger.errx(rspamd_config,
+            "OpenSigWeave guard: configured offline domain policy module is unavailable; defaulting to temporary rejection")
+    end
+end
 local failure_policy = adapter_options.failure_policy or "disabled"
 if failure_policy == "fail_open" then failure_policy = "disabled" end
 if failure_policy == "tempfail" or failure_policy == "standard" then failure_policy = "enabled" end
@@ -32,9 +42,10 @@ if options.enabled == true and
             return false
         end
 
-        if not domain_policy.must_tempfail(task, failure_policy, adapter_options) then
-            return false
-        end
+        local defer = domain_policy_unavailable or
+            (domain_policy and domain_policy.must_tempfail(task, failure_policy, adapter_options)) or
+            (not domain_policy and failure_policy ~= "disabled")
+        if not defer then return false end
         local failure_id = rspamd_util.random_hex(8)
         rspamd_logger.errx(
             task, "OpenSigWeave guard failure_id=%s reason=SIGNATURE_PLUGIN_NOT_LOADED",
