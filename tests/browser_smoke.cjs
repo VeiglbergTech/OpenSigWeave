@@ -1391,7 +1391,7 @@ async function main() {
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Signature"));
-      return row && row.children[2].textContent.trim() === "2";
+      return row && row.querySelector('td[data-label="Versions"]')?.textContent.trim() === "2";
     });
     await signatureRow.getByRole("button", { name: "Edit", exact: true }).click();
     const persistedImageEditor = signaturePanel.locator("#signature-template-editor .ck-editor__editable");
@@ -1445,7 +1445,7 @@ async function main() {
     await page.waitForFunction(() => {
       const row = [...document.querySelectorAll('[x-data="signatureManager"] tbody tr')]
         .find(item => item.textContent.includes("Browser Smoke Signature"));
-      return row && row.children[2].textContent.trim() === "3";
+      return row && row.querySelector('td[data-label="Versions"]')?.textContent.trim() === "3";
     });
 
     const stillPublic = await page.request.get(persistedImageSrcs[0]);
