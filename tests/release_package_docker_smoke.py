@@ -154,8 +154,8 @@ def main() -> int:
             # CI has no HTTPS reverse proxy. These are isolated, test-only
             # browser-cookie options; real installations must use HTTPS.
             with (install_root / ".env").open("a", encoding="utf-8") as file:
-                file.write('SESSION_COOKIE_NAME="osw-ci-session"\\n')
-                file.write('SESSION_COOKIE_SECURE="false"\\n')
+                file.write('SESSION_COOKIE_NAME="osw-ci-session"\n')
+                file.write('SESSION_COOKIE_SECURE="false"\n')
 
         try:
             with patch.object(deploy_common, "git", side_effect=forbid_git), \
