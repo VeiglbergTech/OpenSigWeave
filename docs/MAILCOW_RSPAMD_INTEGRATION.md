@@ -48,7 +48,7 @@ data/conf/rspamd/lua/opensigweave_mime.lua,
 data/conf/rspamd/lua/opensigweave_cid.lua and
 data/conf/rspamd/lua/opensigweave_domain_policy.lua.
 The installation also creates a local
-data/conf/rspamd/local.d/opensigweave-domain-policy.json snapshot, a protected
+data/conf/rspamd/opensigweave-policy/policy.json snapshot, a protected
 engine-key file, a root-managed installation state and a host-side Python
 synchronization helper/systemd timer. It does **not** overwrite
 rspamd.local.lua, Mailcow's Docker Compose, Postfix, networks, port mappings or
