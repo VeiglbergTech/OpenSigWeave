@@ -45,6 +45,7 @@ class MailcowSetupTests(unittest.TestCase):
         self.assertIn(setup.BEGIN, saved)
         self.assertIn('failure_policy = "enabled"', saved)
         self.assertIn("domain_policy_file", saved)
+        self.assertIn('inline_images = "external"', saved)
         self.assertIn("/etc/rspamd/local.d/opensigweave-policy/policy.json", saved)
         self.assertEqual(setup.POLICY_REL, "local.d/opensigweave-policy/policy.json")
         self.assertEqual(self.config_path.stat().st_mode & 0o777, 0o600)

@@ -129,7 +129,7 @@ def managed_block(url: str, secret: str) -> str:
             + "  engine_api_key = " + json.dumps(secret) + ";\n"
             + '  failure_policy = "enabled";\n'
             + '  domain_policy_file = "/etc/rspamd/local.d/opensigweave-policy/policy.json";\n'
-            + '  inline_images = "cid";\n'
+            + '  inline_images = "external";\n'
             + "  max_response_size = 6291456;\n"
             + "  timeout = 5.0;\n"
             + "}\n" + END)

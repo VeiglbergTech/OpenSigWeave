@@ -56,6 +56,11 @@ synchronization helper/systemd timer. It does **not** overwrite
 rspamd.local.lua, Mailcow's Docker Compose, Postfix, networks, port mappings or
 unrelated Rspamd filters.
 
+The standard setup intentionally retains inline_images = "external", as CID
+signature-image rewriting remains an **experimental opt-in**. Enable CID only
+after actual Mailcow SMTP, attachment and final DKIM acceptance; installing
+the CID support module alone does not change MIME output.
+
 The managed block uses global failure_policy = "enabled" with
 domain_policy_file set. For unavailable OpenSigWeave (Mailcow/Rspamd healthy),
 Signature required **Off** uses an authenticated local exemption to send
