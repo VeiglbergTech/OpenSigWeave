@@ -241,11 +241,18 @@ class BrowserBootstrapTests(unittest.TestCase):
 
     def test_websocket_reconnect_replays_authorized_status_snapshot(self):
         self._login_and_configure_for_activity()
+        # Starlette's TestClient constructs ws://testserver internally and
+        # therefore cannot automatically attach the Secure __Host- cookie.
+        # Supply the already-issued cookie to emulate a same-origin WSS browser.
+        session_cookie_name = os.getenv("SESSION_COOKIE_NAME", "__Host-opensigweave-session")
+        session_cookie = self.client.cookies.get(session_cookie_name)
+        self.assertTrue(session_cookie)
         with patch.object(main, "SessionLocal", self.Session):
             for _ in range(2):
                 with self.client.websocket_connect("/ws/portal", headers={
                         "Origin": "https://app.example.org",
-                        "Host": "app.example.org"}) as socket:
+                        "Host": "app.example.org",
+                        "Cookie": f"{session_cookie_name}={session_cookie}"}) as socket:
                     hello = socket.receive_json()
                     self.assertEqual(hello["type"], "ready")
                     self.assertTrue(hello["status_available"])
